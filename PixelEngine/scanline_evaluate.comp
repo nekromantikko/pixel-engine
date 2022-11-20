@@ -1,0 +1,62 @@
+#version 450
+#define MAX_SPRITES_PER_SCANLINE 64
+
+layout(local_size_x = 64, local_size_y = 8, local_size_z = 1) in;
+
+struct Sprite
+{
+	int y;
+	int x;
+	uint tileId;
+	uint attributes;
+};
+layout(set = 0, binding = 5) readonly buffer Sprites
+{
+    Sprite data[];
+} sprites;
+
+struct ScanlineData {
+	uint spriteCount;
+	uint spriteIndices[MAX_SPRITES_PER_SCANLINE];
+
+	int scrollX;
+	int scrollY;
+	uint bgChrIndex;
+	uint fgChrIndex;
+};
+layout(set = 0, binding = 6) writeonly buffer Scanlines
+{
+    ScanlineData data[];
+} scanlines;
+
+struct RenderState
+{
+	int scrollX;
+	int scrollY;
+	uint bgChrIndex;
+	uint fgChrIndex;
+};
+layout(set = 0, binding = 7) readonly buffer RenderStates
+{
+	RenderState data[];
+} renderStates;
+
+void main() {
+	int scanlineIndex = int(gl_GlobalInvocationID.y);
+	uint spriteIndex = gl_WorkGroupID.x * gl_WorkGroupSize.x + gl_LocalInvocationID.x;
+	
+	Sprite sprite = sprites.data[spriteIndex];
+	if (scanlineIndex >= sprite.y && scanlineIndex < sprite.y + 8) {
+		uint scanlineSpriteIndex = atomicAdd(scanlines.data[scanlineIndex].spriteCount, 1);
+		if (scanlineSpriteIndex < MAX_SPRITES_PER_SCANLINE) {
+			scanlines.data[scanlineIndex].spriteIndices[scanlineSpriteIndex] = spriteIndex;
+		}
+	}
+
+	if (gl_LocalInvocationID.x == 0) {
+		scanlines.data[scanlineIndex].scrollX = renderStates.data[scanlineIndex].scrollX;
+		scanlines.data[scanlineIndex].scrollY = renderStates.data[scanlineIndex].scrollY;
+		scanlines.data[scanlineIndex].bgChrIndex = renderStates.data[scanlineIndex].bgChrIndex;
+		scanlines.data[scanlineIndex].fgChrIndex = renderStates.data[scanlineIndex].fgChrIndex;
+	}
+}
