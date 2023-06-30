@@ -37,8 +37,6 @@ struct ScanlineData {
 
 	int scrollX;
 	int scrollY;
-	uint bgChrIndex;
-	uint fgChrIndex;
 };
 layout(set = 0, binding = 6) readonly buffer Scanlines
 {
@@ -103,7 +101,7 @@ ivec2 Scroll(ScanlineData scanline, ivec2 screenPos, out int nametableIndex) {
 	return scrollPos;
 }
 
-vec3 RenderBackground(ivec2 screenPos) {
+ivec2 RenderBackground(ivec2 screenPos) {
 	ScanlineData scanline = scanlines.data[screenPos.y];
 	int nametableIndex;
 	ivec2 scrollPos = Scroll(scanline, screenPos, nametableIndex);
@@ -115,9 +113,13 @@ vec3 RenderBackground(ivec2 screenPos) {
 
 	int tileIndex = ReadNametableByte(nametableIndex, coarse);
 	
-	uint patternTableOffset = scanline.bgChrIndex * 256;
-	Tile tile = chr.data[patternTableOffset + tileIndex];
+	Tile tile = chr.data[tileIndex];
 	int colorIndex = ReadTile(tile, fine, 0, 0);
+
+	// Don't draw transparent pixels
+	if (colorIndex == 0) {
+		return ivec2(0, 0);
+	}
 
 	// Nametable attributes store palette indices for 4x4 tiles in one byte
 	int attributeOffset = 0xF00; // Attribute memory starts after all the tile data
@@ -131,9 +133,7 @@ vec3 RenderBackground(ivec2 screenPos) {
 	palTableIndex &= (3 << (2 * attributeSubBlockPos));
 	palTableIndex >>= 2 * attributeSubBlockPos;
 
-	int paletteIndex = ReadPaletteTable(palTableIndex, colorIndex);
-
-	return imageLoad(palette, paletteIndex).rgb;
+	return ivec2(colorIndex, palTableIndex);
 }
 
 vec3 RenderDebugGrid(ivec2 screenPos, vec3 background) {
@@ -150,22 +150,20 @@ vec3 RenderDebugGrid(ivec2 screenPos, vec3 background) {
 	return background;
 }
 
-vec3 RenderSprites(ivec2 screenPos, vec3 background) {
-	vec3 result = background;
-	
+ivec2 RenderSprites(ivec2 screenPos, ivec2 result) {
 	ScanlineData scanline = scanlines.data[screenPos.y];
 	uint spriteCount = min(scanline.spriteCount, MAX_SPRITES_PER_SCANLINE);
-	uint largestSpriteIndexWithOpaquePixel = 0;
+	// Assuming here that the sprites are properly sorted from lowest index to highest
 	for (int i = 0; i < spriteCount; i++) {
 		uint spriteIndex = scanline.spriteIndices[i];
 		Sprite sprite = sprites.data[spriteIndex];
 		// Is pixel inside sprite?
 		if (screenPos.x >= sprite.x && screenPos.x < sprite.x + 8) {
-			uint patternTableOffset = scanline.fgChrIndex * 256;
+			uint patternTableOffset = 0x100;
 			Tile tile = chr.data[patternTableOffset + sprite.tileId];
 
 			int palTableIndex = int(sprite.attributes & 3) + 4;
-			int priority = int((sprite.attributes >> 5) & 1); // TODO
+			int priority = int((sprite.attributes >> 5) & 1);
 			int flipX = int((sprite.attributes >> 6) & 1);
 			int flipY = int((sprite.attributes >> 7) & 1);
 
@@ -177,15 +175,12 @@ vec3 RenderSprites(ivec2 screenPos, vec3 background) {
 			if (colorIndex == 0) {
 				continue;
 			}
-
-			// "Sorting"
-			if (spriteIndex < largestSpriteIndexWithOpaquePixel) {
-				continue;
+			
+			// Draw sprites on top of bg if priority is 0 or if the bg pixel is not opaque
+			if (priority == 0 || result.x == 0) {
+				result = ivec2(colorIndex, palTableIndex);
 			}
-			largestSpriteIndexWithOpaquePixel = spriteIndex;
-
-			int paletteIndex = ReadPaletteTable(palTableIndex, colorIndex);
-			result = imageLoad(palette, paletteIndex).rgb;
+			break;
 		}
 	}
 
@@ -195,9 +190,14 @@ vec3 RenderSprites(ivec2 screenPos, vec3 background) {
 void main() {
 	ivec2 screenPos = ivec2(gl_GlobalInvocationID.xy);
 
-	vec3 outColor = RenderBackground(screenPos);
+	ivec2 result = RenderBackground(screenPos);
+	result = RenderSprites(screenPos, result);
+
+	int colorIndex = result.x;
+	int palTableIndex = result.y;
+	int paletteIndex = ReadPaletteTable(palTableIndex, colorIndex);
+	vec3 outColor = imageLoad(palette, paletteIndex).rgb;
 	// outColor = RenderDebugGrid(screenPos, outColor);
-	outColor = RenderSprites(screenPos, outColor);
 	outColor = ToLinear(outColor);
 	imageStore(outImage, screenPos, vec4(outColor, 1.0));
 }

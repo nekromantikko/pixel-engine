@@ -38,6 +38,9 @@ public:
         b.d = fix(d / a.d);
         return b;
     }
+    inline fixed32 operator%(fixed32 a) const {
+        return *this - a * floor((double)(*this / a));
+    }
     ////////////////////////////
     inline fixed32 operator+(double a) const {
         return *this + fixed32(a);
@@ -50,6 +53,9 @@ public:
     }
     inline fixed32 operator/(double a) const {
         return *this / fixed32(a);
+    }
+    inline fixed32 operator%(double a) const {
+        return *this % fixed32(a);
     }
     ////////////////////////////
     inline fixed32 operator+(float a) const {
@@ -64,6 +70,9 @@ public:
     inline fixed32 operator/(float a) const {
         return *this / fixed32(a);
     }
+    inline fixed32 operator%(float a) const {
+        return *this % fixed32(a);
+    }
     ////////////////////////////
     inline fixed32 operator+(int a) const {
         return *this + fixed32(a);
@@ -76,6 +85,9 @@ public:
     }
     inline fixed32 operator/(int a) const {
         return *this / fixed32(a);
+    }
+    inline fixed32 operator%(int a) const {
+        return *this % fixed32(a);
     }
     ////////////////////////////
     inline fixed32 operator+(unsigned int a) const {
@@ -90,6 +102,9 @@ public:
     inline fixed32 operator/(unsigned int a) const {
         return *this / fixed32(a);
     }
+    inline fixed32 operator%(unsigned int a) const {
+        return *this % fixed32(a);
+    }
     ////////////////////////////
     inline fixed32& operator+=(fixed32 a) {
         return *this = *this + a;
@@ -102,6 +117,9 @@ public:
     }
     inline fixed32& operator/=(fixed32 a) {
         return *this = *this / a;
+    }
+    inline fixed32& operator%=(fixed32 a) {
+        return *this = *this % a;
     }
     ///////////////////////////
     inline fixed32& operator+=(double a) {
@@ -116,6 +134,9 @@ public:
     inline fixed32& operator/=(double a) {
         return *this = *this / fixed32(a);
     }
+    inline fixed32& operator%=(double a) {
+        return *this = *this % fixed32(a);
+    }
     ///////////////////////////
     inline fixed32& operator+=(float a) {
         return *this = *this + fixed32(a);
@@ -128,6 +149,9 @@ public:
     }
     inline fixed32& operator/=(float a) {
         return *this = *this / fixed32(a);
+    }
+    inline fixed32& operator%=(float a) {
+        return *this = *this % fixed32(a);
     }
     ///////////////////////////
     inline fixed32& operator+=(int a) {
@@ -142,6 +166,9 @@ public:
     inline fixed32& operator/=(int a) {
         return *this = *this / fixed32(a);
     }
+    inline fixed32& operator%=(int a) {
+        return *this = *this % fixed32(a);
+    }
     ///////////////////////////
     inline fixed32& operator+=(unsigned int a) {
         return *this = *this + fixed32(a);
@@ -154,6 +181,9 @@ public:
     }
     inline fixed32& operator/=(unsigned int a) {
         return *this = *this / fixed32(a);
+    }
+    inline fixed32& operator%=(unsigned int a) {
+        return *this = *this % fixed32(a);
     }
     ///////////////////////////
     inline bool operator==(const fixed32& a) const {

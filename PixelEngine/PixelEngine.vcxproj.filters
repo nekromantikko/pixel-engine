@@ -16,12 +16,12 @@
     <Filter Include="Source Files\shaders">
       <UniqueIdentifier>{57b21215-e28a-4a84-a6fd-142a18386fce}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\imgui">
+      <UniqueIdentifier>{c551e186-9ae4-4e9b-91f5-ff2d4ecc328c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="rendering-vulkan.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="system.cpp">
@@ -33,8 +33,50 @@
     <ClCompile Include="input.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="rendering_util.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="fixed.cpp">
-      <Filter>Source Files\shaders</Filter>
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="editor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="viewport.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="core.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="level.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\imgui\imgui.cpp">
+      <Filter>Source Files\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\imgui\imgui_demo.cpp">
+      <Filter>Source Files\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\imgui\imgui_draw.cpp">
+      <Filter>Source Files\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\imgui\imgui_tables.cpp">
+      <Filter>Source Files\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\imgui\imgui_widgets.cpp">
+      <Filter>Source Files\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\imgui\backends\imgui_impl_sdl2.cpp">
+      <Filter>Source Files\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\imgui\backends\imgui_impl_vulkan.cpp">
+      <Filter>Source Files\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\imgui\backends\imgui_impl_win32.cpp">
+      <Filter>Source Files\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="rendering_vulkan.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -56,18 +98,42 @@
     <ClInclude Include="fixed.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="rendering_util.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="level.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="editor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="viewport.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="core.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="test.vert">
-      <Filter>Source Files\shaders</Filter>
-    </None>
-    <None Include="test.frag">
-      <Filter>Source Files\shaders</Filter>
-    </None>
-    <None Include="white_noise.comp">
-      <Filter>Source Files\shaders</Filter>
-    </None>
     <None Include="scanline_evaluate.comp">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="software.comp">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="quad.vert">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="textured_crt.frag">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="textured_raw.frag">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="debug_blit_chr.comp">
+      <Filter>Source Files\shaders</Filter>
+    </None>
+    <None Include="debug_blit_pal.comp">
       <Filter>Source Files\shaders</Filter>
     </None>
   </ItemGroup>

@@ -1,11 +1,17 @@
 #include <windows.h>
 #include <SDL.h>
+#include <imgui.h>
+#include <imgui_impl_win32.h>
+#include <cfloat>
 #include "rendering.h"
 #include "system.h"
 #include "game.h"
 
 static Rendering::RenderContext* renderContext;
 static bool running;
+
+// Forward declare message handler from imgui_impl_win32.cpp
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 LRESULT CALLBACK MainWindowCallback(_In_ HWND hwnd, _In_ UINT uMsg, _In_ WPARAM wParam, _In_ LPARAM lParam) {
     LRESULT result = 0;
@@ -46,7 +52,10 @@ LRESULT CALLBACK MainWindowCallback(_In_ HWND hwnd, _In_ UINT uMsg, _In_ WPARAM 
         }
         default:
         {
-            result = DefWindowProc(hwnd, uMsg, wParam, lParam);
+            result = ImGui_ImplWin32_WndProcHandler(hwnd, uMsg, wParam, lParam);
+            if (!result) {
+                result = DefWindowProc(hwnd, uMsg, wParam, lParam);
+            }
             break;
         }
     }
@@ -103,6 +112,10 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
     renderContext = Rendering::CreateRenderContext(surface);
     DEBUG_LOG("Render context = %x\n", renderContext);
 
+    ImGui::CreateContext();
+    ImGui_ImplWin32_Init(windowHandle);
+    Rendering::InitImGui(renderContext);
+
     u64 currentTime = GetTickCount64();
 
     SDL_Init(SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS | SDL_INIT_HAPTIC);
@@ -120,13 +133,18 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
         }
 
         u64 newTime = GetTickCount64();
-        u64 deltaTime = GetTickCount64() - currentTime;
+        u64 deltaTime = newTime - currentTime;
         float deltaTimeSeconds = deltaTime / 1000.0f;
         currentTime = newTime;
 
-        Game::Step(deltaTimeSeconds, renderContext);
+        if (deltaTime >= FLT_MIN) {
+            Game::Step(deltaTimeSeconds, renderContext);
+        }
     }
 
+    Rendering::ShutdownImGui();
+    ImGui_ImplWin32_Shutdown();
+    ImGui::DestroyContext();
     Rendering::FreeRenderContext(renderContext);
 
     SDL_Quit();

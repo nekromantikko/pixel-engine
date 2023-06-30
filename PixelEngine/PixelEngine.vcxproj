@@ -114,9 +114,9 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>PLATFORM_WINDOWS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>PLATFORM_WINDOWS;DEBUG</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\SDL2-2.24.1\include;C:\VulkanSDK\1.2.141.2\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Work\Gamedev\imgui\backends;C:\SDL2-2.24.1\include;C:\VulkanSDK\1.2.141.2\Include;C:\Work\Gamedev\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -131,9 +131,9 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>PLATFORM_WINDOWS</PreprocessorDefinitions>
+      <PreprocessorDefinitions>PLATFORM_WINDOWS;DEBUG</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\SDL2-2.24.1\include;C:\VulkanSDK\1.2.141.2\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Work\Gamedev\imgui\backends;C:\SDL2-2.24.1\include;C:\VulkanSDK\1.2.141.2\Include;C:\Work\Gamedev\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -145,26 +145,47 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\imgui\backends\imgui_impl_sdl2.cpp" />
+    <ClCompile Include="..\..\imgui\backends\imgui_impl_vulkan.cpp" />
+    <ClCompile Include="..\..\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="..\..\imgui\imgui.cpp" />
+    <ClCompile Include="..\..\imgui\imgui_demo.cpp" />
+    <ClCompile Include="..\..\imgui\imgui_draw.cpp" />
+    <ClCompile Include="..\..\imgui\imgui_tables.cpp" />
+    <ClCompile Include="..\..\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="core.cpp" />
+    <ClCompile Include="editor.cpp" />
     <ClCompile Include="fixed.cpp" />
     <ClCompile Include="game.cpp" />
     <ClCompile Include="input.cpp" />
+    <ClCompile Include="level.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="rendering-vulkan.cpp" />
+    <ClCompile Include="rendering_vulkan.cpp" />
+    <ClCompile Include="rendering_util.cpp" />
     <ClCompile Include="system.cpp" />
+    <ClCompile Include="viewport.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="core.h" />
+    <ClInclude Include="editor.h" />
     <ClInclude Include="fixed.h" />
     <ClInclude Include="game.h" />
     <ClInclude Include="input.h" />
+    <ClInclude Include="level.h" />
     <ClInclude Include="rendering.h" />
+    <ClInclude Include="rendering_util.h" />
     <ClInclude Include="system.h" />
     <ClInclude Include="typedef.h" />
+    <ClInclude Include="viewport.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="debug_blit_chr.comp" />
+    <None Include="debug_blit_pal.comp" />
+    <None Include="textured_raw.frag" />
+    <None Include="quad.vert" />
     <None Include="scanline_evaluate.comp" />
-    <None Include="test.frag" />
-    <None Include="test.vert" />
-    <None Include="white_noise.comp" />
+    <None Include="textured_crt.frag" />
+    <None Include="software.comp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -10,7 +10,7 @@ void Print(const char* fmt, ...) {
 	char s[1025];
 	va_list args;
 	va_start(args, fmt);
-	wvsprintf(s, fmt, args);
+	vsprintf_s(s, fmt, args);
 	va_end(args);
 	OutputDebugString(s);
 }
@@ -20,7 +20,7 @@ void Print(const char* fmt, ...) {
 char* AllocFileBytes(const char* fname, u32& outLength) {
 	std::ifstream file(fname, std::ios::ate | std::ios::binary);
 	u32 fileSize = file.tellg();
-	char *buffer = (char*)malloc(fileSize);
+	char *buffer = (char*)calloc(1, fileSize);
 	file.seekg(0);
 	file.read(buffer, fileSize);
 	file.close();
@@ -55,7 +55,7 @@ char* LoadBitmapBytes(const char* fname, u32& outWidth, u32& outHeight, u16& out
 	DEBUG_LOG("Type = %d, size = %d, offset = %d, width = %d, height = %d, bpp = %d\n", header->fileType, header->fileSize, header->bitmapOffset, header->width, header->height, header->bpp);
 	
 	u32 size = header->width * header->height * header->bpp;
-	char* pixels = (char*)malloc(size);
+	char* pixels = (char*)calloc(1, size);
 	memcpy(pixels, (void*)(bmpData + header->bitmapOffset), size);
 	outWidth = header->width;
 	outHeight = header->height;

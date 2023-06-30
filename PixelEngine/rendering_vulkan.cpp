@@ -1,5 +1,6 @@
 #ifdef PLATFORM_WINDOWS
 	#define VK_USE_PLATFORM_WIN32_KHR
+	#include <imgui_impl_win32.h>
 #endif
 
 #include <vulkan/vulkan.h>
@@ -7,6 +8,7 @@
 #include <cstring>
 #include "rendering.h"
 #include "system.h"
+#include <imgui_impl_vulkan.h>
 
 namespace Rendering
 {
@@ -20,22 +22,12 @@ namespace Rendering
 		u32 size;
 	};
 
-	struct Tile {
-		u8 pixels[TILE_SIZE* TILE_SIZE];
-	};
-
 	struct ScanlineData {
 		u32 spriteCount;
 		u32 spriteIndices[MAX_SPRITES_PER_SCANLINE];
 
 		s32 scrollX;
 		s32 scrollY;
-		u32 bgChrIndex;
-		u32 fgChrIndex;
-	};
-
-	struct CommandBuffer {
-		VkCommandBuffer cmd;
 	};
 
 	struct RenderContext {
@@ -51,6 +43,7 @@ namespace Rendering
 
 		VkCommandPool primaryCommandPool;
 		VkDescriptorPool descriptorPool;
+		VkDescriptorPool imGuiDescriptorPool;
 
 		u32 currentCbIndex;
 #define COMMAND_BUFFER_COUNT 2
@@ -69,20 +62,22 @@ namespace Rendering
 		// General stuff
 		VkBuffer timeBuffer;
 		VkDeviceMemory timeMemory;
+		VkSampler defaultSampler;
 
 		// Grafix
-		VkShaderModule vertShaderModule;
-		VkShaderModule fragShaderModule;
+		VkShaderModule blitVertexShaderModule;
+		VkShaderModule blitRawFragmentShaderModule;
+		VkShaderModule blitCRTFragmentShaderModule;
 		VkDescriptorSetLayout graphicsDescriptorSetLayout;
 		VkDescriptorSet graphicsDescriptorSets[COMMAND_BUFFER_COUNT];
 		VkRenderPass renderImagePass;
-		VkPipelineLayout graphicsPipelineLayout;
-		VkPipeline graphicsPipeline;
+		VkPipelineLayout blitPipelineLayout;
+		VkPipeline blitRawPipeline;
+		VkPipeline blitCRTPipeline;
 
 		// Compute stuff
 		VkImage paletteImage;
 		VkImageView paletteImageView;
-		VkSampler paletteSampler;
 		VkDeviceMemory paletteMemory;
 
 		VkBuffer scanlineBuffer;
@@ -95,7 +90,7 @@ namespace Rendering
 		// Pattern table
 		VkBuffer chrBuffer;
 		VkDeviceMemory chrMemory;
-		VkDeviceSize chrSize;
+
 		// Nametable
 		VkBuffer nametableBuffer;
 		VkDeviceMemory nametableMemory;
@@ -106,14 +101,13 @@ namespace Rendering
 
 		VkImage colorImage;
 		VkImageView colorImageView;
-		VkSampler colorSampler;
 		VkDeviceMemory colorImageMemory;
 
 		VkDescriptorSetLayout computeDescriptorSetLayout;
 		VkDescriptorSet computeDescriptorSet;
-		VkPipelineLayout computePipelineLayout;
-		VkPipeline computePipeline;
-		VkShaderModule noiseShaderModule;
+		VkPipelineLayout softwarePipelineLayout;
+		VkPipeline softwarePipeline;
+		VkShaderModule softwareShaderModule;
 		VkPipelineLayout evaluatePipelineLayout;
 		VkPipeline evaluatePipeline;
 		VkShaderModule evaluateShaderModule;
@@ -121,6 +115,28 @@ namespace Rendering
 		// Render state from game code...
 		VkBuffer renderStateBuffer;
 		VkDeviceMemory renderStateMemory;
+
+		// Settings
+		Settings settings;
+
+		// Debug stuff
+		bool32 renderDebugChr = false;
+		VkImage debugChrImage[8];
+		VkImageView debugChrImageView[8];
+		VkDeviceMemory debugChrImageMemory[8];
+		VkPipelineLayout chrPipelineLayout;
+		VkPipeline chrPipeline;
+		VkShaderModule chrShaderModule;
+		VkDescriptorSet chrDescriptorSet[8];
+
+		bool32 renderDebugPalette = false;
+		VkImage debugPaletteImage;
+		VkImageView debugPaletteImageView;
+		VkDeviceMemory debugPaletteImageMemory;
+		VkPipelineLayout palettePipelineLayout;
+		VkPipeline palettePipeline;
+		VkShaderModule paletteShaderModule;
+		VkDescriptorSet paletteDescriptorSet;
 	};
 
 	void CreateVulkanInstance(RenderContext *pContext) {
@@ -166,7 +182,7 @@ namespace Rendering
 
 		u32 extensionCount = 0;
 		vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
-		VkExtensionProperties* availableExtensions = (VkExtensionProperties *)malloc(extensionCount * sizeof(VkExtensionProperties));
+		VkExtensionProperties* availableExtensions = (VkExtensionProperties *)calloc(extensionCount, sizeof(VkExtensionProperties));
 		vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions);
 
 		bool hasSwapchainSupport = false;
@@ -187,12 +203,12 @@ namespace Rendering
 
 		u32 surfaceFormatCount = 0;
 		vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, nullptr);
-		VkSurfaceFormatKHR* availableFormats = (VkSurfaceFormatKHR *)malloc(surfaceFormatCount * sizeof(VkSurfaceFormatKHR));
+		VkSurfaceFormatKHR* availableFormats = (VkSurfaceFormatKHR *)calloc(surfaceFormatCount, sizeof(VkSurfaceFormatKHR));
 		vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, availableFormats);
 
 		u32 presentModeCount = 0;
 		vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
-		VkPresentModeKHR* availablePresentModes = (VkPresentModeKHR*)malloc(presentModeCount * sizeof(VkPresentModeKHR));
+		VkPresentModeKHR* availablePresentModes = (VkPresentModeKHR*)calloc(presentModeCount, sizeof(VkPresentModeKHR));
 		vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, availablePresentModes);
 
 		// TODO: Something with these
@@ -205,7 +221,7 @@ namespace Rendering
 
 		u32 queueFamilyCount = 0;
 		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
-		VkQueueFamilyProperties* queueFamilies = (VkQueueFamilyProperties*)malloc(queueFamilyCount * sizeof(VkQueueFamilyProperties));
+		VkQueueFamilyProperties* queueFamilies = (VkQueueFamilyProperties*)calloc(queueFamilyCount, sizeof(VkQueueFamilyProperties));
 		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies);
 
 		bool queueFamilyFound = false;
@@ -248,7 +264,7 @@ namespace Rendering
 		if (physicalDeviceCount == 0) {
 			ERROR("No devices found for some reason!\n");
 		}
-		VkPhysicalDevice *availableDevices = (VkPhysicalDevice *)malloc(physicalDeviceCount * sizeof(VkPhysicalDevice));
+		VkPhysicalDevice *availableDevices = (VkPhysicalDevice *)calloc(physicalDeviceCount, sizeof(VkPhysicalDevice));
 		vkEnumeratePhysicalDevices(pContext->instance, &physicalDeviceCount, availableDevices);
 
 		bool physicalDeviceFound = false;
@@ -479,26 +495,37 @@ namespace Rendering
 	void CreateGraphicsPipeline(RenderContext* pContext)
 	{
 		u32 vertShaderLength;
-		char* vertShader = AllocFileBytes("test_vert.spv", vertShaderLength);
-		u32 fragShaderLength;
-		char* fragShader = AllocFileBytes("test_frag.spv", fragShaderLength);
-		DEBUG_LOG("Vert shader length: %d\n", vertShaderLength);
-		DEBUG_LOG("Frag shader length: %d\n", fragShaderLength);
-		pContext->vertShaderModule = CreateShaderModule(pContext->device, vertShader, vertShaderLength);
-		pContext->fragShaderModule = CreateShaderModule(pContext->device, fragShader, fragShaderLength);
+		char* vertShader = AllocFileBytes("quad_vert.spv", vertShaderLength);
+		u32 rawFragShaderLength;
+		char* rawFragShader = AllocFileBytes("textured_raw_frag.spv", rawFragShaderLength);
+		u32 CRTFragShaderLength;
+		char* CRTFragShader = AllocFileBytes("textured_crt_frag.spv", CRTFragShaderLength);
+
+		pContext->blitVertexShaderModule = CreateShaderModule(pContext->device, vertShader, vertShaderLength);
+		pContext->blitRawFragmentShaderModule = CreateShaderModule(pContext->device, rawFragShader, rawFragShaderLength);
+		pContext->blitCRTFragmentShaderModule = CreateShaderModule(pContext->device, CRTFragShader, CRTFragShaderLength);
 		free(vertShader);
-		free(fragShader);
+		free(rawFragShader);
+		free(CRTFragShader);
+
 		VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
 		vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 		vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-		vertShaderStageInfo.module = pContext->vertShaderModule;
+		vertShaderStageInfo.module = pContext->blitVertexShaderModule;
 		vertShaderStageInfo.pName = "main";
-		VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-		fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-		fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-		fragShaderStageInfo.module = pContext->fragShaderModule;
-		fragShaderStageInfo.pName = "main";
-		VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
+		VkPipelineShaderStageCreateInfo rawFragShaderStageInfo{};
+		rawFragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		rawFragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+		rawFragShaderStageInfo.module = pContext->blitRawFragmentShaderModule;
+		rawFragShaderStageInfo.pName = "main";
+		VkPipelineShaderStageCreateInfo CRTFragShaderStageInfo{};
+		CRTFragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		CRTFragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+		CRTFragShaderStageInfo.module = pContext->blitCRTFragmentShaderModule;
+		CRTFragShaderStageInfo.pName = "main";
+
+		VkPipelineShaderStageCreateInfo rawShaderStages[] = { vertShaderStageInfo, rawFragShaderStageInfo };
+		VkPipelineShaderStageCreateInfo CRTShaderStages[] = { vertShaderStageInfo, CRTFragShaderStageInfo };
 
 		VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 		vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -562,14 +589,19 @@ namespace Rendering
 		colorBlending.blendConstants[2] = 0.0f; // Optional
 		colorBlending.blendConstants[3] = 0.0f; // Optional
 
-		VkPipelineLayoutCreateInfo graphicsPipelineLayoutInfo{};
-		graphicsPipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		graphicsPipelineLayoutInfo.setLayoutCount = 1;
-		graphicsPipelineLayoutInfo.pSetLayouts = &pContext->graphicsDescriptorSetLayout;
-		graphicsPipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
-		graphicsPipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
+		VkPushConstantRange pushConstantRange{};
+		pushConstantRange.offset = 0;
+		pushConstantRange.size = sizeof(Quad);
+		pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-		if (vkCreatePipelineLayout(pContext->device, &graphicsPipelineLayoutInfo, nullptr, &pContext->graphicsPipelineLayout) != VK_SUCCESS) {
+		VkPipelineLayoutCreateInfo blitPipelineLayoutInfo{};
+		blitPipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		blitPipelineLayoutInfo.setLayoutCount = 1;
+		blitPipelineLayoutInfo.pSetLayouts = &pContext->graphicsDescriptorSetLayout;
+		blitPipelineLayoutInfo.pushConstantRangeCount = 1;
+		blitPipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+
+		if (vkCreatePipelineLayout(pContext->device, &blitPipelineLayoutInfo, nullptr, &pContext->blitPipelineLayout) != VK_SUCCESS) {
 			ERROR("failed to create pipeline layout!");
 		}
 
@@ -585,37 +617,48 @@ namespace Rendering
 		dynamicStateInfo.dynamicStateCount = 2;
 		dynamicStateInfo.pDynamicStates = dynamicStates;
 
-		VkGraphicsPipelineCreateInfo pipelineInfo{};
-		pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-		pipelineInfo.stageCount = 2;
-		pipelineInfo.pStages = shaderStages;
-		pipelineInfo.pVertexInputState = &vertexInputInfo;
-		pipelineInfo.pInputAssemblyState = &inputAssembly;
-		pipelineInfo.pViewportState = &viewportState;
-		pipelineInfo.pRasterizationState = &rasterizer;
-		pipelineInfo.pMultisampleState = &multisampling;
-		pipelineInfo.pDepthStencilState = nullptr; // Optional
-		pipelineInfo.pColorBlendState = &colorBlending;
-		pipelineInfo.pDynamicState = &dynamicStateInfo;
-		pipelineInfo.layout = pContext->graphicsPipelineLayout;
-		pipelineInfo.renderPass = pContext->renderImagePass;
-		pipelineInfo.subpass = 0;
-		pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
-		pipelineInfo.basePipelineIndex = -1; // Optional
+		VkGraphicsPipelineCreateInfo rawPipelineInfo{};
+		rawPipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+		rawPipelineInfo.stageCount = 2;
+		rawPipelineInfo.pStages = rawShaderStages;
+		rawPipelineInfo.pVertexInputState = &vertexInputInfo;
+		rawPipelineInfo.pInputAssemblyState = &inputAssembly;
+		rawPipelineInfo.pViewportState = &viewportState;
+		rawPipelineInfo.pRasterizationState = &rasterizer;
+		rawPipelineInfo.pMultisampleState = &multisampling;
+		rawPipelineInfo.pDepthStencilState = nullptr; // Optional
+		rawPipelineInfo.pColorBlendState = &colorBlending;
+		rawPipelineInfo.pDynamicState = &dynamicStateInfo;
+		rawPipelineInfo.layout = pContext->blitPipelineLayout;
+		rawPipelineInfo.renderPass = pContext->renderImagePass;
+		rawPipelineInfo.subpass = 0;
+		rawPipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
+		rawPipelineInfo.basePipelineIndex = -1; // Optional
 
-		VkResult err = vkCreateGraphicsPipelines(pContext->device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pContext->graphicsPipeline);
+		VkGraphicsPipelineCreateInfo CRTPipelineInfo = rawPipelineInfo;
+		CRTPipelineInfo.pStages = CRTShaderStages;
+
+		VkGraphicsPipelineCreateInfo createInfos[] = { rawPipelineInfo, CRTPipelineInfo };
+		VkPipeline pipelinesToCreate[] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+
+		VkResult err = vkCreateGraphicsPipelines(pContext->device, VK_NULL_HANDLE, 2, createInfos, nullptr, pipelinesToCreate);
 		if (err != VK_SUCCESS) {
-			ERROR("failed to create graphics pipeline!");
+			ERROR("failed to create graphics pipelines!");
 		}
+
+		pContext->blitRawPipeline = pipelinesToCreate[0];
+		pContext->blitCRTPipeline = pipelinesToCreate[1];
 	}
 
 	void FreeGraphicsPipeline(RenderContext* pRenderContext)
 	{
-		vkDestroyPipeline(pRenderContext->device, pRenderContext->graphicsPipeline, nullptr);
-		vkDestroyPipelineLayout(pRenderContext->device, pRenderContext->graphicsPipelineLayout, nullptr);
+		vkDestroyPipeline(pRenderContext->device, pRenderContext->blitRawPipeline, nullptr);
+		vkDestroyPipeline(pRenderContext->device, pRenderContext->blitCRTPipeline, nullptr);
+		vkDestroyPipelineLayout(pRenderContext->device, pRenderContext->blitPipelineLayout, nullptr);
 		vkDestroyRenderPass(pRenderContext->device, pRenderContext->renderImagePass, nullptr);
-		vkDestroyShaderModule(pRenderContext->device, pRenderContext->vertShaderModule, nullptr);
-		vkDestroyShaderModule(pRenderContext->device, pRenderContext->fragShaderModule, nullptr);
+		vkDestroyShaderModule(pRenderContext->device, pRenderContext->blitVertexShaderModule, nullptr);
+		vkDestroyShaderModule(pRenderContext->device, pRenderContext->blitRawFragmentShaderModule, nullptr);
+		vkDestroyShaderModule(pRenderContext->device, pRenderContext->blitCRTFragmentShaderModule, nullptr);
 		vkDestroyDescriptorSetLayout(pRenderContext->device, pRenderContext->graphicsDescriptorSetLayout, nullptr);
 	}
 
@@ -690,42 +733,6 @@ namespace Rendering
 	void CreateNametable(RenderContext* pContext) {
 		DEBUG_LOG("Creating nametables...\n");
 		AllocateBuffer(pContext, NAMETABLE_SIZE * NAMETABLE_COUNT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pContext->nametableBuffer, pContext->nametableMemory);
-	}
-
-	void CreateChrSheet(RenderContext* pContext, u8 index, const char *fname) {
-		u32 imgWidth, imgHeight;
-		u16 bpp;
-		char* imgData = LoadBitmapBytes(fname, imgWidth, imgHeight, bpp);
-
-		if (imgWidth != 128 || imgHeight != 128) {
-			ERROR("Invalid chr image dimensions!\n");
-		}
-
-		if (bpp != 8) {
-			ERROR("Invalid chr image format!\n");
-		}
-		
-		void* data;
-		vkMapMemory(pContext->device, pContext->chrMemory, CHR_SHEET_SIZE*index, CHR_SHEET_SIZE, 0, &data);
-		
-		Tile* tileData = (Tile*)data;
-		for (u32 y = 0; y < imgHeight; y++) {
-			for (u32 x = 0; x < imgWidth; x++) {
-				u32 coarseX = x / 8;
-				u32 coarseY = y / 8;
-				u32 fineX = x % 8;
-				u32 fineY = y % 8;
-				u32 tileIndex = (15 - coarseY) * 16 + coarseX; // Tile 0 is top left instead of bottom left
-				u32 inPixelIndex = y * imgWidth + x;
-				u32 outPixelIndex = (7 - fineY) * 8 + fineX; // Also pixels go from top to bottom in this program, but bottom to top in bmp, so flip
-				tileData[tileIndex].pixels[outPixelIndex] = imgData[inPixelIndex];
-			}
-		}
-
-		vkUnmapMemory(pContext->device, pContext->chrMemory);
-		free(imgData);
-
-		pContext->chrSize = CHR_SHEET_SIZE;
 	}
 
 	void CreatePaletteTable(RenderContext* pContext) {
@@ -914,32 +921,12 @@ namespace Rendering
 
 		vkCreateImageView(pContext->device, &viewInfo, nullptr, &pContext->paletteImageView);
 
-		VkSamplerCreateInfo samplerInfo{};
-		samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-		samplerInfo.magFilter = VK_FILTER_NEAREST;
-		samplerInfo.minFilter = VK_FILTER_NEAREST;
-		samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
-		samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
-		samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
-		samplerInfo.anisotropyEnable = VK_FALSE;
-		samplerInfo.maxAnisotropy = 1.0f;
-		samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-		samplerInfo.unnormalizedCoordinates = VK_FALSE;
-		samplerInfo.compareEnable = VK_FALSE;
-		samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-		samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-		samplerInfo.mipLodBias = 0.0f;
-		samplerInfo.minLod = 0.0f;
-		samplerInfo.maxLod = 0.0f;
-
-		vkCreateSampler(pContext->device, &samplerInfo, nullptr, &pContext->paletteSampler);
-
 		vkDestroyBuffer(pContext->device, stagingBuffer, nullptr);
 		vkFreeMemory(pContext->device, stagingMemory, nullptr);
 	}
 
 	RenderContext *CreateRenderContext(Surface surface) {
-		RenderContext *context = (RenderContext*)malloc(sizeof(RenderContext));
+		RenderContext *context = (RenderContext*)calloc(1, sizeof(RenderContext));
 		if (context == nullptr) {
 			ERROR("Couldn't allocate memory for renderContext\n");
 		}
@@ -965,17 +952,17 @@ namespace Rendering
 
 		VkDescriptorPoolSize poolSizes[3]{};
 		poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		poolSizes[0].descriptorCount = COMMAND_BUFFER_COUNT;
+		poolSizes[0].descriptorCount = 100;
 		poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		poolSizes[1].descriptorCount = COMMAND_BUFFER_COUNT;
+		poolSizes[1].descriptorCount = 100;
 		poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		poolSizes[2].descriptorCount = 2;
+		poolSizes[2].descriptorCount = 100;
 
 		VkDescriptorPoolCreateInfo descriptorPoolInfo{};
 		descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 		descriptorPoolInfo.poolSizeCount = 3;
 		descriptorPoolInfo.pPoolSizes = poolSizes;
-		descriptorPoolInfo.maxSets = COMMAND_BUFFER_COUNT + 1;
+		descriptorPoolInfo.maxSets = 100;
 
 		vkCreateDescriptorPool(context->device, &descriptorPoolInfo, nullptr, &context->descriptorPool);
 
@@ -1041,12 +1028,30 @@ namespace Rendering
 
 		CreateGraphicsPipeline(context);
 
+		VkSamplerCreateInfo samplerInfo{};
+		samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		samplerInfo.magFilter = VK_FILTER_NEAREST;
+		samplerInfo.minFilter = VK_FILTER_NEAREST;
+		samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
+		samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
+		samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
+		samplerInfo.anisotropyEnable = VK_FALSE;
+		samplerInfo.maxAnisotropy = 1.0f;
+		samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+		samplerInfo.unnormalizedCoordinates = VK_FALSE;
+		samplerInfo.compareEnable = VK_FALSE;
+		samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+		samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		samplerInfo.mipLodBias = 0.0f;
+		samplerInfo.minLod = 0.0f;
+		samplerInfo.maxLod = 0.0f;
+
+		vkCreateSampler(context->device, &samplerInfo, nullptr, &context->defaultSampler);
+
 		// Compute resources
 		CreatePalette(context);
 		CreatePaletteTable(context);
-		AllocateBuffer(context, CHR_SHEET_SIZE * 2, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, context->chrBuffer, context->chrMemory);
-		CreateChrSheet(context, 0, "CHR000.bmp");
-		CreateChrSheet(context, 1, "CHR001.bmp");
+		AllocateBuffer(context, CHR_MEMORY_SIZE, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, context->chrBuffer, context->chrMemory);
 		CreateNametable(context);
 		CreateOAM(context);
 		ClearSprites(context, 0, MAX_SPRITE_COUNT);
@@ -1089,32 +1094,12 @@ namespace Rendering
 
 		vkCreateImageView(context->device, &viewInfo, nullptr, &context->colorImageView);
 
-		VkSamplerCreateInfo samplerInfo{};
-		samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-		samplerInfo.magFilter = VK_FILTER_NEAREST;
-		samplerInfo.minFilter = VK_FILTER_NEAREST;
-		samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
-		samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
-		samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
-		samplerInfo.anisotropyEnable = VK_FALSE;
-		samplerInfo.maxAnisotropy = 1.0f;
-		samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-		samplerInfo.unnormalizedCoordinates = VK_FALSE;
-		samplerInfo.compareEnable = VK_FALSE;
-		samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-		samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-		samplerInfo.mipLodBias = 0.0f;
-		samplerInfo.minLod = 0.0f;
-		samplerInfo.maxLod = 0.0f;
-
-		vkCreateSampler(context->device, &samplerInfo, nullptr, &context->colorSampler);
-
 		// Write into descriptor sets...
 		for (int i = 0; i < COMMAND_BUFFER_COUNT; i++) {
 			VkDescriptorImageInfo imageInfo{};
 			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			imageInfo.imageView = context->colorImageView;
-			imageInfo.sampler = context->colorSampler;
+			imageInfo.sampler = context->defaultSampler;
 
 			VkWriteDescriptorSet descriptorWrite{};
 			descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1129,12 +1114,6 @@ namespace Rendering
 		}
 
 		// COMPUTE
-
-		//setup push constants
-		VkPushConstantRange pushConstant;
-		pushConstant.offset = 0;
-		pushConstant.size = sizeof(RenderState);
-		pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
 		// Descriptors
 		VkDescriptorSetLayoutBinding storageLayoutBinding{};
@@ -1237,73 +1216,73 @@ namespace Rendering
 		vkCreateComputePipelines(context->device, VK_NULL_HANDLE, 1, &evaluateCreateInfo, nullptr, &context->evaluatePipeline);
 
 		// Compute rendering
-		VkPipelineLayoutCreateInfo computePipelineLayoutInfo{};
-		computePipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		computePipelineLayoutInfo.setLayoutCount = 1;
-		computePipelineLayoutInfo.pSetLayouts = &context->computeDescriptorSetLayout;
-		computePipelineLayoutInfo.pPushConstantRanges = &pushConstant;
-		computePipelineLayoutInfo.pushConstantRangeCount = 1;
+		VkPipelineLayoutCreateInfo softwarePipelineLayoutInfo{};
+		softwarePipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		softwarePipelineLayoutInfo.setLayoutCount = 1;
+		softwarePipelineLayoutInfo.pSetLayouts = &context->computeDescriptorSetLayout;
+		softwarePipelineLayoutInfo.pPushConstantRanges = nullptr;
+		softwarePipelineLayoutInfo.pushConstantRangeCount = 0;
 
-		vkCreatePipelineLayout(context->device, &computePipelineLayoutInfo, nullptr, &context->computePipelineLayout);
+		vkCreatePipelineLayout(context->device, &softwarePipelineLayoutInfo, nullptr, &context->softwarePipelineLayout);
 
-		u32 noiseShaderLength;
-		char* noiseShader = AllocFileBytes("white_noise_comp.spv", noiseShaderLength);
-		context->noiseShaderModule = CreateShaderModule(context->device, noiseShader, noiseShaderLength);
-		free(noiseShader);
+		u32 softwareShaderLength;
+		char* softwareShader = AllocFileBytes("software_comp.spv", softwareShaderLength);
+		context->softwareShaderModule = CreateShaderModule(context->device, softwareShader, softwareShaderLength);
+		free(softwareShader);
 
 		VkPipelineShaderStageCreateInfo compShaderStageInfo{};
 		compShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 		compShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-		compShaderStageInfo.module = context->noiseShaderModule;
+		compShaderStageInfo.module = context->softwareShaderModule;
 		compShaderStageInfo.pName = "main";
 
 		VkComputePipelineCreateInfo computeCreateInfo{};
 		computeCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
 		computeCreateInfo.flags = 0;
 		computeCreateInfo.stage = compShaderStageInfo;
-		computeCreateInfo.layout = context->computePipelineLayout;
+		computeCreateInfo.layout = context->softwarePipelineLayout;
 
-		vkCreateComputePipelines(context->device, VK_NULL_HANDLE, 1, &computeCreateInfo, nullptr, &context->computePipeline);
+		vkCreateComputePipelines(context->device, VK_NULL_HANDLE, 1, &computeCreateInfo, nullptr, &context->softwarePipeline);
 
 		VkDescriptorImageInfo perkele{};
 		perkele.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 		perkele.imageView = context->colorImageView;
-		perkele.sampler = context->colorSampler;
+		perkele.sampler = context->defaultSampler;
 
 		VkDescriptorImageInfo paletteBufferInfo{};
 		paletteBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 		paletteBufferInfo.imageView = context->paletteImageView;
-		paletteBufferInfo.sampler = context->paletteSampler;
+		paletteBufferInfo.sampler = context->defaultSampler;
 
 		VkDescriptorBufferInfo chrBufferInfo{};
 		chrBufferInfo.buffer = context->chrBuffer;
 		chrBufferInfo.offset = 0;
-		chrBufferInfo.range = context->chrSize * 2;
+		chrBufferInfo.range = CHR_MEMORY_SIZE;
 
 		VkDescriptorBufferInfo palTableInfo{};
 		palTableInfo.buffer = context->palTableBuffer;
 		palTableInfo.offset = 0;
-		palTableInfo.range = 8 * 8;
+		palTableInfo.range = VK_WHOLE_SIZE;
 
 		VkDescriptorBufferInfo nametableInfo{};
 		nametableInfo.buffer = context->nametableBuffer;
 		nametableInfo.offset = 0;
-		nametableInfo.range = NAMETABLE_SIZE * NAMETABLE_COUNT;
+		nametableInfo.range = VK_WHOLE_SIZE;
 
 		VkDescriptorBufferInfo oamInfo{};
 		oamInfo.buffer = context->oamBuffer;
 		oamInfo.offset = 0;
-		oamInfo.range = sizeof(Sprite) * MAX_SPRITE_COUNT;
+		oamInfo.range = VK_WHOLE_SIZE;
 
 		VkDescriptorBufferInfo scanlineInfo{};
 		scanlineInfo.buffer = context->scanlineBuffer;
 		scanlineInfo.offset = 0;
-		scanlineInfo.range = sizeof(ScanlineData) * SCANLINE_COUNT;
+		scanlineInfo.range = VK_WHOLE_SIZE;
 
 		VkDescriptorBufferInfo renderStateInfo{};
 		renderStateInfo.buffer = context->renderStateBuffer;
 		renderStateInfo.offset = 0;
-		renderStateInfo.range = sizeof(RenderState) * SCANLINE_COUNT;
+		renderStateInfo.range = VK_WHOLE_SIZE;
 
 		VkWriteDescriptorSet descriptorWrite[8]{};
 		descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1372,6 +1351,7 @@ namespace Rendering
 
 		vkUpdateDescriptorSets(context->device, 8, descriptorWrite, 0, nullptr);
 
+		context->settings = defaultSettings;
 		return context;
 	}
 
@@ -1392,19 +1372,18 @@ namespace Rendering
 			vkDestroySemaphore(pRenderContext->device, pRenderContext->drawCompleteSemaphores[i], nullptr);
 			vkDestroyFence(pRenderContext->device, pRenderContext->commandBufferFences[i], nullptr);
 		}
-
+		vkFreeCommandBuffers(pRenderContext->device, pRenderContext->primaryCommandPool, COMMAND_BUFFER_COUNT, pRenderContext->primaryCommandBuffers);
 		vkDestroyCommandPool(pRenderContext->device, pRenderContext->primaryCommandPool, nullptr);
 
 		FreeSwapchain(pRenderContext);
 
 		FreeGraphicsPipeline(pRenderContext);
 
-		vkDestroySampler(pRenderContext->device, pRenderContext->colorSampler, nullptr);
-		vkDestroySampler(pRenderContext->device, pRenderContext->paletteSampler, nullptr);
+		vkDestroySampler(pRenderContext->device, pRenderContext->defaultSampler, nullptr);
 		vkDestroyDescriptorSetLayout(pRenderContext->device, pRenderContext->computeDescriptorSetLayout, nullptr);
-		vkDestroyPipeline(pRenderContext->device, pRenderContext->computePipeline, nullptr);
-		vkDestroyPipelineLayout(pRenderContext->device, pRenderContext->computePipelineLayout, nullptr);
-		vkDestroyShaderModule(pRenderContext->device, pRenderContext->noiseShaderModule, nullptr);
+		vkDestroyPipeline(pRenderContext->device, pRenderContext->softwarePipeline, nullptr);
+		vkDestroyPipelineLayout(pRenderContext->device, pRenderContext->softwarePipelineLayout, nullptr);
+		vkDestroyShaderModule(pRenderContext->device, pRenderContext->softwareShaderModule, nullptr);
 		vkDestroyImageView(pRenderContext->device, pRenderContext->colorImageView, nullptr);
 		vkDestroyImage(pRenderContext->device, pRenderContext->colorImage, nullptr);
 		vkFreeMemory(pRenderContext->device, pRenderContext->colorImageMemory, nullptr);
@@ -1420,7 +1399,7 @@ namespace Rendering
 
 	//////////////////////////////////////////////////////
 
-	void GetPaletteColors(RenderContext* pContext, u8 paletteIndex, u32 count, u32 offset, u8* outColors) {
+	void ReadPaletteColors(RenderContext* pContext, u8 paletteIndex, u32 count, u32 offset, u8* outColors) {
 		if (offset + count > 8 || paletteIndex >= 8) {
 			ERROR("Trying to get palette colors outside range!\n");
 		}
@@ -1432,7 +1411,7 @@ namespace Rendering
 		memcpy(outColors, data, count);
 		vkUnmapMemory(pContext->device, pContext->palTableMemory);
 	}
-	void SetPaletteColors(RenderContext* pContext, u8 paletteIndex, u32 count, u32 offset, u8* colors) {
+	void WritePaletteColors(RenderContext* pContext, u8 paletteIndex, u32 count, u32 offset, u8* colors) {
 		if (offset + count > 8 || paletteIndex >= 8) {
 			ERROR("Trying to set palette colors outside range!\n");
 		}
@@ -1444,6 +1423,7 @@ namespace Rendering
 		memcpy(data, colors, count);
 		vkUnmapMemory(pContext->device, pContext->palTableMemory);
 	}
+	// This is super slow, optimize pls
 	void ClearSprites(RenderContext* pContext, u32 offset, u32 count) {
 		VkCommandBuffer temp = GetTemporaryCommandBuffer(pContext);
 
@@ -1473,9 +1453,9 @@ namespace Rendering
 
 		vkFreeCommandBuffers(pContext->device, pContext->primaryCommandPool, 1, &temp);
 	}
-	void GetSprites(RenderContext* pContext, u32 count, u32 offset, Sprite* outSprites) {
+	void ReadSprites(RenderContext* pContext, u32 count, u32 offset, Sprite* outSprites) {
 		if (offset + count > MAX_SPRITE_COUNT) {
-			ERROR("Trying to get sprites outside range!\n");
+			ERROR("Trying to read sprites outside range!\n");
 		}
 
 		u32 actualOffset = offset * sizeof(Sprite);
@@ -1486,13 +1466,13 @@ namespace Rendering
 		memcpy((void*)outSprites, data, size);
 		vkUnmapMemory(pContext->device, pContext->oamMemory);
 	}
-	void SetSprites(RenderContext* pContext, u32 count, u32 offset, Sprite* sprites) {
+	void WriteSprites(RenderContext* pContext, u32 count, u32 offset, Sprite* sprites) {
 		if (count == 0) {
 			return;
 		}
 
 		if (offset + count > MAX_SPRITE_COUNT) {
-			ERROR("Trying to set spritess outside range!\n");
+			ERROR("Trying to write sprites outside range!\n");
 		}
 
 		u32 actualOffset = offset * sizeof(Sprite);
@@ -1503,10 +1483,36 @@ namespace Rendering
 		memcpy(data, (void*)sprites, size);
 		vkUnmapMemory(pContext->device, pContext->oamMemory);
 	}
-	void UpdateNametable(RenderContext* pContext, u16 index, u16 count, u16 offset, u8* tiles) {
+	void WriteChrMemory(RenderContext* pContext, u32 size, u32 offset, u8* bytes) {
+		if (offset + size > CHR_MEMORY_SIZE) {
+			ERROR("Trying to write chr memory outside range!\n");
+		}
+
+		void* data;
+		vkMapMemory(pContext->device, pContext->chrMemory, offset, size, 0, &data);
+		memcpy(data, (void*)bytes, size);
+		vkUnmapMemory(pContext->device, pContext->chrMemory);
+	}
+	void ReadChrMemory(RenderContext* pContext, u32 size, u32 offset, u8* outBytes) {
+		if (offset + size > CHR_MEMORY_SIZE) {
+			ERROR("Trying to read chr memory outside range!\n");
+		}
+
+		void* data;
+		vkMapMemory(pContext->device, pContext->chrMemory, offset, size, 0, &data);
+		memcpy((void*)outBytes, data, size);
+		vkUnmapMemory(pContext->device, pContext->chrMemory);
+	}
+	void WriteNametable(RenderContext* pContext, u16 index, u16 count, u16 offset, u8* tiles) {
 		void* data;
 		vkMapMemory(pContext->device, pContext->nametableMemory, index * NAMETABLE_SIZE + offset, count, 0, &data);
 		memcpy(data, tiles, count);
+		vkUnmapMemory(pContext->device, pContext->nametableMemory);
+	}
+	void ReadNametable(RenderContext* pContext, u16 index, u16 count, u16 offset, u8* outTiles) {
+		void* data;
+		vkMapMemory(pContext->device, pContext->nametableMemory, index * NAMETABLE_SIZE + offset, count, 0, &data);
+		memcpy((void*)outTiles, data, count);
 		vkUnmapMemory(pContext->device, pContext->nametableMemory);
 	}
 
@@ -1522,6 +1528,549 @@ namespace Rendering
 
 	//////////////////////////////////////////////////////
 
+	void InitImGui(RenderContext* pContext) {
+		// Likely overkill pool sizes
+		VkDescriptorPoolSize poolSizes[] = {
+			{ VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+			{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+		};
+
+		VkDescriptorPoolCreateInfo poolInfo{};
+		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+		poolInfo.maxSets = 1000;
+		poolInfo.poolSizeCount = 11;
+		poolInfo.pPoolSizes = poolSizes;
+
+		vkCreateDescriptorPool(pContext->device, &poolInfo, nullptr, &pContext->imGuiDescriptorPool);
+
+		ImGui_ImplVulkan_InitInfo vulkanInitInfo{};
+		vulkanInitInfo.Instance = pContext->instance;
+		vulkanInitInfo.PhysicalDevice = pContext->physicalDevice;
+		vulkanInitInfo.Device = pContext->device;
+		vulkanInitInfo.QueueFamily = pContext->primaryQueueFamilyIndex;
+		vulkanInitInfo.Queue = pContext->primaryQueue;
+		vulkanInitInfo.DescriptorPool = pContext->imGuiDescriptorPool;
+		vulkanInitInfo.MinImageCount = SWAPCHAIN_IMAGE_COUNT;
+		vulkanInitInfo.ImageCount = SWAPCHAIN_IMAGE_COUNT;
+		vulkanInitInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+		ImGui_ImplVulkan_Init(&vulkanInitInfo, pContext->renderImagePass);
+
+		// Generate fonts
+		VkCommandBuffer temp = GetTemporaryCommandBuffer(pContext);
+
+		VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		vkBeginCommandBuffer(temp, &beginInfo);
+
+		ImGui_ImplVulkan_CreateFontsTexture(temp);
+
+		vkEndCommandBuffer(temp);
+
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &temp;
+
+		vkQueueSubmit(pContext->primaryQueue, 1, &submitInfo, VK_NULL_HANDLE);
+		vkQueueWaitIdle(pContext->primaryQueue);
+
+		vkFreeCommandBuffers(pContext->device, pContext->primaryCommandPool, 1, &temp);
+	}
+	void BeginImGuiFrame(RenderContext* pContext) {
+		ImGui_ImplVulkan_NewFrame();
+#ifdef PLATFORM_WINDOWS
+		ImGui_ImplWin32_NewFrame();
+#endif
+	}
+	void ShutdownImGui() {
+		ImGui_ImplVulkan_Shutdown();
+	}
+
+	//////////////////////////////////////////////////////
+
+	/// DEBUG STUFF ///
+	Settings* GetSettingsPtr(RenderContext* pContext) {
+		return &pContext->settings;
+	}
+
+	void DebugRenderChr(RenderContext* pContext, VkCommandBuffer cmd) {
+		for (int i = 0; i < 8; i++) {
+			// Convert from preinitialized to general
+			{
+				VkImageMemoryBarrier barrier{};
+				barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+				barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+				barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+				barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+				barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+				barrier.image = pContext->debugChrImage[i];
+				barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+				barrier.subresourceRange.baseMipLevel = 0;
+				barrier.subresourceRange.levelCount = 1;
+				barrier.subresourceRange.baseArrayLayer = 0;
+				barrier.subresourceRange.layerCount = 1;
+				barrier.srcAccessMask = 0; // TODO
+				barrier.dstAccessMask = 0; // TODO
+
+				vkCmdPipelineBarrier(
+					cmd,
+					VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+					VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+					0,
+					0, nullptr,
+					0, nullptr,
+					1, &barrier
+				);
+			}
+
+
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipelineLayout, 0, 1, &pContext->chrDescriptorSet[i], 0, nullptr);
+			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipeline);
+			vkCmdPushConstants(cmd, pContext->chrPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(u32), &i);
+			vkCmdDispatch(cmd, 32, 16, 1);
+
+			// Convert from preinitialized to general
+			VkImageMemoryBarrier barrier{};
+			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier.image = pContext->debugChrImage[i];
+			barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			barrier.subresourceRange.baseMipLevel = 0;
+			barrier.subresourceRange.levelCount = 1;
+			barrier.subresourceRange.baseArrayLayer = 0;
+			barrier.subresourceRange.layerCount = 1;
+			barrier.srcAccessMask = 0; // TODO
+			barrier.dstAccessMask = 0; // TODO
+
+			vkCmdPipelineBarrier(
+				cmd,
+				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+				VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+				0,
+				0, nullptr,
+				0, nullptr,
+				1, &barrier
+			);
+		}
+	}
+
+	ImTextureID* SetupDebugChrRendering(RenderContext* pContext) {
+		ImTextureID* textures = (ImTextureID*)calloc(8, sizeof(ImTextureID));
+
+		VkDescriptorSetLayout layouts[8] = {
+			pContext->computeDescriptorSetLayout,
+			pContext->computeDescriptorSetLayout,
+			pContext->computeDescriptorSetLayout,
+			pContext->computeDescriptorSetLayout,
+			pContext->computeDescriptorSetLayout,
+			pContext->computeDescriptorSetLayout,
+			pContext->computeDescriptorSetLayout,
+			pContext->computeDescriptorSetLayout
+		};
+		VkDescriptorSetAllocateInfo chrDescriptorSetAllocInfo{};
+		chrDescriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		chrDescriptorSetAllocInfo.descriptorPool = pContext->descriptorPool;
+		chrDescriptorSetAllocInfo.descriptorSetCount = 8;
+		chrDescriptorSetAllocInfo.pSetLayouts = layouts;
+
+		VkResult res = vkAllocateDescriptorSets(pContext->device, &chrDescriptorSetAllocInfo, pContext->chrDescriptorSet);
+		if (res != VK_SUCCESS) {
+			ERROR("Whoopsie poopsie :c %d\n", res);
+		}
+
+		for (int i = 0; i < 8; i++) {
+			VkImageCreateInfo imageInfo{};
+			imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+			imageInfo.imageType = VK_IMAGE_TYPE_2D;
+			imageInfo.extent.width = 256;
+			imageInfo.extent.height = 128;
+			imageInfo.extent.depth = 1;
+			imageInfo.mipLevels = 1;
+			imageInfo.arrayLayers = 1;
+			imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+			imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+			imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			imageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+			imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+
+			vkCreateImage(pContext->device, &imageInfo, nullptr, &pContext->debugChrImage[i]);
+
+			VkMemoryRequirements memRequirements;
+			vkGetImageMemoryRequirements(pContext->device, pContext->debugChrImage[i], &memRequirements);
+			AllocateMemory(pContext, memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pContext->debugChrImageMemory[i]);
+			vkBindImageMemory(pContext->device, pContext->debugChrImage[i], pContext->debugChrImageMemory[i], 0);
+
+			VkImageViewCreateInfo viewInfo{};
+			viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+			viewInfo.image = pContext->debugChrImage[i];
+			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+			viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+			viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			viewInfo.subresourceRange.baseMipLevel = 0;
+			viewInfo.subresourceRange.levelCount = 1;
+			viewInfo.subresourceRange.baseArrayLayer = 0;
+			viewInfo.subresourceRange.layerCount = 1;
+
+			vkCreateImageView(pContext->device, &viewInfo, nullptr, &pContext->debugChrImageView[i]);
+			textures[i] = (ImTextureID)ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, pContext->debugChrImageView[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+			////////////////////////////////////////////////////
+
+			VkDescriptorImageInfo perkele{};
+			perkele.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+			perkele.imageView = pContext->debugChrImageView[i];
+			perkele.sampler = pContext->defaultSampler;
+
+			VkDescriptorImageInfo paletteBufferInfo{};
+			paletteBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+			paletteBufferInfo.imageView = pContext->paletteImageView;
+			paletteBufferInfo.sampler = pContext->defaultSampler;
+
+			VkDescriptorBufferInfo chrBufferInfo{};
+			chrBufferInfo.buffer = pContext->chrBuffer;
+			chrBufferInfo.offset = 0;
+			chrBufferInfo.range = CHR_MEMORY_SIZE;
+
+			VkDescriptorBufferInfo palTableInfo{};
+			palTableInfo.buffer = pContext->palTableBuffer;
+			palTableInfo.offset = 0;
+			palTableInfo.range = VK_WHOLE_SIZE;
+
+			VkWriteDescriptorSet descriptorWrite[4]{};
+			descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrite[0].dstSet = pContext->chrDescriptorSet[i];
+			descriptorWrite[0].dstBinding = 0;
+			descriptorWrite[0].dstArrayElement = 0;
+			descriptorWrite[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+			descriptorWrite[0].descriptorCount = 1;
+			descriptorWrite[0].pImageInfo = &perkele;
+
+			descriptorWrite[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrite[1].dstSet = pContext->chrDescriptorSet[i];
+			descriptorWrite[1].dstBinding = 1;
+			descriptorWrite[1].dstArrayElement = 0;
+			descriptorWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+			descriptorWrite[1].descriptorCount = 1;
+			descriptorWrite[1].pImageInfo = &paletteBufferInfo;
+
+			descriptorWrite[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrite[2].dstSet = pContext->chrDescriptorSet[i];
+			descriptorWrite[2].dstBinding = 2;
+			descriptorWrite[2].dstArrayElement = 0;
+			descriptorWrite[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+			descriptorWrite[2].descriptorCount = 1;
+			descriptorWrite[2].pBufferInfo = &chrBufferInfo;
+
+			descriptorWrite[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrite[3].dstSet = pContext->chrDescriptorSet[i];
+			descriptorWrite[3].dstBinding = 3;
+			descriptorWrite[3].dstArrayElement = 0;
+			descriptorWrite[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+			descriptorWrite[3].descriptorCount = 1;
+			descriptorWrite[3].pBufferInfo = &palTableInfo;
+
+			vkUpdateDescriptorSets(pContext->device, 4, descriptorWrite, 0, nullptr);
+		}
+
+		// Selected palette as push constant
+		VkPushConstantRange pushConstant{};
+		pushConstant.offset = 0;
+		pushConstant.size = sizeof(u32);
+		pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+		VkPipelineLayoutCreateInfo chrPipelineLayoutInfo{};
+		chrPipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		chrPipelineLayoutInfo.setLayoutCount = 1;
+		chrPipelineLayoutInfo.pSetLayouts = &pContext->computeDescriptorSetLayout;
+		chrPipelineLayoutInfo.pushConstantRangeCount = 1;
+		chrPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
+
+		vkCreatePipelineLayout(pContext->device, &chrPipelineLayoutInfo, nullptr, &pContext->chrPipelineLayout);
+
+		u32 chrShaderLength;
+		char* chrShader = AllocFileBytes("debug_blit_chr_comp.spv", chrShaderLength);
+		pContext->chrShaderModule = CreateShaderModule(pContext->device, chrShader, chrShaderLength);
+		free(chrShader);
+
+		VkPipelineShaderStageCreateInfo chrShaderStageInfo{};
+		chrShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		chrShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+		chrShaderStageInfo.module = pContext->chrShaderModule;
+		chrShaderStageInfo.pName = "main";
+
+		VkComputePipelineCreateInfo chrCreateInfo{};
+		chrCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+		chrCreateInfo.flags = 0;
+		chrCreateInfo.stage = chrShaderStageInfo;
+		chrCreateInfo.layout = pContext->chrPipelineLayout;
+
+		vkCreateComputePipelines(pContext->device, VK_NULL_HANDLE, 1, &chrCreateInfo, nullptr, &pContext->chrPipeline);
+
+		/////////////////////////////////////////////////////
+
+		VkCommandBuffer temp = GetTemporaryCommandBuffer(pContext);
+
+		VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		vkBeginCommandBuffer(temp, &beginInfo);
+
+		DebugRenderChr(pContext, temp);
+
+		vkEndCommandBuffer(temp);
+
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &temp;
+
+		vkQueueSubmit(pContext->primaryQueue, 1, &submitInfo, VK_NULL_HANDLE);
+		vkQueueWaitIdle(pContext->primaryQueue);
+
+		vkFreeCommandBuffers(pContext->device, pContext->primaryCommandPool, 1, &temp);
+
+		pContext->renderDebugChr = true;
+		return textures;
+	}
+
+	void DebugRenderPalette(RenderContext* pContext, VkCommandBuffer cmd) {
+		// Convert from preinitialized to general
+		{
+			VkImageMemoryBarrier barrier{};
+			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+			barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrier.image = pContext->debugPaletteImage;
+			barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			barrier.subresourceRange.baseMipLevel = 0;
+			barrier.subresourceRange.levelCount = 1;
+			barrier.subresourceRange.baseArrayLayer = 0;
+			barrier.subresourceRange.layerCount = 1;
+			barrier.srcAccessMask = 0; // TODO
+			barrier.dstAccessMask = 0; // TODO
+
+			vkCmdPipelineBarrier(
+				cmd,
+				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+				0,
+				0, nullptr,
+				0, nullptr,
+				1, &barrier
+			);
+		}
+
+
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->palettePipelineLayout, 0, 1, &pContext->paletteDescriptorSet, 0, nullptr);
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->palettePipeline);
+		vkCmdDispatch(cmd, 32, 16, 1);
+
+		// Convert from preinitialized to general
+		VkImageMemoryBarrier barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.image = pContext->debugPaletteImage;
+		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrier.subresourceRange.baseMipLevel = 0;
+		barrier.subresourceRange.levelCount = 1;
+		barrier.subresourceRange.baseArrayLayer = 0;
+		barrier.subresourceRange.layerCount = 1;
+		barrier.srcAccessMask = 0; // TODO
+		barrier.dstAccessMask = 0; // TODO
+
+		vkCmdPipelineBarrier(
+			cmd,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+	}
+
+	ImTextureID SetupDebugPaletteRendering(RenderContext* pContext) {
+		VkImageCreateInfo imageInfo{};
+		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imageInfo.imageType = VK_IMAGE_TYPE_2D;
+		imageInfo.extent.width = 8*8;
+		imageInfo.extent.height = 1;
+		imageInfo.extent.depth = 1;
+		imageInfo.mipLevels = 1;
+		imageInfo.arrayLayers = 1;
+		imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+
+		vkCreateImage(pContext->device, &imageInfo, nullptr, &pContext->debugPaletteImage);
+
+		VkMemoryRequirements memRequirements;
+		vkGetImageMemoryRequirements(pContext->device, pContext->debugPaletteImage, &memRequirements);
+		AllocateMemory(pContext, memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pContext->debugPaletteImageMemory);
+		vkBindImageMemory(pContext->device, pContext->debugPaletteImage, pContext->debugPaletteImageMemory, 0);
+
+		VkImageViewCreateInfo viewInfo{};
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.image = pContext->debugPaletteImage;
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		viewInfo.subresourceRange.baseMipLevel = 0;
+		viewInfo.subresourceRange.levelCount = 1;
+		viewInfo.subresourceRange.baseArrayLayer = 0;
+		viewInfo.subresourceRange.layerCount = 1;
+
+		vkCreateImageView(pContext->device, &viewInfo, nullptr, &pContext->debugPaletteImageView);
+
+		VkPipelineLayoutCreateInfo chrPipelineLayoutInfo{};
+		chrPipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		chrPipelineLayoutInfo.setLayoutCount = 1;
+		chrPipelineLayoutInfo.pSetLayouts = &pContext->computeDescriptorSetLayout;
+
+		vkCreatePipelineLayout(pContext->device, &chrPipelineLayoutInfo, nullptr, &pContext->palettePipelineLayout);
+
+		u32 chrShaderLength;
+		char* chrShader = AllocFileBytes("debug_blit_pal_comp.spv", chrShaderLength);
+		pContext->paletteShaderModule = CreateShaderModule(pContext->device, chrShader, chrShaderLength);
+		free(chrShader);
+
+		VkPipelineShaderStageCreateInfo chrShaderStageInfo{};
+		chrShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		chrShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+		chrShaderStageInfo.module = pContext->paletteShaderModule;
+		chrShaderStageInfo.pName = "main";
+
+		VkComputePipelineCreateInfo chrCreateInfo{};
+		chrCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+		chrCreateInfo.flags = 0;
+		chrCreateInfo.stage = chrShaderStageInfo;
+		chrCreateInfo.layout = pContext->palettePipelineLayout;
+
+		vkCreateComputePipelines(pContext->device, VK_NULL_HANDLE, 1, &chrCreateInfo, nullptr, &pContext->palettePipeline);
+
+		////////////////////////////////////////
+
+		VkDescriptorSetAllocateInfo chrDescriptorSetAllocInfo{};
+		chrDescriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		chrDescriptorSetAllocInfo.descriptorPool = pContext->descriptorPool;
+		chrDescriptorSetAllocInfo.descriptorSetCount = 1;
+		chrDescriptorSetAllocInfo.pSetLayouts = &pContext->computeDescriptorSetLayout;
+
+		vkAllocateDescriptorSets(pContext->device, &chrDescriptorSetAllocInfo, &pContext->paletteDescriptorSet);
+
+		////////////////////////////////////////////////////
+
+		VkDescriptorImageInfo perkele{};
+		perkele.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+		perkele.imageView = pContext->debugPaletteImageView;
+		perkele.sampler = pContext->defaultSampler;
+
+		VkDescriptorImageInfo paletteBufferInfo{};
+		paletteBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+		paletteBufferInfo.imageView = pContext->paletteImageView;
+		paletteBufferInfo.sampler = pContext->defaultSampler;
+
+		VkDescriptorBufferInfo chrBufferInfo{};
+		chrBufferInfo.buffer = pContext->chrBuffer;
+		chrBufferInfo.offset = 0;
+		chrBufferInfo.range = CHR_MEMORY_SIZE;
+
+		VkDescriptorBufferInfo palTableInfo{};
+		palTableInfo.buffer = pContext->palTableBuffer;
+		palTableInfo.offset = 0;
+		palTableInfo.range = VK_WHOLE_SIZE;
+
+		VkWriteDescriptorSet descriptorWrite[4]{};
+		descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWrite[0].dstSet = pContext->paletteDescriptorSet;
+		descriptorWrite[0].dstBinding = 0;
+		descriptorWrite[0].dstArrayElement = 0;
+		descriptorWrite[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		descriptorWrite[0].descriptorCount = 1;
+		descriptorWrite[0].pImageInfo = &perkele;
+
+		descriptorWrite[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWrite[1].dstSet = pContext->paletteDescriptorSet;
+		descriptorWrite[1].dstBinding = 1;
+		descriptorWrite[1].dstArrayElement = 0;
+		descriptorWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		descriptorWrite[1].descriptorCount = 1;
+		descriptorWrite[1].pImageInfo = &paletteBufferInfo;
+
+		descriptorWrite[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWrite[2].dstSet = pContext->paletteDescriptorSet;
+		descriptorWrite[2].dstBinding = 2;
+		descriptorWrite[2].dstArrayElement = 0;
+		descriptorWrite[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		descriptorWrite[2].descriptorCount = 1;
+		descriptorWrite[2].pBufferInfo = &chrBufferInfo;
+
+		descriptorWrite[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWrite[3].dstSet = pContext->paletteDescriptorSet;
+		descriptorWrite[3].dstBinding = 3;
+		descriptorWrite[3].dstArrayElement = 0;
+		descriptorWrite[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		descriptorWrite[3].descriptorCount = 1;
+		descriptorWrite[3].pBufferInfo = &palTableInfo;
+
+		vkUpdateDescriptorSets(pContext->device, 4, descriptorWrite, 0, nullptr);
+
+		/////////////////////////////////////////////////////
+
+		VkCommandBuffer temp = GetTemporaryCommandBuffer(pContext);
+
+		VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		vkBeginCommandBuffer(temp, &beginInfo);
+
+		DebugRenderPalette(pContext, temp);
+
+		vkEndCommandBuffer(temp);
+
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &temp;
+
+		vkQueueSubmit(pContext->primaryQueue, 1, &submitInfo, VK_NULL_HANDLE);
+		vkQueueWaitIdle(pContext->primaryQueue);
+
+		vkFreeCommandBuffers(pContext->device, pContext->primaryCommandPool, 1, &temp);
+
+		pContext->renderDebugPalette = true;
+		return (ImTextureID)ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, pContext->debugPaletteImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	}
+
+	//////////////////////////////////////////////////////
+
 	void SetCurrentTime(RenderContext* pContext, float seconds) {
 		void* data;
 		vkMapMemory(pContext->device, pContext->timeMemory, 0, sizeof(float), 0, &data);
@@ -1529,7 +2078,7 @@ namespace Rendering
 		vkUnmapMemory(pContext->device, pContext->timeMemory);
 	}
 
-	void ExecuteHardcodedCommands(RenderContext *pContext) {
+	void RunSoftwareRenderer(RenderContext* pContext) {
 		VkCommandBuffer commandBuffer = pContext->primaryCommandBuffers[pContext->currentCbIndex];
 
 		// Convert from preinitialized to general
@@ -1593,8 +2142,8 @@ namespace Rendering
 			0, nullptr
 		);
 
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->computePipelineLayout, 0, 1, &pContext->computeDescriptorSet, 0, nullptr);
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->computePipeline);
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->softwarePipelineLayout, 0, 1, &pContext->computeDescriptorSet, 0, nullptr);
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->softwarePipeline);
 		vkCmdDispatch(commandBuffer, 16, 9, 1);
 
 		// Convert from preinitialized to general
@@ -1623,7 +2172,17 @@ namespace Rendering
 			1, &barrier
 		);
 
-		// Render to screen
+		if (pContext->renderDebugChr) {
+			DebugRenderChr(pContext, commandBuffer);
+		}
+		if (pContext->renderDebugPalette) {
+			DebugRenderPalette(pContext, commandBuffer);
+		}
+	}
+
+	void BeginRenderPass(RenderContext* pContext) {
+		VkCommandBuffer commandBuffer = pContext->primaryCommandBuffers[pContext->currentCbIndex];
+
 		VkFramebuffer framebuffer = pContext->swapchainFramebuffers[pContext->currentSwaphainIndex];
 		VkExtent2D extent = pContext->surfaceCapabilities.currentExtent;
 
@@ -1638,8 +2197,13 @@ namespace Rendering
 		renderImagePassBeginInfo.pClearValues = &clearColor;
 
 		vkCmdBeginRenderPass(commandBuffer, &renderImagePassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+	}
 
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pContext->graphicsPipeline);
+	void BlitSoftwareResults(RenderContext* pContext, Quad quad) {
+		VkCommandBuffer commandBuffer = pContext->primaryCommandBuffers[pContext->currentCbIndex];
+		VkExtent2D extent = pContext->surfaceCapabilities.currentExtent;
+
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pContext->settings.useCRTFilter ? pContext->blitCRTPipeline : pContext->blitRawPipeline);
 
 		VkViewport viewport{};
 		viewport.x = 0.0f;
@@ -1655,15 +2219,22 @@ namespace Rendering
 		scissor.extent = extent;
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pContext->graphicsPipelineLayout, 0, 1, &pContext->graphicsDescriptorSets[pContext->currentCbIndex], 0, nullptr);
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pContext->blitPipelineLayout, 0, 1, &pContext->graphicsDescriptorSets[pContext->currentCbIndex], 0, nullptr);
 
+		vkCmdPushConstants(commandBuffer, pContext->blitPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Quad), &quad);
 		vkCmdDraw(commandBuffer, 4, 1, 0, 0);
+	}
+
+	void EndRenderPass(RenderContext* pContext) {
+		VkCommandBuffer commandBuffer = pContext->primaryCommandBuffers[pContext->currentCbIndex];
+
+		// Render ImGui
+		ImDrawData* drawData = ImGui::GetDrawData();
+		if (drawData != nullptr) {
+			ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+		}
 
 		vkCmdEndRenderPass(commandBuffer);
-
-		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-			ERROR("failed to record command buffer!");
-		}
 	}
 
 	void BeginDraw(RenderContext* pRenderContext) {
@@ -1691,6 +2262,12 @@ namespace Rendering
 	}
 	
 	void EndDraw(RenderContext* pRenderContext) {
+		VkCommandBuffer commandBuffer = pRenderContext->primaryCommandBuffers[pRenderContext->currentCbIndex];
+
+		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+			ERROR("failed to record command buffer!");
+		}
+
 		// Submit the above commands
 		VkSubmitInfo submitInfo{};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1722,6 +2299,16 @@ namespace Rendering
 
 		// Advance cb index
 		pRenderContext->currentCbIndex = (pRenderContext->currentCbIndex + 1) % COMMAND_BUFFER_COUNT;
+	}
+
+	void Render(RenderContext* pContext) {
+		// Just run all the commands
+		BeginDraw(pContext);
+		RunSoftwareRenderer(pContext);
+		BeginRenderPass(pContext);
+		BlitSoftwareResults(pContext, defaultQuad);
+		EndRenderPass(pContext);
+		EndDraw(pContext);
 	}
 
 	void ResizeSurface(RenderContext* pRenderContext, u32 width, u32 height) {
