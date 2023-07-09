@@ -1,8 +1,8 @@
-#include "editor.h"
+#include "leveleditor.h"
 #include "system.h"
 #include <stdio.h>
 
-namespace Editor {
+namespace LevelEditor {
     u8 GetSelectionTileIndex(u32 x, u32 y, u32 w, u32 h) {
         u8 offset = 0x10;
         u8 xIndex = 0;

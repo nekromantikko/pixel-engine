@@ -45,13 +45,7 @@
     <ClCompile Include="fixed.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="editor.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="viewport.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="core.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="level.cpp">
@@ -96,6 +90,9 @@
     <ClCompile Include="editor_debug.cpp">
       <Filter>Source Files\editor</Filter>
     </ClCompile>
+    <ClCompile Include="leveleditor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="rendering.h">
@@ -122,13 +119,7 @@
     <ClInclude Include="level.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="editor.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="viewport.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="core.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="editor_metasprite.h">
@@ -142,6 +133,9 @@
     </ClInclude>
     <ClInclude Include="editor_debug.h">
       <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="leveleditor.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

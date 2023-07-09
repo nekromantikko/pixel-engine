@@ -4,7 +4,7 @@
 #include "input.h"
 #include "level.h"
 
-namespace Editor {
+namespace LevelEditor {
     enum EditorMode {
         Scroll,
         Brush,
