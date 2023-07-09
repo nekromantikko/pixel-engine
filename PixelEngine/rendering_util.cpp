@@ -34,5 +34,36 @@ namespace Rendering
 
 			free(imgData);
 		}
+
+		u8 GetPaletteIndexFromNametableTileAttrib(u8* pNametable, s32 xTile, s32 yTile) {
+			s32 xBlock = xTile / 4;
+			s32 yBlock = yTile / 4;
+			s32 smallBlockOffset = (xTile % 4 / 2) + (yTile % 4 / 2) * 2;
+			s32 blockIndex = (NAMETABLE_WIDTH_TILES / 4) * yBlock + xBlock;
+			s32 nametableOffset = NAMETABLE_ATTRIBUTE_OFFSET + blockIndex;
+			u8 attribute = pNametable[nametableOffset];
+			u8 paletteIndex = (attribute >> (smallBlockOffset * 2)) & 0b11;
+
+			return paletteIndex;
+		}
+
+		void WriteMetasprite(RenderContext* pContext, Sprite* sprites, u32 count, u32 offset, s32 x, s32 y, bool flip) {
+			// Could probably avoid dynamic memory here by being smarter about it
+			Sprite* outSprites = (Sprite*)calloc(count, sizeof(Sprite));
+
+			for (int i = 0; i < count; i++) {
+				Sprite sprite = sprites[i];
+				if (flip) {
+					sprite.attributes = sprite.attributes ^ 0b01000000;
+					sprite.x *= -1;
+				}
+				sprite.y += y;
+				sprite.x += x;
+				outSprites[i] = sprite;
+			}
+
+			WriteSprites(pContext, count, offset, outSprites);
+			free(outSprites);
+		}
 	}
 }

@@ -1,5 +1,6 @@
 #include "editor_debug.h"
 #include "editor_util.h"
+#include "rendering_util.h"
 
 namespace Editor {
 	namespace Debug {
@@ -15,15 +16,7 @@ namespace Editor {
                 ImVec2 tileStart = Util::TileCoordToTexCoord(tileCoord, 0);
                 ImVec2 tileEnd = Util::TileCoordToTexCoord(ImVec2(tileCoord.x + 1, tileCoord.y + 1), 0);
                 ImVec2 pos = ImVec2(tablePos.x + x * 8, tablePos.y + y * 8);
-
-                // Palette from attribs
-                s32 xBlock = x / 4;
-                s32 yBlock = y / 4;
-                s32 smallBlockOffset = (x % 4 / 2) + (y % 4 / 2) * 2;
-                s32 blockIndex = (NAMETABLE_WIDTH_TILES / 4) * yBlock + xBlock;
-                s32 nametableOffset = NAMETABLE_ATTRIBUTE_OFFSET + blockIndex;
-                u8 attribute = pNametable[nametableOffset];
-                u8 paletteIndex = (attribute >> (smallBlockOffset * 2)) & 0b11;
+                u8 paletteIndex = Rendering::Util::GetPaletteIndexFromNametableTileAttrib(pNametable, x, y);
 
                 drawList->AddImage(pContext->chrTexture[paletteIndex], pos, ImVec2(pos.x + 8, pos.y + 8), tileStart, tileEnd);
             }

@@ -158,20 +158,7 @@ namespace Game {
         s32 vOffset = (msElapsed / 360) % 2 ? -1 : 0;
         u32 wingFrame = (msElapsed / 180) % 4;
         Rendering::WriteChrMemory(pContext, 0x200, 0x4000, chrSheet + 0x200*wingFrame);
-
-        Rendering::Sprite outSprites[30]{};
-        for (int i = 0; i < 30; i++) {
-            Rendering::Sprite sprite = characterSprites[i];
-            if (flip) {
-                sprite.attributes = sprite.attributes ^ 0b01000000;
-                sprite.x *= -1;
-            }
-            sprite.y += y + vOffset;
-            sprite.x += x;
-            outSprites[i] = sprite;
-        }
-
-        Rendering::WriteSprites(pContext, 30, spriteOffset, outSprites);
+        Rendering::Util::WriteMetasprite(pContext, characterSprites, 30, spriteOffset, x, y + vOffset, flip);
         return 30;
     }
 
