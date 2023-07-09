@@ -430,8 +430,13 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 
-# Other garbage
+# Graphics
 *.aseprite
 *.bmp
 *.psd
+
+# IMGUI config
 *.ini
+
+# Compiled shaders
+*.spv
