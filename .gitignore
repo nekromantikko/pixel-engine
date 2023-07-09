@@ -434,9 +434,14 @@ FodyWeavers.xsd
 *.aseprite
 *.bmp
 *.psd
+*.pal
+*.dat
 
 # IMGUI config
 *.ini
 
 # Compiled shaders
 *.spv
+
+# Game Assets
+*.lev
