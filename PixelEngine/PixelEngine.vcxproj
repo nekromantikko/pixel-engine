@@ -155,27 +155,35 @@
     <ClCompile Include="..\..\imgui\imgui_widgets.cpp" />
     <ClCompile Include="core.cpp" />
     <ClCompile Include="editor.cpp" />
+    <ClCompile Include="editor_core.cpp" />
+    <ClCompile Include="editor_debug.cpp" />
     <ClCompile Include="fixed.cpp" />
     <ClCompile Include="game.cpp" />
     <ClCompile Include="input.cpp" />
     <ClCompile Include="level.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="editor_metasprite.cpp" />
     <ClCompile Include="rendering_vulkan.cpp" />
     <ClCompile Include="rendering_util.cpp" />
     <ClCompile Include="system.cpp" />
+    <ClCompile Include="editor_util.cpp" />
     <ClCompile Include="viewport.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="core.h" />
     <ClInclude Include="editor.h" />
+    <ClInclude Include="editor_core.h" />
+    <ClInclude Include="editor_debug.h" />
     <ClInclude Include="fixed.h" />
     <ClInclude Include="game.h" />
     <ClInclude Include="input.h" />
     <ClInclude Include="level.h" />
+    <ClInclude Include="editor_metasprite.h" />
     <ClInclude Include="rendering.h" />
     <ClInclude Include="rendering_util.h" />
     <ClInclude Include="system.h" />
     <ClInclude Include="typedef.h" />
+    <ClInclude Include="editor_util.h" />
     <ClInclude Include="viewport.h" />
   </ItemGroup>
   <ItemGroup>

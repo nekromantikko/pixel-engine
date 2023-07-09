@@ -6,7 +6,9 @@
 #include "rendering_util.h"
 #include "level.h"
 #include "viewport.h"
-#include "editor.h"
+#include "editor_core.h"
+#include "editor_debug.h"
+#include "editor_metasprite.h"
 #include <imgui.h>
 
 namespace Game {
@@ -20,7 +22,8 @@ namespace Game {
     Input::ControllerState controllerStatePrev;
 
     // Editor
-    Editor::EditorState editorState;
+    // Editor::EditorState editorState;
+    Editor::EditorContext* pEditorContext;
 
     // Viewport
     Viewport viewport;
@@ -31,7 +34,7 @@ namespace Game {
     // Sprite stufff
     bool flipCharacter = false;
 
-    Rendering::Sprite characterMetasprite[30] = {
+    Rendering::Sprite characterSprites[30] = {
         // Bow
         { -13, 2, 0x12, 0b00000001 }, { -13, 10, 0x13, 0b00000001 },
         { -5, 2, 0x14, 0b00000001 }, { -5, 10, 0x15, 0b00000001 },
@@ -52,12 +55,14 @@ namespace Game {
         { -3, 9, 0x04, 0b01000010 }, { -3, 1, 0x05, 0b01000010 },
         { 5, 9, 0x06, 0b01000010 }, { 5, 1, 0x07, 0b01000010 },
     };
-
-    Rendering::Sprite test[4] = {
-        { -8, -8, 0x08, 0b00000001 }, { -8, 0, 0x08, 0b00000001 },
-        { 0, -8, 0x08, 0b00000001 }, { 0, 0, 0x08, 0b00000001 },
+    
+    Editor::Metasprite::Metasprite characterMetasprite = {
+        "FreyaIdle",
+        30,
+        characterSprites
     };
 
+    // Collision (Throwaway test stuff)
     enum TileType : u8 {
         TileEmpty = 0,
         TileSolid = 1 << 0,
@@ -93,14 +98,9 @@ namespace Game {
     PlayerState playerState{};
     f32 gravity = 562.5;
 
-    // DEBUG
-    u8 paletteIndex = 0;
-    ImTextureID* debugChrTexture;
-    ImTextureID debugPaletteTexture;
-
     u8 chrSheet[0x4000];
 
-	void Initialize(Rendering::RenderContext* pContext) {
+	void Initialize(Rendering::RenderContext* pRenderContext) {
         viewport.x = 0.0f;
         viewport.y = 96.0f;
         viewport.w = VIEWPORT_WIDTH_TILES * TILE_SIZE;
@@ -108,29 +108,34 @@ namespace Game {
 
         // Init chr memory
         Rendering::Util::CreateChrSheet("chr000.bmp", chrSheet);
-        Rendering::WriteChrMemory(pContext, 0x4000, 0, chrSheet);
+        Rendering::WriteChrMemory(pRenderContext, 0x4000, 0, chrSheet);
         Rendering::Util::CreateChrSheet("chr001.bmp", chrSheet);
-        Rendering::WriteChrMemory(pContext, 0x4000, 0x4000, chrSheet);
+        Rendering::WriteChrMemory(pRenderContext, 0x4000, 0x4000, chrSheet);
         Rendering::Util::CreateChrSheet("wings.bmp", chrSheet);
 
         playerState.x = 240;
         playerState.y = 128;
 
-        editorState.pLevel = &level;
-        editorState.pRenderContext = pContext;
+        // editorState.pLevel = &level;
+        // editorState.pRenderContext = pContext;
 
         LoadLevel(&level, "test.lev");
 
         // Render all of first and second nametable
         for (int i = 0; i < NAMETABLE_COUNT; i++) {
-            Rendering::WriteNametable(pContext, i, NAMETABLE_SIZE - HUD_TILE_COUNT, HUD_TILE_COUNT, (u8*)&level.screens[i] + HUD_TILE_COUNT);
+            Rendering::WriteNametable(pRenderContext, i, NAMETABLE_SIZE - HUD_TILE_COUNT, HUD_TILE_COUNT, (u8*)&level.screens[i] + HUD_TILE_COUNT);
         }
 
-        // DEBUG
-        pRenderSettings = Rendering::GetSettingsPtr(pContext);
-        debugChrTexture = Rendering::SetupDebugChrRendering(pContext);
-        debugPaletteTexture = Rendering::SetupDebugPaletteRendering(pContext);
+        // SETTINGS
+        pRenderSettings = Rendering::GetSettingsPtr(pRenderContext);
+
+        // EDITOR
+        pEditorContext = Editor::CreateEditorContext(pRenderContext);
 	}
+
+    void Free() {
+        Editor::FreeEditorContext(pEditorContext);
+    }
 
     void UpdateHUD(Rendering::RenderContext* pContext, float dt) {
         float fps = 1.0f / dt;
@@ -156,7 +161,7 @@ namespace Game {
 
         Rendering::Sprite outSprites[30]{};
         for (int i = 0; i < 30; i++) {
-            Rendering::Sprite sprite = characterMetasprite[i];
+            Rendering::Sprite sprite = characterSprites[i];
             if (flip) {
                 sprite.attributes = sprite.attributes ^ 0b01000000;
                 sprite.x *= -1;
@@ -170,168 +175,8 @@ namespace Game {
         return 30;
     }
 
-    ImVec2 DrawTileGrid(r32 size, s32 divisions) {
-        r32 gridStep = size / divisions;
-
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
-        ImVec2 topLeft = ImGui::GetCursorScreenPos();
-        ImVec2 btmRight = ImVec2(topLeft.x + size, topLeft.y + size);
-        ImGui::Image(debugPaletteTexture, ImVec2(size, size), ImVec2(0, 0), ImVec2(0.015625f, 1.0f));
-        // drawList->AddImage(debugPaletteTexture, topLeft, btmRight, ImVec2(0, 0), ImVec2(0.015625f, 1.0f));
-        //drawList->AddRectFilled(topLeft, btmRight, IM_COL32(50, 50, 50, 255));
-        //drawList->AddRect(topLeft, btmRight, IM_COL32(255, 255, 255, 255));
-        for (r32 x = 0; x < size; x += gridStep)
-            drawList->AddLine(ImVec2(topLeft.x + x, topLeft.y), ImVec2(topLeft.x + x, btmRight.y), IM_COL32(200, 200, 200, 40));
-        for (r32 y = 0; y < size; y += gridStep)
-            drawList->AddLine(ImVec2(topLeft.x, topLeft.y + y), ImVec2(btmRight.x, topLeft.y + y), IM_COL32(200, 200, 200, 40));
-
-        return topLeft;
-    }
-
-    ImVec2 GetTileCoord(u8 index) {
-        ImVec2 coord = ImVec2(index % 16, index / 16);
-        return coord;
-    }
-
-    ImVec2 TileCoordToTexCoord(ImVec2 coord, bool chrIndex) {
-        ImVec2 normalizedCoord = ImVec2(coord.x / 32.0f, coord.y / 16.0f);
-        if (chrIndex) {
-            normalizedCoord.x += 0.5;
-        }
-        return normalizedCoord;
-    }
-
-    void DrawNametable(ImVec2 tablePos, u8 *pNametable) {
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
-        for (int i = 0; i < NAMETABLE_SIZE; i++) {
-            s32 x = i % NAMETABLE_WIDTH_TILES;
-            s32 y = i / NAMETABLE_WIDTH_TILES;
-
-            u8 tile = pNametable[i];
-            ImVec2 tileCoord = GetTileCoord(tile);
-            ImVec2 tileStart = TileCoordToTexCoord(tileCoord, 0);
-            ImVec2 tileEnd = TileCoordToTexCoord(ImVec2(tileCoord.x + 1, tileCoord.y + 1), 0);
-            ImVec2 pos = ImVec2(tablePos.x + x * 8, tablePos.y + y * 8);
-
-            // Palette from attribs
-            s32 xBlock = x / 4;
-            s32 yBlock = y / 4;
-            s32 smallBlockOffset = (x % 4 / 2) + (y % 4 / 2) * 2;
-            s32 blockIndex = (NAMETABLE_WIDTH_TILES / 4) * yBlock + xBlock;
-            s32 nametableOffset = NAMETABLE_ATTRIBUTE_OFFSET + blockIndex;
-            u8 attribute = pNametable[nametableOffset];
-            u8 paletteIndex = (attribute >> (smallBlockOffset * 2)) & 0b11;
-
-            drawList->AddImage(debugChrTexture[paletteIndex], pos, ImVec2(pos.x + 8, pos.y + 8), tileStart, tileEnd);
-        }
-    }
-
-    void DrawDebugWindow(Rendering::RenderContext* pContext) {
-        ImGui::Begin("Debug");
-
-        ImGui::Checkbox("CRT filter", (bool*)&(pRenderSettings->useCRTFilter));
-
-        if (ImGui::TreeNode("Sprites")) {
-            ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_NoBordersInBody;
-            if (ImGui::BeginTable("sprites", 4, flags)) {
-                ImGui::TableSetupColumn("Sprite");
-                ImGui::TableSetupColumn("Pos");
-                ImGui::TableSetupColumn("Tile");
-                ImGui::TableSetupColumn("Attr");
-                ImGui::TableSetupScrollFreeze(0, 1); // Make row always visible
-                ImGui::TableHeadersRow();
-
-                static Rendering::Sprite sprites[MAX_SPRITE_COUNT];
-                Rendering::ReadSprites(pContext, MAX_SPRITE_COUNT, 0, sprites);
-                for (int i = 0; i < MAX_SPRITE_COUNT; i++) {
-                    Rendering::Sprite sprite = sprites[i];
-                    ImGui::PushID(i);
-                    ImGui::TableNextRow();
-                    ImGui::TableNextColumn();
-                    ImGui::Text("%04d", i);
-                    ImGui::TableNextColumn();
-                    ImGui::Text("(%d, %d)", sprite.x, sprite.y);
-                    ImGui::TableNextColumn();
-                    ImGui::Text("0x%02x", sprite.tileId);
-                    ImGui::TableNextColumn();
-                    ImGui::Text("0x%02x", sprite.attributes);
-                    ImGui::PopID();
-                }
-
-                ImGui::EndTable();
-            }
-            ImGui::TreePop();
-        }
-
-        if (ImGui::TreeNode("CHR")) {
-            for (int i = 0; i < 8; i++) {
-                ImGui::PushID(i);
-                if (ImGui::ImageButton("", debugPaletteTexture, ImVec2(80, 10), ImVec2(0.125 * i, 0), ImVec2(0.125 * (i + 1), 1)))
-                    paletteIndex = i;
-                ImGui::PopID();
-                ImGui::SameLine();
-            }
-            ImGui::NewLine();
-
-            const u32 chrSize = 384;
-
-            ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-            ImVec2 chrPos = DrawTileGrid(chrSize, 16);
-            //ImGui::Image(debugChrTexture, ImVec2(chrSize, chrSize), ImVec2(0, 0), ImVec2(0.5, 1));
-            drawList->AddImage(debugChrTexture[paletteIndex], chrPos, ImVec2(chrPos.x + chrSize, chrPos.y + chrSize), ImVec2(0, 0), ImVec2(0.5, 1));
-            ImGui::SameLine();
-            chrPos = DrawTileGrid(chrSize, 16);
-            //ImGui::Image(debugChrTexture, ImVec2(chrSize, chrSize), ImVec2(0.5, 0), ImVec2(1, 1));
-            drawList->AddImage(debugChrTexture[paletteIndex], chrPos, ImVec2(chrPos.x + chrSize, chrPos.y + chrSize), ImVec2(0.5, 0), ImVec2(1, 1));
-            ImGui::TreePop();
-        }
-
-        if (ImGui::TreeNode("Nametables")) {
-            ImVec2 tablePos = DrawTileGrid(512, 64);
-            static u8 nametable[NAMETABLE_SIZE];
-            Rendering::ReadNametable(pContext, 0, NAMETABLE_SIZE, 0, nametable);
-            DrawNametable(tablePos, nametable);
-            ImGui::SameLine();
-            tablePos = DrawTileGrid(512, 64);
-            Rendering::ReadNametable(pContext, 1, NAMETABLE_SIZE, 0, nametable);
-            DrawNametable(tablePos, nametable);
-            ImGui::TreePop();
-        }
-
-        ImGui::End();
-    }
-
-    void DrawMetaspritePreviewWindow(Rendering::RenderContext* pContext) {
-        ImGui::Begin("Metasprite preview");
-
-        s32 scale = 3;
-        s32 gridSize = 64 * scale;
-        s32 gridStep = TILE_SIZE * scale;
-        ImVec2 gridPos = DrawTileGrid(gridSize, 8);
-        ImVec2 origin = ImVec2(gridPos.x + gridSize / 2, gridPos.y + gridSize / 2);
-
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
-        drawList->AddLine(ImVec2(origin.x - 10, origin.y), ImVec2(origin.x + 10, origin.y), IM_COL32(200, 200, 200, 255));
-        drawList->AddLine(ImVec2(origin.x, origin.y - 10), ImVec2(origin.x, origin.y + 10), IM_COL32(200, 200, 200, 255));
-
-        for (int i = 29; i >= 0; i--) {
-            Rendering::Sprite sprite = characterMetasprite[i];
-            u8 index = (u8)sprite.tileId;
-            ImVec2 tileCoord = GetTileCoord(index);
-            ImVec2 tileStart = TileCoordToTexCoord(tileCoord, 1);
-            ImVec2 tileEnd = TileCoordToTexCoord(ImVec2(tileCoord.x + 1, tileCoord.y + 1), 1);
-            ImVec2 pos = ImVec2(origin.x + scale * sprite.x, origin.y + scale * sprite.y);
-            bool flipX = sprite.attributes & 0b01000000;
-            bool flipY = sprite.attributes & 0b10000000;
-            u8 palette = (sprite.attributes & 3) + 4;
-            drawList->AddImage(debugChrTexture[palette], pos, ImVec2(pos.x + gridStep, pos.y + gridStep), ImVec2(flipX ? tileEnd.x : tileStart.x, flipY ? tileEnd.y : tileStart.y), ImVec2(!flipX ? tileEnd.x : tileStart.x, !flipY ? tileEnd.y : tileStart.y));
-        }
-        ImGui::End();
-    }
-
-    void Render(Rendering::RenderContext* pContext, float dt) {
-        Rendering::SetCurrentTime(pContext, secondsElapsed);
+    void Render(Rendering::RenderContext* pRenderContext, float dt) {
+        Rendering::SetCurrentTime(pRenderContext, secondsElapsed);
 
         // Rendering::ClearSprites(pContext, 256);
 
@@ -341,12 +186,12 @@ namespace Game {
                 spriteOffset += DrawDebugCharacter(pContext, spriteOffset, xCharacter + x * 32, yCharacter + y * 32, secondsElapsed + x*0.1 + y*0.8);
             }
         }*/
-        spriteOffset += DrawDebugCharacter(pContext, spriteOffset, playerState.x - viewport.x, playerState.y - viewport.y, flipCharacter, secondsElapsed);
+        spriteOffset += DrawDebugCharacter(pRenderContext, spriteOffset, playerState.x - viewport.x, playerState.y - viewport.y, flipCharacter, secondsElapsed);
 
         // Editor::DrawSelection(&editorState, &viewport, spriteOffset);
 
-        UpdateHUD(pContext, dt);
-        RenderHUD(pContext);
+        UpdateHUD(pRenderContext, dt);
+        RenderHUD(pRenderContext);
 
         /*for (int i = 0; i < 272; i++) {
             float sine = sin(secondsElapsed + (i / 8.0f));
@@ -363,16 +208,16 @@ namespace Game {
             viewport.x,
             viewport.y
         };
-        Rendering::SetRenderState(pContext, 16, 272, state);
+        Rendering::SetRenderState(pRenderContext, 16, 272, state);
 
         // GUI
-        Rendering::BeginImGuiFrame(pContext);
+        Rendering::BeginImGuiFrame(pRenderContext);
         ImGui::NewFrame();
         ImGui::ShowDemoWindow();
-        DrawDebugWindow(pContext);
-        DrawMetaspritePreviewWindow(pContext);
+        Editor::Debug::DrawDebugWindow(pEditorContext, pRenderContext);
+        Editor::Metasprite::DrawPreviewWindow(pEditorContext, &characterMetasprite);
         ImGui::Render();
-        Rendering::Render(pContext);
+        Rendering::Render(pRenderContext);
     }
 
     void Step(float dt, Rendering::RenderContext* pContext) {

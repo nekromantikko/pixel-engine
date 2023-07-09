@@ -432,3 +432,6 @@ FodyWeavers.xsd
 
 # Other garbage
 *.aseprite
+*.bmp
+*.psd
+*.ini
