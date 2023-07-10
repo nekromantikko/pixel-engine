@@ -12,5 +12,7 @@ namespace Editor {
 		};
 
 		void DrawPreviewWindow(EditorContext* pContext, Metasprite* pMetasprite);
+		void DrawSpriteListWindow(EditorContext* pContext, Metasprite* pMetasprite);
+		void DrawSpriteEditor(EditorContext* pContext, Metasprite* pMetasprite);
 	}
 }

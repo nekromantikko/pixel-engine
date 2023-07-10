@@ -59,30 +59,6 @@ namespace Editor {
                 ImGui::TreePop();
             }
 
-            if (ImGui::TreeNode("CHR")) {
-                for (int i = 0; i < 8; i++) {
-                    ImGui::PushID(i);
-                    if (ImGui::ImageButton("", pContext->paletteTexture, ImVec2(80, 10), ImVec2(0.125 * i, 0), ImVec2(0.125 * (i + 1), 1)))
-                        pContext->paletteIndex = i;
-                    ImGui::PopID();
-                    ImGui::SameLine();
-                }
-                ImGui::NewLine();
-
-                const u32 chrSize = 384;
-
-                ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-                ImVec2 chrPos = Util::DrawTileGrid(pContext, chrSize, 16);
-                //ImGui::Image(debugChrTexture, ImVec2(chrSize, chrSize), ImVec2(0, 0), ImVec2(0.5, 1));
-                drawList->AddImage(pContext->chrTexture[pContext->paletteIndex], chrPos, ImVec2(chrPos.x + chrSize, chrPos.y + chrSize), ImVec2(0, 0), ImVec2(0.5, 1));
-                ImGui::SameLine();
-                chrPos = Util::DrawTileGrid(pContext, chrSize, 16);
-                //ImGui::Image(debugChrTexture, ImVec2(chrSize, chrSize), ImVec2(0.5, 0), ImVec2(1, 1));
-                drawList->AddImage(pContext->chrTexture[pContext->paletteIndex], chrPos, ImVec2(chrPos.x + chrSize, chrPos.y + chrSize), ImVec2(0.5, 0), ImVec2(1, 1));
-                ImGui::TreePop();
-            }
-
             if (ImGui::TreeNode("Nametables")) {
                 ImVec2 tablePos = Util::DrawTileGrid(pContext, 512, 64);
                 static u8 nametable[NAMETABLE_SIZE];

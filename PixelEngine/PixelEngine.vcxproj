@@ -153,6 +153,7 @@
     <ClCompile Include="..\..\imgui\imgui_draw.cpp" />
     <ClCompile Include="..\..\imgui\imgui_tables.cpp" />
     <ClCompile Include="..\..\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="editor_chr.cpp" />
     <ClCompile Include="leveleditor.cpp" />
     <ClCompile Include="editor_core.cpp" />
     <ClCompile Include="editor_debug.cpp" />
@@ -169,6 +170,7 @@
     <ClCompile Include="viewport.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="editor_chr.h" />
     <ClInclude Include="leveleditor.h" />
     <ClInclude Include="editor_core.h" />
     <ClInclude Include="editor_debug.h" />

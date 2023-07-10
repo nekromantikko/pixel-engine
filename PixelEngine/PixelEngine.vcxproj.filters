@@ -93,6 +93,9 @@
     <ClCompile Include="leveleditor.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="editor_chr.cpp">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="rendering.h">
@@ -136,6 +139,9 @@
     </ClInclude>
     <ClInclude Include="leveleditor.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="editor_chr.h">
+      <Filter>Header Files\editor</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

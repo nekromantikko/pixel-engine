@@ -9,6 +9,7 @@
 #include "editor_core.h"
 #include "editor_debug.h"
 #include "editor_metasprite.h"
+#include "editor_chr.h"
 #include <imgui.h>
 
 namespace Game {
@@ -34,32 +35,14 @@ namespace Game {
     // Sprite stufff
     bool flipCharacter = false;
 
-    Rendering::Sprite characterSprites[30] = {
-        // Bow
-        { -13, 2, 0x12, 0b00000001 }, { -13, 10, 0x13, 0b00000001 },
-        { -5, 2, 0x14, 0b00000001 }, { -5, 10, 0x15, 0b00000001 },
-        { -21, 10, 0x16, 0b00000001 }, { 3, 10, 0x17, 0b00000001 },
-        // Freya
-        { -16, -8, 0x08, 0b00000001 }, { -16, 0, 0x09, 0b00000001 },
-        { -8, -8, 0x0A, 0b00000001 }, { -8, 0, 0x0B, 0b00000001 },
-        { 0, -8, 0x0C, 0b00000001 }, { 0, 0, 0x0D, 0b00000001 },
-        { 8, -8, 0x0E, 0b00000001 }, { 8, 0, 0x0F, 0b00000001 },
-        // Left wing
-        { -19, -18, 0x00, 0b00000001 }, { -19, -10, 0x01, 0b00000001 },
-        { -11, -18, 0x02, 0b00000001 }, { -11, -10, 0x03, 0b00000001 },
-        { -3, -18, 0x04, 0b00000001 }, { -3, -10, 0x05, 0b00000001 },
-        { 5, -18, 0x06, 0b00000001 }, { 5, -10, 0x07, 0b00000001 },
-        // Right wing
-        { -19, 9, 0x00, 0b01000010 }, { -19, 1, 0x01, 0b01000010 },
-        { -11, 9, 0x02, 0b01000010 }, { -11, 1, 0x03, 0b01000010 },
-        { -3, 9, 0x04, 0b01000010 }, { -3, 1, 0x05, 0b01000010 },
-        { 5, 9, 0x06, 0b01000010 }, { 5, 1, 0x07, 0b01000010 },
-    };
+#define METASPRITE_MAX_SPRITE_COUNT 64
+#define MAX_METASPRITE_COUNT 256
+    Rendering::Sprite metaspriteMemory[MAX_METASPRITE_COUNT * METASPRITE_MAX_SPRITE_COUNT];
     
     Editor::Metasprite::Metasprite characterMetasprite = {
         "FreyaIdle",
         30,
-        characterSprites
+        metaspriteMemory
     };
 
     // Collision (Throwaway test stuff)
@@ -131,6 +114,30 @@ namespace Game {
 
         // EDITOR
         pEditorContext = Editor::CreateEditorContext(pRenderContext);
+
+        // Init metasprites
+        Rendering::Sprite characterSprites[30] = {
+            // Bow
+            { -13, 2, 0x12, 0b00000001 }, { -13, 10, 0x13, 0b00000001 },
+            { -5, 2, 0x14, 0b00000001 }, { -5, 10, 0x15, 0b00000001 },
+            { -21, 10, 0x16, 0b00000001 }, { 3, 10, 0x17, 0b00000001 },
+            // Freya
+            { -16, -8, 0x08, 0b00000001 }, { -16, 0, 0x09, 0b00000001 },
+            { -8, -8, 0x0A, 0b00000001 }, { -8, 0, 0x0B, 0b00000001 },
+            { 0, -8, 0x0C, 0b00000001 }, { 0, 0, 0x0D, 0b00000001 },
+            { 8, -8, 0x0E, 0b00000001 }, { 8, 0, 0x0F, 0b00000001 },
+            // Left wing
+            { -19, -18, 0x00, 0b00000001 }, { -19, -10, 0x01, 0b00000001 },
+            { -11, -18, 0x02, 0b00000001 }, { -11, -10, 0x03, 0b00000001 },
+            { -3, -18, 0x04, 0b00000001 }, { -3, -10, 0x05, 0b00000001 },
+            { 5, -18, 0x06, 0b00000001 }, { 5, -10, 0x07, 0b00000001 },
+            // Right wing
+            { -19, 9, 0x00, 0b01000010 }, { -19, 1, 0x01, 0b01000010 },
+            { -11, 9, 0x02, 0b01000010 }, { -11, 1, 0x03, 0b01000010 },
+            { -3, 9, 0x04, 0b01000010 }, { -3, 1, 0x05, 0b01000010 },
+            { 5, 9, 0x06, 0b01000010 }, { 5, 1, 0x07, 0b01000010 },
+        };
+        memcpy(metaspriteMemory, characterSprites, sizeof(Rendering::Sprite) * 30);
 	}
 
     void Free() {
@@ -158,14 +165,14 @@ namespace Game {
         s32 vOffset = (msElapsed / 360) % 2 ? -1 : 0;
         u32 wingFrame = (msElapsed / 180) % 4;
         Rendering::WriteChrMemory(pContext, 0x200, 0x4000, chrSheet + 0x200*wingFrame);
-        Rendering::Util::WriteMetasprite(pContext, characterSprites, 30, spriteOffset, x, y + vOffset, flip);
-        return 30;
+        Rendering::Util::WriteMetasprite(pContext, metaspriteMemory, characterMetasprite.spriteCount, spriteOffset, x, y + vOffset, flip);
+        return characterMetasprite.spriteCount;
     }
 
     void Render(Rendering::RenderContext* pRenderContext, float dt) {
         Rendering::SetCurrentTime(pRenderContext, secondsElapsed);
 
-        // Rendering::ClearSprites(pContext, 256);
+        Rendering::ClearSprites(pRenderContext, 0, 256);
 
         u32 spriteOffset = 0;
         /*for (int x = 0; x < 8; x++) {
@@ -203,6 +210,9 @@ namespace Game {
         ImGui::ShowDemoWindow();
         Editor::Debug::DrawDebugWindow(pEditorContext, pRenderContext);
         Editor::Metasprite::DrawPreviewWindow(pEditorContext, &characterMetasprite);
+        Editor::Metasprite::DrawSpriteListWindow(pEditorContext, &characterMetasprite);
+        Editor::Metasprite::DrawSpriteEditor(pEditorContext, &characterMetasprite);
+        Editor::CHR::DrawCHRWindow(pEditorContext);
         ImGui::Render();
         Rendering::Render(pRenderContext);
     }

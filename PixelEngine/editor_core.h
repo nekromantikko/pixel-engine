@@ -5,7 +5,11 @@
 
 namespace Editor {
 	struct EditorContext {
-		u8 paletteIndex = 0;
+		u8 chrPalette0Index = 0;
+		u8 chrPalette1Index = 0;
+		u8 chr0Selection = 0;
+		u8 chr1Selection = 0;
+
 		ImTextureID* chrTexture;
 		ImTextureID paletteTexture;
 	};
