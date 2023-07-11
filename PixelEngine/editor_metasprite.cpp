@@ -105,14 +105,16 @@ namespace Editor {
         void DrawSpriteListWindow(EditorContext* pContext, Metasprite* pMetasprite) {
             ImGui::Begin("Metasprite");
 
+            ImGui::TextUnformatted(pMetasprite->name);
+
             ImGui::Checkbox("Lock selection", &selectionLocked);
 
             if (ImGui::Button("+")) {
                 pMetasprite->spritesRelativePos[pMetasprite->spriteCount++] = {
                     0,
                     0,
-                    pContext->chr1Selection,
-                    (u32)pContext->chrPalette1Index,
+                    pContext->chrSelection[1],
+                    (u32)pContext->chrPaletteIndex[1],
                 };
             }
             ImGui::SameLine();
@@ -195,11 +197,21 @@ namespace Editor {
                 s32 palette = sprite.attributes & 3;
 
                 ImGui::InputInt("Tile", &index);
+                ImGui::PushID(0); // Buttons with same label need ID
                 ImGui::SameLine();
                 if (ImGui::Button("CHR")) {
-                    index = (s32)pContext->chr1Selection;
+                    index = (s32)pContext->chrSelection[1];
                 }
+                ImGui::PopID();
+
                 ImGui::SliderInt("Palette", &palette, 0, 3);
+                ImGui::SameLine();
+                ImGui::PushID(1);
+                if (ImGui::Button("CHR")) {
+                    palette = (s32)pContext->chrPaletteIndex[1];
+                }
+                ImGui::PopID();
+
                 ImGui::Checkbox("Flip horizontal", &flipX);
                 ImGui::SameLine();
                 ImGui::Checkbox("Flip vertical", &flipY);

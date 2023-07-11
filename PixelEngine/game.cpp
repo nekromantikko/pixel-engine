@@ -6,10 +6,12 @@
 #include "rendering_util.h"
 #include "level.h"
 #include "viewport.h"
+#include "collision.h"
 #include "editor_core.h"
 #include "editor_debug.h"
 #include "editor_metasprite.h"
 #include "editor_chr.h"
+#include "editor_collision.h"
 #include <imgui.h>
 
 namespace Game {
@@ -43,34 +45,6 @@ namespace Game {
         "FreyaIdle",
         30,
         metaspriteMemory
-    };
-
-    // Collision (Throwaway test stuff)
-    enum TileType : u8 {
-        TileEmpty = 0,
-        TileSolid = 1 << 0,
-        TilePassThrough = 1 << 1,
-        TileJumpThrough = 1 << 2,
-        TilePassThroughFlip = 1 << 3
-    };
-
-    TileType bgCollision[256]{
-        TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileSolid, TileSolid, TileSolid, TileSolid, TilePassThrough, TilePassThrough, TilePassThrough, TilePassThrough, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileSolid, TileSolid, TilePassThrough, TilePassThrough, TilePassThrough, TilePassThrough, TilePassThrough, TilePassThrough, TilePassThrough, TilePassThrough, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileSolid, TileSolid, TilePassThrough, TilePassThrough, TilePassThrough, TilePassThrough, TilePassThrough, TilePassThrough, TilePassThrough, TilePassThrough, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileSolid, TileSolid, TileSolid, TileSolid, TilePassThrough, TilePassThrough, TilePassThrough, TilePassThrough, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
-        TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty, TileEmpty,
     };
 
     struct PlayerState {
@@ -213,6 +187,7 @@ namespace Game {
         Editor::Metasprite::DrawSpriteListWindow(pEditorContext, &characterMetasprite);
         Editor::Metasprite::DrawSpriteEditor(pEditorContext, &characterMetasprite);
         Editor::CHR::DrawCHRWindow(pEditorContext);
+        Editor::Collision::DrawCollisionEditor(pEditorContext, pRenderContext);
         ImGui::Render();
         Rendering::Render(pRenderContext);
     }
@@ -265,6 +240,7 @@ namespace Game {
         u32 xPlayerCollision = playerState.x;
         u32 yPlayerCollision = playerState.y + 16;
 
+        Collision::TileCollision* bgCollision = Collision::GetBgCollisionPtr();
         if (playerState.vSpeed > 0 && yPlayerCollision <= NAMETABLE_HEIGHT_TILES * TILE_SIZE) {
             u32 screenIndex = xPlayerCollision / (NAMETABLE_WIDTH_TILES * TILE_SIZE);
             f32 screenRelativeX = xPlayerCollision - screenIndex * NAMETABLE_WIDTH_TILES * TILE_SIZE;
@@ -274,7 +250,7 @@ namespace Game {
             u32 tileIndex = yTile * NAMETABLE_WIDTH_TILES + xTile;
             u8 collidingTile;
             Rendering::ReadNametable(pContext, nametableIndex, 1, tileIndex, &collidingTile);
-            if (bgCollision[collidingTile] == TileSolid) {
+            if (bgCollision[collidingTile].type == Collision::TileSolid) {
                 playerState.vSpeed = 0;
                 playerState.y -= yPlayerCollision % TILE_SIZE;
             }
