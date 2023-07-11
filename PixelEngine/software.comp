@@ -70,6 +70,8 @@ int ReadTile(Tile tile, int offset, int flipX, int flipY) {
 	uint result = tile.pixelStrips[coarse];
 	result &= (0xFF << (8 * fine));
 	result >>= 8 * fine;
+	result &= 0x7;
+
 	return int(result);
 }
 
