@@ -164,7 +164,8 @@
     <ClCompile Include="input.cpp" />
     <ClCompile Include="level.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="editor_metasprite.cpp" />
+    <ClCompile Include="editor_sprites.cpp" />
+    <ClCompile Include="metasprite.cpp" />
     <ClCompile Include="rendering_vulkan.cpp" />
     <ClCompile Include="rendering_util.cpp" />
     <ClCompile Include="system.cpp" />
@@ -182,7 +183,8 @@
     <ClInclude Include="game.h" />
     <ClInclude Include="input.h" />
     <ClInclude Include="level.h" />
-    <ClInclude Include="editor_metasprite.h" />
+    <ClInclude Include="editor_sprites.h" />
+    <ClInclude Include="metasprite.h" />
     <ClInclude Include="rendering.h" />
     <ClInclude Include="rendering_util.h" />
     <ClInclude Include="system.h" />

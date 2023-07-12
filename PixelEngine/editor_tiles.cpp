@@ -46,6 +46,10 @@ namespace Editor {
 					ImGui::TableNextColumn();
 					if (ImGui::Selectable(labelStr, selected, selectableFlags, ImVec2(0, 0))) {
 						pContext->chrSelection[0] = i;
+
+						if (selected) {
+							ImGui::SetItemDefaultFocus();
+						}
 					}
 					ImGui::TableNextColumn();
 					ImGui::TextUnformatted(bgCollisionTypeNames[tile.type]);

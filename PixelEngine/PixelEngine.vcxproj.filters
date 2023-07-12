@@ -78,9 +78,6 @@
     <ClCompile Include="rendering_vulkan.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="editor_metasprite.cpp">
-      <Filter>Source Files\editor</Filter>
-    </ClCompile>
     <ClCompile Include="editor_util.cpp">
       <Filter>Source Files\editor</Filter>
     </ClCompile>
@@ -100,6 +97,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="editor_tiles.cpp">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="metasprite.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="editor_sprites.cpp">
       <Filter>Source Files\editor</Filter>
     </ClCompile>
   </ItemGroup>
@@ -131,9 +134,6 @@
     <ClInclude Include="viewport.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="editor_metasprite.h">
-      <Filter>Header Files\editor</Filter>
-    </ClInclude>
     <ClInclude Include="editor_util.h">
       <Filter>Header Files\editor</Filter>
     </ClInclude>
@@ -153,6 +153,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="editor_tiles.h">
+      <Filter>Header Files\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="metasprite.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="editor_sprites.h">
       <Filter>Header Files\editor</Filter>
     </ClInclude>
   </ItemGroup>
