@@ -11,7 +11,7 @@
 #include "editor_debug.h"
 #include "editor_metasprite.h"
 #include "editor_chr.h"
-#include "editor_collision.h"
+#include "editor_tiles.h"
 #include <imgui.h>
 
 namespace Game {
@@ -76,6 +76,7 @@ namespace Game {
         // editorState.pLevel = &level;
         // editorState.pRenderContext = pContext;
 
+        Collision::LoadBgCollision("bg.til");
         LoadLevel(&level, "test.lev");
 
         // Render all of first and second nametable
@@ -187,7 +188,8 @@ namespace Game {
         Editor::Metasprite::DrawSpriteListWindow(pEditorContext, &characterMetasprite);
         Editor::Metasprite::DrawSpriteEditor(pEditorContext, &characterMetasprite);
         Editor::CHR::DrawCHRWindow(pEditorContext);
-        Editor::Collision::DrawCollisionEditor(pEditorContext, pRenderContext);
+        Editor::Tiles::DrawBgCollisionWindow(pEditorContext);
+        Editor::Tiles::DrawCollisionEditor(pEditorContext, pRenderContext);
         ImGui::Render();
         Rendering::Render(pRenderContext);
     }

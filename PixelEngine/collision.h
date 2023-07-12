@@ -18,4 +18,8 @@ namespace Collision {
     };
 
     TileCollision* GetBgCollisionPtr();
+
+    // TODO: Move somewhere?
+    void LoadBgCollision(const char* fname);
+    void SaveBgCollision(const char* fname);
 }

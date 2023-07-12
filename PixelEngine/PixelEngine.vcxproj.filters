@@ -96,11 +96,11 @@
     <ClCompile Include="editor_chr.cpp">
       <Filter>Source Files\editor</Filter>
     </ClCompile>
-    <ClCompile Include="editor_collision.cpp">
-      <Filter>Source Files\editor</Filter>
-    </ClCompile>
     <ClCompile Include="collision.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="editor_tiles.cpp">
+      <Filter>Source Files\editor</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -149,11 +149,11 @@
     <ClInclude Include="editor_chr.h">
       <Filter>Header Files\editor</Filter>
     </ClInclude>
-    <ClInclude Include="editor_collision.h">
-      <Filter>Header Files\editor</Filter>
-    </ClInclude>
     <ClInclude Include="collision.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="editor_tiles.h">
+      <Filter>Header Files\editor</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

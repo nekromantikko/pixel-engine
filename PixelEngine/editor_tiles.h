@@ -3,8 +3,9 @@
 #include "rendering.h"
 
 namespace Editor {
-	namespace Collision {
+	namespace Tiles {
 
+		void DrawBgCollisionWindow(EditorContext* pContext);
 		void DrawCollisionEditor(EditorContext* pContext, Rendering::RenderContext* pRenderContext);
 
 	}

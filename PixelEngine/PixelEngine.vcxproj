@@ -155,7 +155,7 @@
     <ClCompile Include="..\..\imgui\imgui_widgets.cpp" />
     <ClCompile Include="collision.cpp" />
     <ClCompile Include="editor_chr.cpp" />
-    <ClCompile Include="editor_collision.cpp" />
+    <ClCompile Include="editor_tiles.cpp" />
     <ClCompile Include="leveleditor.cpp" />
     <ClCompile Include="editor_core.cpp" />
     <ClCompile Include="editor_debug.cpp" />
@@ -174,7 +174,7 @@
   <ItemGroup>
     <ClInclude Include="collision.h" />
     <ClInclude Include="editor_chr.h" />
-    <ClInclude Include="editor_collision.h" />
+    <ClInclude Include="editor_tiles.h" />
     <ClInclude Include="leveleditor.h" />
     <ClInclude Include="editor_core.h" />
     <ClInclude Include="editor_debug.h" />
