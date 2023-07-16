@@ -445,3 +445,5 @@ FodyWeavers.xsd
 
 # Game Assets
 *.lev
+*.til
+*.spr
