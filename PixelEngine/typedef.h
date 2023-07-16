@@ -1,6 +1,5 @@
 #pragma once
 #include <cstdint>
-#include "fixed.h"
 
 typedef int8_t int8;
 typedef int16_t int16;
@@ -38,5 +37,3 @@ typedef uint64 u64;
 
 typedef real32 r32;
 typedef real64 r64;
-
-typedef fixed32 f32;

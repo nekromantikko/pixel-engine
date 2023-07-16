@@ -1,6 +1,7 @@
 #include "editor_tiles.h"
 #include "editor_util.h"
 #include "collision.h"
+#include <stdio.h>
 
 namespace Editor {
 	namespace Tiles {

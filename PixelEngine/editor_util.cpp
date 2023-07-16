@@ -1,5 +1,6 @@
 #include "editor_util.h"
 #include "editor_core.h"
+#include <cmath>
 
 namespace Editor {
 	namespace Util {

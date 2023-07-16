@@ -1,5 +1,6 @@
 #include "metasprite.h"
 #include "system.h"
+#include <stdio.h>
 
 namespace Metasprite {
 

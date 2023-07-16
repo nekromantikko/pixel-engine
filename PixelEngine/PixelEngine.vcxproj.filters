@@ -42,9 +42,6 @@
     <ClCompile Include="rendering_util.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="fixed.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="viewport.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -120,9 +117,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="input.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="fixed.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="rendering_util.h">

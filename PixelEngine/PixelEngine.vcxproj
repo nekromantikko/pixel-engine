@@ -159,7 +159,6 @@
     <ClCompile Include="leveleditor.cpp" />
     <ClCompile Include="editor_core.cpp" />
     <ClCompile Include="editor_debug.cpp" />
-    <ClCompile Include="fixed.cpp" />
     <ClCompile Include="game.cpp" />
     <ClCompile Include="input.cpp" />
     <ClCompile Include="level.cpp" />
@@ -179,7 +178,6 @@
     <ClInclude Include="leveleditor.h" />
     <ClInclude Include="editor_core.h" />
     <ClInclude Include="editor_debug.h" />
-    <ClInclude Include="fixed.h" />
     <ClInclude Include="game.h" />
     <ClInclude Include="input.h" />
     <ClInclude Include="level.h" />

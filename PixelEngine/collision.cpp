@@ -1,5 +1,6 @@
 #include "collision.h"
 #include "rendering.h"
+#include <stdio.h>
 
 namespace Collision {
 

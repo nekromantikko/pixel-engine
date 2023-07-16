@@ -2,33 +2,33 @@
 #include "level.h"
 #include "system.h"
 
-void MoveViewport(Viewport *viewport, Rendering::RenderContext* pRenderContext, Level* pLevel, f32 dx, f32 dy) {
-    f32 xPrevious = viewport->x;
+void MoveViewport(Viewport *viewport, Rendering::RenderContext* pRenderContext, Level* pLevel, r32 dx, r32 dy) {
+    r32 xPrevious = viewport->x;
     viewport->x += dx;
     if (viewport->x < 0.0f) {
         viewport->x = 0.0f;
     }
-    else if (viewport->x + viewport->w >= pLevel->screenCount * NAMETABLE_WIDTH_TILES * TILE_SIZE) {
-        viewport->x = (pLevel->screenCount * NAMETABLE_WIDTH_TILES * TILE_SIZE) - viewport->w;
+    else if (viewport->x + viewport->w >= pLevel->screenCount * NAMETABLE_WIDTH_TILES) {
+        viewport->x = (pLevel->screenCount * NAMETABLE_WIDTH_TILES) - viewport->w;
     }
 
     viewport->y += dy;
     if (viewport->y < 0.0f) {
         viewport->y = 0.0f;
     }
-    else if (viewport->y + viewport->h >= NAMETABLE_HEIGHT_TILES * TILE_SIZE) {
-        viewport->y = (NAMETABLE_HEIGHT_TILES * TILE_SIZE) - viewport->h;
+    else if (viewport->y + viewport->h >= NAMETABLE_HEIGHT_TILES) {
+        viewport->y = (NAMETABLE_HEIGHT_TILES) - viewport->h;
     }
 
-    // TODO: Update nametables when scrolling
-    bool crossedBlockBoundary = ((s32)xPrevious % (TILE_SIZE * 2)) != ((s32)viewport->x % (TILE_SIZE * 2));
-    float bufferWidth = 128.0f;
+    // TODO: Load more than one block column when moving fast enough
+    bool crossedBlockBoundary = ((s32)xPrevious % 2) != ((s32)viewport->x % 2);
+    r32 bufferWidth = 16;
     if (dx != 0 && crossedBlockBoundary) {
-        u32 leftBlockIndex = (u32)((viewport->x - bufferWidth) / (TILE_SIZE * 2));
+        u32 leftBlockIndex = (u32)((viewport->x - bufferWidth) / 2);
         u32 leftScreenIndex = leftBlockIndex / (NAMETABLE_WIDTH_TILES / 2);
         u32 leftScreenBlockOffset = leftBlockIndex % (NAMETABLE_WIDTH_TILES / 2);
         u32 leftScreenTileOffset = leftScreenBlockOffset * 2;
-        u32 rightBlockIndex = (u32)((viewport->x + bufferWidth + viewport->w) / (TILE_SIZE * 2));
+        u32 rightBlockIndex = (u32)((viewport->x + bufferWidth + viewport->w) / 2);
         u32 rightScreenIndex = rightBlockIndex / (NAMETABLE_WIDTH_TILES / 2);
         u32 rightScreenBlockOffset = rightBlockIndex % (NAMETABLE_WIDTH_TILES / 2);
         u32 rightScreenTileOffset = rightScreenBlockOffset * 2;

@@ -1,5 +1,7 @@
 #include "editor_sprites.h"
 #include "editor_util.h"
+#include <cmath>
+#include <stdio.h>
 
 namespace Editor {
 	namespace Sprites {
@@ -113,7 +115,7 @@ namespace Editor {
 
                     Collision::Collider& collider = metasprite.colliders[i];
 
-                    ImVec2 colliderPos = ImVec2(origin.x + renderScale * collider.xOffset, origin.y + renderScale * collider.yOffset);
+                    ImVec2 colliderPos = ImVec2(origin.x + gridStepPixels * collider.xOffset, origin.y + gridStepPixels * collider.yOffset);
 
                     switch (collider.type) {
                     case Collision::ColliderPoint: {
@@ -122,27 +124,27 @@ namespace Editor {
                         break;
                     }
                     case Collision::ColliderCircle: {
-                        drawList->AddCircleFilled(colliderPos, collider.width/2 * renderScale, IM_COL32(0, 255, 0, 80));
+                        drawList->AddCircleFilled(colliderPos, collider.width/2 * gridStepPixels, IM_COL32(0, 255, 0, 80));
                         break;
                     }
                     case Collision::ColliderBox: {
-                        ImVec2 topLeft = ImVec2(colliderPos.x - renderScale * collider.width / 2, colliderPos.y - renderScale * collider.height / 2);
-                        ImVec2 btmRight = ImVec2(colliderPos.x + renderScale * collider.width / 2, colliderPos.y + renderScale * collider.height / 2);
+                        ImVec2 topLeft = ImVec2(colliderPos.x - gridStepPixels * collider.width / 2, colliderPos.y - gridStepPixels * collider.height / 2);
+                        ImVec2 btmRight = ImVec2(colliderPos.x + gridStepPixels * collider.width / 2, colliderPos.y + gridStepPixels * collider.height / 2);
 
                         drawList->AddRectFilled(topLeft, btmRight, IM_COL32(0, 255, 0, 80));
                         break;
                     }
                     case Collision::ColliderCapsule: {
-                        ImVec2 topLeft = ImVec2(colliderPos.x - renderScale * collider.width/2, colliderPos.y + renderScale * collider.height / 2);
-                        ImVec2 btmRight = ImVec2(colliderPos.x + renderScale * collider.width/2, colliderPos.y - renderScale * collider.height / 2);
+                        ImVec2 topLeft = ImVec2(colliderPos.x - gridStepPixels * collider.width/2, colliderPos.y + gridStepPixels * collider.height / 2);
+                        ImVec2 btmRight = ImVec2(colliderPos.x + gridStepPixels * collider.width/2, colliderPos.y - gridStepPixels * collider.height / 2);
                         drawList->AddRectFilled(topLeft, btmRight, IM_COL32(0, 255, 0, 80));
 
-                        drawList->PushClipRect(ImVec2(topLeft.x, btmRight.y - (collider.width / 2) * renderScale), ImVec2(btmRight.x, btmRight.y));
-                        drawList->AddCircleFilled(ImVec2(colliderPos.x, colliderPos.y - collider.height/2 * renderScale), collider.width/2 * renderScale, IM_COL32(0, 255, 0, 80));
+                        drawList->PushClipRect(ImVec2(topLeft.x, btmRight.y - (collider.width / 2) * gridStepPixels), ImVec2(btmRight.x, btmRight.y));
+                        drawList->AddCircleFilled(ImVec2(colliderPos.x, colliderPos.y - collider.height/2 * gridStepPixels), collider.width/2 * gridStepPixels, IM_COL32(0, 255, 0, 80));
                         drawList->PopClipRect();
 
-                        drawList->PushClipRect(ImVec2(topLeft.x, topLeft.y), ImVec2(btmRight.x, topLeft.y + (collider.width / 2) * renderScale));
-                        drawList->AddCircleFilled(ImVec2(colliderPos.x, colliderPos.y + collider.height/2 * renderScale), collider.width/2 * renderScale, IM_COL32(0, 255, 0, 80));
+                        drawList->PushClipRect(ImVec2(topLeft.x, topLeft.y), ImVec2(btmRight.x, topLeft.y + (collider.width / 2) * gridStepPixels));
+                        drawList->AddCircleFilled(ImVec2(colliderPos.x, colliderPos.y + collider.height/2 * gridStepPixels), collider.width/2 * gridStepPixels, IM_COL32(0, 255, 0, 80));
                         drawList->PopClipRect();
 
                         break;
@@ -292,45 +294,45 @@ namespace Editor {
                         Collision::Collider& collider = metasprite.colliders[i];
                         ImGui::SliderInt("Type", (s32*)&collider.type, 0, colliderTypeCount - 1, colliderTypeNames[collider.type]);
 
-                        r32 offset[2] = { (r32)collider.xOffset, (r32)collider.yOffset };
+                        r32 offset[2] = { collider.xOffset, collider.yOffset };
 
                         if (ImGui::InputFloat2("Offset", offset)) {
-                            collider.xOffset = (f32)offset[0];
-                            collider.yOffset = (f32)offset[1];
+                            collider.xOffset = offset[0];
+                            collider.yOffset = offset[1];
                         }
 
                         switch (collider.type) {
                         case Collision::ColliderPoint:
                             break;
                         case Collision::ColliderCircle: {
-                            r32 radius = (r32)collider.width / 2;
-                            if (ImGui::InputFloat("Radius", &radius, 4.0f, 1.0f)) {
-                                collider.width = (f32)max(0.0f, radius*2);
+                            r32 radius = collider.width / 2;
+                            if (ImGui::InputFloat("Radius", &radius, 0.125f, 0.0625f)) {
+                                collider.width = max(0.0f, radius*2);
                             }
                             break;
                         }
                         case Collision::ColliderBox: {
-                            r32 width = (r32)collider.width;
-                            if (ImGui::InputFloat("Width", &width, 4.0f, 1.0f)) {
-                                collider.width = (f32)max(0.0f, width);
+                            r32 width = collider.width;
+                            if (ImGui::InputFloat("Width", &width, 0.125f, 0.0625f)) {
+                                collider.width = max(0.0f, width);
                             }
 
-                            r32 height = (r32)collider.height;
-                            if (ImGui::InputFloat("Height", &height, 4.0f, 1.0f)) {
-                                collider.height = (f32)max(0.0f, height);
+                            r32 height = collider.height;
+                            if (ImGui::InputFloat("Height", &height, 0.125f, 0.0625f)) {
+                                collider.height = max(0.0f, height);
                             }
 
                             break;
                         }
                         case Collision::ColliderCapsule: {
-                            r32 radius = (r32)collider.width / 2;
-                            if (ImGui::InputFloat("Radius", &radius, 4.0f, 1.0f)) {
-                                collider.width = (f32)max(0.0f, radius * 2);
+                            r32 radius = collider.width / 2;
+                            if (ImGui::InputFloat("Radius", &radius, 0.125f, 0.0625f)) {
+                                collider.width = max(0.0f, radius * 2);
                             }
 
-                            r32 height = (r32)collider.height;
-                            if (ImGui::InputFloat("Height", &height, 4.0f, 1.0f)) {
-                                collider.height = (f32)max(0.0f, height);
+                            r32 height = collider.height;
+                            if (ImGui::InputFloat("Height", &height, 0.125f, 0.0625f)) {
+                                collider.height = max(0.0f, height);
                             }
 
                             break;

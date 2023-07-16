@@ -26,8 +26,8 @@ namespace Collision {
 
     struct Collider {
         ColliderType type;
-        f32 width, height; // Width doubles as radius*2 for circle & capsule
-        f32 xOffset, yOffset;
+        r32 width, height; // Width doubles as radius*2 for circle & capsule
+        r32 xOffset, yOffset;
     };
 
     TileCollision* GetBgCollisionPtr();

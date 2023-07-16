@@ -82,13 +82,13 @@ namespace LevelEditor {
         u16 left = pState->xSelOffset < 0 ? pState->xCursor + pState->xSelOffset : pState->xCursor;
         u16 selectionWidth = abs(pState->xSelOffset);
         u16 selectionHeight = abs(pState->ySelOffset);
-        s32 xStart = (left * 8) - viewport->x;
-        s32 yStart = (bottom * 8) - viewport->y;
+        r32 xStart = (r32)left - viewport->x;
+        r32 yStart = (r32)bottom - viewport->y;
         for (int y = 0; y < selectionHeight; y++) {
             for (int x = 0; x < selectionWidth; x++) {
                 pState->clipboardSprites[x + y * selectionWidth] = {
-                    yStart + 8 * y,
-                    xStart + 8 * x,
+                    (s32)((yStart + y) * TILE_SIZE),
+                    (s32)((xStart + x) * TILE_SIZE),
                     pState->mode == Brush ? pState->clipboard[x + y * selectionWidth] : GetSelectionTileIndex(x,y,selectionWidth,selectionHeight),
                     pState->palette
                 };
@@ -101,16 +101,16 @@ namespace LevelEditor {
         float dx = 0, dy = 0;
 
         if ((input & Input::ControllerState::Right)) {
-            dx = 128.0f;
+            dx = 16.0f;
         }
         if ((input & Input::ControllerState::Left)) {
-            dx = -128.0f;
+            dx = -16.0f;
         }
         if ((input & Input::ControllerState::Up)) {
-            dy = -128.0f;
+            dy = -16.0f;
         }
         if ((input & Input::ControllerState::Down)) {
-            dy = 128.0f;
+            dy = 16.0f;
         }
 
         dx *= dt;

@@ -1,4 +1,5 @@
 #include "level.h"
+#include <stdio.h>
 
 void LoadLevel(Level* pLevel, const char* fname)
 {

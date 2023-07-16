@@ -3,8 +3,10 @@
 #include "input.h"
 #include <math.h>
 #include <string.h>
+#include <stdio.h>
 #include "rendering_util.h"
 #include "level.h"
+#include "leveleditor.h"
 #include "viewport.h"
 #include "collision.h"
 #include "metasprite.h"
@@ -26,7 +28,7 @@ namespace Game {
     Input::ControllerState controllerStatePrev;
 
     // Editor
-    // Editor::EditorState editorState;
+    LevelEditor::EditorState editorState;
     Editor::EditorContext* pEditorContext;
 
     // Viewport
@@ -45,20 +47,20 @@ namespace Game {
     };*/
 
     struct PlayerState {
-        f32 x, y;
-        f32 hSpeed, vSpeed;
+        r32 x, y;
+        r32 hSpeed, vSpeed;
     };
 
     PlayerState playerState{};
-    f32 gravity = 562.5;
+    r32 gravity = 70;
 
     u8 chrSheet[0x4000];
 
 	void Initialize(Rendering::RenderContext* pRenderContext) {
         viewport.x = 0.0f;
-        viewport.y = 96.0f;
-        viewport.w = VIEWPORT_WIDTH_TILES * TILE_SIZE;
-        viewport.h = VIEWPORT_HEIGHT_TILES * TILE_SIZE;
+        viewport.y = 12.0f;
+        viewport.w = VIEWPORT_WIDTH_TILES;
+        viewport.h = VIEWPORT_HEIGHT_TILES;
 
         // Init chr memory
         Rendering::Util::CreateChrSheet("chr000.bmp", chrSheet);
@@ -67,11 +69,11 @@ namespace Game {
         Rendering::WriteChrMemory(pRenderContext, 0x4000, 0x4000, chrSheet);
         Rendering::Util::CreateChrSheet("wings.bmp", chrSheet);
 
-        playerState.x = 240;
-        playerState.y = 128;
+        playerState.x = 30;
+        playerState.y = 16;
 
-        // editorState.pLevel = &level;
-        // editorState.pRenderContext = pContext;
+        editorState.pLevel = &level;
+        editorState.pRenderContext = pRenderContext;
 
         Collision::LoadBgCollision("bg.til");
         Metasprite::LoadMetasprites("meta.spr");
@@ -97,7 +99,7 @@ namespace Game {
         float fps = 1.0f / dt;
         char hudText[128];
         snprintf(hudText, 64, " %4d FPS (%2d ms) (%04d, %04d) %s", (int)(fps), (int)(dt*1000), (int)viewport.x, (int)viewport.y, level.name);
-        //snprintf(hudText + 64, 64, " Editor mode: %s, Palette: %#x ", Editor::GetEditorModeName(editorState.mode), editorState.palette);
+        // snprintf(hudText + 64, 64, " Editor mode: %s, Palette: %#x ", LevelEditor::GetEditorModeName(editorState.mode), editorState.palette);
         Rendering::WriteNametable(pContext, 0, 128, 0, (u8*)hudText);
     }
 
@@ -131,9 +133,9 @@ namespace Game {
                 spriteOffset += DrawDebugCharacter(pContext, spriteOffset, xCharacter + x * 32, yCharacter + y * 32, secondsElapsed + x*0.1 + y*0.8);
             }
         }*/
-        spriteOffset += DrawDebugCharacter(pRenderContext, spriteOffset, playerState.x - viewport.x, playerState.y - viewport.y, flipCharacter, secondsElapsed);
+        spriteOffset += DrawDebugCharacter(pRenderContext, spriteOffset, (s32)((playerState.x - viewport.x) * TILE_SIZE), (s32)((playerState.y - viewport.y) * TILE_SIZE), flipCharacter, secondsElapsed);
 
-        // Editor::DrawSelection(&editorState, &viewport, spriteOffset);
+        // LevelEditor::DrawSelection(&editorState, &viewport, spriteOffset);
 
         UpdateHUD(pRenderContext, dt);
         RenderHUD(pRenderContext);
@@ -150,8 +152,8 @@ namespace Game {
         }*/
 
         Rendering::RenderState state = {
-            viewport.x,
-            viewport.y
+            (s32)(viewport.x * TILE_SIZE),
+            (s32)(viewport.y* TILE_SIZE)
         };
         Rendering::SetRenderState(pRenderContext, 16, 272, state);
 
@@ -178,21 +180,21 @@ namespace Game {
         // Poll input
         controllerState = Input::PollInput(controllerState);
 
-        // Editor::HandleInput(&editorState, controllerState, controllerStatePrev, &viewport, dt);
+        // LevelEditor::HandleInput(&editorState, controllerState, controllerStatePrev, &viewport, dt);
 
         if (controllerState & Input::ControllerState::Left) {
             flipCharacter = true;
             //characterSprites = &characterFwd;
             Rendering::WriteChrMemory(pContext, 0x200, 0x4200, chrSheet + 0xA00);
             //xBowOffset = 19;
-            playerState.hSpeed = -100;
+            playerState.hSpeed = -12.5f;
         }
         else if (controllerState & Input::ControllerState::Right) {
             flipCharacter = false;
             //characterSprites = &characterFwd;
             Rendering::WriteChrMemory(pContext, 0x200, 0x4200, chrSheet + 0xA00);
             //xBowOffset = 19;
-            playerState.hSpeed = 100;
+            playerState.hSpeed = 12.5f;
         }
         else {
             //characterSprites = &characterIdle;
@@ -206,7 +208,7 @@ namespace Game {
         }
 
         if ((controllerState & Input::ControllerState::A) && !(controllerStatePrev & Input::ControllerState::A)) {
-            playerState.vSpeed = -250;
+            playerState.vSpeed = -31.25f;
         }
 
         if (playerState.vSpeed < 0 && !(controllerState & Input::ControllerState::A) && (controllerStatePrev & Input::ControllerState::A)) {
@@ -217,22 +219,22 @@ namespace Game {
             playerState.vSpeed += gravity * dt;
         } else playerState.vSpeed += (gravity / 4) * dt;
 
-        u32 xPlayerCollision = playerState.x;
-        u32 yPlayerCollision = playerState.y + 16;
+        r32 xPlayerCollision = playerState.x;
+        r32 yPlayerCollision = playerState.y + 2;
 
         Collision::TileCollision* bgCollision = Collision::GetBgCollisionPtr();
-        if (playerState.vSpeed > 0 && yPlayerCollision <= NAMETABLE_HEIGHT_TILES * TILE_SIZE) {
-            u32 screenIndex = xPlayerCollision / (NAMETABLE_WIDTH_TILES * TILE_SIZE);
-            f32 screenRelativeX = xPlayerCollision - screenIndex * NAMETABLE_WIDTH_TILES * TILE_SIZE;
+        if (playerState.vSpeed > 0 && yPlayerCollision <= NAMETABLE_HEIGHT_TILES) {
+            u32 screenIndex = (u32)xPlayerCollision / NAMETABLE_WIDTH_TILES;
+            r32 screenRelativeX = xPlayerCollision - screenIndex * NAMETABLE_WIDTH_TILES;
             u32 nametableIndex = screenIndex % NAMETABLE_COUNT;
-            u32 yTile = yPlayerCollision / TILE_SIZE;
-            u32 xTile = screenRelativeX / TILE_SIZE;
+            u32 yTile = (u32)yPlayerCollision;
+            u32 xTile = (u32)screenRelativeX;
             u32 tileIndex = yTile * NAMETABLE_WIDTH_TILES + xTile;
             u8 collidingTile;
             Rendering::ReadNametable(pContext, nametableIndex, 1, tileIndex, &collidingTile);
             if (bgCollision[collidingTile].type == Collision::TileSolid) {
                 playerState.vSpeed = 0;
-                playerState.y -= yPlayerCollision % TILE_SIZE;
+                playerState.y = floor(playerState.y);
             }
         }
         playerState.y += playerState.vSpeed * dt;
