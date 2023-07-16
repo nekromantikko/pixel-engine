@@ -9,7 +9,7 @@ namespace Editor {
 		constexpr r32 pixelSize = tilePreviewSize / TILE_SIZE;
 
 		constexpr u32 bgCollisionTypeCount = 5;
-		constexpr const char* bgCollisionTypeNames[bgCollisionTypeCount] = { "Empty", "Solid", "PassThrough", "JumpThrough", "PassThroughFlip" };
+		constexpr const char* bgCollisionTypeNames[bgCollisionTypeCount] = { "Empty", "Solid", "Slope", "JumpThrough", "SlopeFlip" };
 
 		void DrawBgCollisionWindow(EditorContext* pContext) {
 			ImGui::Begin("Background Tiles");
@@ -31,7 +31,7 @@ namespace Editor {
 				ImGui::TableSetupColumn("Tile");
 				ImGui::TableSetupColumn("Type");
 				ImGui::TableSetupColumn("Slope");
-				ImGui::TableSetupColumn("Slope height");
+				ImGui::TableSetupColumn("Slope offset");
 				ImGui::TableSetupScrollFreeze(0, 1); // Make row always visible
 				ImGui::TableHeadersRow();
 
@@ -55,9 +55,9 @@ namespace Editor {
 					ImGui::TableNextColumn();
 					ImGui::TextUnformatted(bgCollisionTypeNames[tile.type]);
 					ImGui::TableNextColumn();
-					ImGui::Text("%f", tile.slope);
+					ImGui::Text("%f", (r32)tile.slope);
 					ImGui::TableNextColumn();
-					ImGui::Text("%f", tile.slopeHeight);
+					ImGui::Text("%f", (r32)tile.slopeOffset);
 					ImGui::PopID();
 				}
 
@@ -86,9 +86,10 @@ namespace Editor {
 			ImGui::SliderInt("Type", (s32*)&tileCollision.type, 0, bgCollisionTypeCount-1, bgCollisionTypeNames[tileCollision.type]);
 
 			ImGui::BeginDisabled(tileCollision.type <= Collision::TileSolid);
-			ImGui::InputFloat("Slope", &tileCollision.slope, 0.125f, 0.0625f);
-			ImGui::InputFloat("Slope height", &tileCollision.slopeHeight, 0.125f, 0.0625f);
-			tileCollision.slopeHeight = max(min(tileCollision.slopeHeight, 1.0f), 0.0f);
+			if (ImGui::InputFloat("Slope", &tileCollision.slope, 0.125f, 0.0625f));
+			if (ImGui::InputFloat("Slope offset", &tileCollision.slopeOffset, 0.125f, 0.0625f)) {
+				tileCollision.slopeOffset = max(min(tileCollision.slopeOffset, 1.0f), 0.0f);
+			}
 			ImGui::EndDisabled();
 
 			// Draw slope visualisation
@@ -103,17 +104,17 @@ namespace Editor {
 				else {
 					ImVec2 points[4] = { 
 						ImVec2(tilePos.x, tilePos.y + tilePreviewSize), 
-						ImVec2(tilePos.x, tilePos.y + tilePreviewSize * (1 - tileCollision.slopeHeight)),
-						ImVec2(tilePos.x + tilePreviewSize, tilePos.y + (1 - tileCollision.slope - tileCollision.slopeHeight) * tilePreviewSize),
+						ImVec2(tilePos.x, tilePos.y + tilePreviewSize * tileCollision.slopeOffset),
+						ImVec2(tilePos.x + tilePreviewSize, tilePos.y + (tileCollision.slopeOffset + tileCollision.slope) * tilePreviewSize),
 						rectEnd 
 					};
 					ImVec2 pointsInverted[4] = {
 						rectStart,
 						ImVec2(tilePos.x + tilePreviewSize, tilePos.y),
-						ImVec2(tilePos.x + tilePreviewSize, tilePos.y + (tileCollision.slopeHeight + tileCollision.slope) * tilePreviewSize),
-						ImVec2(tilePos.x, tilePos.y + tilePreviewSize * tileCollision.slopeHeight)
+						ImVec2(tilePos.x + tilePreviewSize, tilePos.y + (tileCollision.slopeOffset + tileCollision.slope) * tilePreviewSize),
+						ImVec2(tilePos.x, tilePos.y + tilePreviewSize * tileCollision.slopeOffset)
 					};
-					drawList->AddConvexPolyFilled(tileCollision.type == Collision::TilePassThroughFlip ? pointsInverted : points, 4, IM_COL32(0, 255, 0, 80));
+					drawList->AddConvexPolyFilled(tileCollision.type == Collision::TileSlopeFlip ? pointsInverted : points, 4, IM_COL32(0, 255, 0, 80));
 				}
 
 				drawList->PopClipRect();

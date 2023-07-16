@@ -170,6 +170,45 @@ namespace Game {
         Editor::CHR::DrawCHRWindow(pEditorContext);
         Editor::Tiles::DrawBgCollisionWindow(pEditorContext);
         Editor::Tiles::DrawCollisionEditor(pEditorContext, pRenderContext);
+
+        // Debug collision things
+        ImGuiIO& io = ImGui::GetIO();
+
+        Vec2 lineOrigin = { playerState.x, playerState.y };
+        r32 renderScale = (1920.0f / 512.0f) * TILE_SIZE;
+        Vec2 lineEnd = { io.MousePos.x / renderScale + viewport.x, io.MousePos.y / renderScale + viewport.y };
+        Vec2 lineDir = (lineEnd - lineOrigin);
+        r32 length = lineDir.Length();
+        lineDir = lineDir.Normalize();
+
+        // DEBUG_LOG("%f, %f\n", (r32)lineDir.x, (r32)lineDir.y);
+
+        Collision::HitResult hit{};
+        Collision::RaycastTilesWorldSpace(pRenderContext, lineOrigin, lineDir, length, hit);
+
+        Rendering::Sprite debugSprite = {
+            (s32)round((lineOrigin.y - viewport.y - 0.5f) * TILE_SIZE),
+            (s32)round((lineOrigin.x - viewport.x - 0.5f) * TILE_SIZE),
+            0x80,
+            hit.blockingHit ? 1 : 0
+        };
+        Rendering::WriteSprites(pRenderContext, 1, spriteOffset++, &debugSprite);
+
+        debugSprite.y = (s32)round((lineEnd.y - viewport.y - 0.5f) * TILE_SIZE);
+        debugSprite.x = (s32)round((lineEnd.x - viewport.x - 0.5f) * TILE_SIZE);
+        Rendering::WriteSprites(pRenderContext, 1, spriteOffset++, &debugSprite);
+
+        debugSprite.y = (s32)round((hit.impactPoint.y - viewport.y - 0.5f) * TILE_SIZE);
+        debugSprite.x = (s32)round((hit.impactPoint.x - viewport.x - 0.5f) * TILE_SIZE);
+        Rendering::WriteSprites(pRenderContext, 1, spriteOffset++, &debugSprite);
+
+        // Visualize impact normal
+        ImDrawList* drawList = ImGui::GetForegroundDrawList();
+        ImVec2 drawLineOrigin = ImVec2((hit.impactPoint.x - viewport.x) * renderScale, (hit.impactPoint.y - viewport.y) * renderScale);
+        ImVec2 drawLineEnd = ImVec2((hit.impactPoint.x + hit.impactNormal.x - viewport.x) * renderScale, (hit.impactPoint.y + hit.impactNormal.y - viewport.y) * renderScale);
+        drawList->AddCircle(drawLineOrigin, 8, IM_COL32(255, 0, 0, 255));
+        drawList->AddLine(drawLineOrigin, drawLineEnd, IM_COL32(255, 0, 0, 255));
+
         ImGui::Render();
         Rendering::Render(pRenderContext);
     }
@@ -249,7 +288,7 @@ namespace Game {
         //Rendering::WriteChrMemory(pContext, sizeof(int), rand() % (CHR_MEMORY_SIZE - sizeof(int)), (u8*)&randomInt);
 
         // Animate palette
-        static float paletteAccumulator = 0;
+        /*static float paletteAccumulator = 0;
         static int a = 0;
         paletteAccumulator += dt;
         if (paletteAccumulator > 0.1f) {
@@ -266,6 +305,6 @@ namespace Game {
                 (a + 7) % 64,
             };
             Rendering::WritePaletteColors(pContext, 4, 8, 0, colors);
-        }
+        }*/
     }
 }

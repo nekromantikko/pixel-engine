@@ -188,6 +188,7 @@
     <ClInclude Include="system.h" />
     <ClInclude Include="typedef.h" />
     <ClInclude Include="editor_util.h" />
+    <ClInclude Include="vector.h" />
     <ClInclude Include="viewport.h" />
   </ItemGroup>
   <ItemGroup>
