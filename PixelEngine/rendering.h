@@ -30,7 +30,14 @@ namespace Rendering
 		s32 scrollY;
 	};
 
-#define CHR_MEMORY_SIZE 0x8000
+#define CHR_SHEET_SIZE 0x1800
+#define CHR_MEMORY_SIZE CHR_SHEET_SIZE * 2
+
+	struct CHRSheet {
+		u64 p0[256];
+		u64 p1[256];
+		u64 p2[256];
+	};
 
 #define TILE_SIZE 8
 

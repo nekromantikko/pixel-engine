@@ -4,74 +4,15 @@
 layout(local_size_x = 8, local_size_y = 1, local_size_z = 1) in;
 layout(set = 0, binding = 0, rgba8) uniform writeonly image2D outImage;
 layout(set = 0, binding = 1, rgba8) uniform readonly image1D palette;
-struct Tile
-{
-	uint pixelStrips[16]; // 4 pixel strips
-};
-layout(set = 0, binding = 2) readonly buffer CHR
-{
-    Tile data[];
-} chr;
+
 layout(set = 0, binding = 3) readonly buffer PalTable
 {
     uint data[]; // Again, groups of 4 colors
 } palTable;
-layout(set = 0, binding = 4) readonly buffer Nametable
-{
-    uint data[]; // Again, groups of 4 tiles
-} nametable;
-struct Sprite
-{
-	int y;
-	int x;
-	uint tileId;
-	uint attributes;
-};
-layout(set = 0, binding = 5) readonly buffer Sprites
-{
-    Sprite data[];
-} sprites;
-struct ScanlineData {
-	uint spriteCount;
-	uint spriteIndices[MAX_SPRITES_PER_SCANLINE];
-
-	int scrollX;
-	int scrollY;
-};
-layout(set = 0, binding = 6) readonly buffer Scanlines
-{
-    ScanlineData data[];
-} scanlines;
 
 // sRGB to Linear.
 float ToLinear1(float c){return(c<=0.04045)?c/12.92:pow((c+0.055)/1.055,2.4);}
 vec3 ToLinear(vec3 c){return vec3(ToLinear1(c.r),ToLinear1(c.g),ToLinear1(c.b));}
-
-int ReadNametableByte(int index, int tileOffset) {
-	int coarse = tileOffset / 4; // Offset to 4 byte block
-	int fine = tileOffset % 4; // byte index (2bits)
-	uint nametableOffset = index * (0x1000 / 4);
-	uint result = nametable.data[nametableOffset + coarse];
-	// Mask
-	result &= (0xFF << (8 * fine));
-	result >>= 8 * fine;
-	return int(result);
-}
-
-int ReadTile(Tile tile, int offset, int flipX, int flipY) {
-	if (flipX != 0) {
-		offset ^= 7;
-	}
-	if (flipY != 0) {
-		offset ^= 56;
-	}
-	int coarse = offset / 4;
-	int fine = offset % 4;
-	uint result = tile.pixelStrips[coarse];
-	result &= (0xFF << (8 * fine));
-	result >>= 8 * fine;
-	return int(result);
-}
 
 int ReadPaletteTable(int tableIndex, int colorIndex) {
 	int coarse = tableIndex * 2 + colorIndex / 4;

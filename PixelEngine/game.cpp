@@ -54,7 +54,7 @@ namespace Game {
     PlayerState playerState{};
     r32 gravity = 70;
 
-    u8 chrSheet[0x4000];
+    Rendering::CHRSheet chrSheet;
 
 	void Initialize(Rendering::RenderContext* pRenderContext) {
         viewport.x = 0.0f;
@@ -63,11 +63,11 @@ namespace Game {
         viewport.h = VIEWPORT_HEIGHT_TILES;
 
         // Init chr memory
-        Rendering::Util::CreateChrSheet("chr000.bmp", chrSheet);
-        Rendering::WriteChrMemory(pRenderContext, 0x4000, 0, chrSheet);
-        Rendering::Util::CreateChrSheet("chr001.bmp", chrSheet);
-        Rendering::WriteChrMemory(pRenderContext, 0x4000, 0x4000, chrSheet);
-        Rendering::Util::CreateChrSheet("wings.bmp", chrSheet);
+        Rendering::Util::CreateChrSheet("chr000.bmp", &chrSheet);
+        Rendering::Util::WriteChrTiles(pRenderContext, 0, 256, 0, 0, &chrSheet);
+        Rendering::Util::CreateChrSheet("chr001.bmp", &chrSheet);
+        Rendering::Util::WriteChrTiles(pRenderContext, 1, 256, 0, 0, &chrSheet);
+        Rendering::Util::CreateChrSheet("wings.bmp", &chrSheet);
 
         playerState.x = 30;
         playerState.y = 16;
@@ -111,14 +111,14 @@ namespace Game {
         Rendering::SetRenderState(pContext, 0, 16, state);
     }
 
-    u32 DrawDebugCharacter(Rendering::RenderContext* pContext, u32 spriteOffset, s32 x, s32 y, bool flip, float time) {
+    u32 DrawDebugCharacter(Rendering::RenderContext* pRenderContext, u32 spriteOffset, s32 x, s32 y, bool flip, float time) {
         u32 msElapsed = time * 1000;
         s32 vOffset = (msElapsed / 360) % 2 ? -1 : 0;
         u32 wingFrame = (msElapsed / 180) % 4;
-        Rendering::WriteChrMemory(pContext, 0x200, 0x4000, chrSheet + 0x200*wingFrame);
+        Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 8 * wingFrame, 0, &chrSheet);
 
         Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[0];
-        Rendering::Util::WriteMetasprite(pContext, characterMetasprite.spritesRelativePos, characterMetasprite.spriteCount, spriteOffset, x, y + vOffset, flip);
+        Rendering::Util::WriteMetasprite(pRenderContext, characterMetasprite.spritesRelativePos, characterMetasprite.spriteCount, spriteOffset, x, y + vOffset, flip);
         return characterMetasprite.spriteCount;
     }
 
@@ -213,7 +213,7 @@ namespace Game {
         Rendering::Render(pRenderContext);
     }
 
-    void Step(float dt, Rendering::RenderContext* pContext) {
+    void Step(float dt, Rendering::RenderContext* pRenderContext) {
         secondsElapsed += dt;
 
         // Poll input
@@ -224,20 +224,20 @@ namespace Game {
         if (controllerState & Input::ControllerState::Left) {
             flipCharacter = true;
             //characterSprites = &characterFwd;
-            Rendering::WriteChrMemory(pContext, 0x200, 0x4200, chrSheet + 0xA00);
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 0x28, 8, &chrSheet);
             //xBowOffset = 19;
             playerState.hSpeed = -12.5f;
         }
         else if (controllerState & Input::ControllerState::Right) {
             flipCharacter = false;
             //characterSprites = &characterFwd;
-            Rendering::WriteChrMemory(pContext, 0x200, 0x4200, chrSheet + 0xA00);
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 0x28, 8, &chrSheet);
             //xBowOffset = 19;
             playerState.hSpeed = 12.5f;
         }
         else {
             //characterSprites = &characterIdle;
-            Rendering::WriteChrMemory(pContext, 0x200, 0x4200, chrSheet + 0x800);
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 0x20, 8, &chrSheet);
             //xBowOffset = 18;
             playerState.hSpeed = 0;
         }
@@ -270,7 +270,7 @@ namespace Game {
             u32 xTile = (u32)screenRelativeX;
             u32 tileIndex = yTile * NAMETABLE_WIDTH_TILES + xTile;
             u8 collidingTile;
-            Rendering::ReadNametable(pContext, nametableIndex, 1, tileIndex, &collidingTile);
+            Rendering::ReadNametable(pRenderContext, nametableIndex, 1, tileIndex, &collidingTile);
             if (bgCollision[collidingTile].type == Collision::TileSolid) {
                 playerState.vSpeed = 0;
                 playerState.y = floor(playerState.y);
@@ -281,7 +281,7 @@ namespace Game {
 
         controllerStatePrev = controllerState;
 
-        Render(pContext, dt);
+        Render(pRenderContext, dt);
 
         // Corrupt CHR mem
         //int randomInt = rand();

@@ -5,7 +5,7 @@ namespace Rendering
 {
 	namespace Util
 	{
-		void CreateChrSheet(const char* fname, u8* outBytes) {
+		void CreateChrSheet(const char* fname, CHRSheet* outSheet) {
 			u32 imgWidth, imgHeight;
 			u16 bpp;
 			char* imgData = LoadBitmapBytes(fname, imgWidth, imgHeight, bpp);
@@ -18,7 +18,6 @@ namespace Rendering
 				ERROR("Invalid chr image format!\n");
 			}
 
-			Tile* tileData = (Tile*)outBytes;
 			for (u32 y = 0; y < imgHeight; y++) {
 				for (u32 x = 0; x < imgWidth; x++) {
 					u32 coarseX = x / 8;
@@ -28,7 +27,11 @@ namespace Rendering
 					u32 tileIndex = (15 - coarseY) * 16 + coarseX; // Tile 0 is top left instead of bottom left
 					u32 inPixelIndex = y * imgWidth + x;
 					u32 outPixelIndex = (7 - fineY) * 8 + fineX; // Also pixels go from top to bottom in this program, but bottom to top in bmp, so flip
-					tileData[tileIndex].pixels[outPixelIndex] = imgData[inPixelIndex];
+
+					u8 pixel = imgData[inPixelIndex];
+					outSheet->p0[tileIndex] = (outSheet->p0[tileIndex] & ~(1ULL << outPixelIndex)) | ((u64)(pixel & 0b00000001) << outPixelIndex);
+					outSheet->p1[tileIndex] = (outSheet->p1[tileIndex] & ~(1ULL << outPixelIndex)) | ((u64)((pixel & 0b00000010) >> 1) << outPixelIndex);
+					outSheet->p2[tileIndex] = (outSheet->p2[tileIndex] & ~(1ULL << outPixelIndex)) | ((u64)((pixel & 0b00000100) >> 2) << outPixelIndex);
 				}
 			}
 
@@ -64,6 +67,12 @@ namespace Rendering
 
 			WriteSprites(pContext, count, offset, outSprites);
 			free(outSprites);
+		}
+
+		void WriteChrTiles(RenderContext* pContext, bool sheetIndex, u32 tileCount, u8 srcOffset, u8 dstOffset, CHRSheet* sheet) {
+			Rendering::WriteChrMemory(pContext, sizeof(u64)*tileCount, CHR_SHEET_SIZE*sheetIndex + sizeof(u64)*dstOffset, (u8*)sheet + sizeof(u64)*srcOffset);
+			Rendering::WriteChrMemory(pContext, sizeof(u64) * tileCount, CHR_SHEET_SIZE * sheetIndex + sizeof(u64) * dstOffset + 0x800, (u8*)sheet + sizeof(u64) * srcOffset + 0x800);
+			Rendering::WriteChrMemory(pContext, sizeof(u64) * tileCount, CHR_SHEET_SIZE * sheetIndex + sizeof(u64) * dstOffset + 0x1000, (u8*)sheet + sizeof(u64) * srcOffset + 0x1000);
 		}
 	}
 }

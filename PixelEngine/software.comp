@@ -4,13 +4,14 @@
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 layout(set = 0, binding = 0, rgba8) uniform writeonly image2D outImage;
 layout(set = 0, binding = 1, rgba8) uniform readonly image1D palette;
-struct Tile
-{
-	uint pixelStrips[16]; // 4 pixel strips
+struct CHRSheet {
+	uint p0[512];
+	uint p1[512];
+	uint p2[512];
 };
 layout(set = 0, binding = 2) readonly buffer CHR
 {
-    Tile data[];
+    CHRSheet sheet[2];
 } chr;
 layout(set = 0, binding = 3) readonly buffer PalTable
 {
@@ -58,19 +59,24 @@ int ReadNametableByte(int index, int tileOffset) {
 	return int(result);
 }
 
-int ReadTile(Tile tile, int offset, int flipX, int flipY) {
+int ReadCHRTile(int chrIndex, int tileIndex, int offset, int flipX, int flipY) {
 	if (flipX != 0) {
 		offset ^= 7;
 	}
 	if (flipY != 0) {
 		offset ^= 56;
 	}
-	int coarse = offset / 4;
-	int fine = offset % 4;
-	uint result = tile.pixelStrips[coarse];
-	result &= (0xFF << (8 * fine));
-	result >>= 8 * fine;
-	result &= 0x7;
+
+	int halfOffset = offset >= 32 ? offset >> 32 : offset;
+	int ind = offset >= 32 ? tileIndex*2 + 1 : tileIndex*2;
+
+	uint t0 = chr.sheet[chrIndex].p0[ind];
+	uint t1 = chr.sheet[chrIndex].p1[ind];
+	uint t2 = chr.sheet[chrIndex].p2[ind];
+
+	uint result = (t0 & (1 << halfOffset)) >> halfOffset;
+	result |= ((t1 & (1 << halfOffset)) >> halfOffset) << 1;
+	result |= ((t2 & (1 << halfOffset)) >> halfOffset) << 2;
 
 	return int(result);
 }
@@ -115,8 +121,7 @@ ivec2 RenderBackground(ivec2 screenPos) {
 
 	int tileIndex = ReadNametableByte(nametableIndex, coarse);
 	
-	Tile tile = chr.data[tileIndex];
-	int colorIndex = ReadTile(tile, fine, 0, 0);
+	int colorIndex = ReadCHRTile(0, int(tileIndex), fine, 0, 0);
 
 	// Don't draw transparent pixels
 	if (colorIndex == 0) {
@@ -161,9 +166,6 @@ ivec2 RenderSprites(ivec2 screenPos, ivec2 result) {
 		Sprite sprite = sprites.data[spriteIndex];
 		// Is pixel inside sprite?
 		if (screenPos.x >= sprite.x && screenPos.x < sprite.x + 8) {
-			uint patternTableOffset = 0x100;
-			Tile tile = chr.data[patternTableOffset + sprite.tileId];
-
 			int palTableIndex = int(sprite.attributes & 3) + 4;
 			int priority = int((sprite.attributes >> 5) & 1);
 			int flipX = int((sprite.attributes >> 6) & 1);
@@ -171,7 +173,7 @@ ivec2 RenderSprites(ivec2 screenPos, ivec2 result) {
 
 			ivec2 fine2d = screenPos - ivec2(sprite.x, sprite.y);
 			int fine = fine2d.x + fine2d.y * 8;
-			int colorIndex = ReadTile(tile, fine, flipX, flipY);
+			int colorIndex = ReadCHRTile(1, int(sprite.tileId), fine, flipX, flipY);
 
 			// Don't draw transparent pixels
 			if (colorIndex == 0) {
