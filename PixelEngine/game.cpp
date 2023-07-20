@@ -40,16 +40,36 @@ namespace Game {
     // Sprite stufff
     bool flipCharacter = false;
     
-    /*Metasprite::Metasprite characterMetasprite = {
-        "FreyaIdle",
-        30,
-        metaspriteMemory
-    };*/
+    enum HeadMode {
+        HeadIdle,
+        HeadFwd,
+        HeadFall
+    };
+
+    enum LegsMode {
+        LegsIdle,
+        LegsFwd,
+        LegsJump,
+        LegsFall
+    };
+
+    enum WingMode {
+        WingFlap,
+        WingJump,
+        WingFall
+    };
 
     struct PlayerState {
         r32 x, y;
         r32 hSpeed, vSpeed;
+        HeadMode hMode;
+        LegsMode lMode;
+        WingMode wMode;
+        r32 wingCounter;
+        u32 wingFrame;
+        s32 vOffset;
     };
+
 
     PlayerState playerState{};
     r32 gravity = 70;
@@ -111,14 +131,55 @@ namespace Game {
         Rendering::SetRenderState(pContext, 0, 16, state);
     }
 
-    u32 DrawDebugCharacter(Rendering::RenderContext* pRenderContext, u32 spriteOffset, s32 x, s32 y, bool flip, float time) {
-        u32 msElapsed = time * 1000;
-        s32 vOffset = (msElapsed / 360) % 2 ? -1 : 0;
-        u32 wingFrame = (msElapsed / 180) % 4;
-        Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 8 * wingFrame, 0, &chrSheet);
+    u32 DrawDebugCharacter(Rendering::RenderContext* pRenderContext, u32 spriteOffset, s32 x, s32 y, bool flip) {
+        // Animate chr sheet
+        switch (playerState.hMode) {
+        case HeadIdle:
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x20, 8, &chrSheet);
+            break;
+        case HeadFwd:
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x24, 8, &chrSheet);
+            break;
+        case HeadFall:
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x28, 8, &chrSheet);
+            break;
+        default:
+            break;
+        }
+
+        switch (playerState.lMode) {
+        case LegsIdle:
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x30, 0x0C, &chrSheet);
+            break;
+        case LegsFwd:
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x34, 0x0C, &chrSheet);
+            break;
+        case LegsJump:
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x38, 0x0C, &chrSheet);
+            break;
+        case LegsFall:
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x3C, 0x0C, &chrSheet);
+            break;
+        default:
+            break;
+        }
+
+        switch (playerState.wMode) {
+        case WingFlap:
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 8 * playerState.wingFrame, 0, &chrSheet);
+            break;
+        case WingJump:
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 0x10, 0, &chrSheet);
+            break;
+        case WingFall:
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 0, 0, &chrSheet);
+            break;
+        default:
+            break;
+        }
 
         Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[0];
-        Rendering::Util::WriteMetasprite(pRenderContext, characterMetasprite.spritesRelativePos, characterMetasprite.spriteCount, spriteOffset, x, y + vOffset, flip);
+        Rendering::Util::WriteMetasprite(pRenderContext, characterMetasprite.spritesRelativePos, characterMetasprite.spriteCount, spriteOffset, x, y + playerState.vOffset, flip);
         return characterMetasprite.spriteCount;
     }
 
@@ -133,7 +194,7 @@ namespace Game {
                 spriteOffset += DrawDebugCharacter(pContext, spriteOffset, xCharacter + x * 32, yCharacter + y * 32, secondsElapsed + x*0.1 + y*0.8);
             }
         }*/
-        spriteOffset += DrawDebugCharacter(pRenderContext, spriteOffset, (s32)((playerState.x - viewport.x) * TILE_SIZE), (s32)((playerState.y - viewport.y) * TILE_SIZE), flipCharacter, secondsElapsed);
+        spriteOffset += DrawDebugCharacter(pRenderContext, spriteOffset, (s32)((playerState.x - viewport.x) * TILE_SIZE), (s32)((playerState.y - viewport.y) * TILE_SIZE), flipCharacter);
 
         // LevelEditor::DrawSelection(&editorState, &viewport, spriteOffset);
 
@@ -192,7 +253,7 @@ namespace Game {
             0x80,
             hit.blockingHit ? 1 : 0
         };
-        Rendering::WriteSprites(pRenderContext, 1, spriteOffset++, &debugSprite);
+        // Rendering::WriteSprites(pRenderContext, 1, spriteOffset++, &debugSprite);
 
         debugSprite.y = (s32)round((lineEnd.y - viewport.y - 0.5f) * TILE_SIZE);
         debugSprite.x = (s32)round((lineEnd.x - viewport.x - 0.5f) * TILE_SIZE);
@@ -223,22 +284,13 @@ namespace Game {
 
         if (controllerState & Input::ControllerState::Left) {
             flipCharacter = true;
-            //characterSprites = &characterFwd;
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 0x28, 8, &chrSheet);
-            //xBowOffset = 19;
             playerState.hSpeed = -12.5f;
         }
         else if (controllerState & Input::ControllerState::Right) {
             flipCharacter = false;
-            //characterSprites = &characterFwd;
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 0x28, 8, &chrSheet);
-            //xBowOffset = 19;
             playerState.hSpeed = 12.5f;
         }
         else {
-            //characterSprites = &characterIdle;
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 0x20, 8, &chrSheet);
-            //xBowOffset = 18;
             playerState.hSpeed = 0;
         }
 
@@ -254,9 +306,17 @@ namespace Game {
             playerState.vSpeed /= 2;
         }
 
+        bool slowFall = true;
         if (!(controllerState & Input::ControllerState::A) || playerState.vSpeed < 0) {
+            slowFall = false;
+        }
+ 
+        if (slowFall) {
+            playerState.vSpeed += (gravity / 4) * dt;
+        }
+        else {
             playerState.vSpeed += gravity * dt;
-        } else playerState.vSpeed += (gravity / 4) * dt;
+        }
 
         r32 xPlayerCollision = playerState.x;
         r32 yPlayerCollision = playerState.y + 2;
@@ -280,6 +340,65 @@ namespace Game {
         playerState.x += playerState.hSpeed * dt;
 
         controllerStatePrev = controllerState;
+
+        // Legs mode
+        if (playerState.vSpeed < 0) {
+            playerState.lMode = LegsJump;
+        }
+        else if (playerState.vSpeed > 0) {
+            playerState.lMode = LegsFall;
+        }
+        else if (abs(playerState.hSpeed) > 0) {
+            playerState.lMode = LegsFwd;
+        }
+        else {
+            playerState.lMode = LegsIdle;
+        }
+
+        // Head mode
+        if (playerState.vSpeed > 0 && !slowFall) {
+            playerState.hMode = HeadFall;
+        }
+        else if (abs(playerState.hSpeed) > 0) {
+            playerState.hMode = HeadFwd;
+        }
+        else {
+            playerState.hMode = HeadIdle;
+        }
+
+        // Wing mode
+        if (playerState.vSpeed < 0) {
+            playerState.wMode = WingJump;
+        }
+        else if (playerState.vSpeed > 0 && !slowFall) {
+            playerState.wMode = WingFall;
+        }
+        else {
+            if (playerState.wMode == WingJump) {
+                playerState.wingFrame = 2;
+                playerState.wingCounter = 0.0f;
+            }
+            else if (playerState.wMode == WingFall) {
+                playerState.wingFrame = 0;
+                playerState.wingCounter = 0.0f;
+            }
+            playerState.wMode = WingFlap;
+        }
+
+        // Wing flapping
+        playerState.wingCounter += dt / 0.18f;
+        while (playerState.wingCounter > 1.0f) {
+            playerState.wingFrame++;
+            playerState.wingCounter -= 1.0f;
+        }
+        playerState.wingFrame %= 4;
+
+        if (playerState.vSpeed == 0) {
+            playerState.vOffset = playerState.wingFrame > 1 ? -1 : 0;
+        }
+        else {
+            playerState.vOffset = 0;
+        }
 
         Render(pRenderContext, dt);
 
