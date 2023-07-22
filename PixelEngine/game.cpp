@@ -318,26 +318,26 @@ namespace Game {
             playerState.vSpeed += gravity * dt;
         }
 
-        r32 xPlayerCollision = playerState.x;
-        r32 yPlayerCollision = playerState.y + 2;
+        Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[0];
+        Collision::Collider hitbox = characterMetasprite.colliders[0];
+        Vec2 hitboxPos = Vec2{ playerState.x + hitbox.xOffset, playerState.y + hitbox.yOffset };
+        Vec2 hitboxDimensions = Vec2{ hitbox.width, hitbox.height };
+        r32 dx = playerState.hSpeed * dt;
 
-        Collision::TileCollision* bgCollision = Collision::GetBgCollisionPtr();
-        if (playerState.vSpeed > 0 && yPlayerCollision <= NAMETABLE_HEIGHT_TILES) {
-            u32 screenIndex = (u32)xPlayerCollision / NAMETABLE_WIDTH_TILES;
-            r32 screenRelativeX = xPlayerCollision - screenIndex * NAMETABLE_WIDTH_TILES;
-            u32 nametableIndex = screenIndex % NAMETABLE_COUNT;
-            u32 yTile = (u32)yPlayerCollision;
-            u32 xTile = (u32)screenRelativeX;
-            u32 tileIndex = yTile * NAMETABLE_WIDTH_TILES + xTile;
-            u8 collidingTile;
-            Rendering::ReadNametable(pRenderContext, nametableIndex, 1, tileIndex, &collidingTile);
-            if (bgCollision[collidingTile].type == Collision::TileSolid) {
-                playerState.vSpeed = 0;
-                playerState.y = floor(playerState.y);
-            }
+        Collision::HitResult hit{};
+        Collision::SweepBoxHorizontal(pRenderContext, hitboxPos, hitboxDimensions, dx, hit);
+        playerState.x = hit.location.x;
+        if (hit.blockingHit) {
+            playerState.hSpeed = 0;
         }
-        playerState.y += playerState.vSpeed * dt;
-        playerState.x += playerState.hSpeed * dt;
+
+        r32 dy = playerState.vSpeed * dt;
+        hitboxPos = Vec2{ playerState.x + hitbox.xOffset, playerState.y + hitbox.yOffset };
+        Collision::SweepBoxVertical(pRenderContext, hitboxPos, hitboxDimensions, dy, hit);
+        playerState.y = hit.location.y;
+        if (hit.blockingHit) {
+            playerState.vSpeed = 0;
+        }
 
         controllerStatePrev = controllerState;
 

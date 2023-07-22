@@ -58,7 +58,7 @@ namespace Rendering
 				Sprite sprite = sprites[i];
 				if (flip) {
 					sprite.attributes = sprite.attributes ^ 0b01000000;
-					sprite.x *= -1;
+					sprite.x = sprite.x * -1 - TILE_SIZE;
 				}
 				sprite.y += y;
 				sprite.x += x;
