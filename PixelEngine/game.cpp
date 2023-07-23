@@ -59,12 +59,19 @@ namespace Game {
         WingFall
     };
 
+    enum AimMode {
+        AimFwd,
+        AimUp,
+        AimDown
+    };
+
     struct PlayerState {
         r32 x, y;
         r32 hSpeed, vSpeed;
         HeadMode hMode;
         LegsMode lMode;
         WingMode wMode;
+        AimMode aMode;
         r32 wingCounter;
         u32 wingFrame;
         s32 vOffset;
@@ -133,15 +140,17 @@ namespace Game {
 
     u32 DrawDebugCharacter(Rendering::RenderContext* pRenderContext, u32 spriteOffset, s32 x, s32 y, bool flip) {
         // Animate chr sheet
+        Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 0x60 + playerState.aMode * 8, 0x10, &chrSheet);
+
         switch (playerState.hMode) {
         case HeadIdle:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x20, 8, &chrSheet);
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x20 + playerState.aMode*0x10, 8, &chrSheet);
             break;
         case HeadFwd:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x24, 8, &chrSheet);
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x24 + playerState.aMode * 0x10, 8, &chrSheet);
             break;
         case HeadFall:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x28, 8, &chrSheet);
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x28 + playerState.aMode * 0x10, 8, &chrSheet);
             break;
         default:
             break;
@@ -149,16 +158,16 @@ namespace Game {
 
         switch (playerState.lMode) {
         case LegsIdle:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x30, 0x0C, &chrSheet);
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x50, 0x0C, &chrSheet);
             break;
         case LegsFwd:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x34, 0x0C, &chrSheet);
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x54, 0x0C, &chrSheet);
             break;
         case LegsJump:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x38, 0x0C, &chrSheet);
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x58, 0x0C, &chrSheet);
             break;
         case LegsFall:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x3C, 0x0C, &chrSheet);
+            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x5C, 0x0C, &chrSheet);
             break;
         default:
             break;
@@ -178,7 +187,7 @@ namespace Game {
             break;
         }
 
-        Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[0];
+        Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[playerState.aMode];
         Rendering::Util::WriteMetasprite(pRenderContext, characterMetasprite.spritesRelativePos, characterMetasprite.spriteCount, spriteOffset, x, y + playerState.vOffset, flip);
         return characterMetasprite.spriteCount;
     }
@@ -243,8 +252,7 @@ namespace Game {
         lineDir = lineDir.Normalize();
 
         // DEBUG_LOG("%f, %f\n", (r32)lineDir.x, (r32)lineDir.y);
-
-        Collision::HitResult hit{};
+        /*Collision::HitResult hit{};
         Collision::RaycastTilesWorldSpace(pRenderContext, lineOrigin, lineDir, length, hit);
 
         Rendering::Sprite debugSprite = {
@@ -268,7 +276,7 @@ namespace Game {
         ImVec2 drawLineOrigin = ImVec2((hit.impactPoint.x - viewport.x) * renderScale, (hit.impactPoint.y - viewport.y) * renderScale);
         ImVec2 drawLineEnd = ImVec2((hit.impactPoint.x + hit.impactNormal.x - viewport.x) * renderScale, (hit.impactPoint.y + hit.impactNormal.y - viewport.y) * renderScale);
         drawList->AddCircle(drawLineOrigin, 8, IM_COL32(255, 0, 0, 255));
-        drawList->AddLine(drawLineOrigin, drawLineEnd, IM_COL32(255, 0, 0, 255));
+        drawList->AddLine(drawLineOrigin, drawLineEnd, IM_COL32(255, 0, 0, 255));*/
 
         ImGui::Render();
         Rendering::Render(pRenderContext);
@@ -293,6 +301,15 @@ namespace Game {
         else {
             playerState.hSpeed = 0;
         }
+
+        // Aim mode
+        if (controllerState & Input::ControllerState::Up) {
+            playerState.aMode = AimUp;
+        }
+        else if (controllerState & Input::ControllerState::Down) {
+            playerState.aMode = AimDown;
+        }
+        else playerState.aMode = AimFwd;
 
         if ((controllerState & Input::ControllerState::Start) && !(controllerStatePrev & Input::ControllerState::Start)) {
             pRenderSettings->useCRTFilter = !pRenderSettings->useCRTFilter;
