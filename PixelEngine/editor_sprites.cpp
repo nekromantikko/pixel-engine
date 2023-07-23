@@ -12,6 +12,7 @@ namespace Editor {
         constexpr s32 gridSizePixels = gridSizeTiles * gridStepPixels;
 
         s32 selection = 0;
+        s32 copyFrom = 0;
         bool showColliderPreview = true;
         
         ImVector<s32> spriteSelection;
@@ -347,6 +348,38 @@ namespace Editor {
 
                 ImGui::TreePop();
             }
+
+
+            if (ImGui::BeginCombo("Copy from", pMetasprites[copyFrom].name))
+            {
+                for (u32 i = 0; i < Metasprite::maxMetaspriteCount; i++)
+                {
+                    ImGui::PushID(i);
+                    const bool selected = copyFrom == i;
+                    if (ImGui::Selectable(pMetasprites[i].name, copyFrom)) {
+                        copyFrom = i;
+                    }
+
+                    if (selected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::PopID();
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::SameLine();
+            ImGui::BeginDisabled(selection == copyFrom);
+            if (ImGui::Button("Copy")) {
+                Metasprite::Metasprite& selectedSprite = pMetasprites[selection];
+                Metasprite::Metasprite& copyFromSprite = pMetasprites[copyFrom];
+
+                selectedSprite.spriteCount = copyFromSprite.spriteCount;
+                selectedSprite.colliderCount = copyFromSprite.colliderCount;
+                
+                memcpy(selectedSprite.spritesRelativePos, copyFromSprite.spritesRelativePos, Metasprite::metaspriteMaxSpriteCount * sizeof(Rendering::Sprite));
+                memcpy(selectedSprite.colliders, copyFromSprite.colliders, Metasprite::metaspriteMaxColliderCount * sizeof(Collision::Collider));
+            }
+            ImGui::EndDisabled();
 
             ImGui::End();
         }
