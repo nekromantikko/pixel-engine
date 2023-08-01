@@ -8,11 +8,16 @@ namespace Input {
         B = 1 << 1,
         Select = 1 << 2,
         Start = 1 << 3,
-        Up = 1 << 4,
-        Down = 1 << 5,
-        Left = 1 << 6,
-        Right = 1 << 7
+        DPadUp = 1 << 4,
+        DPadDown = 1 << 5,
+        DPadLeft = 1 << 6,
+        DPadRight = 1 << 7
     };
 
-    ControllerState PollInput(ControllerState previousState);
+    void Poll();
+
+    bool Down(ControllerState flags);
+    bool Up(ControllerState flags);
+    bool Pressed(ControllerState flags);
+    bool Released(ControllerState flags);
 }

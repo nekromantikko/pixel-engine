@@ -10,6 +10,7 @@
 #include "viewport.h"
 #include "collision.h"
 #include "metasprite.h"
+#include "memory_pool.h"
 #include "editor_core.h"
 #include "editor_debug.h"
 #include "editor_sprites.h"
@@ -22,10 +23,6 @@ namespace Game {
 
     // Settings
     Rendering::Settings* pRenderSettings;
-
-    // Input
-    Input::ControllerState controllerState;
-    Input::ControllerState controllerStatePrev;
 
     // Editor
     LevelEditor::EditorState editorState;
@@ -75,13 +72,43 @@ namespace Game {
         r32 wingCounter;
         u32 wingFrame;
         s32 vOffset;
+        bool slowFall;
     };
-
 
     PlayerState playerState{};
     r32 gravity = 70;
 
-    Rendering::CHRSheet chrSheet;
+    struct Arrow {
+        Vec2 pos;
+        Vec2 vel;
+    };
+
+    MemoryPool<Arrow> arrowPool;
+
+    constexpr r32 shootDelay = 0.16f;
+    r32 shootTimer = 0;
+
+    constexpr u32 impactFrameCount = 4;
+    constexpr r32 impactAnimLength = 0.16f;
+
+    struct Impact {
+        Vec2 pos;
+        r32 accumulator;
+    };
+    MemoryPool<Impact> hitPool;
+
+    Vec2 enemyPos = Vec2{ 48.0f, 27.0f };
+
+    constexpr r32 damageNumberLifetime = 1.0f;
+
+    struct DamageNumber {
+        Vec2 pos;
+        s32 damage;
+        r32 accumulator;
+    };
+    MemoryPool<DamageNumber> damageNumberPool;
+
+    Rendering::CHRSheet playerBank;
 
 	void Initialize(Rendering::RenderContext* pRenderContext) {
         viewport.x = 0.0f;
@@ -90,14 +117,21 @@ namespace Game {
         viewport.h = VIEWPORT_HEIGHT_TILES;
 
         // Init chr memory
-        Rendering::Util::CreateChrSheet("chr000.bmp", &chrSheet);
-        Rendering::Util::WriteChrTiles(pRenderContext, 0, 256, 0, 0, &chrSheet);
-        Rendering::Util::CreateChrSheet("chr001.bmp", &chrSheet);
-        Rendering::Util::WriteChrTiles(pRenderContext, 1, 256, 0, 0, &chrSheet);
-        Rendering::Util::CreateChrSheet("wings.bmp", &chrSheet);
+        // TODO: Pre-process these instead of loading from bitmap at runtime!
+        Rendering::CHRSheet temp;
+        Rendering::Util::CreateChrSheet("chr000.bmp", &temp);
+        Rendering::Util::WriteChrTiles(pRenderContext, 0, 256, 0, 0, &temp);
+        Rendering::Util::CreateChrSheet("chr001.bmp", &temp);
+        Rendering::Util::WriteChrTiles(pRenderContext, 1, 256, 0, 0, &temp);
+
+        Rendering::Util::CreateChrSheet("player.bmp", &playerBank);
 
         playerState.x = 30;
         playerState.y = 16;
+
+        arrowPool.Init(512);
+        hitPool.Init(512);
+        damageNumberPool.Init(512);
 
         editorState.pLevel = &level;
         editorState.pRenderContext = pRenderContext;
@@ -120,6 +154,9 @@ namespace Game {
 
     void Free() {
         Editor::FreeEditorContext(pEditorContext);
+        arrowPool.Free();
+        hitPool.Free();
+        damageNumberPool.Free();
     }
 
     void UpdateHUD(Rendering::RenderContext* pContext, float dt) {
@@ -138,58 +175,127 @@ namespace Game {
         Rendering::SetRenderState(pContext, 0, 16, state);
     }
 
-    u32 DrawDebugCharacter(Rendering::RenderContext* pRenderContext, u32 spriteOffset, s32 x, s32 y, bool flip) {
-        // Animate chr sheet
-        Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 0x60 + playerState.aMode * 8, 0x10, &chrSheet);
+    constexpr u8 bgChrSheetIndex = 0;
+    constexpr u8 spriteChrSheetIndex = 1;
 
-        switch (playerState.hMode) {
-        case HeadIdle:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x20 + playerState.aMode*0x10, 8, &chrSheet);
-            break;
-        case HeadFwd:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x24 + playerState.aMode * 0x10, 8, &chrSheet);
-            break;
-        case HeadFall:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x28 + playerState.aMode * 0x10, 8, &chrSheet);
-            break;
-        default:
-            break;
-        }
+    constexpr u8 playerWingFrameBankOffsets[4] = { 0x00, 0x08, 0x10, 0x18 };
+    constexpr u8 playerHeadFrameBankOffsets[9] = { 0x20, 0x24, 0x28, 0x30, 0x34, 0x38, 0x40, 0x44, 0x48 };
+    constexpr u8 playerLegsFrameBankOffsets[4] = { 0x50, 0x54, 0x58, 0x5C };
+    constexpr u8 playerBowFrameBankOffsets[3] = { 0x60, 0x68, 0x70 };
 
-        switch (playerState.lMode) {
-        case LegsIdle:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x50, 0x0C, &chrSheet);
-            break;
-        case LegsFwd:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x54, 0x0C, &chrSheet);
-            break;
-        case LegsJump:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x58, 0x0C, &chrSheet);
-            break;
-        case LegsFall:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 4, 0x5C, 0x0C, &chrSheet);
-            break;
-        default:
-            break;
-        }
+    constexpr u8 playerWingFrameChrOffset = 0x00;
+    constexpr u8 playerHeadFrameChrOffset = 0x08;
+    constexpr u8 playerLegsFrameChrOffset = 0x0C;
+    constexpr u8 playerBowFrameChrOffset = 0x10;
 
-        switch (playerState.wMode) {
-        case WingFlap:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 8 * playerState.wingFrame, 0, &chrSheet);
-            break;
-        case WingJump:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 0x10, 0, &chrSheet);
-            break;
-        case WingFall:
-            Rendering::Util::WriteChrTiles(pRenderContext, 1, 8, 0, 0, &chrSheet);
-            break;
-        default:
-            break;
-        }
+    constexpr u8 playerWingFrameTileCount = 8;
+    constexpr u8 playerHeadFrameTileCount = 4;
+    constexpr u8 playerLegsFrameTileCount = 4;
+    constexpr u8 playerBowFrameTileCount = 8;
+
+    IVec2 WorldPosToScreenPixels(Vec2 pos) {
+        return IVec2{
+            (s32)round((pos.x - viewport.x) * TILE_SIZE),
+            (s32)round((pos.y - viewport.y) * TILE_SIZE)
+        };
+    }
+
+    void DrawPlayer(Rendering::RenderContext* pRenderContext, u32& spriteOffset, IVec2 pos, bool flip) {
+        // Animate chr sheet using player bank
+        // TODO: Maybe do this on the GPU?
+        Rendering::Util::WriteChrTiles(
+            pRenderContext, 
+            spriteChrSheetIndex,
+            playerBowFrameTileCount, 
+            playerBowFrameBankOffsets[playerState.aMode], 
+            playerBowFrameChrOffset, 
+            &playerBank
+        );
+        Rendering::Util::WriteChrTiles(
+            pRenderContext, 
+            spriteChrSheetIndex,
+            playerHeadFrameTileCount, 
+            playerHeadFrameBankOffsets[playerState.aMode * 3 + playerState.hMode], 
+            playerHeadFrameChrOffset, 
+            &playerBank
+        );
+        Rendering::Util::WriteChrTiles(
+            pRenderContext,
+            spriteChrSheetIndex,
+            playerLegsFrameTileCount,
+            playerLegsFrameBankOffsets[playerState.lMode],
+            playerLegsFrameChrOffset,
+            &playerBank
+        );
+        u8 wingFrame = (playerState.wMode == WingFlap) ? playerState.wingFrame : (playerState.wMode == WingJump ? 2 : 0);
+        Rendering::Util::WriteChrTiles(
+            pRenderContext,
+            spriteChrSheetIndex,
+            playerWingFrameTileCount,
+            playerWingFrameBankOffsets[wingFrame],
+            playerWingFrameChrOffset,
+            &playerBank
+        );
 
         Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[playerState.aMode];
-        Rendering::Util::WriteMetasprite(pRenderContext, characterMetasprite.spritesRelativePos, characterMetasprite.spriteCount, spriteOffset, x, y + playerState.vOffset, flip);
-        return characterMetasprite.spriteCount;
+        Rendering::Util::WriteMetasprite(pRenderContext, characterMetasprite.spritesRelativePos, characterMetasprite.spriteCount, spriteOffset, IVec2{ pos.x, pos.y + playerState.vOffset }, flip, false);
+        spriteOffset += characterMetasprite.spriteCount;
+    }
+
+    void DrawDamageNumbers(Rendering::RenderContext* pRenderContext, u32& spriteOffset) {
+        char dmgStr[8]{};
+
+        for (int i = 0; i < damageNumberPool.Count(); i++) {
+            DamageNumber& dmg = damageNumberPool[i];
+
+            _itoa_s(dmg.damage, dmgStr, 10);
+
+            // Ascii character '0' = 0x30
+            s32 chrOffset = 0x70 - 0x30;
+
+            for (int i = 0; i < strlen(dmgStr); i++) {
+                IVec2 pixelPos = WorldPosToScreenPixels(dmg.pos);
+                Rendering::Sprite sprite = {
+                    pixelPos.y,
+                    pixelPos.x + i * 5,
+                    dmgStr[i] + chrOffset,
+                    1
+                };
+                Rendering::WriteSprites(pRenderContext, 1, spriteOffset++, &sprite);
+            }
+        }
+    }
+
+    void DrawArrows(Rendering::RenderContext* pRenderContext, u32& spriteOffset) {
+        for (int i = 0; i < arrowPool.Count(); i++) {
+            Arrow& arrow = arrowPool[i];
+
+            bool hFlip = arrow.vel.x < 0.0f;
+            bool vFlip = arrow.vel.y < -10.0f;
+
+            u32 spriteIndex = abs(arrow.vel.y) < 10.0f ? 3 : 4;
+            Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[spriteIndex];
+            IVec2 pixelPos = WorldPosToScreenPixels(arrow.pos);
+            Rendering::Util::WriteMetasprite(pRenderContext, metasprite.spritesRelativePos, metasprite.spriteCount, spriteOffset, pixelPos, hFlip, vFlip);
+            spriteOffset += metasprite.spriteCount;
+        }
+    }
+
+    void DrawHits(Rendering::RenderContext* pRenderContext, u32& spriteOffset) {
+        for (int i = 0; i < hitPool.Count(); i++) {
+            Impact& impact = hitPool[i];
+
+            u32 frame = (u32)((impact.accumulator / impactAnimLength) * impactFrameCount);
+            IVec2 pixelPos = WorldPosToScreenPixels(impact.pos);
+
+            Rendering::Sprite debugSprite = {
+                pixelPos.y - (TILE_SIZE / 2),
+                pixelPos.x - (TILE_SIZE / 2),
+                0x20 + frame,
+                1
+            };
+            Rendering::WriteSprites(pRenderContext, 1, spriteOffset++, &debugSprite);
+        }
     }
 
     void Render(Rendering::RenderContext* pRenderContext, float dt) {
@@ -198,12 +304,18 @@ namespace Game {
         Rendering::ClearSprites(pRenderContext, 0, 256);
 
         u32 spriteOffset = 0;
-        /*for (int x = 0; x < 8; x++) {
-            for (int y = 0; y < 8; y++) {
-                spriteOffset += DrawDebugCharacter(pContext, spriteOffset, xCharacter + x * 32, yCharacter + y * 32, secondsElapsed + x*0.1 + y*0.8);
-            }
-        }*/
-        spriteOffset += DrawDebugCharacter(pRenderContext, spriteOffset, (s32)((playerState.x - viewport.x) * TILE_SIZE), (s32)((playerState.y - viewport.y) * TILE_SIZE), flipCharacter);
+        
+        DrawDamageNumbers(pRenderContext, spriteOffset);
+        IVec2 playerPixelPos = WorldPosToScreenPixels(Vec2{ playerState.x, playerState.y });
+        DrawPlayer(pRenderContext, spriteOffset, playerPixelPos, flipCharacter);
+        DrawArrows(pRenderContext, spriteOffset);
+        DrawHits(pRenderContext, spriteOffset);
+
+        // Draw enemy
+        Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
+        IVec2 enemyPixelPos = WorldPosToScreenPixels(enemyPos);
+        Rendering::Util::WriteMetasprite(pRenderContext, enemyMetasprite.spritesRelativePos, enemyMetasprite.spriteCount, spriteOffset, enemyPixelPos, false, false);
+        spriteOffset += enemyMetasprite.spriteCount;
 
         // LevelEditor::DrawSelection(&editorState, &viewport, spriteOffset);
 
@@ -241,60 +353,16 @@ namespace Game {
         Editor::Tiles::DrawBgCollisionWindow(pEditorContext);
         Editor::Tiles::DrawCollisionEditor(pEditorContext, pRenderContext);
 
-        // Debug collision things
-        ImGuiIO& io = ImGui::GetIO();
-
-        Vec2 lineOrigin = { playerState.x, playerState.y };
-        r32 renderScale = (1920.0f / 512.0f) * TILE_SIZE;
-        Vec2 lineEnd = { io.MousePos.x / renderScale + viewport.x, io.MousePos.y / renderScale + viewport.y };
-        Vec2 lineDir = (lineEnd - lineOrigin);
-        r32 length = lineDir.Length();
-        lineDir = lineDir.Normalize();
-
-        // DEBUG_LOG("%f, %f\n", (r32)lineDir.x, (r32)lineDir.y);
-        /*Collision::HitResult hit{};
-        Collision::RaycastTilesWorldSpace(pRenderContext, lineOrigin, lineDir, length, hit);
-
-        Rendering::Sprite debugSprite = {
-            (s32)round((lineOrigin.y - viewport.y - 0.5f) * TILE_SIZE),
-            (s32)round((lineOrigin.x - viewport.x - 0.5f) * TILE_SIZE),
-            0x80,
-            hit.blockingHit ? 1 : 0
-        };
-        // Rendering::WriteSprites(pRenderContext, 1, spriteOffset++, &debugSprite);
-
-        debugSprite.y = (s32)round((lineEnd.y - viewport.y - 0.5f) * TILE_SIZE);
-        debugSprite.x = (s32)round((lineEnd.x - viewport.x - 0.5f) * TILE_SIZE);
-        Rendering::WriteSprites(pRenderContext, 1, spriteOffset++, &debugSprite);
-
-        debugSprite.y = (s32)round((hit.impactPoint.y - viewport.y - 0.5f) * TILE_SIZE);
-        debugSprite.x = (s32)round((hit.impactPoint.x - viewport.x - 0.5f) * TILE_SIZE);
-        Rendering::WriteSprites(pRenderContext, 1, spriteOffset++, &debugSprite);
-
-        // Visualize impact normal
-        ImDrawList* drawList = ImGui::GetForegroundDrawList();
-        ImVec2 drawLineOrigin = ImVec2((hit.impactPoint.x - viewport.x) * renderScale, (hit.impactPoint.y - viewport.y) * renderScale);
-        ImVec2 drawLineEnd = ImVec2((hit.impactPoint.x + hit.impactNormal.x - viewport.x) * renderScale, (hit.impactPoint.y + hit.impactNormal.y - viewport.y) * renderScale);
-        drawList->AddCircle(drawLineOrigin, 8, IM_COL32(255, 0, 0, 255));
-        drawList->AddLine(drawLineOrigin, drawLineEnd, IM_COL32(255, 0, 0, 255));*/
-
         ImGui::Render();
         Rendering::Render(pRenderContext);
     }
 
-    void Step(float dt, Rendering::RenderContext* pRenderContext) {
-        secondsElapsed += dt;
-
-        // Poll input
-        controllerState = Input::PollInput(controllerState);
-
-        // LevelEditor::HandleInput(&editorState, controllerState, controllerStatePrev, &viewport, dt);
-
-        if (controllerState & Input::ControllerState::Left) {
+    void PlayerInput(r32 dt) {
+        if (Input::Down(Input::DPadLeft)) {
             flipCharacter = true;
             playerState.hSpeed = -12.5f;
         }
-        else if (controllerState & Input::ControllerState::Right) {
+        else if (Input::Down(Input::DPadRight)) {
             flipCharacter = false;
             playerState.hSpeed = 12.5f;
         }
@@ -303,32 +371,39 @@ namespace Game {
         }
 
         // Aim mode
-        if (controllerState & Input::ControllerState::Up) {
+        if (Input::Down(Input::DPadUp)) {
             playerState.aMode = AimUp;
         }
-        else if (controllerState & Input::ControllerState::Down) {
+        else if (Input::Down(Input::DPadDown)) {
             playerState.aMode = AimDown;
         }
         else playerState.aMode = AimFwd;
 
-        if ((controllerState & Input::ControllerState::Start) && !(controllerStatePrev & Input::ControllerState::Start)) {
+        if (Input::Pressed(Input::Start)) {
             pRenderSettings->useCRTFilter = !pRenderSettings->useCRTFilter;
         }
 
-        if ((controllerState & Input::ControllerState::A) && !(controllerStatePrev & Input::ControllerState::A)) {
+        if (Input::Pressed(Input::A)) {
             playerState.vSpeed = -31.25f;
         }
 
-        if (playerState.vSpeed < 0 && !(controllerState & Input::ControllerState::A) && (controllerStatePrev & Input::ControllerState::A)) {
+        if (playerState.vSpeed < 0 && Input::Released(Input::A)) {
             playerState.vSpeed /= 2;
         }
 
-        bool slowFall = true;
-        if (!(controllerState & Input::ControllerState::A) || playerState.vSpeed < 0) {
-            slowFall = false;
+        playerState.slowFall = true;
+        if (Input::Up(Input::A) || playerState.vSpeed < 0) {
+            playerState.slowFall = false;
         }
- 
-        if (slowFall) {
+
+        if (Input::Released(Input::B)) {
+            shootTimer = 0.0f;
+        }
+
+    }
+
+    void PlayerBgCollision(r32 dt, Rendering::RenderContext* pRenderContext) {
+        if (playerState.slowFall) {
             playerState.vSpeed += (gravity / 4) * dt;
         }
         else {
@@ -355,9 +430,44 @@ namespace Game {
         if (hit.blockingHit) {
             playerState.vSpeed = 0;
         }
+    }
 
-        controllerStatePrev = controllerState;
+    void PlayerShoot(r32 dt) {
+        if (shootTimer > dt) {
+            shootTimer -= dt;
+        }
+        else shootTimer = 0.0f;
 
+        if (Input::Down(Input::B) && shootTimer < shootDelay) {
+            shootTimer += shootDelay;
+
+            Arrow* arrow = arrowPool.AllocObject();
+            if (arrow != nullptr) {
+                r32 xDir = flipCharacter ? -1.0f : 1.0f;
+
+                const Vec2 fwdOffset = Vec2{ 0.75f * xDir, -0.5f };
+                const Vec2 upOffset = Vec2{ 0.375f * xDir, -1.0f };
+                const Vec2 downOffset = Vec2{ 0.5f * xDir, -0.25f };
+
+                arrow->pos = Vec2{ playerState.x, playerState.y };
+                arrow->vel = Vec2{};
+
+                if (playerState.aMode == AimFwd) {
+                    arrow->pos = arrow->pos + fwdOffset;
+                    arrow->vel.x = 80.0f * xDir;
+                }
+                else {
+                    arrow->vel.x = 56.56f * xDir;
+                    arrow->vel.y = (playerState.aMode == AimUp) ? -56.56f : 56.56f;
+                    arrow->pos = arrow->pos + ((playerState.aMode == AimUp) ? upOffset : downOffset);
+                }
+
+                arrow->vel = arrow->vel + Vec2{ playerState.hSpeed, playerState.vSpeed } *dt;
+            }
+        }
+    }
+
+    void PlayerAnimate(r32 dt) {
         // Legs mode
         if (playerState.vSpeed < 0) {
             playerState.lMode = LegsJump;
@@ -373,7 +483,7 @@ namespace Game {
         }
 
         // Head mode
-        if (playerState.vSpeed > 0 && !slowFall) {
+        if (playerState.vSpeed > 0 && !playerState.slowFall) {
             playerState.hMode = HeadFall;
         }
         else if (abs(playerState.hSpeed) > 0) {
@@ -387,7 +497,7 @@ namespace Game {
         if (playerState.vSpeed < 0) {
             playerState.wMode = WingJump;
         }
-        else if (playerState.vSpeed > 0 && !slowFall) {
+        else if (playerState.vSpeed > 0 && !playerState.slowFall) {
             playerState.wMode = WingFall;
         }
         else {
@@ -416,6 +526,139 @@ namespace Game {
         else {
             playerState.vOffset = 0;
         }
+    }
+
+    void Step(r32 dt, Rendering::RenderContext* pRenderContext) {
+        secondsElapsed += dt;
+
+        Input::Poll();
+
+        // LevelEditor::HandleInput(&editorState, controllerState, controllerStatePrev, &viewport, dt);
+
+        PlayerInput(dt);
+        PlayerBgCollision(dt, pRenderContext);
+        PlayerShoot(dt);
+        PlayerAnimate(dt);
+
+        Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
+        Collision::Collider enemyHitbox = enemyMetasprite.colliders[0];
+        Vec2 enemyHitboxPos = Vec2{ enemyPos.x + enemyHitbox.xOffset, enemyPos.y + enemyHitbox.yOffset };
+        Vec2 enemyHitboxDimensions = Vec2{ enemyHitbox.width, enemyHitbox.height };
+
+        // Update arrows
+        for (int i = 0; i < arrowPool.Count(); i++) {
+            Arrow& arrow = arrowPool[i];
+            //arrow.pos = arrow.pos + (arrow.vel * dt);
+
+            // TODO: Object struct and updater that does this for everything?
+            bool hFlip = arrow.vel.x < 0.0f;
+            bool vFlip = arrow.vel.y < -10.0f;
+
+            u32 spriteIndex = abs(arrow.vel.y) < 10.0f ? 3 : 4;
+            Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[spriteIndex];
+
+            Collision::Collider hitbox = metasprite.colliders[0];
+            Vec2 hitboxPos = Vec2{ arrow.pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow.pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
+            Vec2 hitboxDimensions = Vec2{ hitbox.width, hitbox.height };
+
+            r32 dx = arrow.vel.x * dt;
+
+            Collision::HitResult hit{};
+            /*Collision::SweepBoxHorizontal(pRenderContext, hitboxPos, hitboxDimensions, dx, hit);
+            if (hit.blockingHit) {
+                arrowPool.FreeObject(i);
+                Impact* impact = hitPool.AllocObject();
+                impact->pos = hit.impactPoint;
+                impact->accumulator = 0.0f;
+                continue;
+            }
+            arrow.pos.x += dx;
+
+            r32 dy = arrow.vel.y * dt;
+            hitboxPos = Vec2{ arrow.pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow.pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
+            Collision::SweepBoxVertical(pRenderContext, hitboxPos, hitboxDimensions, dy, hit);
+            if (hit.blockingHit) {
+                arrowPool.FreeObject(i);
+                Impact* impact = hitPool.AllocObject();
+                impact->pos = hit.impactPoint;
+                impact->accumulator = 0.0f;
+                continue;
+            }
+            arrow.pos.y += dy;*/
+
+            Vec2 deltaPos = arrow.vel * dt;
+            Vec2 dir = deltaPos.Normalize();
+            Collision::RaycastTilesWorldSpace(pRenderContext, arrow.pos + dir, dir, deltaPos.Length(), hit);
+            if (hit.blockingHit) {
+                arrowPool.FreeObject(i);
+                Impact* impact = hitPool.AllocObject();
+                impact->pos = hit.impactPoint;
+                impact->accumulator = 0.0f;
+                continue;
+            }
+
+            arrow.pos = arrow.pos + (arrow.vel * dt);
+
+            // Collision with enemy
+            hitboxPos = Vec2{ arrow.pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow.pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
+            if (hitboxPos.x - hitboxDimensions.x / 2.0f < enemyHitboxPos.x + enemyHitboxDimensions.x / 2.0f &&
+                hitboxPos.x + hitboxDimensions.x / 2.0f > enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f &&
+                hitboxPos.y - hitboxDimensions.y / 2.0f < enemyHitboxPos.y + enemyHitboxDimensions.y / 2.0f &&
+                hitboxPos.y + hitboxDimensions.y / 2.0f > enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f) {
+
+                arrowPool.FreeObject(i);
+                Impact* impact = hitPool.AllocObject();
+                impact->pos = arrow.pos;
+                impact->accumulator = 0.0f;
+
+                // Add damage numbers
+                s32 damage = (rand() % 10) + 5;
+                // Random point inside enemy hitbox
+                Vec2 dmgPos = Vec2{ (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.x) + enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f, (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.y) + enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f };
+
+                DamageNumber* dmgNumber = damageNumberPool.AllocObject();
+                dmgNumber->damage = damage;
+                dmgNumber->pos = dmgPos;
+                dmgNumber->accumulator = 0.0f;
+
+                continue;
+            }
+
+            if (arrow.pos.x < viewport.x || arrow.pos.x > viewport.x + viewport.w || arrow.pos.y < viewport.y || arrow.pos.y > viewport.y + viewport.h) {
+                arrowPool.FreeObject(i);
+            }
+        }
+
+        // Update explosions
+        for (int i = 0; i < hitPool.Count(); i++) {
+            Impact& impact = hitPool[i];
+            impact.accumulator += dt;
+
+            if (impact.accumulator >= impactAnimLength) {
+                hitPool.FreeObject(i);
+                continue;
+            }
+        }
+
+        // Update damage numbers
+        r32 dmgNumberVel = -3.0f;
+        for (int i = 0; i < damageNumberPool.Count(); i++) {
+            DamageNumber& dmgNumber = damageNumberPool[i];
+            dmgNumber.accumulator += dt;
+
+            if (dmgNumber.accumulator >= damageNumberLifetime) {
+                damageNumberPool.FreeObject(i);
+                continue;
+            }
+
+            dmgNumber.pos.y += dmgNumberVel * dt;
+        }
+
+        // Update enemy pos
+        const r32 yMid = 27.f;
+        const r32 amplitude = 7.5f;
+        r32 sineTime = sin(secondsElapsed);
+        enemyPos.y = yMid + sineTime * amplitude;
 
         Render(pRenderContext, dt);
 

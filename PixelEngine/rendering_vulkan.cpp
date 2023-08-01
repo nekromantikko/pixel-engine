@@ -169,7 +169,7 @@ namespace Rendering
 
 		VkResult err = vkCreateInstance(&createInfo, nullptr, &pContext->instance);
 		if (err != VK_SUCCESS) {
-			ERROR("Failed to create instance!\n");
+			DEBUG_ERROR("Failed to create instance!\n");
 		}
 	}
 
@@ -262,7 +262,7 @@ namespace Rendering
 		u32 physicalDeviceCount = 0;
 		vkEnumeratePhysicalDevices(pContext->instance, &physicalDeviceCount, nullptr);
 		if (physicalDeviceCount == 0) {
-			ERROR("No devices found for some reason!\n");
+			DEBUG_ERROR("No devices found for some reason!\n");
 		}
 		VkPhysicalDevice *availableDevices = (VkPhysicalDevice *)calloc(physicalDeviceCount, sizeof(VkPhysicalDevice));
 		vkEnumeratePhysicalDevices(pContext->instance, &physicalDeviceCount, availableDevices);
@@ -283,7 +283,7 @@ namespace Rendering
 		free(availableDevices);
 
 		if (!physicalDeviceFound) {
-			ERROR("No suitable physical device found!\n");
+			DEBUG_ERROR("No suitable physical device found!\n");
 		}
 		pContext->primaryQueueFamilyIndex = foundQueueFamilyIndex;
 		pContext->physicalDevice = foundDevice;
@@ -316,17 +316,17 @@ namespace Rendering
 		
 		VkResult err = vkCreateDevice(pContext->physicalDevice, &createInfo, nullptr, &pContext->device);
 		if (err != VK_SUCCESS) {
-			ERROR("Failed to create logical device!\n");
+			DEBUG_ERROR("Failed to create logical device!\n");
 		}
 	}
 
 	void CreateSwapchain(RenderContext* pContext) {
 		if (SWAPCHAIN_IMAGE_COUNT > pContext->surfaceCapabilities.maxImageCount || SWAPCHAIN_IMAGE_COUNT < pContext->surfaceCapabilities.minImageCount) {
-			ERROR("Image count not supported!\n");
+			DEBUG_ERROR("Image count not supported!\n");
 		}
 
 		if (pContext->renderImagePass == VK_NULL_HANDLE) {
-			ERROR("Invalid render pass!\n");
+			DEBUG_ERROR("Invalid render pass!\n");
 		}
 
 		VkResult err;
@@ -349,13 +349,13 @@ namespace Rendering
 
 		err = vkCreateSwapchainKHR(pContext->device, &swapchainCreateInfo, nullptr, &pContext->swapchain);
 		if (err != VK_SUCCESS) {
-			ERROR("Failed to create swapchain!\n");
+			DEBUG_ERROR("Failed to create swapchain!\n");
 		}
 
 		u32 imageCount = 0;
 		vkGetSwapchainImagesKHR(pContext->device, pContext->swapchain, &imageCount, nullptr);
 		if (imageCount != SWAPCHAIN_IMAGE_COUNT) {
-			ERROR("Something very weird happened\n");
+			DEBUG_ERROR("Something very weird happened\n");
 		}
 		vkGetSwapchainImagesKHR(pContext->device, pContext->swapchain, &imageCount, pContext->swapchainImages);
 
@@ -378,7 +378,7 @@ namespace Rendering
 
 			err = vkCreateImageView(pContext->device, &imageViewCreateInfo, nullptr, &pContext->swapchainImageViews[i]);
 			if (err != VK_SUCCESS) {
-				ERROR("Failed to create image view!\n");
+				DEBUG_ERROR("Failed to create image view!\n");
 			}
 
 			VkImageView attachments[] = {
@@ -396,7 +396,7 @@ namespace Rendering
 
 			err = vkCreateFramebuffer(pContext->device, &framebufferInfo, nullptr, &pContext->swapchainFramebuffers[i]);
 			if (err != VK_SUCCESS) {
-				ERROR("Failed to create framebuffer!\n");
+				DEBUG_ERROR("Failed to create framebuffer!\n");
 			}
 		}
 	}
@@ -419,7 +419,7 @@ namespace Rendering
 		VkShaderModule module;
 		VkResult err = vkCreateShaderModule(device, &createInfo, nullptr, &module);
 		if (err != VK_SUCCESS) {
-			ERROR("Failed to create shader module!\n");
+			DEBUG_ERROR("Failed to create shader module!\n");
 		}
 		return module;
 	}
@@ -464,7 +464,7 @@ namespace Rendering
 
 		VkResult err = vkCreateRenderPass(pContext->device, &renderImagePassInfo, nullptr, &pContext->renderImagePass);
 		if (err != VK_SUCCESS) {
-			ERROR("failed to create render pass!");
+			DEBUG_ERROR("failed to create render pass!");
 		}
 	}
 
@@ -602,7 +602,7 @@ namespace Rendering
 		blitPipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
 		if (vkCreatePipelineLayout(pContext->device, &blitPipelineLayoutInfo, nullptr, &pContext->blitPipelineLayout) != VK_SUCCESS) {
-			ERROR("failed to create pipeline layout!");
+			DEBUG_ERROR("failed to create pipeline layout!");
 		}
 
 		// Dynamic viewport and scissor, as the window size might change
@@ -643,7 +643,7 @@ namespace Rendering
 
 		VkResult err = vkCreateGraphicsPipelines(pContext->device, VK_NULL_HANDLE, 2, createInfos, nullptr, pipelinesToCreate);
 		if (err != VK_SUCCESS) {
-			ERROR("failed to create graphics pipelines!");
+			DEBUG_ERROR("failed to create graphics pipelines!");
 		}
 
 		pContext->blitRawPipeline = pipelinesToCreate[0];
@@ -670,7 +670,7 @@ namespace Rendering
 
 		VkResult err = vkAllocateMemory(pContext->device, &memAllocInfo, nullptr, &outMemory);
 		if (err != VK_SUCCESS) {
-			ERROR("Failed to allocate memory!\n");
+			DEBUG_ERROR("Failed to allocate memory!\n");
 		}
 	}
 
@@ -685,7 +685,7 @@ namespace Rendering
 
 		VkResult err = vkCreateBuffer(pContext->device, &bufferInfo, nullptr, &outBuffer);
 		if (err != VK_SUCCESS) {
-			ERROR("Failed to create buffer!\n");
+			DEBUG_ERROR("Failed to create buffer!\n");
 		}
 
 		VkMemoryRequirements memRequirements;
@@ -740,7 +740,7 @@ namespace Rendering
 		char* palData = AllocFileBytes("palette.dat", palFileSize);
 
 		if (palFileSize < 8 * 8) {
-			ERROR("Invalid palette table file!\n");
+			DEBUG_ERROR("Invalid palette table file!\n");
 		}
 
 		AllocateBuffer(pContext, 8 * 8, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pContext->palTableBuffer, pContext->palTableMemory);
@@ -761,13 +761,13 @@ namespace Rendering
 		char *palBin = AllocFileBytes("famicube.pal", palFileSize);
 		DEBUG_LOG("%d\n", palFileSize);
 		if (palFileSize < sizeof(RIFFHeader)) {
-			ERROR("Invalid palette file!\n");
+			DEBUG_ERROR("Invalid palette file!\n");
 		}
 		RIFFHeader* header = (RIFFHeader*)palBin;
 		DEBUG_LOG("%.4s\n", header->signature);
 		DEBUG_LOG("%.4s\n", header->type);
 		if (strncmp(header->signature, "RIFF", 4) != 0 || strncmp(header->type, "PAL ", 4) != 0 || header->size + 8 != palFileSize){
-			ERROR("Invalid palette file!\n");
+			DEBUG_ERROR("Invalid palette file!\n");
 		}
 		char* pos = palBin + sizeof(RIFFHeader);
 		char* fileEnd = pos + header->size;
@@ -788,7 +788,7 @@ namespace Rendering
 
 		DEBUG_LOG("0x%x\n", paletteData);
 		if (paletteData == nullptr || colorCount == 0) {
-			ERROR("No palette data found in file!\n");
+			DEBUG_ERROR("No palette data found in file!\n");
 		}
 
 		VkBuffer stagingBuffer;
@@ -928,7 +928,7 @@ namespace Rendering
 	RenderContext *CreateRenderContext(Surface surface) {
 		RenderContext *context = (RenderContext*)calloc(1, sizeof(RenderContext));
 		if (context == nullptr) {
-			ERROR("Couldn't allocate memory for renderContext\n");
+			DEBUG_ERROR("Couldn't allocate memory for renderContext\n");
 		}
 
 		CreateVulkanInstance(context);
@@ -998,7 +998,7 @@ namespace Rendering
 		poolInfo.queueFamilyIndex = context->primaryQueueFamilyIndex;
 
 		if (vkCreateCommandPool(context->device, &poolInfo, nullptr, &context->primaryCommandPool) != VK_SUCCESS) {
-			ERROR("failed to create command pool!");
+			DEBUG_ERROR("failed to create command pool!");
 		}
 
 		VkCommandBufferAllocateInfo allocInfo{};
@@ -1008,7 +1008,7 @@ namespace Rendering
 		allocInfo.commandBufferCount = COMMAND_BUFFER_COUNT;
 
 		if (vkAllocateCommandBuffers(context->device, &allocInfo, context->primaryCommandBuffers) != VK_SUCCESS) {
-			ERROR("failed to allocate command buffers!");
+			DEBUG_ERROR("failed to allocate command buffers!");
 		}
 
 		context->currentCbIndex = 0;
@@ -1401,7 +1401,7 @@ namespace Rendering
 
 	void ReadPaletteColors(RenderContext* pContext, u8 paletteIndex, u32 count, u32 offset, u8* outColors) {
 		if (offset + count > 8 || paletteIndex >= 8) {
-			ERROR("Trying to get palette colors outside range!\n");
+			DEBUG_ERROR("Trying to get palette colors outside range!\n");
 		}
 
 		u32 actualOffset = 8 * paletteIndex + offset;
@@ -1413,7 +1413,7 @@ namespace Rendering
 	}
 	void WritePaletteColors(RenderContext* pContext, u8 paletteIndex, u32 count, u32 offset, u8* colors) {
 		if (offset + count > 8 || paletteIndex >= 8) {
-			ERROR("Trying to set palette colors outside range!\n");
+			DEBUG_ERROR("Trying to set palette colors outside range!\n");
 		}
 
 		u32 actualOffset = 8 * paletteIndex + offset;
@@ -1455,7 +1455,7 @@ namespace Rendering
 	}
 	void ReadSprites(RenderContext* pContext, u32 count, u32 offset, Sprite* outSprites) {
 		if (offset + count > MAX_SPRITE_COUNT) {
-			ERROR("Trying to read sprites outside range!\n");
+			DEBUG_ERROR("Trying to read sprites outside range!\n");
 		}
 
 		u32 actualOffset = offset * sizeof(Sprite);
@@ -1472,7 +1472,7 @@ namespace Rendering
 		}
 
 		if (offset + count > MAX_SPRITE_COUNT) {
-			ERROR("Trying to write sprites outside range!\n");
+			DEBUG_ERROR("Trying to write sprites outside range!\n");
 		}
 
 		u32 actualOffset = offset * sizeof(Sprite);
@@ -1485,7 +1485,7 @@ namespace Rendering
 	}
 	void WriteChrMemory(RenderContext* pContext, u32 size, u32 offset, u8* bytes) {
 		if (offset + size > CHR_MEMORY_SIZE) {
-			ERROR("Trying to write chr memory outside range!\n");
+			DEBUG_ERROR("Trying to write chr memory outside range!\n");
 		}
 
 		void* data;
@@ -1495,7 +1495,7 @@ namespace Rendering
 	}
 	void ReadChrMemory(RenderContext* pContext, u32 size, u32 offset, u8* outBytes) {
 		if (offset + size > CHR_MEMORY_SIZE) {
-			ERROR("Trying to read chr memory outside range!\n");
+			DEBUG_ERROR("Trying to read chr memory outside range!\n");
 		}
 
 		void* data;
@@ -1691,7 +1691,7 @@ namespace Rendering
 
 		VkResult res = vkAllocateDescriptorSets(pContext->device, &chrDescriptorSetAllocInfo, pContext->chrDescriptorSet);
 		if (res != VK_SUCCESS) {
-			ERROR("Whoopsie poopsie :c %d\n", res);
+			DEBUG_ERROR("Whoopsie poopsie :c %d\n", res);
 		}
 
 		for (int i = 0; i < 8; i++) {
@@ -2255,7 +2255,7 @@ namespace Rendering
 		beginInfo.pInheritanceInfo = nullptr; // Optional
 
 		if (vkBeginCommandBuffer(pRenderContext->primaryCommandBuffers[pRenderContext->currentCbIndex], &beginInfo) != VK_SUCCESS) {
-			ERROR("failed to begin recording command buffer!");
+			DEBUG_ERROR("failed to begin recording command buffer!");
 		}
 
 		// Should be ready to draw now!
@@ -2265,7 +2265,7 @@ namespace Rendering
 		VkCommandBuffer commandBuffer = pRenderContext->primaryCommandBuffers[pRenderContext->currentCbIndex];
 
 		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-			ERROR("failed to record command buffer!");
+			DEBUG_ERROR("failed to record command buffer!");
 		}
 
 		// Submit the above commands

@@ -11,11 +11,11 @@ namespace Rendering
 			char* imgData = LoadBitmapBytes(fname, imgWidth, imgHeight, bpp);
 
 			if (imgWidth != 128 || imgHeight != 128) {
-				ERROR("Invalid chr image dimensions!\n");
+				DEBUG_ERROR("Invalid chr image dimensions!\n");
 			}
 
 			if (bpp != 8) {
-				ERROR("Invalid chr image format!\n");
+				DEBUG_ERROR("Invalid chr image format!\n");
 			}
 
 			for (u32 y = 0; y < imgHeight; y++) {
@@ -50,18 +50,22 @@ namespace Rendering
 			return paletteIndex;
 		}
 
-		void WriteMetasprite(RenderContext* pContext, Sprite* sprites, u32 count, u32 offset, s32 x, s32 y, bool flip) {
+		void WriteMetasprite(RenderContext* pContext, Sprite* sprites, u32 count, u32 offset, IVec2 pos, bool hFlip, bool vFlip) {
 			// Could probably avoid dynamic memory here by being smarter about it
 			Sprite* outSprites = (Sprite*)calloc(count, sizeof(Sprite));
 
 			for (int i = 0; i < count; i++) {
 				Sprite sprite = sprites[i];
-				if (flip) {
+				if (hFlip) {
 					sprite.attributes = sprite.attributes ^ 0b01000000;
 					sprite.x = sprite.x * -1 - TILE_SIZE;
 				}
-				sprite.y += y;
-				sprite.x += x;
+				if (vFlip) {
+					sprite.attributes = sprite.attributes ^ 0b10000000;
+					sprite.y = sprite.y * -1 - TILE_SIZE;
+				}
+				sprite.y += pos.y;
+				sprite.x += pos.x;
 				outSprites[i] = sprite;
 			}
 

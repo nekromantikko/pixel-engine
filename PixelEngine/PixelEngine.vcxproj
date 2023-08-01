@@ -182,6 +182,7 @@
     <ClInclude Include="input.h" />
     <ClInclude Include="level.h" />
     <ClInclude Include="editor_sprites.h" />
+    <ClInclude Include="memory_pool.h" />
     <ClInclude Include="metasprite.h" />
     <ClInclude Include="rendering.h" />
     <ClInclude Include="rendering_util.h" />

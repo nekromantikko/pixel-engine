@@ -16,7 +16,7 @@ namespace Collision {
 		fopen_s(&pFile, fname, "rb");
 
 		if (pFile == NULL) {
-			ERROR("Failed to load tile collision file\n");
+			DEBUG_ERROR("Failed to load tile collision file\n");
 		}
 
 		const char signature[4]{};
@@ -31,7 +31,7 @@ namespace Collision {
 		fopen_s(&pFile, fname, "wb");
 
 		if (pFile == NULL) {
-			ERROR("Failed to write tile collision file\n");
+			DEBUG_ERROR("Failed to write tile collision file\n");
 		}
 
 		const char signature[4] = "TIL";

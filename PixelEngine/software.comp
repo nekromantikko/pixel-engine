@@ -160,7 +160,9 @@ vec3 RenderDebugGrid(ivec2 screenPos, vec3 background) {
 ivec2 RenderSprites(ivec2 screenPos, ivec2 result) {
 	ScanlineData scanline = scanlines.data[screenPos.y];
 	uint spriteCount = min(scanline.spriteCount, MAX_SPRITES_PER_SCANLINE);
-	// Assuming here that the sprites are properly sorted from lowest index to highest
+
+	uint minSpriteIndex = ~uint(0);
+
 	for (int i = 0; i < spriteCount; i++) {
 		uint spriteIndex = scanline.spriteIndices[i];
 		Sprite sprite = sprites.data[spriteIndex];
@@ -179,12 +181,19 @@ ivec2 RenderSprites(ivec2 screenPos, ivec2 result) {
 			if (colorIndex == 0) {
 				continue;
 			}
+
+			// Sprites aren't guaranteed to be sorted so need to check
+			// TODO: Maybe a pass after scanline evaluate to sort them?
+			if (minSpriteIndex < spriteIndex) {
+				continue;
+			}
 			
+			minSpriteIndex = spriteIndex;
+
 			// Draw sprites on top of bg if priority is 0 or if the bg pixel is not opaque
 			if (priority == 0 || result.x == 0) {
 				result = ivec2(colorIndex, palTableIndex);
 			}
-			break;
 		}
 	}
 

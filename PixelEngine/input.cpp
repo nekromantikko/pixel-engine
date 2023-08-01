@@ -8,6 +8,9 @@ namespace Input {
     SDL_GameController* gameController = nullptr;
     SDL_Haptic* haptic = nullptr;
 
+    ControllerState currentState = None;
+    ControllerState previousState = None;
+
     void InitController() {
         if (SDL_NumJoysticks()) {
             gameController = SDL_GameControllerOpen(0);
@@ -34,16 +37,16 @@ namespace Input {
         switch (event.button)
         {
         case SDL_CONTROLLER_BUTTON_DPAD_LEFT:
-            pressed ? outState |= Left : outState &= ~Left;
+            pressed ? outState |= DPadLeft : outState &= ~DPadLeft;
             break;
         case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
-            pressed ? outState |= Right : outState &= ~Right;
+            pressed ? outState |= DPadRight : outState &= ~DPadRight;
             break;
         case SDL_CONTROLLER_BUTTON_DPAD_UP:
-            pressed ? outState |= Up : outState &= ~Up;
+            pressed ? outState |= DPadUp : outState &= ~DPadUp;
             break;
         case SDL_CONTROLLER_BUTTON_DPAD_DOWN:
-            pressed ? outState |= Down : outState &= ~Down;
+            pressed ? outState |= DPadDown : outState &= ~DPadDown;
             break;
         case SDL_CONTROLLER_BUTTON_A:
             pressed ? outState |= A : outState &= ~A;
@@ -64,19 +67,7 @@ namespace Input {
 
     void HandleControllerAxisEvent(SDL_ControllerAxisEvent& event, u8& outState)
     {
-        /*r32 sensitivity = 0.2f;
-        r32 value = event.value / 32767.0f;
-        switch (event.axis)
-        {
-        case SDL_CONTROLLER_AXIS_LEFTX:
-            abs(value) <= sensitivity ? outState &= ~(Left | Right) : value > 0 ? outState |= Right : outState |= Left;
-            break;
-        case SDL_CONTROLLER_AXIS_LEFTY:
-            abs(value) <= sensitivity ? outState &= ~(Up | Down) : value > 0 ? outState |= Up : outState |= Down;
-            break;
-        default:
-            break;
-        }*/
+        // TODO
     }
 
     void HandleControllerDeviceEvent(SDL_ControllerDeviceEvent& event)
@@ -103,8 +94,9 @@ namespace Input {
         }
     }
 
-    ControllerState PollInput(ControllerState previousState) {
-        u8 buttonState = (u8)previousState;
+    void Poll() {
+        previousState = currentState;
+        u8 stateByte = (u8)previousState;
 
         SDL_Event event;
         while (SDL_PollEvent(&event))
@@ -114,13 +106,13 @@ namespace Input {
             case SDL_CONTROLLERBUTTONDOWN:
             case SDL_CONTROLLERBUTTONUP:
                 if (gameController != nullptr) {
-                    HandleControllerButtonEvent(event.cbutton, buttonState);
+                    HandleControllerButtonEvent(event.cbutton, stateByte);
                 }
                 break;
             case SDL_CONTROLLERAXISMOTION:
-                /*if (gameController != nullptr) {
-                    HandleControllerAxisEvent(event.caxis, axisState);
-                }*/
+                if (gameController != nullptr) {
+                    HandleControllerAxisEvent(event.caxis, stateByte);
+                }
                 break;
             case SDL_CONTROLLERDEVICEADDED:
             case SDL_CONTROLLERDEVICEREMOVED:
@@ -131,7 +123,30 @@ namespace Input {
             }
         }
 
-
-        return (ControllerState)(buttonState);
+        currentState = (ControllerState)stateByte;
 	}
+
+    bool Down(ControllerState flags, ControllerState state) {
+        return (flags & state) == flags;
+    }
+
+    bool Up(ControllerState flags, ControllerState state) {
+        return (flags & ~state) == flags;
+    }
+
+    bool Down(ControllerState flags) {
+        return Down(flags, currentState);
+    }
+
+    bool Up(ControllerState flags) {
+        return Up(flags, currentState);
+    }
+
+    bool Pressed(ControllerState flags) {
+        return Down(flags, currentState) && Up(flags, previousState);
+    }
+
+    bool Released(ControllerState flags) {
+        return Up(flags, currentState) && Down(flags, previousState);
+    }
 }

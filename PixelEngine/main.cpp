@@ -81,7 +81,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
     windowClass.lpszClassName = "PixelEngineWindowClass";
 
     if (RegisterClassA(&windowClass) == 0) {
-        ERROR("Failed to register window class\n");
+        DEBUG_ERROR("Failed to register window class\n");
     }
 
     HWND windowHandle = CreateWindowExA(
@@ -100,7 +100,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
     );
 
     if (windowHandle == nullptr) {
-        ERROR("Failed to create window\n");
+        DEBUG_ERROR("Failed to create window\n");
     }
 
     MSG message;

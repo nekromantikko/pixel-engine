@@ -31,7 +31,7 @@ namespace Metasprite {
 		fopen_s(&pFile, fname, "rb");
 
 		if (pFile == NULL) {
-			ERROR("Failed to load metasprite file\n");
+			DEBUG_ERROR("Failed to load metasprite file\n");
 		}
 
 		const char signature[4]{};
@@ -61,7 +61,7 @@ namespace Metasprite {
 		fopen_s(&pFile, fname, "wb");
 
 		if (pFile == NULL) {
-			ERROR("Failed to write metasprite file\n");
+			DEBUG_ERROR("Failed to write metasprite file\n");
 		}
 
 		const char signature[4] = "SPR";
