@@ -70,6 +70,7 @@ namespace Rendering
 	};
 
 	RenderContext* CreateRenderContext(Surface surface);
+	void WaitForAllCommands(RenderContext* pRenderContext);
 	void FreeRenderContext(RenderContext* pRenderContext);
 	Settings* GetSettingsPtr(RenderContext* pContext);
 

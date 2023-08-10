@@ -143,8 +143,8 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
     }
 
     Game::Free();
+    Rendering::WaitForAllCommands(renderContext);
     Rendering::ShutdownImGui();
-    ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();
     Rendering::FreeRenderContext(renderContext);
 

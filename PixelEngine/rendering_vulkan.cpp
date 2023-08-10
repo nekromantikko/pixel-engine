@@ -30,6 +30,17 @@ namespace Rendering
 		s32 scrollY;
 	};
 
+	struct Image {
+		VkImage image;
+		VkImageView view;
+		VkDeviceMemory memory;
+	};
+
+	struct Buffer {
+		VkBuffer buffer;
+		VkDeviceMemory memory;
+	};
+
 	struct RenderContext {
 		VkInstance instance;
 		VkPhysicalDevice physicalDevice;
@@ -60,8 +71,7 @@ namespace Rendering
 		VkFramebuffer swapchainFramebuffers[SWAPCHAIN_IMAGE_COUNT];
 
 		// General stuff
-		VkBuffer timeBuffer;
-		VkDeviceMemory timeMemory;
+		Buffer timeBuffer;
 		VkSampler defaultSampler;
 
 		// Grafix
@@ -76,32 +86,23 @@ namespace Rendering
 		VkPipeline blitCRTPipeline;
 
 		// Compute stuff
-		VkImage paletteImage;
-		VkImageView paletteImageView;
-		VkDeviceMemory paletteMemory;
+		Image paletteImage;
 
-		VkBuffer scanlineBuffer;
-		VkDeviceMemory scanlineMemory;
+		Buffer scanlineBuffer;
 
 		// 8 palettes of 8 colors
-		VkBuffer palTableBuffer;
-		VkDeviceMemory palTableMemory;
+		Buffer palTableBuffer;
 
 		// Pattern table
-		VkBuffer chrBuffer;
-		VkDeviceMemory chrMemory;
+		Buffer chrBuffer;
 
 		// Nametable
-		VkBuffer nametableBuffer;
-		VkDeviceMemory nametableMemory;
+		Buffer nametableBuffer;
 
 		// OAM
-		VkBuffer oamBuffer;
-		VkDeviceMemory oamMemory;
+		Buffer oamBuffer;
 
-		VkImage colorImage;
-		VkImageView colorImageView;
-		VkDeviceMemory colorImageMemory;
+		Image colorImage;
 
 		VkDescriptorSetLayout computeDescriptorSetLayout;
 		VkDescriptorSet computeDescriptorSet;
@@ -113,26 +114,21 @@ namespace Rendering
 		VkShaderModule evaluateShaderModule;
 
 		// Render state from game code...
-		VkBuffer renderStateBuffer;
-		VkDeviceMemory renderStateMemory;
+		Buffer renderStateBuffer;
 
 		// Settings
 		Settings settings;
 
 		// Debug stuff
 		bool32 renderDebugChr = false;
-		VkImage debugChrImage[8];
-		VkImageView debugChrImageView[8];
-		VkDeviceMemory debugChrImageMemory[8];
+		Image debugChrImage[8];
 		VkPipelineLayout chrPipelineLayout;
 		VkPipeline chrPipeline;
 		VkShaderModule chrShaderModule;
 		VkDescriptorSet chrDescriptorSet[8];
 
 		bool32 renderDebugPalette = false;
-		VkImage debugPaletteImage;
-		VkImageView debugPaletteImageView;
-		VkDeviceMemory debugPaletteImageMemory;
+		Image debugPaletteImage;
 		VkPipelineLayout palettePipelineLayout;
 		VkPipeline palettePipeline;
 		VkShaderModule paletteShaderModule;
@@ -674,7 +670,7 @@ namespace Rendering
 		}
 	}
 
-	void AllocateBuffer(RenderContext* pContext, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memProps, VkBuffer& outBuffer, VkDeviceMemory& outMemory) {
+	void AllocateBuffer(RenderContext* pContext, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memProps, Buffer& outBuffer) {
 		VkBufferCreateInfo bufferInfo{};
 		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 		bufferInfo.pNext = nullptr;
@@ -683,18 +679,18 @@ namespace Rendering
 		bufferInfo.usage = usage;
 		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-		VkResult err = vkCreateBuffer(pContext->device, &bufferInfo, nullptr, &outBuffer);
+		VkResult err = vkCreateBuffer(pContext->device, &bufferInfo, nullptr, &outBuffer.buffer);
 		if (err != VK_SUCCESS) {
 			DEBUG_ERROR("Failed to create buffer!\n");
 		}
 
 		VkMemoryRequirements memRequirements;
-		vkGetBufferMemoryRequirements(pContext->device, outBuffer, &memRequirements);
+		vkGetBufferMemoryRequirements(pContext->device, outBuffer.buffer, &memRequirements);
 		DEBUG_LOG("Buffer memory required: %d\n", memRequirements.size);
 
-		AllocateMemory(pContext, memRequirements, memProps, outMemory);
+		AllocateMemory(pContext, memRequirements, memProps, outBuffer.memory);
 
-		vkBindBufferMemory(pContext->device, outBuffer, outMemory, 0);
+		vkBindBufferMemory(pContext->device, outBuffer.buffer, outBuffer.memory, 0);
 	}
 
 	void CopyBuffer(RenderContext* pContext, VkBuffer src, VkBuffer dst, VkDeviceSize size) {
@@ -725,14 +721,82 @@ namespace Rendering
 		vkFreeCommandBuffers(pContext->device, pContext->primaryCommandPool, 1, &temp);
 	}
 
+	void FreeBuffer(RenderContext* pContext, Buffer buffer) {
+		vkDestroyBuffer(pContext->device, buffer.buffer, nullptr);
+		vkFreeMemory(pContext->device, buffer.memory, nullptr);
+	}
+
+	void CreateImage(RenderContext* pContext, u32 width, u32 height, VkImageType type, VkImageUsageFlags usage, Image& outImage) {
+		VkImageCreateInfo imageInfo{};
+		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imageInfo.imageType = type;
+		imageInfo.extent.width = width;
+		imageInfo.extent.height = height;
+		imageInfo.extent.depth = 1;
+		imageInfo.mipLevels = 1;
+		imageInfo.arrayLayers = 1;
+		imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		imageInfo.usage = usage;
+		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+
+		vkCreateImage(pContext->device, &imageInfo, nullptr, &outImage.image);
+
+		VkMemoryRequirements memRequirements;
+		vkGetImageMemoryRequirements(pContext->device, outImage.image, &memRequirements);
+
+		AllocateMemory(pContext, memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, outImage.memory);
+		vkBindImageMemory(pContext->device, outImage.image, outImage.memory, 0);
+
+		VkImageViewCreateInfo viewInfo{};
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.image = outImage.image;
+		viewInfo.viewType = (VkImageViewType)type; // A bit sus but probably fine
+		viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		viewInfo.subresourceRange.baseMipLevel = 0;
+		viewInfo.subresourceRange.levelCount = 1;
+		viewInfo.subresourceRange.baseArrayLayer = 0;
+		viewInfo.subresourceRange.layerCount = 1;
+
+		vkCreateImageView(pContext->device, &viewInfo, nullptr, &outImage.view);
+	}
+
+	void FreeImage(RenderContext* pContext, Image image) {
+		vkDestroyImageView(pContext->device, image.view, nullptr);
+		vkDestroyImage(pContext->device, image.image, nullptr);
+		vkFreeMemory(pContext->device, image.memory, nullptr);
+	}
+
+	VkImageMemoryBarrier GetImageBarrier(Image* pImage, VkImageLayout oldLayout, VkImageLayout newLayout) {
+		VkImageMemoryBarrier barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrier.oldLayout = oldLayout;
+		barrier.newLayout = newLayout;
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.image = pImage->image;
+		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrier.subresourceRange.baseMipLevel = 0;
+		barrier.subresourceRange.levelCount = 1;
+		barrier.subresourceRange.baseArrayLayer = 0;
+		barrier.subresourceRange.layerCount = 1;
+		barrier.srcAccessMask = 0; // TODO
+		barrier.dstAccessMask = 0; // TODO
+		
+		return barrier;
+	}
+
 	void CreateOAM(RenderContext* pContext) {
 		u32 oamSize = MAX_SPRITE_COUNT * sizeof(Sprite);
-		AllocateBuffer(pContext, oamSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pContext->oamBuffer, pContext->oamMemory);
+		AllocateBuffer(pContext, oamSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pContext->oamBuffer);
 	}
 
 	void CreateNametable(RenderContext* pContext) {
 		DEBUG_LOG("Creating nametables...\n");
-		AllocateBuffer(pContext, NAMETABLE_SIZE * NAMETABLE_COUNT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pContext->nametableBuffer, pContext->nametableMemory);
+		AllocateBuffer(pContext, NAMETABLE_SIZE * NAMETABLE_COUNT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pContext->nametableBuffer);
 	}
 
 	void CreatePaletteTable(RenderContext* pContext) {
@@ -743,12 +807,12 @@ namespace Rendering
 			DEBUG_ERROR("Invalid palette table file!\n");
 		}
 
-		AllocateBuffer(pContext, 8 * 8, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pContext->palTableBuffer, pContext->palTableMemory);
+		AllocateBuffer(pContext, 8 * 8, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pContext->palTableBuffer);
 
 		void* data;
-		vkMapMemory(pContext->device, pContext->palTableMemory, 0, 8 * 8, 0, &data);
+		vkMapMemory(pContext->device, pContext->palTableBuffer.memory, 0, 8 * 8, 0, &data);
 		memcpy(data, palData, 8 * 8);
-		vkUnmapMemory(pContext->device, pContext->palTableMemory);
+		vkUnmapMemory(pContext->device, pContext->palTableBuffer.memory);
 		free(palData);
 	}
 
@@ -791,38 +855,16 @@ namespace Rendering
 			DEBUG_ERROR("No palette data found in file!\n");
 		}
 
-		VkBuffer stagingBuffer;
-		VkDeviceMemory stagingMemory;
-		AllocateBuffer(pContext, paletteSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingMemory);
+		Buffer stagingBuffer;
+		AllocateBuffer(pContext, paletteSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer);
 
 		void* data;
-		vkMapMemory(pContext->device, stagingMemory, 0, paletteSize, 0, &data);
+		vkMapMemory(pContext->device, stagingBuffer.memory, 0, paletteSize, 0, &data);
 		memcpy(data, paletteData, paletteSize);
-		vkUnmapMemory(pContext->device, stagingMemory);
+		vkUnmapMemory(pContext->device, stagingBuffer.memory);
 		free(palBin);
 
-		VkImageCreateInfo imageInfo{};
-		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-		imageInfo.imageType = VK_IMAGE_TYPE_1D;
-		imageInfo.extent.width = 64;
-		imageInfo.extent.height = 1;
-		imageInfo.extent.depth = 1;
-		imageInfo.mipLevels = 1;
-		imageInfo.arrayLayers = 1;
-		imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		imageInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-
-		vkCreateImage(pContext->device, &imageInfo, nullptr, &pContext->paletteImage);
-
-		VkMemoryRequirements memRequirements;
-		vkGetImageMemoryRequirements(pContext->device, pContext->paletteImage, &memRequirements);
-
-		AllocateMemory(pContext, memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pContext->paletteMemory);
-		vkBindImageMemory(pContext->device, pContext->paletteImage, pContext->paletteMemory, 0);
+		CreateImage(pContext, 64, 1, VK_IMAGE_TYPE_1D, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, pContext->paletteImage);
 
 		VkCommandBuffer temp = GetTemporaryCommandBuffer(pContext);
 
@@ -832,21 +874,7 @@ namespace Rendering
 
 		vkBeginCommandBuffer(temp, &beginInfo);
 
-		VkImageMemoryBarrier barrier{};
-		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.image = pContext->paletteImage;
-		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		barrier.subresourceRange.baseMipLevel = 0;
-		barrier.subresourceRange.levelCount = 1;
-		barrier.subresourceRange.baseArrayLayer = 0;
-		barrier.subresourceRange.layerCount = 1;
-		barrier.srcAccessMask = 0; // TODO
-		barrier.dstAccessMask = 0; // TODO
-
+		VkImageMemoryBarrier barrier = GetImageBarrier(&pContext->paletteImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 		vkCmdPipelineBarrier(
 			temp,
 			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -876,8 +904,8 @@ namespace Rendering
 
 		vkCmdCopyBufferToImage(
 			temp,
-			stagingBuffer,
-			pContext->paletteImage,
+			stagingBuffer.buffer,
+			pContext->paletteImage.image,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			1,
 			&region
@@ -885,7 +913,6 @@ namespace Rendering
 
 		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 		barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-
 		vkCmdPipelineBarrier(
 			temp,
 			VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -908,21 +935,7 @@ namespace Rendering
 
 		vkFreeCommandBuffers(pContext->device, pContext->primaryCommandPool, 1, &temp);
 
-		VkImageViewCreateInfo viewInfo{};
-		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		viewInfo.image = pContext->paletteImage;
-		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_1D;
-		viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		viewInfo.subresourceRange.baseMipLevel = 0;
-		viewInfo.subresourceRange.levelCount = 1;
-		viewInfo.subresourceRange.baseArrayLayer = 0;
-		viewInfo.subresourceRange.layerCount = 1;
-
-		vkCreateImageView(pContext->device, &viewInfo, nullptr, &pContext->paletteImageView);
-
-		vkDestroyBuffer(pContext->device, stagingBuffer, nullptr);
-		vkFreeMemory(pContext->device, stagingMemory, nullptr);
+		FreeBuffer(pContext, stagingBuffer);
 	}
 
 	RenderContext *CreateRenderContext(Surface surface) {
@@ -1051,54 +1064,21 @@ namespace Rendering
 		// Compute resources
 		CreatePalette(context);
 		CreatePaletteTable(context);
-		AllocateBuffer(context, CHR_MEMORY_SIZE, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, context->chrBuffer, context->chrMemory);
+		AllocateBuffer(context, CHR_MEMORY_SIZE, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, context->chrBuffer);
 		CreateNametable(context);
 		CreateOAM(context);
 		ClearSprites(context, 0, MAX_SPRITE_COUNT);
-		AllocateBuffer(context, sizeof(ScanlineData) * SCANLINE_COUNT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, context->scanlineBuffer, context->scanlineMemory);
-		AllocateBuffer(context, sizeof(RenderState) * SCANLINE_COUNT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, context->renderStateBuffer, context->renderStateMemory);
-		AllocateBuffer(context, sizeof(float), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, context->timeBuffer, context->timeMemory);
+		AllocateBuffer(context, sizeof(ScanlineData) * SCANLINE_COUNT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, context->scanlineBuffer);
+		AllocateBuffer(context, sizeof(RenderState) * SCANLINE_COUNT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, context->renderStateBuffer);
+		AllocateBuffer(context, sizeof(float), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, context->timeBuffer);
 
-		VkImageCreateInfo imageInfo{};
-		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-		imageInfo.imageType = VK_IMAGE_TYPE_2D;
-		imageInfo.extent.width = 512;
-		imageInfo.extent.height = 288;
-		imageInfo.extent.depth = 1;
-		imageInfo.mipLevels = 1;
-		imageInfo.arrayLayers = 1;
-		imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		imageInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-
-		vkCreateImage(context->device, &imageInfo, nullptr, &context->colorImage);
-
-		VkMemoryRequirements memRequirements;
-		vkGetImageMemoryRequirements(context->device, context->colorImage, &memRequirements);
-		AllocateMemory(context, memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, context->colorImageMemory);
-		vkBindImageMemory(context->device, context->colorImage, context->colorImageMemory, 0);
-
-		VkImageViewCreateInfo viewInfo{};
-		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		viewInfo.image = context->colorImage;
-		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		viewInfo.subresourceRange.baseMipLevel = 0;
-		viewInfo.subresourceRange.levelCount = 1;
-		viewInfo.subresourceRange.baseArrayLayer = 0;
-		viewInfo.subresourceRange.layerCount = 1;
-
-		vkCreateImageView(context->device, &viewInfo, nullptr, &context->colorImageView);
+		CreateImage(context, 512, 288, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, context->colorImage);
 
 		// Write into descriptor sets...
 		for (int i = 0; i < COMMAND_BUFFER_COUNT; i++) {
 			VkDescriptorImageInfo imageInfo{};
 			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			imageInfo.imageView = context->colorImageView;
+			imageInfo.imageView = context->colorImage.view;
 			imageInfo.sampler = context->defaultSampler;
 
 			VkWriteDescriptorSet descriptorWrite{};
@@ -1246,41 +1226,41 @@ namespace Rendering
 
 		VkDescriptorImageInfo perkele{};
 		perkele.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		perkele.imageView = context->colorImageView;
+		perkele.imageView = context->colorImage.view;
 		perkele.sampler = context->defaultSampler;
 
 		VkDescriptorImageInfo paletteBufferInfo{};
 		paletteBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		paletteBufferInfo.imageView = context->paletteImageView;
+		paletteBufferInfo.imageView = context->paletteImage.view;
 		paletteBufferInfo.sampler = context->defaultSampler;
 
 		VkDescriptorBufferInfo chrBufferInfo{};
-		chrBufferInfo.buffer = context->chrBuffer;
+		chrBufferInfo.buffer = context->chrBuffer.buffer;
 		chrBufferInfo.offset = 0;
 		chrBufferInfo.range = CHR_MEMORY_SIZE;
 
 		VkDescriptorBufferInfo palTableInfo{};
-		palTableInfo.buffer = context->palTableBuffer;
+		palTableInfo.buffer = context->palTableBuffer.buffer;
 		palTableInfo.offset = 0;
 		palTableInfo.range = VK_WHOLE_SIZE;
 
 		VkDescriptorBufferInfo nametableInfo{};
-		nametableInfo.buffer = context->nametableBuffer;
+		nametableInfo.buffer = context->nametableBuffer.buffer;
 		nametableInfo.offset = 0;
 		nametableInfo.range = VK_WHOLE_SIZE;
 
 		VkDescriptorBufferInfo oamInfo{};
-		oamInfo.buffer = context->oamBuffer;
+		oamInfo.buffer = context->oamBuffer.buffer;
 		oamInfo.offset = 0;
 		oamInfo.range = VK_WHOLE_SIZE;
 
 		VkDescriptorBufferInfo scanlineInfo{};
-		scanlineInfo.buffer = context->scanlineBuffer;
+		scanlineInfo.buffer = context->scanlineBuffer.buffer;
 		scanlineInfo.offset = 0;
 		scanlineInfo.range = VK_WHOLE_SIZE;
 
 		VkDescriptorBufferInfo renderStateInfo{};
-		renderStateInfo.buffer = context->renderStateBuffer;
+		renderStateInfo.buffer = context->renderStateBuffer.buffer;
 		renderStateInfo.offset = 0;
 		renderStateInfo.range = VK_WHOLE_SIZE;
 
@@ -1355,13 +1335,20 @@ namespace Rendering
 		return context;
 	}
 
+	void WaitForAllCommands(RenderContext* pRenderContext) {
+		vkWaitForFences(pRenderContext->device, COMMAND_BUFFER_COUNT, pRenderContext->commandBufferFences, VK_TRUE, UINT64_MAX);
+	}
+
 	void FreeRenderContext(RenderContext* pRenderContext) {
 		if (pRenderContext == nullptr) {
 			return;
 		}
 
 		// Wait for all commands to execute first
-		vkWaitForFences(pRenderContext->device, COMMAND_BUFFER_COUNT, pRenderContext->commandBufferFences, VK_TRUE, UINT64_MAX);
+		WaitForAllCommands(pRenderContext);
+
+		// Free imgui stuff
+		vkDestroyDescriptorPool(pRenderContext->device, pRenderContext->imGuiDescriptorPool, nullptr);
 
 		// vkFreeDescriptorSets(pRenderContext->device, pRenderContext->descriptorPool, COMMAND_BUFFER_COUNT, pRenderContext->graphicsDescriptorSets);
 		// vkFreeDescriptorSets(pRenderContext->device, pRenderContext->descriptorPool, 1, &pRenderContext->computeDescriptorSet);
@@ -1381,15 +1368,36 @@ namespace Rendering
 
 		vkDestroySampler(pRenderContext->device, pRenderContext->defaultSampler, nullptr);
 		vkDestroyDescriptorSetLayout(pRenderContext->device, pRenderContext->computeDescriptorSetLayout, nullptr);
+
 		vkDestroyPipeline(pRenderContext->device, pRenderContext->softwarePipeline, nullptr);
 		vkDestroyPipelineLayout(pRenderContext->device, pRenderContext->softwarePipelineLayout, nullptr);
 		vkDestroyShaderModule(pRenderContext->device, pRenderContext->softwareShaderModule, nullptr);
-		vkDestroyImageView(pRenderContext->device, pRenderContext->colorImageView, nullptr);
-		vkDestroyImage(pRenderContext->device, pRenderContext->colorImage, nullptr);
-		vkFreeMemory(pRenderContext->device, pRenderContext->colorImageMemory, nullptr);
-		vkDestroyImageView(pRenderContext->device, pRenderContext->paletteImageView, nullptr);
-		vkDestroyImage(pRenderContext->device, pRenderContext->paletteImage, nullptr);
-		vkFreeMemory(pRenderContext->device, pRenderContext->paletteMemory, nullptr);
+
+		vkDestroyPipeline(pRenderContext->device, pRenderContext->evaluatePipeline, nullptr);
+		vkDestroyPipelineLayout(pRenderContext->device, pRenderContext->evaluatePipelineLayout, nullptr);
+		vkDestroyShaderModule(pRenderContext->device, pRenderContext->evaluateShaderModule, nullptr);
+		FreeImage(pRenderContext, pRenderContext->colorImage);
+		FreeImage(pRenderContext, pRenderContext->paletteImage);
+
+		vkDestroyPipeline(pRenderContext->device, pRenderContext->chrPipeline, nullptr);
+		vkDestroyPipelineLayout(pRenderContext->device, pRenderContext->chrPipelineLayout, nullptr);
+		vkDestroyShaderModule(pRenderContext->device, pRenderContext->chrShaderModule, nullptr);
+		for (int i = 0; i < 8; i++) {
+			FreeImage(pRenderContext, pRenderContext->debugChrImage[i]);
+		}
+
+		vkDestroyPipeline(pRenderContext->device, pRenderContext->palettePipeline, nullptr);
+		vkDestroyPipelineLayout(pRenderContext->device, pRenderContext->palettePipelineLayout, nullptr);
+		vkDestroyShaderModule(pRenderContext->device, pRenderContext->paletteShaderModule, nullptr);
+		FreeImage(pRenderContext, pRenderContext->debugPaletteImage);
+
+		FreeBuffer(pRenderContext, pRenderContext->chrBuffer);
+		FreeBuffer(pRenderContext, pRenderContext->nametableBuffer);
+		FreeBuffer(pRenderContext, pRenderContext->oamBuffer);
+		FreeBuffer(pRenderContext, pRenderContext->palTableBuffer);
+		FreeBuffer(pRenderContext, pRenderContext->renderStateBuffer);
+		FreeBuffer(pRenderContext, pRenderContext->scanlineBuffer);
+		FreeBuffer(pRenderContext, pRenderContext->timeBuffer);
 
 		vkDestroyDevice(pRenderContext->device, nullptr);
 		vkDestroySurfaceKHR(pRenderContext->instance, pRenderContext->surface, nullptr);
@@ -1407,9 +1415,9 @@ namespace Rendering
 		u32 actualOffset = 8 * paletteIndex + offset;
 
 		void* data;
-		vkMapMemory(pContext->device, pContext->palTableMemory, actualOffset, count, 0, &data);
+		vkMapMemory(pContext->device, pContext->palTableBuffer.memory, actualOffset, count, 0, &data);
 		memcpy(outColors, data, count);
-		vkUnmapMemory(pContext->device, pContext->palTableMemory);
+		vkUnmapMemory(pContext->device, pContext->palTableBuffer.memory);
 	}
 	void WritePaletteColors(RenderContext* pContext, u8 paletteIndex, u32 count, u32 offset, u8* colors) {
 		if (offset + count > 8 || paletteIndex >= 8) {
@@ -1419,9 +1427,9 @@ namespace Rendering
 		u32 actualOffset = 8 * paletteIndex + offset;
 
 		void* data;
-		vkMapMemory(pContext->device, pContext->palTableMemory, actualOffset, count, 0, &data);
+		vkMapMemory(pContext->device, pContext->palTableBuffer.memory, actualOffset, count, 0, &data);
 		memcpy(data, colors, count);
-		vkUnmapMemory(pContext->device, pContext->palTableMemory);
+		vkUnmapMemory(pContext->device, pContext->palTableBuffer.memory);
 	}
 	// This is super slow, optimize pls
 	void ClearSprites(RenderContext* pContext, u32 offset, u32 count) {
@@ -1435,7 +1443,7 @@ namespace Rendering
 
 		vkCmdFillBuffer(
 			temp,
-			pContext->oamBuffer,
+			pContext->oamBuffer.buffer,
 			sizeof(Sprite) * offset,
 			sizeof(Sprite) * count,
 			288 // Set y position offscreen
@@ -1462,9 +1470,9 @@ namespace Rendering
 		u32 size = count * sizeof(Sprite);
 
 		void* data;
-		vkMapMemory(pContext->device, pContext->oamMemory, actualOffset, size, 0, &data);
+		vkMapMemory(pContext->device, pContext->oamBuffer.memory, actualOffset, size, 0, &data);
 		memcpy((void*)outSprites, data, size);
-		vkUnmapMemory(pContext->device, pContext->oamMemory);
+		vkUnmapMemory(pContext->device, pContext->oamBuffer.memory);
 	}
 	void WriteSprites(RenderContext* pContext, u32 count, u32 offset, Sprite* sprites) {
 		if (count == 0) {
@@ -1479,9 +1487,9 @@ namespace Rendering
 		u32 size = count * sizeof(Sprite);
 
 		void* data;
-		vkMapMemory(pContext->device, pContext->oamMemory, actualOffset, size, 0, &data);
+		vkMapMemory(pContext->device, pContext->oamBuffer.memory, actualOffset, size, 0, &data);
 		memcpy(data, (void*)sprites, size);
-		vkUnmapMemory(pContext->device, pContext->oamMemory);
+		vkUnmapMemory(pContext->device, pContext->oamBuffer.memory);
 	}
 	void WriteChrMemory(RenderContext* pContext, u32 size, u32 offset, u8* bytes) {
 		if (offset + size > CHR_MEMORY_SIZE) {
@@ -1489,9 +1497,9 @@ namespace Rendering
 		}
 
 		void* data;
-		vkMapMemory(pContext->device, pContext->chrMemory, offset, size, 0, &data);
+		vkMapMemory(pContext->device, pContext->chrBuffer.memory, offset, size, 0, &data);
 		memcpy(data, (void*)bytes, size);
-		vkUnmapMemory(pContext->device, pContext->chrMemory);
+		vkUnmapMemory(pContext->device, pContext->chrBuffer.memory);
 	}
 	void ReadChrMemory(RenderContext* pContext, u32 size, u32 offset, u8* outBytes) {
 		if (offset + size > CHR_MEMORY_SIZE) {
@@ -1499,31 +1507,31 @@ namespace Rendering
 		}
 
 		void* data;
-		vkMapMemory(pContext->device, pContext->chrMemory, offset, size, 0, &data);
+		vkMapMemory(pContext->device, pContext->chrBuffer.memory, offset, size, 0, &data);
 		memcpy((void*)outBytes, data, size);
-		vkUnmapMemory(pContext->device, pContext->chrMemory);
+		vkUnmapMemory(pContext->device, pContext->chrBuffer.memory);
 	}
 	void WriteNametable(RenderContext* pContext, u16 index, u16 count, u16 offset, u8* tiles) {
 		void* data;
-		vkMapMemory(pContext->device, pContext->nametableMemory, index * NAMETABLE_SIZE + offset, count, 0, &data);
+		vkMapMemory(pContext->device, pContext->nametableBuffer.memory, index * NAMETABLE_SIZE + offset, count, 0, &data);
 		memcpy(data, tiles, count);
-		vkUnmapMemory(pContext->device, pContext->nametableMemory);
+		vkUnmapMemory(pContext->device, pContext->nametableBuffer.memory);
 	}
 	void ReadNametable(RenderContext* pContext, u16 index, u16 count, u16 offset, u8* outTiles) {
 		void* data;
-		vkMapMemory(pContext->device, pContext->nametableMemory, index * NAMETABLE_SIZE + offset, count, 0, &data);
+		vkMapMemory(pContext->device, pContext->nametableBuffer.memory, index * NAMETABLE_SIZE + offset, count, 0, &data);
 		memcpy((void*)outTiles, data, count);
-		vkUnmapMemory(pContext->device, pContext->nametableMemory);
+		vkUnmapMemory(pContext->device, pContext->nametableBuffer.memory);
 	}
 
 	void SetRenderState(RenderContext* pContext, u32 scanlineOffset, u32 scanlineCount, RenderState state) {
 		void* data;
-		vkMapMemory(pContext->device, pContext->renderStateMemory, sizeof(RenderState) * scanlineOffset, sizeof(RenderState) * scanlineCount, 0, &data);
+		vkMapMemory(pContext->device, pContext->renderStateBuffer.memory, sizeof(RenderState) * scanlineOffset, sizeof(RenderState) * scanlineCount, 0, &data);
 		RenderState* scanlineStates = (RenderState*)data;
 		for (int i = 0; i < scanlineCount; i++) {
 			memcpy(scanlineStates + i, &state, sizeof(RenderState));
 		}
-		vkUnmapMemory(pContext->device, pContext->renderStateMemory);
+		vkUnmapMemory(pContext->device, pContext->renderStateBuffer.memory);
 	}
 
 	//////////////////////////////////////////////////////
@@ -1597,6 +1605,9 @@ namespace Rendering
 	}
 	void ShutdownImGui() {
 		ImGui_ImplVulkan_Shutdown();
+#ifdef PLATFORM_WINDOWS
+		ImGui_ImplWin32_Shutdown();
+#endif
 	}
 
 	//////////////////////////////////////////////////////
@@ -1609,33 +1620,16 @@ namespace Rendering
 	void DebugRenderChr(RenderContext* pContext, VkCommandBuffer cmd) {
 		for (int i = 0; i < 8; i++) {
 			// Convert from preinitialized to general
-			{
-				VkImageMemoryBarrier barrier{};
-				barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-				barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-				barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-				barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-				barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-				barrier.image = pContext->debugChrImage[i];
-				barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-				barrier.subresourceRange.baseMipLevel = 0;
-				barrier.subresourceRange.levelCount = 1;
-				barrier.subresourceRange.baseArrayLayer = 0;
-				barrier.subresourceRange.layerCount = 1;
-				barrier.srcAccessMask = 0; // TODO
-				barrier.dstAccessMask = 0; // TODO
-
-				vkCmdPipelineBarrier(
-					cmd,
-					VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-					VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-					0,
-					0, nullptr,
-					0, nullptr,
-					1, &barrier
-				);
-			}
-
+			VkImageMemoryBarrier barrier = GetImageBarrier(&pContext->debugChrImage[i], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+			vkCmdPipelineBarrier(
+				cmd,
+				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+				0,
+				0, nullptr,
+				0, nullptr,
+				1, &barrier
+			);
 
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipelineLayout, 0, 1, &pContext->chrDescriptorSet[i], 0, nullptr);
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipeline);
@@ -1643,21 +1637,7 @@ namespace Rendering
 			vkCmdDispatch(cmd, 32, 16, 1);
 
 			// Convert from preinitialized to general
-			VkImageMemoryBarrier barrier{};
-			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-			barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 			barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			barrier.image = pContext->debugChrImage[i];
-			barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			barrier.subresourceRange.baseMipLevel = 0;
-			barrier.subresourceRange.levelCount = 1;
-			barrier.subresourceRange.baseArrayLayer = 0;
-			barrier.subresourceRange.layerCount = 1;
-			barrier.srcAccessMask = 0; // TODO
-			barrier.dstAccessMask = 0; // TODO
-
 			vkCmdPipelineBarrier(
 				cmd,
 				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -1695,61 +1675,29 @@ namespace Rendering
 		}
 
 		for (int i = 0; i < 8; i++) {
-			VkImageCreateInfo imageInfo{};
-			imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-			imageInfo.imageType = VK_IMAGE_TYPE_2D;
-			imageInfo.extent.width = 256;
-			imageInfo.extent.height = 128;
-			imageInfo.extent.depth = 1;
-			imageInfo.mipLevels = 1;
-			imageInfo.arrayLayers = 1;
-			imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-			imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-			imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			imageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
-			imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-			imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+			CreateImage(pContext, 256, 128, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, pContext->debugChrImage[i]);
 
-			vkCreateImage(pContext->device, &imageInfo, nullptr, &pContext->debugChrImage[i]);
-
-			VkMemoryRequirements memRequirements;
-			vkGetImageMemoryRequirements(pContext->device, pContext->debugChrImage[i], &memRequirements);
-			AllocateMemory(pContext, memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pContext->debugChrImageMemory[i]);
-			vkBindImageMemory(pContext->device, pContext->debugChrImage[i], pContext->debugChrImageMemory[i], 0);
-
-			VkImageViewCreateInfo viewInfo{};
-			viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-			viewInfo.image = pContext->debugChrImage[i];
-			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-			viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-			viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			viewInfo.subresourceRange.baseMipLevel = 0;
-			viewInfo.subresourceRange.levelCount = 1;
-			viewInfo.subresourceRange.baseArrayLayer = 0;
-			viewInfo.subresourceRange.layerCount = 1;
-
-			vkCreateImageView(pContext->device, &viewInfo, nullptr, &pContext->debugChrImageView[i]);
-			textures[i] = (ImTextureID)ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, pContext->debugChrImageView[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			textures[i] = (ImTextureID)ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, pContext->debugChrImage[i].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 			////////////////////////////////////////////////////
 
 			VkDescriptorImageInfo perkele{};
 			perkele.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-			perkele.imageView = pContext->debugChrImageView[i];
+			perkele.imageView = pContext->debugChrImage[i].view;
 			perkele.sampler = pContext->defaultSampler;
 
 			VkDescriptorImageInfo paletteBufferInfo{};
 			paletteBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-			paletteBufferInfo.imageView = pContext->paletteImageView;
+			paletteBufferInfo.imageView = pContext->paletteImage.view;
 			paletteBufferInfo.sampler = pContext->defaultSampler;
 
 			VkDescriptorBufferInfo chrBufferInfo{};
-			chrBufferInfo.buffer = pContext->chrBuffer;
+			chrBufferInfo.buffer = pContext->chrBuffer.buffer;
 			chrBufferInfo.offset = 0;
 			chrBufferInfo.range = CHR_MEMORY_SIZE;
 
 			VkDescriptorBufferInfo palTableInfo{};
-			palTableInfo.buffer = pContext->palTableBuffer;
+			palTableInfo.buffer = pContext->palTableBuffer.buffer;
 			palTableInfo.offset = 0;
 			palTableInfo.range = VK_WHOLE_SIZE;
 
@@ -1853,54 +1801,23 @@ namespace Rendering
 
 	void DebugRenderPalette(RenderContext* pContext, VkCommandBuffer cmd) {
 		// Convert from preinitialized to general
-		{
-			VkImageMemoryBarrier barrier{};
-			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-			barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			barrier.image = pContext->debugPaletteImage;
-			barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			barrier.subresourceRange.baseMipLevel = 0;
-			barrier.subresourceRange.levelCount = 1;
-			barrier.subresourceRange.baseArrayLayer = 0;
-			barrier.subresourceRange.layerCount = 1;
-			barrier.srcAccessMask = 0; // TODO
-			barrier.dstAccessMask = 0; // TODO
-
-			vkCmdPipelineBarrier(
-				cmd,
-				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-				0,
-				0, nullptr,
-				0, nullptr,
-				1, &barrier
-			);
-		}
-
+		VkImageMemoryBarrier barrier = GetImageBarrier(&pContext->debugPaletteImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+		vkCmdPipelineBarrier(
+			cmd,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
 
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->palettePipelineLayout, 0, 1, &pContext->paletteDescriptorSet, 0, nullptr);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->palettePipeline);
 		vkCmdDispatch(cmd, 32, 16, 1);
 
 		// Convert from preinitialized to general
-		VkImageMemoryBarrier barrier{};
-		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.image = pContext->debugPaletteImage;
-		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		barrier.subresourceRange.baseMipLevel = 0;
-		barrier.subresourceRange.levelCount = 1;
-		barrier.subresourceRange.baseArrayLayer = 0;
-		barrier.subresourceRange.layerCount = 1;
-		barrier.srcAccessMask = 0; // TODO
-		barrier.dstAccessMask = 0; // TODO
-
 		vkCmdPipelineBarrier(
 			cmd,
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -1913,40 +1830,7 @@ namespace Rendering
 	}
 
 	ImTextureID SetupDebugPaletteRendering(RenderContext* pContext) {
-		VkImageCreateInfo imageInfo{};
-		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-		imageInfo.imageType = VK_IMAGE_TYPE_2D;
-		imageInfo.extent.width = 8*8;
-		imageInfo.extent.height = 1;
-		imageInfo.extent.depth = 1;
-		imageInfo.mipLevels = 1;
-		imageInfo.arrayLayers = 1;
-		imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		imageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
-		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-
-		vkCreateImage(pContext->device, &imageInfo, nullptr, &pContext->debugPaletteImage);
-
-		VkMemoryRequirements memRequirements;
-		vkGetImageMemoryRequirements(pContext->device, pContext->debugPaletteImage, &memRequirements);
-		AllocateMemory(pContext, memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pContext->debugPaletteImageMemory);
-		vkBindImageMemory(pContext->device, pContext->debugPaletteImage, pContext->debugPaletteImageMemory, 0);
-
-		VkImageViewCreateInfo viewInfo{};
-		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		viewInfo.image = pContext->debugPaletteImage;
-		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		viewInfo.subresourceRange.baseMipLevel = 0;
-		viewInfo.subresourceRange.levelCount = 1;
-		viewInfo.subresourceRange.baseArrayLayer = 0;
-		viewInfo.subresourceRange.layerCount = 1;
-
-		vkCreateImageView(pContext->device, &viewInfo, nullptr, &pContext->debugPaletteImageView);
+		CreateImage(pContext, 64, 1, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, pContext->debugPaletteImage);
 
 		VkPipelineLayoutCreateInfo chrPipelineLayoutInfo{};
 		chrPipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -1988,21 +1872,21 @@ namespace Rendering
 
 		VkDescriptorImageInfo perkele{};
 		perkele.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		perkele.imageView = pContext->debugPaletteImageView;
+		perkele.imageView = pContext->debugPaletteImage.view;
 		perkele.sampler = pContext->defaultSampler;
 
 		VkDescriptorImageInfo paletteBufferInfo{};
 		paletteBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		paletteBufferInfo.imageView = pContext->paletteImageView;
+		paletteBufferInfo.imageView = pContext->paletteImage.view;
 		paletteBufferInfo.sampler = pContext->defaultSampler;
 
 		VkDescriptorBufferInfo chrBufferInfo{};
-		chrBufferInfo.buffer = pContext->chrBuffer;
+		chrBufferInfo.buffer = pContext->chrBuffer.buffer;
 		chrBufferInfo.offset = 0;
 		chrBufferInfo.range = CHR_MEMORY_SIZE;
 
 		VkDescriptorBufferInfo palTableInfo{};
-		palTableInfo.buffer = pContext->palTableBuffer;
+		palTableInfo.buffer = pContext->palTableBuffer.buffer;
 		palTableInfo.offset = 0;
 		palTableInfo.range = VK_WHOLE_SIZE;
 
@@ -2066,53 +1950,37 @@ namespace Rendering
 		vkFreeCommandBuffers(pContext->device, pContext->primaryCommandPool, 1, &temp);
 
 		pContext->renderDebugPalette = true;
-		return (ImTextureID)ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, pContext->debugPaletteImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		return (ImTextureID)ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, pContext->debugPaletteImage.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	}
 
 	//////////////////////////////////////////////////////
 
 	void SetCurrentTime(RenderContext* pContext, float seconds) {
 		void* data;
-		vkMapMemory(pContext->device, pContext->timeMemory, 0, sizeof(float), 0, &data);
+		vkMapMemory(pContext->device, pContext->timeBuffer.memory, 0, sizeof(float), 0, &data);
 		memcpy(data, &seconds, sizeof(float));
-		vkUnmapMemory(pContext->device, pContext->timeMemory);
+		vkUnmapMemory(pContext->device, pContext->timeBuffer.memory);
 	}
 
 	void RunSoftwareRenderer(RenderContext* pContext) {
 		VkCommandBuffer commandBuffer = pContext->primaryCommandBuffers[pContext->currentCbIndex];
 
 		// Convert from preinitialized to general
-		{
-			VkImageMemoryBarrier barrier{};
-			barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-			barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-			barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			barrier.image = pContext->colorImage;
-			barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			barrier.subresourceRange.baseMipLevel = 0;
-			barrier.subresourceRange.levelCount = 1;
-			barrier.subresourceRange.baseArrayLayer = 0;
-			barrier.subresourceRange.layerCount = 1;
-			barrier.srcAccessMask = 0; // TODO
-			barrier.dstAccessMask = 0; // TODO
-
-			vkCmdPipelineBarrier(
-				commandBuffer,
-				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-				0,
-				0, nullptr,
-				0, nullptr,
-				1, &barrier
-			);
-		}
+		VkImageMemoryBarrier imageBarrier = GetImageBarrier(&pContext->colorImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+		vkCmdPipelineBarrier(
+			commandBuffer,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &imageBarrier
+		);
 
 		// Clear old scanline data
 		vkCmdFillBuffer(
 			commandBuffer,
-			pContext->scanlineBuffer,
+			pContext->scanlineBuffer.buffer,
 			0,
 			sizeof(ScanlineData) * SCANLINE_COUNT,
 			0
@@ -2128,7 +1996,7 @@ namespace Rendering
 		scanlineBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 		scanlineBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		scanlineBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		scanlineBarrier.buffer = pContext->scanlineBuffer;
+		scanlineBarrier.buffer = pContext->scanlineBuffer.buffer;
 		scanlineBarrier.offset = 0;
 		scanlineBarrier.size = sizeof(ScanlineData) * SCANLINE_COUNT;
 
@@ -2147,21 +2015,7 @@ namespace Rendering
 		vkCmdDispatch(commandBuffer, 16, 9, 1);
 
 		// Convert from preinitialized to general
-		VkImageMemoryBarrier barrier{};
-		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.image = pContext->colorImage;
-		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		barrier.subresourceRange.baseMipLevel = 0;
-		barrier.subresourceRange.levelCount = 1;
-		barrier.subresourceRange.baseArrayLayer = 0;
-		barrier.subresourceRange.layerCount = 1;
-		barrier.srcAccessMask = 0; // TODO
-		barrier.dstAccessMask = 0; // TODO
-
+		imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		vkCmdPipelineBarrier(
 			commandBuffer,
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -2169,7 +2023,7 @@ namespace Rendering
 			0,
 			0, nullptr,
 			0, nullptr,
-			1, &barrier
+			1, &imageBarrier
 		);
 
 		if (pContext->renderDebugChr) {
