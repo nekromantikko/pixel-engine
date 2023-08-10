@@ -11,11 +11,6 @@
 #include "collision.h"
 #include "metasprite.h"
 #include "memory_pool.h"
-#include "editor_core.h"
-#include "editor_debug.h"
-#include "editor_sprites.h"
-#include "editor_chr.h"
-#include "editor_tiles.h"
 #include <imgui.h>
 
 namespace Game {
@@ -26,7 +21,6 @@ namespace Game {
 
     // Editor
     LevelEditor::EditorState editorState;
-    Editor::EditorContext* pEditorContext;
 
     // Viewport
     Viewport viewport;
@@ -147,13 +141,9 @@ namespace Game {
 
         // SETTINGS
         pRenderSettings = Rendering::GetSettingsPtr(pRenderContext);
-
-        // EDITOR
-        pEditorContext = Editor::CreateEditorContext(pRenderContext);
 	}
 
     void Free() {
-        Editor::FreeEditorContext(pEditorContext);
         arrowPool.Free();
         hitPool.Free();
         damageNumberPool.Free();
@@ -338,23 +328,6 @@ namespace Game {
             (s32)(viewport.y* TILE_SIZE)
         };
         Rendering::SetRenderState(pRenderContext, 16, 272, state);
-
-        // GUI
-        Rendering::BeginImGuiFrame(pRenderContext);
-        ImGui::NewFrame();
-        ImGui::ShowDemoWindow();
-        Editor::Debug::DrawDebugWindow(pEditorContext, pRenderContext);
-
-        Editor::Sprites::DrawPreviewWindow(pEditorContext);
-        Editor::Sprites::DrawMetaspriteWindow(pEditorContext);
-        Editor::Sprites::DrawSpriteEditor(pEditorContext);
-
-        Editor::CHR::DrawCHRWindow(pEditorContext);
-        Editor::Tiles::DrawBgCollisionWindow(pEditorContext);
-        Editor::Tiles::DrawCollisionEditor(pEditorContext, pRenderContext);
-
-        ImGui::Render();
-        Rendering::Render(pRenderContext);
     }
 
     void PlayerInput(r32 dt) {

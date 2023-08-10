@@ -7,7 +7,14 @@
 #include "system.h"
 #include "game.h"
 
-static Rendering::RenderContext* renderContext;
+#include "editor_core.h"
+#include "editor_debug.h"
+#include "editor_sprites.h"
+#include "editor_chr.h"
+#include "editor_tiles.h"
+
+static Rendering::RenderContext* pRenderContext;
+static Editor::EditorContext* pEditorContext;
 static bool running;
 
 // Forward declare message handler from imgui_impl_win32.cpp
@@ -21,8 +28,8 @@ LRESULT CALLBACK MainWindowCallback(_In_ HWND hwnd, _In_ UINT uMsg, _In_ WPARAM 
         case WM_SIZE:
         {
             OutputDebugStringA("WM_SIZE\n");
-            if (renderContext != nullptr) {
-                Rendering::ResizeSurface(renderContext, LOWORD(lParam), HIWORD(lParam));
+            if (pRenderContext != nullptr) {
+                Rendering::ResizeSurface(pRenderContext, LOWORD(lParam), HIWORD(lParam));
             }
             break;
         }
@@ -109,17 +116,19 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
     surface.hInstance = hInst,
         surface.hWnd = windowHandle;
 
-    renderContext = Rendering::CreateRenderContext(surface);
-    DEBUG_LOG("Render context = %x\n", renderContext);
+    pRenderContext = Rendering::CreateRenderContext(surface);
+    DEBUG_LOG("Render context = %x\n", pRenderContext);
 
     ImGui::CreateContext();
     ImGui_ImplWin32_Init(windowHandle);
-    Rendering::InitImGui(renderContext);
+    Rendering::InitImGui(pRenderContext);
+
+    pEditorContext = Editor::CreateEditorContext(pRenderContext);
 
     u64 currentTime = GetTickCount64();
 
     SDL_Init(SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS | SDL_INIT_HAPTIC);
-    Game::Initialize(renderContext);
+    Game::Initialize(pRenderContext);
 
     running = true;
     while (running) {
@@ -138,15 +147,32 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
         currentTime = newTime;
 
         if (deltaTime >= FLT_MIN) {
-            Game::Step(deltaTimeSeconds, renderContext);
+            Game::Step(deltaTimeSeconds, pRenderContext);
         }
+
+        Rendering::BeginImGuiFrame(pRenderContext);
+        ImGui::NewFrame();
+        ImGui::ShowDemoWindow();
+        Editor::Debug::DrawDebugWindow(pEditorContext, pRenderContext);
+
+        Editor::Sprites::DrawPreviewWindow(pEditorContext);
+        Editor::Sprites::DrawMetaspriteWindow(pEditorContext);
+        Editor::Sprites::DrawSpriteEditor(pEditorContext);
+
+        Editor::CHR::DrawCHRWindow(pEditorContext);
+        Editor::Tiles::DrawBgCollisionWindow(pEditorContext);
+        Editor::Tiles::DrawCollisionEditor(pEditorContext, pRenderContext);
+
+        ImGui::Render();
+        Rendering::Render(pRenderContext);
     }
 
     Game::Free();
-    Rendering::WaitForAllCommands(renderContext);
+    Editor::FreeEditorContext(pEditorContext);
+    Rendering::WaitForAllCommands(pRenderContext);
     Rendering::ShutdownImGui();
     ImGui::DestroyContext();
-    Rendering::FreeRenderContext(renderContext);
+    Rendering::FreeRenderContext(pRenderContext);
 
     SDL_Quit();
     return 0;
