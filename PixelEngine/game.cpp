@@ -528,6 +528,30 @@ namespace Game {
         }
     }
 
+    constexpr Vec2 viewportScrollThreshold = { 8.0f, 6.0f };
+
+    void UpdateViewport(Rendering::RenderContext* pRenderContext) {
+        Vec2 viewportCenter = Vec2{ viewport.x + viewport.w / 2.0f, viewport.y + viewport.h / 2.0f };
+        Vec2 playerOffset = Vec2{ playerState.x - viewportCenter.x, playerState.y - viewportCenter.y };
+
+        Vec2 delta = { 0.0f, 0.0f };
+        if (playerOffset.x > viewportScrollThreshold.x) {
+            delta.x = playerOffset.x - viewportScrollThreshold.x;
+        }
+        else if (playerOffset.x < -viewportScrollThreshold.x) {
+            delta.x = playerOffset.x + viewportScrollThreshold.x;
+        }
+
+        if (playerOffset.y > viewportScrollThreshold.y) {
+            delta.y = playerOffset.y - viewportScrollThreshold.y;
+        }
+        else if (playerOffset.y < -viewportScrollThreshold.y) {
+            delta.y = playerOffset.y + viewportScrollThreshold.y;
+        }
+
+        MoveViewport(&viewport, pRenderContext, &level, delta.x, delta.y);
+    }
+
     void Step(r32 dt, Rendering::RenderContext* pRenderContext) {
         secondsElapsed += dt;
 
@@ -659,6 +683,8 @@ namespace Game {
         const r32 amplitude = 7.5f;
         r32 sineTime = sin(secondsElapsed);
         enemyPos.y = yMid + sineTime * amplitude;
+
+        UpdateViewport(pRenderContext);
 
         Render(pRenderContext, dt);
 
