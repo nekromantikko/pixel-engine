@@ -29,7 +29,7 @@ namespace Editor {
             static ImVec2 dragStartPos = ImVec2(0, 0);
             static ImVec2 dragDelta = ImVec2(0, 0);
 
-            ImVec2 gridPos = Util::DrawTileGrid(pContext, gridSizePixels, 8, &gridFocused);
+            ImVec2 gridPos = Util::DrawTileGrid(pContext, gridSizePixels, 8, nullptr, &gridFocused);
             ImVec2 origin = ImVec2(gridPos.x + gridSizePixels / 2, gridPos.y + gridSizePixels / 2);
 
             ImDrawList* drawList = ImGui::GetWindowDrawList();

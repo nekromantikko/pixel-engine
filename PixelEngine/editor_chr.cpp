@@ -11,23 +11,9 @@ namespace Editor {
         void DrawCHRSheet(EditorContext* pContext, bool index) {
 
             ImDrawList* drawList = ImGui::GetWindowDrawList();
-            ImVec2 chrPos = Util::DrawTileGrid(pContext, gridSizePixels, gridSizeTiles);
+            ImVec2 chrPos = Util::DrawTileGrid(pContext, gridSizePixels, gridSizeTiles, (u32*)&pContext->chrSelection[index]);
             drawList->AddImage(pContext->chrTexture[pContext->chrPaletteIndex[index] + index*4], chrPos, ImVec2(chrPos.x + gridSizePixels, chrPos.y + gridSizePixels), ImVec2(0 + 0.5*index, 0), ImVec2(0.5 + 0.5*index, 1));
-
-            // Selection rect
-            ImVec2 selectedTilePos = ImVec2(chrPos.x + gridStepPixels * (pContext->chrSelection[index] % 16), chrPos.y + gridStepPixels * (pContext->chrSelection[index] / 16));
-            drawList->AddRect(selectedTilePos, ImVec2(selectedTilePos.x + gridStepPixels, selectedTilePos.y + gridStepPixels), IM_COL32(255, 255, 255, 255));
-
-            // Handle selection
-            ImGuiIO& io = ImGui::GetIO();
-            bool gridClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left) && io.MousePos.x >= chrPos.x && io.MousePos.x < chrPos.x + gridSizePixels && io.MousePos.y >= chrPos.y && io.MousePos.y < chrPos.y + gridSizePixels;
-            if (gridClicked) {
-                ImVec2 mousePosRelative = ImVec2(io.MousePos.x - chrPos.x, io.MousePos.y - chrPos.y);
-                ImVec2 mousePosNormalized = ImVec2((mousePosRelative.x / gridSizePixels) * 0.5f, mousePosRelative.y / gridSizePixels);
-                ImVec2 clickedTileCoord = Util::TexCoordToTileCoord(mousePosNormalized);
-                u8 clickedTileIndex = Util::GetTileIndex(clickedTileCoord);
-                pContext->chrSelection[index] = clickedTileIndex;
-            }
+            Util::DrawTileGridSelection(pContext, chrPos, gridSizePixels, gridSizeTiles, pContext->chrSelection[index]);
         }
 
 		void DrawCHRWindow(EditorContext* pContext) {
@@ -45,8 +31,6 @@ namespace Editor {
                 ImGui::SameLine();
             }
             ImGui::NewLine();
-
-            ImDrawList* drawList = ImGui::GetWindowDrawList();
 
             DrawCHRSheet(pContext, 0);
             ImGui::SameLine();
