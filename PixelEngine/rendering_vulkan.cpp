@@ -1573,29 +1573,8 @@ namespace Rendering
 		vulkanInitInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
 		ImGui_ImplVulkan_Init(&vulkanInitInfo, pContext->renderImagePass);
+		ImGui_ImplVulkan_CreateFontsTexture();
 
-		// Generate fonts
-		VkCommandBuffer temp = GetTemporaryCommandBuffer(pContext);
-
-		VkCommandBufferBeginInfo beginInfo{};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-		vkBeginCommandBuffer(temp, &beginInfo);
-
-		ImGui_ImplVulkan_CreateFontsTexture(temp);
-
-		vkEndCommandBuffer(temp);
-
-		VkSubmitInfo submitInfo{};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &temp;
-
-		vkQueueSubmit(pContext->primaryQueue, 1, &submitInfo, VK_NULL_HANDLE);
-		vkQueueWaitIdle(pContext->primaryQueue);
-
-		vkFreeCommandBuffers(pContext->device, pContext->primaryCommandPool, 1, &temp);
 	}
 	void BeginImGuiFrame(RenderContext* pContext) {
 		ImGui_ImplVulkan_NewFrame();
