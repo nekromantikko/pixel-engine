@@ -1,6 +1,7 @@
 #include "editor_util.h"
 #include "editor_core.h"
 #include <cmath>
+#include "tileset.h"
 
 namespace Editor {
 	namespace Util {
@@ -73,6 +74,23 @@ namespace Editor {
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
 			ImVec2 selectedTilePos = ImVec2(gridPos.x + gridStep * (selection % divisions), gridPos.y + gridStep * (selection / divisions));
 			drawList->AddRect(selectedTilePos, ImVec2(selectedTilePos.x + gridStep, selectedTilePos.y + gridStep), IM_COL32(255, 255, 255, 255));
+		}
+
+		void DrawMetatile(EditorContext* pContext, u32 index, ImVec2 pos, r32 tileSize, ImU32 color) {
+			Tileset::Metatile& metatile = Tileset::GetMetatile(index);
+
+			s32 palette = Tileset::GetPalette(index);
+
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			for (s32 t = 0; t < 4; t++) {
+				ImVec2 tileCoord = ImVec2(t % 2, t / 2);
+				ImVec2 tileOffset = ImVec2(pos.x + tileCoord.x * tileSize, pos.y + tileCoord.y * tileSize);
+				u8 tileIndex = metatile.tiles[t];
+				ImVec2 tileChrCoord = GetTileCoord(tileIndex);
+				ImVec2 tileStart = TileCoordToTexCoord(tileChrCoord, 0);
+				ImVec2 tileEnd = TileCoordToTexCoord(ImVec2(tileChrCoord.x + 1, tileChrCoord.y + 1), 0);
+				drawList->AddImage(pContext->chrTexture[palette], tileOffset, ImVec2(tileOffset.x + tileSize, tileOffset.y + tileSize), tileStart, tileEnd, color);
+			}
 		}
 
 	}

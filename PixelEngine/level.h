@@ -1,10 +1,15 @@
 #pragma once
 #include "rendering.h"
+#include "tileset.h"
+
+#define LEVEL_SCREEN_WIDTH_TILES NAMETABLE_WIDTH_TILES
+#define LEVEL_SCREEN_WIDTH_METATILES (LEVEL_SCREEN_WIDTH_TILES / Tileset::metatileWorldSize)
+
+#define LEVEL_SCREEN_HEIGHT_TILES NAMETABLE_HEIGHT_TILES
+#define LEVEL_SCREEN_HEIGHT_METATILES (LEVEL_SCREEN_HEIGHT_TILES / Tileset::metatileWorldSize)
 
 struct Screen {
-    // Size of one nametable
-    u8 tiles[NAMETABLE_ATTRIBUTE_OFFSET]{};
-    u8 attributes[NAMETABLE_ATTRIBUTE_SIZE]{};
+    u32 metatiles[LEVEL_SCREEN_WIDTH_METATILES * LEVEL_SCREEN_HEIGHT_METATILES];
 };
 
 struct Level {

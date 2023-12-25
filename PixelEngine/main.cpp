@@ -12,6 +12,7 @@
 #include "editor_sprites.h"
 #include "editor_chr.h"
 #include "editor_tiles.h"
+#include "editor_level.h"
 
 static Rendering::RenderContext* pRenderContext;
 static Editor::EditorContext* pEditorContext;
@@ -160,8 +161,10 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
         Editor::Sprites::DrawSpriteEditor(pEditorContext);
 
         Editor::CHR::DrawCHRWindow(pEditorContext);
-        Editor::Tiles::DrawBgCollisionWindow(pEditorContext);
-        Editor::Tiles::DrawCollisionEditor(pEditorContext, pRenderContext);
+        Editor::Tiles::DrawMetatileEditor(pEditorContext, pRenderContext);
+        Editor::Tiles::DrawTilesetEditor(pEditorContext, pRenderContext);
+
+        Editor::LevelEditor::DrawGameWindow(pEditorContext, pRenderContext);
 
         ImGui::Render();
         Rendering::Render(pRenderContext);
