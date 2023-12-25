@@ -10,6 +10,7 @@ namespace Editor {
 
 		ImTextureID* chrTexture;
 		ImTextureID paletteTexture;
+		ImTextureID gameViewTexture;
 	};
 
 	EditorContext* CreateEditorContext(Rendering::RenderContext* pRenderContext);

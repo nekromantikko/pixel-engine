@@ -119,7 +119,7 @@ namespace Rendering
 		// Settings
 		Settings settings;
 
-		// Debug stuff
+		// Editor stuff
 		bool32 renderDebugChr = false;
 		Image debugChrImage[8];
 		VkPipelineLayout chrPipelineLayout;
@@ -133,6 +133,10 @@ namespace Rendering
 		VkPipeline palettePipeline;
 		VkShaderModule paletteShaderModule;
 		VkDescriptorSet paletteDescriptorSet;
+
+		bool32 useIntermediateFramebuffer = false;
+		Image intermediateImage;
+		VkFramebuffer intermediateFramebuffer;
 	};
 
 	void CreateVulkanInstance(RenderContext *pContext) {
@@ -1379,17 +1383,21 @@ namespace Rendering
 		FreeImage(pRenderContext, pRenderContext->colorImage);
 		FreeImage(pRenderContext, pRenderContext->paletteImage);
 
-		vkDestroyPipeline(pRenderContext->device, pRenderContext->chrPipeline, nullptr);
-		vkDestroyPipelineLayout(pRenderContext->device, pRenderContext->chrPipelineLayout, nullptr);
-		vkDestroyShaderModule(pRenderContext->device, pRenderContext->chrShaderModule, nullptr);
-		for (int i = 0; i < 8; i++) {
-			FreeImage(pRenderContext, pRenderContext->debugChrImage[i]);
+		if (pRenderContext->renderDebugChr) {
+			vkDestroyPipeline(pRenderContext->device, pRenderContext->chrPipeline, nullptr);
+			vkDestroyPipelineLayout(pRenderContext->device, pRenderContext->chrPipelineLayout, nullptr);
+			vkDestroyShaderModule(pRenderContext->device, pRenderContext->chrShaderModule, nullptr);
+			for (int i = 0; i < 8; i++) {
+				FreeImage(pRenderContext, pRenderContext->debugChrImage[i]);
+			}
 		}
 
-		vkDestroyPipeline(pRenderContext->device, pRenderContext->palettePipeline, nullptr);
-		vkDestroyPipelineLayout(pRenderContext->device, pRenderContext->palettePipelineLayout, nullptr);
-		vkDestroyShaderModule(pRenderContext->device, pRenderContext->paletteShaderModule, nullptr);
-		FreeImage(pRenderContext, pRenderContext->debugPaletteImage);
+		if (pRenderContext->renderDebugPalette) {
+			vkDestroyPipeline(pRenderContext->device, pRenderContext->palettePipeline, nullptr);
+			vkDestroyPipelineLayout(pRenderContext->device, pRenderContext->palettePipelineLayout, nullptr);
+			vkDestroyShaderModule(pRenderContext->device, pRenderContext->paletteShaderModule, nullptr);
+			FreeImage(pRenderContext, pRenderContext->debugPaletteImage);
+		}
 
 		FreeBuffer(pRenderContext, pRenderContext->chrBuffer);
 		FreeBuffer(pRenderContext, pRenderContext->nametableBuffer);
@@ -1629,7 +1637,7 @@ namespace Rendering
 		}
 	}
 
-	ImTextureID* SetupDebugChrRendering(RenderContext* pContext) {
+	ImTextureID* SetupEditorChrRendering(RenderContext* pContext) {
 		ImTextureID* textures = (ImTextureID*)calloc(8, sizeof(ImTextureID));
 
 		VkDescriptorSetLayout layouts[8] = {
@@ -1808,7 +1816,7 @@ namespace Rendering
 		);
 	}
 
-	ImTextureID SetupDebugPaletteRendering(RenderContext* pContext) {
+	ImTextureID SetupEditorPaletteRendering(RenderContext* pContext) {
 		CreateImage(pContext, 64, 1, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, pContext->debugPaletteImage);
 
 		VkPipelineLayoutCreateInfo chrPipelineLayoutInfo{};
@@ -1930,6 +1938,10 @@ namespace Rendering
 
 		pContext->renderDebugPalette = true;
 		return (ImTextureID)ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, pContext->debugPaletteImage.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	}
+
+	ImTextureID SetupEditorGameViewRendering(RenderContext* pContext) {
+		return (ImTextureID)ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, pContext->colorImage.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	}
 
 	//////////////////////////////////////////////////////

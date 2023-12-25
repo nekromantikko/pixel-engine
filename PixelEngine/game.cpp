@@ -10,6 +10,7 @@
 #include "viewport.h"
 #include "collision.h"
 #include "metasprite.h"
+#include "tileset.h"
 #include "memory_pool.h"
 #include <imgui.h>
 
@@ -104,6 +105,8 @@ namespace Game {
 
     Rendering::CHRSheet playerBank;
 
+    bool paused = true;
+
 	void Initialize(Rendering::RenderContext* pRenderContext) {
         viewport.x = 0.0f;
         viewport.y = 12.0f;
@@ -130,7 +133,7 @@ namespace Game {
         editorState.pLevel = &level;
         editorState.pRenderContext = pRenderContext;
 
-        Collision::LoadBgCollision("bg.til");
+        //Tileset::LoadTileset("forest.til");
         Metasprite::LoadMetasprites("meta.spr");
         LoadLevel(&level, "test.lev");
 
@@ -528,134 +531,137 @@ namespace Game {
     void Step(r32 dt, Rendering::RenderContext* pRenderContext) {
         secondsElapsed += dt;
 
+        // TODO: Move out of game logic
         Input::Poll();
 
         // LevelEditor::HandleInput(&editorState, controllerState, controllerStatePrev, &viewport, dt);
 
-        PlayerInput(dt);
-        PlayerBgCollision(dt, pRenderContext);
-        PlayerShoot(dt);
-        PlayerAnimate(dt);
+        if (!paused) {
+            PlayerInput(dt);
+            PlayerBgCollision(dt, pRenderContext);
+            PlayerShoot(dt);
+            PlayerAnimate(dt);
 
-        Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
-        Collision::Collider enemyHitbox = enemyMetasprite.colliders[0];
-        Vec2 enemyHitboxPos = Vec2{ enemyPos.x + enemyHitbox.xOffset, enemyPos.y + enemyHitbox.yOffset };
-        Vec2 enemyHitboxDimensions = Vec2{ enemyHitbox.width, enemyHitbox.height };
+            Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
+            Collision::Collider enemyHitbox = enemyMetasprite.colliders[0];
+            Vec2 enemyHitboxPos = Vec2{ enemyPos.x + enemyHitbox.xOffset, enemyPos.y + enemyHitbox.yOffset };
+            Vec2 enemyHitboxDimensions = Vec2{ enemyHitbox.width, enemyHitbox.height };
 
-        // Update arrows
-        for (int i = 0; i < arrowPool.Count(); i++) {
-            Arrow& arrow = arrowPool[i];
-            //arrow.pos = arrow.pos + (arrow.vel * dt);
+            // Update arrows
+            for (int i = 0; i < arrowPool.Count(); i++) {
+                Arrow& arrow = arrowPool[i];
+                //arrow.pos = arrow.pos + (arrow.vel * dt);
 
-            // TODO: Object struct and updater that does this for everything?
-            bool hFlip = arrow.vel.x < 0.0f;
-            bool vFlip = arrow.vel.y < -10.0f;
+                // TODO: Object struct and updater that does this for everything?
+                bool hFlip = arrow.vel.x < 0.0f;
+                bool vFlip = arrow.vel.y < -10.0f;
 
-            u32 spriteIndex = abs(arrow.vel.y) < 10.0f ? 3 : 4;
-            Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[spriteIndex];
+                u32 spriteIndex = abs(arrow.vel.y) < 10.0f ? 3 : 4;
+                Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[spriteIndex];
 
-            Collision::Collider hitbox = metasprite.colliders[0];
-            Vec2 hitboxPos = Vec2{ arrow.pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow.pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
-            Vec2 hitboxDimensions = Vec2{ hitbox.width, hitbox.height };
+                Collision::Collider hitbox = metasprite.colliders[0];
+                Vec2 hitboxPos = Vec2{ arrow.pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow.pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
+                Vec2 hitboxDimensions = Vec2{ hitbox.width, hitbox.height };
 
-            r32 dx = arrow.vel.x * dt;
+                r32 dx = arrow.vel.x * dt;
 
-            Collision::HitResult hit{};
-            /*Collision::SweepBoxHorizontal(pRenderContext, hitboxPos, hitboxDimensions, dx, hit);
-            if (hit.blockingHit) {
-                arrowPool.FreeObject(i);
-                Impact* impact = hitPool.AllocObject();
-                impact->pos = hit.impactPoint;
-                impact->accumulator = 0.0f;
-                continue;
+                Collision::HitResult hit{};
+                /*Collision::SweepBoxHorizontal(pRenderContext, hitboxPos, hitboxDimensions, dx, hit);
+                if (hit.blockingHit) {
+                    arrowPool.FreeObject(i);
+                    Impact* impact = hitPool.AllocObject();
+                    impact->pos = hit.impactPoint;
+                    impact->accumulator = 0.0f;
+                    continue;
+                }
+                arrow.pos.x += dx;
+
+                r32 dy = arrow.vel.y * dt;
+                hitboxPos = Vec2{ arrow.pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow.pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
+                Collision::SweepBoxVertical(pRenderContext, hitboxPos, hitboxDimensions, dy, hit);
+                if (hit.blockingHit) {
+                    arrowPool.FreeObject(i);
+                    Impact* impact = hitPool.AllocObject();
+                    impact->pos = hit.impactPoint;
+                    impact->accumulator = 0.0f;
+                    continue;
+                }
+                arrow.pos.y += dy;*/
+
+                Vec2 deltaPos = arrow.vel * dt;
+                Vec2 dir = deltaPos.Normalize();
+                Collision::RaycastTilesWorldSpace(pRenderContext, arrow.pos + dir, dir, deltaPos.Length(), hit);
+                if (hit.blockingHit) {
+                    arrowPool.FreeObject(i);
+                    Impact* impact = hitPool.AllocObject();
+                    impact->pos = hit.impactPoint;
+                    impact->accumulator = 0.0f;
+                    continue;
+                }
+
+                arrow.pos = arrow.pos + (arrow.vel * dt);
+
+                // Collision with enemy
+                hitboxPos = Vec2{ arrow.pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow.pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
+                if (hitboxPos.x - hitboxDimensions.x / 2.0f < enemyHitboxPos.x + enemyHitboxDimensions.x / 2.0f &&
+                    hitboxPos.x + hitboxDimensions.x / 2.0f > enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f &&
+                    hitboxPos.y - hitboxDimensions.y / 2.0f < enemyHitboxPos.y + enemyHitboxDimensions.y / 2.0f &&
+                    hitboxPos.y + hitboxDimensions.y / 2.0f > enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f) {
+
+                    arrowPool.FreeObject(i);
+                    Impact* impact = hitPool.AllocObject();
+                    impact->pos = arrow.pos;
+                    impact->accumulator = 0.0f;
+
+                    // Add damage numbers
+                    s32 damage = (rand() % 10) + 5;
+                    // Random point inside enemy hitbox
+                    Vec2 dmgPos = Vec2{ (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.x) + enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f, (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.y) + enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f };
+
+                    DamageNumber* dmgNumber = damageNumberPool.AllocObject();
+                    dmgNumber->damage = damage;
+                    dmgNumber->pos = dmgPos;
+                    dmgNumber->accumulator = 0.0f;
+
+                    continue;
+                }
+
+                if (arrow.pos.x < viewport.x || arrow.pos.x > viewport.x + viewport.w || arrow.pos.y < viewport.y || arrow.pos.y > viewport.y + viewport.h) {
+                    arrowPool.FreeObject(i);
+                }
             }
-            arrow.pos.x += dx;
 
-            r32 dy = arrow.vel.y * dt;
-            hitboxPos = Vec2{ arrow.pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow.pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
-            Collision::SweepBoxVertical(pRenderContext, hitboxPos, hitboxDimensions, dy, hit);
-            if (hit.blockingHit) {
-                arrowPool.FreeObject(i);
-                Impact* impact = hitPool.AllocObject();
-                impact->pos = hit.impactPoint;
-                impact->accumulator = 0.0f;
-                continue;
-            }
-            arrow.pos.y += dy;*/
+            // Update explosions
+            for (int i = 0; i < hitPool.Count(); i++) {
+                Impact& impact = hitPool[i];
+                impact.accumulator += dt;
 
-            Vec2 deltaPos = arrow.vel * dt;
-            Vec2 dir = deltaPos.Normalize();
-            Collision::RaycastTilesWorldSpace(pRenderContext, arrow.pos + dir, dir, deltaPos.Length(), hit);
-            if (hit.blockingHit) {
-                arrowPool.FreeObject(i);
-                Impact* impact = hitPool.AllocObject();
-                impact->pos = hit.impactPoint;
-                impact->accumulator = 0.0f;
-                continue;
+                if (impact.accumulator >= impactAnimLength) {
+                    hitPool.FreeObject(i);
+                    continue;
+                }
             }
 
-            arrow.pos = arrow.pos + (arrow.vel * dt);
+            // Update damage numbers
+            r32 dmgNumberVel = -3.0f;
+            for (int i = 0; i < damageNumberPool.Count(); i++) {
+                DamageNumber& dmgNumber = damageNumberPool[i];
+                dmgNumber.accumulator += dt;
 
-            // Collision with enemy
-            hitboxPos = Vec2{ arrow.pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow.pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
-            if (hitboxPos.x - hitboxDimensions.x / 2.0f < enemyHitboxPos.x + enemyHitboxDimensions.x / 2.0f &&
-                hitboxPos.x + hitboxDimensions.x / 2.0f > enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f &&
-                hitboxPos.y - hitboxDimensions.y / 2.0f < enemyHitboxPos.y + enemyHitboxDimensions.y / 2.0f &&
-                hitboxPos.y + hitboxDimensions.y / 2.0f > enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f) {
+                if (dmgNumber.accumulator >= damageNumberLifetime) {
+                    damageNumberPool.FreeObject(i);
+                    continue;
+                }
 
-                arrowPool.FreeObject(i);
-                Impact* impact = hitPool.AllocObject();
-                impact->pos = arrow.pos;
-                impact->accumulator = 0.0f;
-
-                // Add damage numbers
-                s32 damage = (rand() % 10) + 5;
-                // Random point inside enemy hitbox
-                Vec2 dmgPos = Vec2{ (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.x) + enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f, (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.y) + enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f };
-
-                DamageNumber* dmgNumber = damageNumberPool.AllocObject();
-                dmgNumber->damage = damage;
-                dmgNumber->pos = dmgPos;
-                dmgNumber->accumulator = 0.0f;
-
-                continue;
+                dmgNumber.pos.y += dmgNumberVel * dt;
             }
 
-            if (arrow.pos.x < viewport.x || arrow.pos.x > viewport.x + viewport.w || arrow.pos.y < viewport.y || arrow.pos.y > viewport.y + viewport.h) {
-                arrowPool.FreeObject(i);
-            }
+            // Update enemy pos
+            const r32 yMid = 27.f;
+            const r32 amplitude = 7.5f;
+            r32 sineTime = sin(secondsElapsed);
+            enemyPos.y = yMid + sineTime * amplitude;
         }
-
-        // Update explosions
-        for (int i = 0; i < hitPool.Count(); i++) {
-            Impact& impact = hitPool[i];
-            impact.accumulator += dt;
-
-            if (impact.accumulator >= impactAnimLength) {
-                hitPool.FreeObject(i);
-                continue;
-            }
-        }
-
-        // Update damage numbers
-        r32 dmgNumberVel = -3.0f;
-        for (int i = 0; i < damageNumberPool.Count(); i++) {
-            DamageNumber& dmgNumber = damageNumberPool[i];
-            dmgNumber.accumulator += dt;
-
-            if (dmgNumber.accumulator >= damageNumberLifetime) {
-                damageNumberPool.FreeObject(i);
-                continue;
-            }
-
-            dmgNumber.pos.y += dmgNumberVel * dt;
-        }
-
-        // Update enemy pos
-        const r32 yMid = 27.f;
-        const r32 amplitude = 7.5f;
-        r32 sineTime = sin(secondsElapsed);
-        enemyPos.y = yMid + sineTime * amplitude;
 
         UpdateViewport(pRenderContext);
 

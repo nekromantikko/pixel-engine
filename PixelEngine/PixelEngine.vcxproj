@@ -169,6 +169,7 @@
     <ClCompile Include="rendering_util.cpp" />
     <ClCompile Include="system.cpp" />
     <ClCompile Include="editor_util.cpp" />
+    <ClCompile Include="tileset.cpp" />
     <ClCompile Include="viewport.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -187,6 +188,7 @@
     <ClInclude Include="rendering.h" />
     <ClInclude Include="rendering_util.h" />
     <ClInclude Include="system.h" />
+    <ClInclude Include="tileset.h" />
     <ClInclude Include="typedef.h" />
     <ClInclude Include="editor_util.h" />
     <ClInclude Include="vector.h" />

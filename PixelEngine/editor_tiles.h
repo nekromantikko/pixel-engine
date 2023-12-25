@@ -5,8 +5,7 @@
 namespace Editor {
 	namespace Tiles {
 
-		void DrawBgCollisionWindow(EditorContext* pContext);
-		void DrawCollisionEditor(EditorContext* pContext, Rendering::RenderContext* pRenderContext);
-
+		void DrawMetatileEditor(EditorContext* pContext, Rendering::RenderContext* pRenderContext);
+		void DrawTilesetEditor(EditorContext* pContext, Rendering::RenderContext* pRenderContext);
 	}
 }

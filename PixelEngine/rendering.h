@@ -97,6 +97,7 @@ namespace Rendering
 	void ShutdownImGui();
 
 	// DEBUG
-	ImTextureID* SetupDebugChrRendering(RenderContext* pContext);
-	ImTextureID SetupDebugPaletteRendering(RenderContext* pContext);
+	ImTextureID* SetupEditorChrRendering(RenderContext* pContext);
+	ImTextureID SetupEditorPaletteRendering(RenderContext* pContext);
+	ImTextureID SetupEditorGameViewRendering(RenderContext* pContext);
 }

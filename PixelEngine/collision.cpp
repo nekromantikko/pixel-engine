@@ -4,43 +4,6 @@
 #include "system.h"
 
 namespace Collision {
-
-	TileCollision bgTileCollision[256]{};
-
-	TileCollision* GetBgCollisionPtr() {
-		return bgTileCollision;
-	}
-
-	void LoadBgCollision(const char* fname) {
-		FILE* pFile;
-		fopen_s(&pFile, fname, "rb");
-
-		if (pFile == NULL) {
-			DEBUG_ERROR("Failed to load tile collision file\n");
-		}
-
-		const char signature[4]{};
-		fread((void*)signature, sizeof(u8), 4, pFile);
-		fread((void*)bgTileCollision, sizeof(TileCollision), 256, pFile);
-
-		fclose(pFile);
-	}
-
-	void SaveBgCollision(const char* fname) {
-		FILE* pFile;
-		fopen_s(&pFile, fname, "wb");
-
-		if (pFile == NULL) {
-			DEBUG_ERROR("Failed to write tile collision file\n");
-		}
-
-		const char signature[4] = "TIL";
-		fwrite(signature, sizeof(u8), 4, pFile);
-		fwrite(bgTileCollision, sizeof(TileCollision), 256, pFile);
-
-		fclose(pFile);
-	}
-
 	// TODO: Move to some math util
 	bool IsNearlyEqual(r32 a, r32 b, r32 tolerance = 0.00001f) {
 		return abs(a - b) <= tolerance;
@@ -60,62 +23,6 @@ namespace Collision {
 		else return 0.0f;
 	}
 
-	r32 GetTileSlope(TileCollision tile) {
-		return (tile.slopeEnd.y - tile.slopeStart.y) / (tile.slopeEnd.x - tile.slopeStart.x);
-	}
-
-	r32 GetTileSurfaceX(TileCollision tile, r32 y) {
-		r32 slope = GetTileSlope(tile);
-		r32 intercept = tile.slopeStart.y - slope * tile.slopeStart.x;
-
-		return (y - intercept) / slope;
-	}
-
-	r32 GetTileSurfaceY(TileCollision tile, r32 x) {
-		r32 slope = GetTileSlope(tile);
-		r32 intercept = tile.slopeStart.y - slope * tile.slopeStart.x;
-
-		return slope * x + intercept;
-	}
-
-	bool PointInsideTile(TileCollision tile, Vec2 p) {
-		if (p.x < 0.0f || p.x > 1.0f || p.y < 0.0f || p.y > 1.0f) {
-			return false;
-		}
-
-		if (tile.type == TileSolid) {
-			return true;
-		}
-
-		r32 yTileSurface = GetTileSurfaceY(tile, p.x);
-		if (tile.type == TileSlopeFlip) {
-			return p.y < yTileSurface;
-		}
-
-		return p.y > yTileSurface;
-	}
-
-	bool LineIntersectsTileSurface(Vec2 start, Vec2 dir, TileCollision tile, IVec2 tileCoord, Vec2& outIntersectionPoint) {
-		r32 raySlope = dir.y / dir.x;
-		r32 rayIntercept = start.y - raySlope * start.x;
-
-		r32 tileSlope = GetTileSlope(tile);
-		Vec2 slopeStartWorld = Vec2{ tile.slopeStart.x + tileCoord.x, tile.slopeStart.y + tileCoord.y };
-		r32 tileIntercept = slopeStartWorld.y - tileSlope * slopeStartWorld.x;
-
-		r32 xIntersection = dir.x == 0.0f ? start.x : (tileIntercept - rayIntercept) / (raySlope - tileSlope);
-
-		// If intersection point is outside tile, there's no collision
-		if (xIntersection - tileCoord.x < 0 || xIntersection - tileCoord.x > 1) {
-			return false;
-		}
-
-		r32 yIntersection = tileSlope * xIntersection + tileIntercept;
-
-		outIntersectionPoint = Vec2{ xIntersection, yIntersection };
-		return true;
-	}
-
 	u8 GetTileWorldSpace(Rendering::RenderContext* pRenderContext, IVec2 tileCoord) {
 		// Cast to unsigned to prevent negative coordinates
 		u32 nametableIndex = ((u32)tileCoord.x / NAMETABLE_WIDTH_TILES) % NAMETABLE_COUNT;
@@ -129,7 +36,7 @@ namespace Collision {
 	void RaycastTilesWorldSpace(Rendering::RenderContext *pRenderContext, Vec2 start, Vec2 dir, r32 maxLength, HitResult& outHitResult) {
 		outHitResult.blockingHit = false;
 
-		const Vec2 deltaDist = Vec2{ abs(1 / dir.x), abs(1 / dir.y) };
+		/*const Vec2 deltaDist = Vec2{ abs(1 / dir.x), abs(1 / dir.y) };
 
 		IVec2 tileCoord = { (s32)start.x, (s32)start.y };
 		Vec2 sideDist = { 0,0 };
@@ -277,7 +184,7 @@ namespace Collision {
 					outHitResult.tileType = tileCollision.type;
 				}
 			}
-		}
+		}*/
 	}
 
 	void SweepBoxHorizontal(Rendering::RenderContext* pRenderContext, Vec2 pos, Vec2 dimensions, r32 dx, HitResult& outHit) {
@@ -285,7 +192,7 @@ namespace Collision {
 		outHit.distance = abs(dx);
 		outHit.location = Vec2{ pos.x + dx, pos.y };
 
-		if (IsNearlyZero(dx)) {
+		/*if (IsNearlyZero(dx)) {
 			return;
 		}
 
@@ -328,7 +235,7 @@ namespace Collision {
 			dist += distToNextTile;
 			xSide += Sign(dx) * distToNextTile;
 			xTile += (s32)Sign(dx);
-		}
+		}*/
 	}
 
 	void SweepBoxVertical(Rendering::RenderContext* pRenderContext, Vec2 pos, Vec2 dimensions, r32 dy, HitResult& outHit) {
@@ -336,7 +243,7 @@ namespace Collision {
 		outHit.distance = abs(dy);
 		outHit.location = Vec2{ pos.x, pos.y + dy };
 
-		if (IsNearlyZero(dy)) {
+		/*if (IsNearlyZero(dy)) {
 			return;
 		}
 
@@ -379,6 +286,6 @@ namespace Collision {
 			dist += distToNextTile;
 			ySide += Sign(dy) * distToNextTile;
 			yTile += (s32)Sign(dy);
-		}
+		}*/
 	}
 }

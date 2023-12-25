@@ -160,8 +160,17 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
         Editor::Sprites::DrawSpriteEditor(pEditorContext);
 
         Editor::CHR::DrawCHRWindow(pEditorContext);
-        Editor::Tiles::DrawBgCollisionWindow(pEditorContext);
-        Editor::Tiles::DrawCollisionEditor(pEditorContext, pRenderContext);
+        Editor::Tiles::DrawMetatileEditor(pEditorContext, pRenderContext);
+        Editor::Tiles::DrawTilesetEditor(pEditorContext, pRenderContext);
+
+        ImGui::Begin("Game");
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        ImVec2 topLeft = ImGui::GetCursorScreenPos();
+        r32 aspectRatio = 16.0f / 9.0f;
+        r32 contentWidth = ImGui::GetWindowContentRegionWidth();
+        ImVec2 btmRight = ImVec2(topLeft.x + contentWidth, topLeft.y + contentWidth / aspectRatio);
+        drawList->AddImage(pEditorContext->gameViewTexture, topLeft, btmRight);
+        ImGui::End();
 
         ImGui::Render();
         Rendering::Render(pRenderContext);
