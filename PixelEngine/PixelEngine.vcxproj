@@ -155,8 +155,8 @@
     <ClCompile Include="..\..\imgui\imgui_widgets.cpp" />
     <ClCompile Include="collision.cpp" />
     <ClCompile Include="editor_chr.cpp" />
+    <ClCompile Include="editor_level.cpp" />
     <ClCompile Include="editor_tiles.cpp" />
-    <ClCompile Include="leveleditor.cpp" />
     <ClCompile Include="editor_core.cpp" />
     <ClCompile Include="editor_debug.cpp" />
     <ClCompile Include="game.cpp" />
@@ -164,29 +164,33 @@
     <ClCompile Include="level.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="editor_sprites.cpp" />
+    <ClCompile Include="math.cpp" />
     <ClCompile Include="metasprite.cpp" />
     <ClCompile Include="rendering_vulkan.cpp" />
     <ClCompile Include="rendering_util.cpp" />
     <ClCompile Include="system.cpp" />
     <ClCompile Include="editor_util.cpp" />
+    <ClCompile Include="tileset.cpp" />
     <ClCompile Include="viewport.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="collision.h" />
     <ClInclude Include="editor_chr.h" />
+    <ClInclude Include="editor_level.h" />
     <ClInclude Include="editor_tiles.h" />
-    <ClInclude Include="leveleditor.h" />
     <ClInclude Include="editor_core.h" />
     <ClInclude Include="editor_debug.h" />
     <ClInclude Include="game.h" />
     <ClInclude Include="input.h" />
     <ClInclude Include="level.h" />
     <ClInclude Include="editor_sprites.h" />
+    <ClInclude Include="math.h" />
     <ClInclude Include="memory_pool.h" />
     <ClInclude Include="metasprite.h" />
     <ClInclude Include="rendering.h" />
     <ClInclude Include="rendering_util.h" />
     <ClInclude Include="system.h" />
+    <ClInclude Include="tileset.h" />
     <ClInclude Include="typedef.h" />
     <ClInclude Include="editor_util.h" />
     <ClInclude Include="vector.h" />

@@ -84,9 +84,6 @@
     <ClCompile Include="editor_debug.cpp">
       <Filter>Source Files\editor</Filter>
     </ClCompile>
-    <ClCompile Include="leveleditor.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="editor_chr.cpp">
       <Filter>Source Files\editor</Filter>
     </ClCompile>
@@ -100,6 +97,15 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="editor_sprites.cpp">
+      <Filter>Source Files\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="tileset.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="math.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="editor_level.cpp">
       <Filter>Source Files\editor</Filter>
     </ClCompile>
   </ItemGroup>
@@ -137,9 +143,6 @@
     <ClInclude Include="editor_debug.h">
       <Filter>Header Files\editor</Filter>
     </ClInclude>
-    <ClInclude Include="leveleditor.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="editor_chr.h">
       <Filter>Header Files\editor</Filter>
     </ClInclude>
@@ -160,6 +163,15 @@
     </ClInclude>
     <ClInclude Include="memory_pool.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="tileset.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="math.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="editor_level.h">
+      <Filter>Header Files\editor</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

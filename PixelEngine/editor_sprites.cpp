@@ -26,7 +26,6 @@ namespace Editor {
 
             static bool gridFocused = false;
             static bool dragging = false;
-            static ImVec2 dragStartPos = ImVec2(0, 0);
             static ImVec2 dragDelta = ImVec2(0, 0);
 
             ImVec2 gridPos = Util::DrawTileGrid(pContext, gridSizePixels, 8, nullptr, &gridFocused);

@@ -5,11 +5,16 @@
 
 namespace Editor {
 	struct EditorContext {
-		u8 chrPaletteIndex[2] = { 0,0 };
-		u8 chrSelection[2] = { 0,0 };
+		u8 chrPaletteIndex[2];
+		u8 chrSelection[2];
+
+		u32 levelClipboard[((VIEWPORT_WIDTH_TILES / 2) + 1) * ((VIEWPORT_HEIGHT_TILES / 2) + 1)];
+		ImVec2 levelSelectionSize;
+		ImVec2 levelSelectionOffset;
 
 		ImTextureID* chrTexture;
 		ImTextureID paletteTexture;
+		ImTextureID gameViewTexture;
 	};
 
 	EditorContext* CreateEditorContext(Rendering::RenderContext* pRenderContext);

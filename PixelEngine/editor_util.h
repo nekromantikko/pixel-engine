@@ -10,6 +10,6 @@ namespace Editor {
 		ImVec2 TexCoordToTileCoord(ImVec2 normalized);
 		ImVec2 DrawTileGrid(EditorContext* pContext, r32 size, s32 divisions, u32* selection = nullptr, bool* focused = nullptr);
 		void DrawTileGridSelection(EditorContext* pContext, ImVec2 gridPos, r32 gridSize, s32 divisions, u32 selection);
-
+		void DrawMetatile(EditorContext* pContext, u32 index, ImVec2 pos, r32 tileSize, ImU32 color = IM_COL32(255, 255, 255, 255));
 	}
 }

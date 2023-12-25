@@ -4,8 +4,12 @@ namespace Editor {
 	EditorContext* CreateEditorContext(Rendering::RenderContext* pRenderContext) {
 		EditorContext* pContext = (EditorContext*)calloc(1, sizeof(EditorContext));
 
-		pContext->chrTexture = Rendering::SetupDebugChrRendering(pRenderContext);
-		pContext->paletteTexture = Rendering::SetupDebugPaletteRendering(pRenderContext);
+		pContext->chrTexture = Rendering::SetupEditorChrRendering(pRenderContext);
+		pContext->paletteTexture = Rendering::SetupEditorPaletteRendering(pRenderContext);
+		pContext->gameViewTexture = Rendering::SetupEditorGameViewRendering(pRenderContext);
+
+		pContext->levelSelectionSize = { 1, 1 };
+		pContext->levelSelectionOffset = { 0, 0 };
 
 		return pContext;
 	}
