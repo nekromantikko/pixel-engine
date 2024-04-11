@@ -7,3 +7,19 @@ The NES was my main inspiration, but my renderer has more colors per tile and a 
 I'm working on a simple side scrolling platformer/shooter to showcase the renderer (Currently in a very early stage of development) along with an editor using Dear IMGUI.
 
 Original CRT shader by Timothy Lottes (https://www.shadertoy.com/view/XsjSzR)
+
+Video demonstrating nametable memory streaming:
+
+
+https://github.com/nekromantikko/pixel-engine/assets/43074593/818813dd-a967-4786-ac1f-b2aa5c14bd72
+
+Metasprite editing:
+
+
+https://github.com/nekromantikko/pixel-engine/assets/43074593/e54be9e9-3f0e-4a45-9298-462aea4dcfaa
+
+Metasprite collision editing:
+
+
+https://github.com/nekromantikko/pixel-engine/assets/43074593/da4bfe57-9498-4c7d-b7ca-6dcfe853f44a
+
