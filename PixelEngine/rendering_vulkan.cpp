@@ -1605,36 +1605,18 @@ namespace Rendering
 		return &pContext->settings;
 	}
 
+	void GetDebugChrImageBarriers(RenderContext* pContext, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageMemoryBarrier* outBarriers) {
+		for (int i = 0; i < 8; i++) {
+			outBarriers[i] = GetImageBarrier(&pContext->debugChrImage[i], oldLayout, newLayout);
+		}
+	}
+
 	void DebugRenderChr(RenderContext* pContext, VkCommandBuffer cmd) {
 		for (int i = 0; i < 8; i++) {
-			// Convert from preinitialized to general
-			VkImageMemoryBarrier barrier = GetImageBarrier(&pContext->debugChrImage[i], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-			vkCmdPipelineBarrier(
-				cmd,
-				VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-				0,
-				0, nullptr,
-				0, nullptr,
-				1, &barrier
-			);
-
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipelineLayout, 0, 1, &pContext->chrDescriptorSet[i], 0, nullptr);
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipeline);
 			vkCmdPushConstants(cmd, pContext->chrPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(u32), &i);
 			vkCmdDispatch(cmd, 32, 16, 1);
-
-			// Convert from preinitialized to general
-			barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			vkCmdPipelineBarrier(
-				cmd,
-				VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-				VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-				0,
-				0, nullptr,
-				0, nullptr,
-				1, &barrier
-			);
 		}
 	}
 
@@ -1759,62 +1741,18 @@ namespace Rendering
 
 		vkCreateComputePipelines(pContext->device, VK_NULL_HANDLE, 1, &chrCreateInfo, nullptr, &pContext->chrPipeline);
 
-		/////////////////////////////////////////////////////
-
-		VkCommandBuffer temp = GetTemporaryCommandBuffer(pContext);
-
-		VkCommandBufferBeginInfo beginInfo{};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-		vkBeginCommandBuffer(temp, &beginInfo);
-
-		DebugRenderChr(pContext, temp);
-
-		vkEndCommandBuffer(temp);
-
-		VkSubmitInfo submitInfo{};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &temp;
-
-		vkQueueSubmit(pContext->primaryQueue, 1, &submitInfo, VK_NULL_HANDLE);
-		vkQueueWaitIdle(pContext->primaryQueue);
-
-		vkFreeCommandBuffers(pContext->device, pContext->primaryCommandPool, 1, &temp);
-
 		pContext->renderDebugChr = true;
 		return textures;
 	}
+	
+	void GetDebugPaletteImageBarrier(RenderContext* pContext, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageMemoryBarrier* outBarrier) {
+		*outBarrier = GetImageBarrier(&pContext->debugPaletteImage, oldLayout, newLayout);
+	}
 
 	void DebugRenderPalette(RenderContext* pContext, VkCommandBuffer cmd) {
-		// Convert from preinitialized to general
-		VkImageMemoryBarrier barrier = GetImageBarrier(&pContext->debugPaletteImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-		vkCmdPipelineBarrier(
-			cmd,
-			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-			0,
-			0, nullptr,
-			0, nullptr,
-			1, &barrier
-		);
-
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->palettePipelineLayout, 0, 1, &pContext->paletteDescriptorSet, 0, nullptr);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->palettePipeline);
 		vkCmdDispatch(cmd, 32, 16, 1);
-
-		// Convert from preinitialized to general
-		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		vkCmdPipelineBarrier(
-			cmd,
-			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-			0,
-			0, nullptr,
-			0, nullptr,
-			1, &barrier
-		);
 	}
 
 	ImTextureID SetupEditorPaletteRendering(RenderContext* pContext) {
@@ -1913,30 +1851,6 @@ namespace Rendering
 
 		vkUpdateDescriptorSets(pContext->device, 4, descriptorWrite, 0, nullptr);
 
-		/////////////////////////////////////////////////////
-
-		VkCommandBuffer temp = GetTemporaryCommandBuffer(pContext);
-
-		VkCommandBufferBeginInfo beginInfo{};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-		vkBeginCommandBuffer(temp, &beginInfo);
-
-		DebugRenderPalette(pContext, temp);
-
-		vkEndCommandBuffer(temp);
-
-		VkSubmitInfo submitInfo{};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &temp;
-
-		vkQueueSubmit(pContext->primaryQueue, 1, &submitInfo, VK_NULL_HANDLE);
-		vkQueueWaitIdle(pContext->primaryQueue);
-
-		vkFreeCommandBuffers(pContext->device, pContext->primaryCommandPool, 1, &temp);
-
 		pContext->renderDebugPalette = true;
 		return (ImTextureID)ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, pContext->debugPaletteImage.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	}
@@ -1957,16 +1871,30 @@ namespace Rendering
 	void RunSoftwareRenderer(RenderContext* pContext) {
 		VkCommandBuffer commandBuffer = pContext->primaryCommandBuffers[pContext->currentCbIndex];
 
-		// Convert from preinitialized to general
-		VkImageMemoryBarrier imageBarrier = GetImageBarrier(&pContext->colorImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+		// Transfer images to compute writeable layout
+		// Compute won't happen before this is all done
+		VkImageMemoryBarrier barriers[10];
+		u32 barrierCount = 1;
+
+		barriers[0] = GetImageBarrier(&pContext->colorImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+		if (pContext->renderDebugChr) {
+			GetDebugChrImageBarriers(pContext, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, barriers + barrierCount);
+			barrierCount += 8;
+		}
+		if (pContext->renderDebugPalette) {
+			GetDebugPaletteImageBarrier(pContext, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, barriers + barrierCount);
+			barrierCount++;
+		}
+
 		vkCmdPipelineBarrier(
 			commandBuffer,
-			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 			0,
 			0, nullptr,
 			0, nullptr,
-			1, &imageBarrier
+			barrierCount, barriers
 		);
 
 		// Clear old scanline data
@@ -1978,10 +1906,20 @@ namespace Rendering
 			0
 		);
 
+		// Do all the asynchronous compute stuff
+		if (pContext->renderDebugChr) {
+			DebugRenderChr(pContext, commandBuffer);
+		}
+
+		if (pContext->renderDebugPalette) {
+			DebugRenderPalette(pContext, commandBuffer);
+		}
+
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->evaluatePipelineLayout, 0, 1, &pContext->computeDescriptorSet, 0, nullptr);
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->evaluatePipeline);
 		vkCmdDispatch(commandBuffer, MAX_SPRITE_COUNT / MAX_SPRITES_PER_SCANLINE, SCANLINE_COUNT / 8, 1);
 
+		// Wait for scanline buffer to be written before running software renderer for the final image
 		VkBufferMemoryBarrier scanlineBarrier{};
 		scanlineBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
 		scanlineBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -2006,8 +1944,19 @@ namespace Rendering
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->softwarePipeline);
 		vkCmdDispatch(commandBuffer, 16, 9, 1);
 
-		// Convert from preinitialized to general
-		imageBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		// Transfer images to shader readable layout
+		barrierCount = 1;
+		barriers[0] = GetImageBarrier(&pContext->colorImage, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		if (pContext->renderDebugChr) {
+			GetDebugChrImageBarriers(pContext, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, barriers + barrierCount);
+			barrierCount += 8;
+		}
+		if (pContext->renderDebugPalette) {
+			GetDebugPaletteImageBarrier(pContext, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, barriers + barrierCount);
+			barrierCount++;
+		}
+
 		vkCmdPipelineBarrier(
 			commandBuffer,
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -2015,15 +1964,8 @@ namespace Rendering
 			0,
 			0, nullptr,
 			0, nullptr,
-			1, &imageBarrier
+			barrierCount, barriers
 		);
-
-		if (pContext->renderDebugChr) {
-			DebugRenderChr(pContext, commandBuffer);
-		}
-		if (pContext->renderDebugPalette) {
-			DebugRenderPalette(pContext, commandBuffer);
-		}
 	}
 
 	void BeginRenderPass(RenderContext* pContext) {
