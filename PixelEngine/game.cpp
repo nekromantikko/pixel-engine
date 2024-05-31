@@ -74,7 +74,7 @@ namespace Game {
         Vec2 vel;
     };
 
-    MemoryPool<Arrow> arrowPool;
+    Pool<Arrow> arrowPool;
 
     constexpr r32 shootDelay = 0.16f;
     r32 shootTimer = 0;
@@ -86,7 +86,7 @@ namespace Game {
         Vec2 pos;
         r32 accumulator;
     };
-    MemoryPool<Impact> hitPool;
+    Pool<Impact> hitPool;
 
     Vec2 enemyPos = Vec2{ 48.0f, 27.0f };
 
@@ -97,11 +97,11 @@ namespace Game {
         s32 damage;
         r32 accumulator;
     };
-    MemoryPool<DamageNumber> damageNumberPool;
+    Pool<DamageNumber> damageNumberPool;
 
     Rendering::CHRSheet playerBank;
 
-    bool paused = true;
+    bool paused = false;
 
 	void Initialize(Rendering::RenderContext* pRenderContext) {
         viewport.x = 0.0f;
@@ -137,9 +137,7 @@ namespace Game {
 	}
 
     void Free() {
-        arrowPool.Free();
-        hitPool.Free();
-        damageNumberPool.Free();
+        
     }
 
     void UpdateHUD(Rendering::RenderContext* pContext, float dt) {
@@ -228,15 +226,16 @@ namespace Game {
         char dmgStr[8]{};
 
         for (int i = 0; i < damageNumberPool.Count(); i++) {
-            DamageNumber& dmg = damageNumberPool[i];
+            PoolHandle<DamageNumber> handle = damageNumberPool.GetHandle(i);
+            DamageNumber* dmg = damageNumberPool[handle];
 
-            _itoa_s(dmg.damage, dmgStr, 10);
+            _itoa_s(dmg->damage, dmgStr, 10);
 
             // Ascii character '0' = 0x30
             s32 chrOffset = 0x70 - 0x30;
 
             for (int i = 0; i < strlen(dmgStr); i++) {
-                IVec2 pixelPos = WorldPosToScreenPixels(dmg.pos);
+                IVec2 pixelPos = WorldPosToScreenPixels(dmg->pos);
                 Rendering::Sprite sprite = {
                     pixelPos.y,
                     pixelPos.x + i * 5,
@@ -250,14 +249,18 @@ namespace Game {
 
     void DrawArrows(Rendering::RenderContext* pRenderContext, u32& spriteOffset) {
         for (int i = 0; i < arrowPool.Count(); i++) {
-            Arrow& arrow = arrowPool[i];
+            PoolHandle<Arrow> handle = arrowPool.GetHandle(i);
+            Arrow* arrow = arrowPool[handle];
+            if (arrow == nullptr) {
+                continue;
+            }
 
-            bool hFlip = arrow.vel.x < 0.0f;
-            bool vFlip = arrow.vel.y < -10.0f;
+            bool hFlip = arrow->vel.x < 0.0f;
+            bool vFlip = arrow->vel.y < -10.0f;
 
-            u32 spriteIndex = abs(arrow.vel.y) < 10.0f ? 3 : 4;
+            u32 spriteIndex = abs(arrow->vel.y) < 10.0f ? 3 : 4;
             Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[spriteIndex];
-            IVec2 pixelPos = WorldPosToScreenPixels(arrow.pos);
+            IVec2 pixelPos = WorldPosToScreenPixels(arrow->pos);
             Rendering::Util::WriteMetasprite(pRenderContext, metasprite.spritesRelativePos, metasprite.spriteCount, spriteOffset, pixelPos, hFlip, vFlip);
             spriteOffset += metasprite.spriteCount;
         }
@@ -265,10 +268,11 @@ namespace Game {
 
     void DrawHits(Rendering::RenderContext* pRenderContext, u32& spriteOffset) {
         for (int i = 0; i < hitPool.Count(); i++) {
-            Impact& impact = hitPool[i];
+            PoolHandle<Impact> handle = hitPool.GetHandle(i);
+            Impact* impact = hitPool.Get(handle);
 
-            u32 frame = (u32)((impact.accumulator / impactAnimLength) * impactFrameCount);
-            IVec2 pixelPos = WorldPosToScreenPixels(impact.pos);
+            u32 frame = (u32)((impact->accumulator / impactAnimLength) * impactFrameCount);
+            IVec2 pixelPos = WorldPosToScreenPixels(impact->pos);
 
             Rendering::Sprite debugSprite = {
                 pixelPos.y - (TILE_SIZE / 2),
@@ -404,7 +408,8 @@ namespace Game {
         if (Input::Down(Input::B) && shootTimer < shootDelay) {
             shootTimer += shootDelay;
 
-            Arrow* arrow = arrowPool.AllocObject();
+            PoolHandle<Arrow> handle = arrowPool.Add();
+            Arrow* arrow = arrowPool[handle];
             if (arrow != nullptr) {
                 r32 xDir = flipCharacter ? -1.0f : 1.0f;
 
@@ -534,55 +539,61 @@ namespace Game {
 
             // Update arrows
             for (int i = 0; i < arrowPool.Count(); i++) {
-                Arrow& arrow = arrowPool[i];
-                //arrow.pos = arrow.pos + (arrow.vel * dt);
+                PoolHandle<Arrow> handle = arrowPool.GetHandle(i);
+                Arrow* arrow = arrowPool[handle];
+                if (arrow == nullptr) {
+                    continue;
+                }
 
                 // TODO: Object struct and updater that does this for everything?
-                bool hFlip = arrow.vel.x < 0.0f;
-                bool vFlip = arrow.vel.y < -10.0f;
+                bool hFlip = arrow->vel.x < 0.0f;
+                bool vFlip = arrow->vel.y < -10.0f;
 
-                u32 spriteIndex = abs(arrow.vel.y) < 10.0f ? 3 : 4;
+                u32 spriteIndex = abs(arrow->vel.y) < 10.0f ? 3 : 4;
                 Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[spriteIndex];
 
                 Collision::Collider hitbox = metasprite.colliders[0];
-                Vec2 hitboxPos = Vec2{ arrow.pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow.pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
+                Vec2 hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
                 Vec2 hitboxDimensions = Vec2{ hitbox.width, hitbox.height };
 
-                r32 dx = arrow.vel.x * dt;
+                r32 dx = arrow->vel.x * dt;
 
                 Collision::HitResult hit{};
                 Collision::SweepBoxHorizontal(&level, hitboxPos, hitboxDimensions, dx, hit);
                 if (hit.blockingHit) {
-                    arrowPool.FreeObject(i);
-                    Impact* impact = hitPool.AllocObject();
+                    arrowPool.Remove(handle);
+                    PoolHandle<Impact> hitHandle = hitPool.Add();
+                    Impact* impact = hitPool[hitHandle];
                     impact->pos = hit.impactPoint;
                     impact->accumulator = 0.0f;
                     continue;
                 }
-                arrow.pos.x += dx;
+                arrow->pos.x += dx;
 
-                r32 dy = arrow.vel.y * dt;
-                hitboxPos = Vec2{ arrow.pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow.pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
+                r32 dy = arrow->vel.y * dt;
+                hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
                 Collision::SweepBoxVertical(&level, hitboxPos, hitboxDimensions, dy, hit);
                 if (hit.blockingHit) {
-                    arrowPool.FreeObject(i);
-                    Impact* impact = hitPool.AllocObject();
+                    arrowPool.Remove(handle);
+                    PoolHandle<Impact> hitHandle = hitPool.Add();
+                    Impact* impact = hitPool[hitHandle];
                     impact->pos = hit.impactPoint;
                     impact->accumulator = 0.0f;
                     continue;
                 }
-                arrow.pos.y += dy;
+                arrow->pos.y += dy;
 
                 // Collision with enemy
-                hitboxPos = Vec2{ arrow.pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow.pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
+                hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
                 if (hitboxPos.x - hitboxDimensions.x / 2.0f < enemyHitboxPos.x + enemyHitboxDimensions.x / 2.0f &&
                     hitboxPos.x + hitboxDimensions.x / 2.0f > enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f &&
                     hitboxPos.y - hitboxDimensions.y / 2.0f < enemyHitboxPos.y + enemyHitboxDimensions.y / 2.0f &&
                     hitboxPos.y + hitboxDimensions.y / 2.0f > enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f) {
 
-                    arrowPool.FreeObject(i);
-                    Impact* impact = hitPool.AllocObject();
-                    impact->pos = arrow.pos;
+                    arrowPool.Remove(handle);
+                    PoolHandle<Impact> hitHandle = hitPool.Add();
+                    Impact* impact = hitPool[hitHandle];
+                    impact->pos = arrow->pos;
                     impact->accumulator = 0.0f;
 
                     // Add damage numbers
@@ -590,7 +601,8 @@ namespace Game {
                     // Random point inside enemy hitbox
                     Vec2 dmgPos = Vec2{ (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.x) + enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f, (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.y) + enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f };
 
-                    DamageNumber* dmgNumber = damageNumberPool.AllocObject();
+                    PoolHandle<DamageNumber> dmgHandle = damageNumberPool.Add();
+                    DamageNumber* dmgNumber = damageNumberPool[dmgHandle];
                     dmgNumber->damage = damage;
                     dmgNumber->pos = dmgPos;
                     dmgNumber->accumulator = 0.0f;
@@ -598,18 +610,19 @@ namespace Game {
                     continue;
                 }
 
-                if (arrow.pos.x < viewport.x || arrow.pos.x > viewport.x + viewport.w || arrow.pos.y < viewport.y || arrow.pos.y > viewport.y + viewport.h) {
-                    arrowPool.FreeObject(i);
+                if (arrow->pos.x < viewport.x || arrow->pos.x > viewport.x + viewport.w || arrow->pos.y < viewport.y || arrow->pos.y > viewport.y + viewport.h) {
+                    arrowPool.Remove(handle);
                 }
             }
 
             // Update explosions
             for (int i = 0; i < hitPool.Count(); i++) {
-                Impact& impact = hitPool[i];
-                impact.accumulator += dt;
+                PoolHandle<Impact> handle = hitPool.GetHandle(i);
+                Impact* impact = hitPool[handle];
+                impact->accumulator += dt;
 
-                if (impact.accumulator >= impactAnimLength) {
-                    hitPool.FreeObject(i);
+                if (impact->accumulator >= impactAnimLength) {
+                    hitPool.Remove(handle);
                     continue;
                 }
             }
@@ -617,15 +630,16 @@ namespace Game {
             // Update damage numbers
             r32 dmgNumberVel = -3.0f;
             for (int i = 0; i < damageNumberPool.Count(); i++) {
-                DamageNumber& dmgNumber = damageNumberPool[i];
-                dmgNumber.accumulator += dt;
+                PoolHandle<DamageNumber> handle = damageNumberPool.GetHandle(i);
+                DamageNumber* dmgNumber = damageNumberPool[handle];
+                dmgNumber->accumulator += dt;
 
-                if (dmgNumber.accumulator >= damageNumberLifetime) {
-                    damageNumberPool.FreeObject(i);
+                if (dmgNumber->accumulator >= damageNumberLifetime) {
+                    damageNumberPool.Remove(handle);
                     continue;
                 }
 
-                dmgNumber.pos.y += dmgNumberVel * dt;
+                dmgNumber->pos.y += dmgNumberVel * dt;
             }
 
             // Update enemy pos

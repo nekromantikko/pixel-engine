@@ -25,7 +25,6 @@ https://github.com/nekromantikko/pixel-engine/assets/43074593/da4bfe57-9498-4c7d
 
 
 # TODO:
-- Generational memory pools from VR project
 - Switch to cmake, ditch vckpg?
 - Optimize Vulkan renderer (Frequent memory mapping is slow, asynchronicity unoptimal or maybe even nonexistent at the moment?)
 - Add assets to repo
