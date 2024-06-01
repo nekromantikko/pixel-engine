@@ -38,6 +38,18 @@ namespace Rendering
 			free(imgData);
 		}
 
+		void LoadPaletteColorsFromFile(const char* fname, u8* outColors) {
+			u32 palFileSize;
+			char* palData = AllocFileBytes(fname, palFileSize);
+
+			if (palFileSize < 8 * 8) {
+				DEBUG_ERROR("Invalid palette table file!\n");
+			}
+
+			memcpy(outColors, palData, 8 * 8);
+			free(palData);
+		}
+
 		u8 GetPaletteIndexFromNametableTileAttrib(u8* pNametable, s32 xTile, s32 yTile) {
 			s32 xBlock = xTile / 4;
 			s32 yBlock = yTile / 4;

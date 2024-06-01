@@ -76,7 +76,6 @@ namespace Rendering
 
 	// Generic commands
 	void Render(RenderContext* pRenderContext);
-	void SetCurrentTime(RenderContext* pRenderContext, float seconds);
 	void ResizeSurface(RenderContext* pRenderContext, u32 width, u32 height);
 
 	// NES commands
