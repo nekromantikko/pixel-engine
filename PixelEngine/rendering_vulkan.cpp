@@ -71,7 +71,6 @@ namespace Rendering
 		VkFramebuffer swapchainFramebuffers[SWAPCHAIN_IMAGE_COUNT];
 
 		// General stuff
-		Buffer timeBuffer;
 		VkSampler defaultSampler;
 
 		// Grafix
@@ -87,20 +86,23 @@ namespace Rendering
 
 		// Compute stuff
 		Image paletteImage;
+		
+		u32 paletteTableOffset;
+		u32 paletteTableSize;
+		u32 chrOffset;
+		u32 chrSize;
+		u32 nametableOffset;
+		u32 nametableSize;
+		u32 oamOffset;
+		u32 oamSize;
+		u32 renderStateOffset;
+		u32 renderStateSize;
+		u32 computeBufferSize;
+		Buffer computeBufferDevice;
+		Buffer computeBufferHost;
+		void* computeBufferHostMappedData;
 
 		Buffer scanlineBuffer;
-
-		// 8 palettes of 8 colors
-		Buffer palTableBuffer;
-
-		// Pattern table
-		Buffer chrBuffer;
-
-		// Nametable
-		Buffer nametableBuffer;
-
-		// OAM
-		Buffer oamBuffer;
 
 		Image colorImage;
 
@@ -112,9 +114,6 @@ namespace Rendering
 		VkPipelineLayout evaluatePipelineLayout;
 		VkPipeline evaluatePipeline;
 		VkShaderModule evaluateShaderModule;
-
-		// Render state from game code...
-		Buffer renderStateBuffer;
 
 		// Settings
 		Settings settings;
@@ -794,33 +793,6 @@ namespace Rendering
 		return barrier;
 	}
 
-	void CreateOAM(RenderContext* pContext) {
-		u32 oamSize = MAX_SPRITE_COUNT * sizeof(Sprite);
-		AllocateBuffer(pContext, oamSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pContext->oamBuffer);
-	}
-
-	void CreateNametable(RenderContext* pContext) {
-		DEBUG_LOG("Creating nametables...\n");
-		AllocateBuffer(pContext, NAMETABLE_SIZE * NAMETABLE_COUNT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pContext->nametableBuffer);
-	}
-
-	void CreatePaletteTable(RenderContext* pContext) {
-		u32 palFileSize;
-		char* palData = AllocFileBytes("palette.dat", palFileSize);
-
-		if (palFileSize < 8 * 8) {
-			DEBUG_ERROR("Invalid palette table file!\n");
-		}
-
-		AllocateBuffer(pContext, 8 * 8, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pContext->palTableBuffer);
-
-		void* data;
-		vkMapMemory(pContext->device, pContext->palTableBuffer.memory, 0, 8 * 8, 0, &data);
-		memcpy(data, palData, 8 * 8);
-		vkUnmapMemory(pContext->device, pContext->palTableBuffer.memory);
-		free(palData);
-	}
-
 	void CreatePalette(RenderContext* pContext) {
 		u32 *paletteData = nullptr;
 		VkDeviceSize paletteSize = 0;
@@ -941,6 +913,38 @@ namespace Rendering
 		vkFreeCommandBuffers(pContext->device, pContext->primaryCommandPool, 1, &temp);
 
 		FreeBuffer(pContext, stagingBuffer);
+	}
+
+	VkDeviceSize PadBufferSize(VkDeviceSize originalSize, const VkDeviceSize minAlignment) {
+		VkDeviceSize result = originalSize;
+		if (minAlignment > 0) {
+			result = (originalSize + minAlignment - 1) & ~(minAlignment - 1);
+		}
+		return result;
+	}
+
+	void CreateComputeBuffers(RenderContext* pContext) {
+		VkPhysicalDeviceProperties properties{};
+		vkGetPhysicalDeviceProperties(pContext->physicalDevice, &properties);
+
+		const VkDeviceSize minOffsetAlignment = properties.limits.minStorageBufferOffsetAlignment;
+
+		pContext->paletteTableOffset = 0;
+		pContext->paletteTableSize = PadBufferSize(8 * 8, minOffsetAlignment);
+		pContext->chrOffset = pContext->paletteTableOffset + pContext->paletteTableSize;
+		pContext->chrSize = PadBufferSize(CHR_MEMORY_SIZE, minOffsetAlignment);
+		pContext->nametableOffset = pContext->chrOffset + pContext->chrSize;
+		pContext->nametableSize = PadBufferSize(NAMETABLE_SIZE * NAMETABLE_COUNT, minOffsetAlignment);
+		pContext->oamOffset = pContext->nametableOffset + pContext->nametableSize;
+		pContext->oamSize = PadBufferSize(MAX_SPRITE_COUNT * sizeof(Sprite), minOffsetAlignment);
+		pContext->renderStateOffset = pContext->oamOffset + pContext->oamSize;
+		pContext->renderStateSize = PadBufferSize(sizeof(RenderState) * SCANLINE_COUNT, minOffsetAlignment);
+		pContext->computeBufferSize = pContext->paletteTableSize + pContext->chrSize + pContext->nametableSize + pContext->oamSize + pContext->renderStateSize;
+
+		AllocateBuffer(pContext, pContext->computeBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, pContext->computeBufferHost);
+		AllocateBuffer(pContext, pContext->computeBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pContext->computeBufferDevice);
+
+		vkMapMemory(pContext->device, pContext->computeBufferHost.memory, 0, pContext->computeBufferSize, 0, &pContext->computeBufferHostMappedData);
 	}
 
 	RenderContext *CreateRenderContext(Surface surface) {
@@ -1068,14 +1072,8 @@ namespace Rendering
 
 		// Compute resources
 		CreatePalette(context);
-		CreatePaletteTable(context);
-		AllocateBuffer(context, CHR_MEMORY_SIZE, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, context->chrBuffer);
-		CreateNametable(context);
-		CreateOAM(context);
-		ClearSprites(context, 0, MAX_SPRITE_COUNT);
+		CreateComputeBuffers(context);
 		AllocateBuffer(context, sizeof(ScanlineData) * SCANLINE_COUNT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, context->scanlineBuffer);
-		AllocateBuffer(context, sizeof(RenderState) * SCANLINE_COUNT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, context->renderStateBuffer);
-		AllocateBuffer(context, sizeof(float), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, context->timeBuffer);
 
 		CreateImage(context, 512, 288, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, context->colorImage);
 
@@ -1240,24 +1238,24 @@ namespace Rendering
 		paletteBufferInfo.sampler = context->defaultSampler;
 
 		VkDescriptorBufferInfo chrBufferInfo{};
-		chrBufferInfo.buffer = context->chrBuffer.buffer;
-		chrBufferInfo.offset = 0;
-		chrBufferInfo.range = CHR_MEMORY_SIZE;
+		chrBufferInfo.buffer = context->computeBufferDevice.buffer;
+		chrBufferInfo.offset = context->chrOffset;
+		chrBufferInfo.range = context->chrSize;
 
 		VkDescriptorBufferInfo palTableInfo{};
-		palTableInfo.buffer = context->palTableBuffer.buffer;
-		palTableInfo.offset = 0;
-		palTableInfo.range = VK_WHOLE_SIZE;
+		palTableInfo.buffer = context->computeBufferDevice.buffer;
+		palTableInfo.offset = context->paletteTableOffset;
+		palTableInfo.range = context->paletteTableSize;
 
 		VkDescriptorBufferInfo nametableInfo{};
-		nametableInfo.buffer = context->nametableBuffer.buffer;
-		nametableInfo.offset = 0;
-		nametableInfo.range = VK_WHOLE_SIZE;
+		nametableInfo.buffer = context->computeBufferDevice.buffer;
+		nametableInfo.offset = context->nametableOffset;
+		nametableInfo.range = context->nametableSize;
 
 		VkDescriptorBufferInfo oamInfo{};
-		oamInfo.buffer = context->oamBuffer.buffer;
-		oamInfo.offset = 0;
-		oamInfo.range = VK_WHOLE_SIZE;
+		oamInfo.buffer = context->computeBufferDevice.buffer;
+		oamInfo.offset = context->oamOffset;
+		oamInfo.range = context->oamSize;
 
 		VkDescriptorBufferInfo scanlineInfo{};
 		scanlineInfo.buffer = context->scanlineBuffer.buffer;
@@ -1265,9 +1263,9 @@ namespace Rendering
 		scanlineInfo.range = VK_WHOLE_SIZE;
 
 		VkDescriptorBufferInfo renderStateInfo{};
-		renderStateInfo.buffer = context->renderStateBuffer.buffer;
-		renderStateInfo.offset = 0;
-		renderStateInfo.range = VK_WHOLE_SIZE;
+		renderStateInfo.buffer = context->computeBufferDevice.buffer;
+		renderStateInfo.offset = context->renderStateOffset;
+		renderStateInfo.range = context->renderStateSize;
 
 		VkWriteDescriptorSet descriptorWrite[8]{};
 		descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1400,13 +1398,9 @@ namespace Rendering
 			FreeImage(pRenderContext, pRenderContext->debugPaletteImage);
 		}
 
-		FreeBuffer(pRenderContext, pRenderContext->chrBuffer);
-		FreeBuffer(pRenderContext, pRenderContext->nametableBuffer);
-		FreeBuffer(pRenderContext, pRenderContext->oamBuffer);
-		FreeBuffer(pRenderContext, pRenderContext->palTableBuffer);
-		FreeBuffer(pRenderContext, pRenderContext->renderStateBuffer);
+		FreeBuffer(pRenderContext, pRenderContext->computeBufferDevice);
+		FreeBuffer(pRenderContext, pRenderContext->computeBufferHost);
 		FreeBuffer(pRenderContext, pRenderContext->scanlineBuffer);
-		FreeBuffer(pRenderContext, pRenderContext->timeBuffer);
 
 		vkDestroyDevice(pRenderContext->device, nullptr);
 		vkDestroySurfaceKHR(pRenderContext->instance, pRenderContext->surface, nullptr);
@@ -1422,11 +1416,9 @@ namespace Rendering
 		}
 
 		u32 actualOffset = 8 * paletteIndex + offset;
+		u32 computeBufferOffset = pContext->paletteTableOffset + actualOffset;
 
-		void* data;
-		vkMapMemory(pContext->device, pContext->palTableBuffer.memory, actualOffset, count, 0, &data);
-		memcpy(outColors, data, count);
-		vkUnmapMemory(pContext->device, pContext->palTableBuffer.memory);
+		memcpy(outColors, (void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), count);
 	}
 	void WritePaletteColors(RenderContext* pContext, u8 paletteIndex, u32 count, u32 offset, u8* colors) {
 		if (offset + count > 8 || paletteIndex >= 8) {
@@ -1434,11 +1426,8 @@ namespace Rendering
 		}
 
 		u32 actualOffset = 8 * paletteIndex + offset;
-
-		void* data;
-		vkMapMemory(pContext->device, pContext->palTableBuffer.memory, actualOffset, count, 0, &data);
-		memcpy(data, colors, count);
-		vkUnmapMemory(pContext->device, pContext->palTableBuffer.memory);
+		u32 computeBufferOffset = pContext->paletteTableOffset + actualOffset;
+		memcpy((void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), colors, count);
 	}
 	// This is super slow, optimize pls
 	void ClearSprites(RenderContext* pContext, u32 offset, u32 count) {
@@ -1450,10 +1439,13 @@ namespace Rendering
 
 		vkBeginCommandBuffer(temp, &beginInfo);
 
+		u32 spriteOffset = sizeof(Sprite) * offset;
+		u32 computeBufferOffset = pContext->oamOffset + spriteOffset;
+
 		vkCmdFillBuffer(
 			temp,
-			pContext->oamBuffer.buffer,
-			sizeof(Sprite) * offset,
+			pContext->computeBufferHost.buffer,
+			computeBufferOffset,
 			sizeof(Sprite) * count,
 			288 // Set y position offscreen
 		);
@@ -1478,10 +1470,9 @@ namespace Rendering
 		u32 actualOffset = offset * sizeof(Sprite);
 		u32 size = count * sizeof(Sprite);
 
-		void* data;
-		vkMapMemory(pContext->device, pContext->oamBuffer.memory, actualOffset, size, 0, &data);
-		memcpy((void*)outSprites, data, size);
-		vkUnmapMemory(pContext->device, pContext->oamBuffer.memory);
+		u32 computeBufferOffset = pContext->oamOffset + actualOffset;
+
+		memcpy((void*)outSprites, (void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), size);
 	}
 	void WriteSprites(RenderContext* pContext, u32 count, u32 offset, Sprite* sprites) {
 		if (count == 0) {
@@ -1494,53 +1485,45 @@ namespace Rendering
 
 		u32 actualOffset = offset * sizeof(Sprite);
 		u32 size = count * sizeof(Sprite);
+		u32 computeBufferOffset = pContext->oamOffset + actualOffset;
 
-		void* data;
-		vkMapMemory(pContext->device, pContext->oamBuffer.memory, actualOffset, size, 0, &data);
-		memcpy(data, (void*)sprites, size);
-		vkUnmapMemory(pContext->device, pContext->oamBuffer.memory);
+		memcpy((void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), (void*)sprites, size);
 	}
 	void WriteChrMemory(RenderContext* pContext, u32 size, u32 offset, u8* bytes) {
 		if (offset + size > CHR_MEMORY_SIZE) {
 			DEBUG_ERROR("Trying to write chr memory outside range!\n");
 		}
 
-		void* data;
-		vkMapMemory(pContext->device, pContext->chrBuffer.memory, offset, size, 0, &data);
-		memcpy(data, (void*)bytes, size);
-		vkUnmapMemory(pContext->device, pContext->chrBuffer.memory);
+		u32 computeBufferOffset = pContext->chrOffset + offset;
+		memcpy((void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), bytes, size);
 	}
 	void ReadChrMemory(RenderContext* pContext, u32 size, u32 offset, u8* outBytes) {
 		if (offset + size > CHR_MEMORY_SIZE) {
 			DEBUG_ERROR("Trying to read chr memory outside range!\n");
 		}
 
-		void* data;
-		vkMapMemory(pContext->device, pContext->chrBuffer.memory, offset, size, 0, &data);
-		memcpy((void*)outBytes, data, size);
-		vkUnmapMemory(pContext->device, pContext->chrBuffer.memory);
+		u32 computeBufferOffset = pContext->chrOffset + offset;
+		memcpy((void*)outBytes, (void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), size);
 	}
 	void WriteNametable(RenderContext* pContext, u16 index, u16 count, u16 offset, u8* tiles) {
-		void* data;
-		vkMapMemory(pContext->device, pContext->nametableBuffer.memory, index * NAMETABLE_SIZE + offset, count, 0, &data);
-		memcpy(data, tiles, count);
-		vkUnmapMemory(pContext->device, pContext->nametableBuffer.memory);
+		u32 nametableOffset = index * NAMETABLE_SIZE + offset;
+		u32 computeBufferOffset = pContext->nametableOffset + nametableOffset;
+		memcpy((void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), tiles, count);
 	}
 	void ReadNametable(RenderContext* pContext, u16 index, u16 count, u16 offset, u8* outTiles) {
-		void* data;
-		vkMapMemory(pContext->device, pContext->nametableBuffer.memory, index * NAMETABLE_SIZE + offset, count, 0, &data);
-		memcpy((void*)outTiles, data, count);
-		vkUnmapMemory(pContext->device, pContext->nametableBuffer.memory);
+		u32 nametableOffset = index * NAMETABLE_SIZE + offset;
+		u32 computeBufferOffset = pContext->nametableOffset + nametableOffset;
+		memcpy((void*)outTiles, (void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), count);
 	}
 
 	void SetRenderState(RenderContext* pContext, u32 scanlineOffset, u32 scanlineCount, RenderState state) {
-		void* data;
-		vkMapMemory(pContext->device, pContext->renderStateBuffer.memory, sizeof(RenderState) * scanlineOffset, sizeof(RenderState) * scanlineCount, 0, &data);
-		RenderState* scanlineStates = (RenderState*)data;
+		u32 renderStateOffset = sizeof(RenderState) * scanlineOffset;
+		u32 computeBufferOffset = pContext->renderStateOffset + renderStateOffset;
+
+		RenderState* scanlineStates = (RenderState*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset);
 		for (int i = 0; i < scanlineCount; i++) {
 			memcpy(scanlineStates + i, &state, sizeof(RenderState));
 		}
-		vkUnmapMemory(pContext->device, pContext->renderStateBuffer.memory);
 	}
 
 	//////////////////////////////////////////////////////
@@ -1662,14 +1645,14 @@ namespace Rendering
 			paletteBufferInfo.sampler = pContext->defaultSampler;
 
 			VkDescriptorBufferInfo chrBufferInfo{};
-			chrBufferInfo.buffer = pContext->chrBuffer.buffer;
-			chrBufferInfo.offset = 0;
-			chrBufferInfo.range = CHR_MEMORY_SIZE;
+			chrBufferInfo.buffer = pContext->computeBufferDevice.buffer;
+			chrBufferInfo.offset = pContext->chrOffset;
+			chrBufferInfo.range = pContext->chrSize;
 
 			VkDescriptorBufferInfo palTableInfo{};
-			palTableInfo.buffer = pContext->palTableBuffer.buffer;
-			palTableInfo.offset = 0;
-			palTableInfo.range = VK_WHOLE_SIZE;
+			palTableInfo.buffer = pContext->computeBufferDevice.buffer;
+			palTableInfo.offset = pContext->paletteTableOffset;
+			palTableInfo.range = pContext->paletteTableSize;
 
 			VkWriteDescriptorSet descriptorWrite[4]{};
 			descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1807,14 +1790,14 @@ namespace Rendering
 		paletteBufferInfo.sampler = pContext->defaultSampler;
 
 		VkDescriptorBufferInfo chrBufferInfo{};
-		chrBufferInfo.buffer = pContext->chrBuffer.buffer;
-		chrBufferInfo.offset = 0;
-		chrBufferInfo.range = CHR_MEMORY_SIZE;
+		chrBufferInfo.buffer = pContext->computeBufferDevice.buffer;
+		chrBufferInfo.offset = pContext->chrOffset;
+		chrBufferInfo.range = pContext->chrSize;
 
 		VkDescriptorBufferInfo palTableInfo{};
-		palTableInfo.buffer = pContext->palTableBuffer.buffer;
-		palTableInfo.offset = 0;
-		palTableInfo.range = VK_WHOLE_SIZE;
+		palTableInfo.buffer = pContext->computeBufferDevice.buffer;
+		palTableInfo.offset = pContext->paletteTableOffset;
+		palTableInfo.range = pContext->paletteTableSize;
 
 		VkWriteDescriptorSet descriptorWrite[4]{};
 		descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1860,12 +1843,28 @@ namespace Rendering
 	}
 
 	//////////////////////////////////////////////////////
+	void TransferComputeBufferData(RenderContext* pContext) {
+		VkCommandBuffer commandBuffer = pContext->primaryCommandBuffers[pContext->currentCbIndex];
 
-	void SetCurrentTime(RenderContext* pContext, float seconds) {
-		void* data;
-		vkMapMemory(pContext->device, pContext->timeBuffer.memory, 0, sizeof(float), 0, &data);
-		memcpy(data, &seconds, sizeof(float));
-		vkUnmapMemory(pContext->device, pContext->timeBuffer.memory);
+		VkMemoryBarrier barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+		barrier.pNext = nullptr;
+		barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+		vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+
+		VkBufferCopy copyRegion{};
+		copyRegion.srcOffset = 0;
+		copyRegion.dstOffset = 0;
+		copyRegion.size = pContext->computeBufferSize;
+
+		vkCmdCopyBuffer(commandBuffer, pContext->computeBufferHost.buffer, pContext->computeBufferDevice.buffer, 1, &copyRegion);
+
+		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+		vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
 	}
 
 	void RunSoftwareRenderer(RenderContext* pContext) {
@@ -2094,6 +2093,7 @@ namespace Rendering
 	void Render(RenderContext* pContext) {
 		// Just run all the commands
 		BeginDraw(pContext);
+		TransferComputeBufferData(pContext);
 		RunSoftwareRenderer(pContext);
 		BeginRenderPass(pContext);
 		BlitSoftwareResults(pContext, defaultQuad);

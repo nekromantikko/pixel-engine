@@ -123,6 +123,15 @@ namespace Game {
 
         Rendering::Util::CreateChrSheet("player.bmp", &playerBank);
 
+        u8 paletteColors[8 * 8];
+        Rendering::Util::LoadPaletteColorsFromFile("palette.dat", paletteColors);
+        // This is kind of silly
+        for (u32 i = 0; i < 8; i++) {
+            Rendering::WritePaletteColors(pRenderContext, i, 8, 0, paletteColors + i*8);
+        }
+
+        Rendering::ClearSprites(pRenderContext, 0, MAX_SPRITE_COUNT);
+
         playerState.x = 30;
         playerState.y = 16;
 
@@ -302,8 +311,6 @@ namespace Game {
     }
 
     void Render(Rendering::RenderContext* pRenderContext, r64 dt) {
-        Rendering::SetCurrentTime(pRenderContext, secondsElapsed);
-
         Rendering::ClearSprites(pRenderContext, 0, 256);
 
         u32 spriteOffset = 0;
