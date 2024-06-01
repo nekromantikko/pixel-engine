@@ -2087,6 +2087,8 @@ namespace Rendering
 
 		// Advance cb index
 		pRenderContext->currentCbIndex = (pRenderContext->currentCbIndex + 1) % COMMAND_BUFFER_COUNT;
+		// Advance swapchain index
+		pRenderContext->currentSwaphainIndex = (pRenderContext->currentSwaphainIndex + 1) % SWAPCHAIN_IMAGE_COUNT;
 	}
 
 	void Render(RenderContext* pContext) {
