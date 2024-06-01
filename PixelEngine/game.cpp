@@ -14,7 +14,11 @@
 #include <imgui.h>
 
 namespace Game {
-    r32 secondsElapsed = 0.0f;
+    r64 secondsElapsed = 0.0f;
+    r64 averageFramerate;
+    // Number of successive frame times used for average framerate calculation
+#define SUCCESSIVE_FRAME_TIME_COUNT 64
+    r64 successiveFrameTimes[SUCCESSIVE_FRAME_TIME_COUNT]{0};
 
     // Settings
     Rendering::Settings* pRenderSettings;
@@ -140,10 +144,23 @@ namespace Game {
         
     }
 
-    void UpdateHUD(Rendering::RenderContext* pContext, float dt) {
-        float fps = 1.0f / dt;
+    r64 GetAverageFramerate(r64 dt) {
+        r64 sum = 0.0;
+        // Pop front
+        for (u32 i = 1; i < SUCCESSIVE_FRAME_TIME_COUNT; i++) {
+            sum += successiveFrameTimes[i];
+            successiveFrameTimes[i - 1] = successiveFrameTimes[i];
+        }
+        // Push back
+        sum += dt;
+        successiveFrameTimes[SUCCESSIVE_FRAME_TIME_COUNT - 1] = dt;
+
+        return (r64)SUCCESSIVE_FRAME_TIME_COUNT / sum;
+    }
+
+    void UpdateHUD(Rendering::RenderContext* pContext, r64 dt) {
         char hudText[128];
-        snprintf(hudText, 64, " %4d FPS (%2d ms) (%04d, %04d) %s", (int)(fps), (int)(dt*1000), (int)viewport.x, (int)viewport.y, level.name);
+        snprintf(hudText, 64, " %4d FPS (%2d ms) (%04d, %04d) %s", (int)(averageFramerate), (int)(dt*1000), (int)viewport.x, (int)viewport.y, level.name);
         Rendering::WriteNametable(pContext, 0, 128, 0, (u8*)hudText);
     }
 
@@ -284,7 +301,7 @@ namespace Game {
         }
     }
 
-    void Render(Rendering::RenderContext* pRenderContext, float dt) {
+    void Render(Rendering::RenderContext* pRenderContext, r64 dt) {
         Rendering::SetCurrentTime(pRenderContext, secondsElapsed);
 
         Rendering::ClearSprites(pRenderContext, 0, 256);
@@ -369,7 +386,7 @@ namespace Game {
 
     }
 
-    void PlayerBgCollision(r32 dt, Rendering::RenderContext* pRenderContext) {
+    void PlayerBgCollision(r64 dt, Rendering::RenderContext* pRenderContext) {
         if (playerState.slowFall) {
             playerState.vSpeed += (gravity / 4) * dt;
         }
@@ -399,7 +416,7 @@ namespace Game {
         }
     }
 
-    void PlayerShoot(r32 dt) {
+    void PlayerShoot(r64 dt) {
         if (shootTimer > dt) {
             shootTimer -= dt;
         }
@@ -435,7 +452,7 @@ namespace Game {
         }
     }
 
-    void PlayerAnimate(r32 dt) {
+    void PlayerAnimate(r64 dt) {
         // Legs mode
         if (playerState.vSpeed < 0) {
             playerState.lMode = LegsJump;
@@ -520,8 +537,9 @@ namespace Game {
         MoveViewport(&viewport, pRenderContext, &level, delta.x, delta.y);
     }
 
-    void Step(r32 dt, Rendering::RenderContext* pRenderContext) {
+    void Step(r64 dt, Rendering::RenderContext* pRenderContext) {
         secondsElapsed += dt;
+        averageFramerate = GetAverageFramerate(dt);
 
         // TODO: Move out of game logic
         Input::Poll();

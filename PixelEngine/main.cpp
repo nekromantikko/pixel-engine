@@ -18,6 +18,18 @@ static Rendering::RenderContext* pRenderContext;
 static Editor::EditorContext* pEditorContext;
 static bool running;
 
+static inline s64 GetPerformanceFrequency() {
+    LARGE_INTEGER perfFreq;
+    QueryPerformanceFrequency(&perfFreq);
+    return perfFreq.QuadPart;
+}
+
+static inline s64 GetPerfomanceCounter() {
+    LARGE_INTEGER perfCount;
+    QueryPerformanceCounter(&perfCount);
+    return perfCount.QuadPart;
+}
+
 // Forward declare message handler from imgui_impl_win32.cpp
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -126,7 +138,8 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
 
     pEditorContext = Editor::CreateEditorContext(pRenderContext);
 
-    u64 currentTime = GetTickCount64();
+    const s64 perfFreq = GetPerformanceFrequency();
+    s64 currentTime = GetPerfomanceCounter();
 
     SDL_Init(SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS | SDL_INIT_HAPTIC);
     Game::Initialize(pRenderContext);
@@ -142,12 +155,12 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
             DispatchMessage(&message);
         }
 
-        u64 newTime = GetTickCount64();
-        u64 deltaTime = newTime - currentTime;
-        float deltaTimeSeconds = deltaTime / 1000.0f;
+        s64 newTime = GetPerfomanceCounter();
+        s64 deltaTime = newTime - currentTime;
+        r64 deltaTimeSeconds = (r64)deltaTime / perfFreq;
         currentTime = newTime;
 
-        if (deltaTime >= FLT_MIN) {
+        if (deltaTimeSeconds >= FLT_MIN) {
             Game::Step(deltaTimeSeconds, pRenderContext);
         }
 
