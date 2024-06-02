@@ -116,15 +116,15 @@ namespace Game {
         // Init chr memory
         // TODO: Pre-process these instead of loading from bitmap at runtime!
         Rendering::CHRSheet temp;
-        Rendering::Util::CreateChrSheet("chr000.bmp", &temp);
+        Rendering::Util::CreateChrSheet("assets/chr000.bmp", &temp);
         Rendering::Util::WriteChrTiles(pRenderContext, 0, 256, 0, 0, &temp);
-        Rendering::Util::CreateChrSheet("chr001.bmp", &temp);
+        Rendering::Util::CreateChrSheet("assets/chr001.bmp", &temp);
         Rendering::Util::WriteChrTiles(pRenderContext, 1, 256, 0, 0, &temp);
 
-        Rendering::Util::CreateChrSheet("player.bmp", &playerBank);
+        Rendering::Util::CreateChrSheet("assets/player.bmp", &playerBank);
 
         u8 paletteColors[8 * 8];
-        Rendering::Util::LoadPaletteColorsFromFile("palette.dat", paletteColors);
+        Rendering::Util::LoadPaletteColorsFromFile("assets/palette.dat", paletteColors);
         // This is kind of silly
         for (u32 i = 0; i < 8; i++) {
             Rendering::WritePaletteColors(pRenderContext, i, 8, 0, paletteColors + i*8);
@@ -139,9 +139,9 @@ namespace Game {
         hitPool.Init(512);
         damageNumberPool.Init(512);
 
-        Tileset::LoadTileset("forest.til");
-        Metasprite::LoadMetasprites("meta.spr");
-        LoadLevel(&level, "test.lev");
+        Tileset::LoadTileset("assets/forest.til");
+        Metasprite::LoadMetasprites("assets/meta.spr");
+        LoadLevel(&level, "assets/test.lev");
 
         RefreshViewport(&viewport, pRenderContext, &level);
 
@@ -333,12 +333,10 @@ namespace Game {
         /*for (int i = 0; i < 272; i++) {
             float sine = sin(secondsElapsed + (i / 8.0f));
             Rendering::RenderState state = {
-                viewport.x + (sine * 8),
-                viewport.y,
-                0,
-                mode == Scroll ? 1 : 0
+                (s32)((viewport.x + sine) * TILE_SIZE),
+                (s32)(viewport.y * TILE_SIZE)
             };
-            Rendering::SetRenderState(pContext, 16 + i, 1, state);
+            Rendering::SetRenderState(pRenderContext, 16 + i, 1, state);
         }*/
 
         Rendering::RenderState state = {

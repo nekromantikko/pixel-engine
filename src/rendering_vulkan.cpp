@@ -495,11 +495,11 @@ namespace Rendering
 	void CreateGraphicsPipeline(RenderContext* pContext)
 	{
 		u32 vertShaderLength;
-		char* vertShader = AllocFileBytes("quad_vert.spv", vertShaderLength);
+		char* vertShader = AllocFileBytes("assets/shaders/quad.spv", vertShaderLength);
 		u32 rawFragShaderLength;
-		char* rawFragShader = AllocFileBytes("textured_raw_frag.spv", rawFragShaderLength);
+		char* rawFragShader = AllocFileBytes("assets/shaders/textured_raw.spv", rawFragShaderLength);
 		u32 CRTFragShaderLength;
-		char* CRTFragShader = AllocFileBytes("textured_crt_frag.spv", CRTFragShaderLength);
+		char* CRTFragShader = AllocFileBytes("assets/shaders/textured_crt.spv", CRTFragShaderLength);
 
 		pContext->blitVertexShaderModule = CreateShaderModule(pContext->device, vertShader, vertShaderLength);
 		pContext->blitRawFragmentShaderModule = CreateShaderModule(pContext->device, rawFragShader, rawFragShaderLength);
@@ -799,7 +799,7 @@ namespace Rendering
 		u16 colorCount = 0;
 
 		u32 palFileSize;
-		char *palBin = AllocFileBytes("famicube.pal", palFileSize);
+		char *palBin = AllocFileBytes("assets/famicube.pal", palFileSize);
 		DEBUG_LOG("%d\n", palFileSize);
 		if (palFileSize < sizeof(RIFFHeader)) {
 			DEBUG_ERROR("Invalid palette file!\n");
@@ -1180,7 +1180,7 @@ namespace Rendering
 		vkCreatePipelineLayout(context->device, &evaluatePipelineLayoutInfo, nullptr, &context->evaluatePipelineLayout);
 
 		u32 evaluateShaderLength;
-		char* evaluateShader = AllocFileBytes("scanline_evaluate_comp.spv", evaluateShaderLength);
+		char* evaluateShader = AllocFileBytes("assets/shaders/scanline_evaluate.spv", evaluateShaderLength);
 		context->evaluateShaderModule = CreateShaderModule(context->device, evaluateShader, evaluateShaderLength);
 		free(evaluateShader);
 
@@ -1209,7 +1209,7 @@ namespace Rendering
 		vkCreatePipelineLayout(context->device, &softwarePipelineLayoutInfo, nullptr, &context->softwarePipelineLayout);
 
 		u32 softwareShaderLength;
-		char* softwareShader = AllocFileBytes("software_comp.spv", softwareShaderLength);
+		char* softwareShader = AllocFileBytes("assets/shaders/software.spv", softwareShaderLength);
 		context->softwareShaderModule = CreateShaderModule(context->device, softwareShader, softwareShaderLength);
 		free(softwareShader);
 
@@ -1680,7 +1680,7 @@ namespace Rendering
 		vkCreatePipelineLayout(pContext->device, &chrPipelineLayoutInfo, nullptr, &pContext->chrPipelineLayout);
 
 		u32 chrShaderLength;
-		char* chrShader = AllocFileBytes("debug_blit_chr_comp.spv", chrShaderLength);
+		char* chrShader = AllocFileBytes("assets/shaders/debug_blit_chr.spv", chrShaderLength);
 		pContext->chrShaderModule = CreateShaderModule(pContext->device, chrShader, chrShaderLength);
 		free(chrShader);
 
@@ -1723,7 +1723,7 @@ namespace Rendering
 		vkCreatePipelineLayout(pContext->device, &chrPipelineLayoutInfo, nullptr, &pContext->palettePipelineLayout);
 
 		u32 chrShaderLength;
-		char* chrShader = AllocFileBytes("debug_blit_pal_comp.spv", chrShaderLength);
+		char* chrShader = AllocFileBytes("assets/shaders/debug_blit_pal.spv", chrShaderLength);
 		pContext->paletteShaderModule = CreateShaderModule(pContext->device, chrShader, chrShaderLength);
 		free(chrShader);
 

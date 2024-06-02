@@ -24,6 +24,10 @@ Metasprite collision editing:
 https://github.com/nekromantikko/pixel-engine/assets/43074593/da4bfe57-9498-4c7d-b7ca-6dcfe853f44a
 
 
+# Building
+- Currently Win32 only
+- Dependencies: [Dear ImGui](https://github.com/ocornut/imgui), [SDL2](https://github.com/libsdl-org/SDL), [Vulkan](https://vulkan.lunarg.com/sdk/home) (Set environment variables IMGUI_PATH, SDL2_DIR and VULKAN_SDK)
+- Copy SDL2.dll to build directory
+
 # TODO:
-- Switch to cmake, ditch vckpg?
-- Add assets to repo
+-
