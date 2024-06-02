@@ -1429,38 +1429,12 @@ namespace Rendering
 		u32 computeBufferOffset = pContext->paletteTableOffset + actualOffset;
 		memcpy((void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), colors, count);
 	}
-	// This is super slow, optimize pls
+	// Really just moves the sprites off screen
 	void ClearSprites(RenderContext* pContext, u32 offset, u32 count) {
-		VkCommandBuffer temp = GetTemporaryCommandBuffer(pContext);
-
-		VkCommandBufferBeginInfo beginInfo{};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-		vkBeginCommandBuffer(temp, &beginInfo);
-
-		u32 spriteOffset = sizeof(Sprite) * offset;
-		u32 computeBufferOffset = pContext->oamOffset + spriteOffset;
-
-		vkCmdFillBuffer(
-			temp,
-			pContext->computeBufferHost.buffer,
-			computeBufferOffset,
-			sizeof(Sprite) * count,
-			288 // Set y position offscreen
-		);
-
-		vkEndCommandBuffer(temp);
-
-		VkSubmitInfo submitInfo{};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &temp;
-
-		vkQueueSubmit(pContext->primaryQueue, 1, &submitInfo, VK_NULL_HANDLE);
-		vkQueueWaitIdle(pContext->primaryQueue);
-
-		vkFreeCommandBuffers(pContext->device, pContext->primaryCommandPool, 1, &temp);
+		Sprite* spritePtr = (Sprite*)((u8*)pContext->computeBufferHostMappedData + pContext->oamOffset);
+		for (u32 i = 0; i < count; i++) {
+			spritePtr[offset + i].y = 288;
+		}
 	}
 	void ReadSprites(RenderContext* pContext, u32 count, u32 offset, Sprite* outSprites) {
 		if (offset + count > MAX_SPRITE_COUNT) {
