@@ -30,8 +30,6 @@ namespace Game {
 #define HUD_TILE_COUNT 128
 
     // Sprite stufff
-    bool flipCharacter = false;
-    
     enum HeadMode {
         HeadIdle,
         HeadFwd,
@@ -57,9 +55,15 @@ namespace Game {
         AimDown
     };
 
+    enum Direction {
+        DirLeft = -1,
+        DirRight = 1
+    };
+
     struct PlayerState {
         r32 x, y;
         r32 hSpeed, vSpeed;
+        Direction direction;
         HeadMode hMode;
         LegsMode lMode;
         WingMode wMode;
@@ -134,6 +138,7 @@ namespace Game {
 
         playerState.x = 30;
         playerState.y = 16;
+        playerState.direction = DirRight;
 
         arrowPool.Init(512);
         hitPool.Init(512);
@@ -206,7 +211,7 @@ namespace Game {
         };
     }
 
-    void DrawPlayer(Rendering::RenderContext* pRenderContext, u32& spriteOffset, IVec2 pos, bool flip) {
+    void DrawPlayer(Rendering::RenderContext* pRenderContext, u32& spriteOffset) {
         // Animate chr sheet using player bank
         // TODO: Maybe do this on the GPU?
         Rendering::Util::WriteChrTiles(
@@ -243,8 +248,11 @@ namespace Game {
             &playerBank
         );
 
+        IVec2 drawPos = WorldPosToScreenPixels(Vec2{ playerState.x, playerState.y });
+        drawPos.y += playerState.vOffset;
+
         Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[playerState.aMode];
-        Rendering::Util::WriteMetasprite(pRenderContext, characterMetasprite.spritesRelativePos, characterMetasprite.spriteCount, spriteOffset, IVec2{ pos.x, pos.y + playerState.vOffset }, flip, false);
+        Rendering::Util::WriteMetasprite(pRenderContext, characterMetasprite.spritesRelativePos, characterMetasprite.spriteCount, spriteOffset, drawPos, playerState.direction == DirLeft, false);
         spriteOffset += characterMetasprite.spriteCount;
     }
 
@@ -310,14 +318,36 @@ namespace Game {
         }
     }
 
+    void DrawShield(Rendering::RenderContext* pRenderContext, r64 dt, u32& spriteOffset) {
+        // Draw shield around player
+        static const r32 shieldRadius = 2.0f;
+        static const u32 shieldCount = 6;
+        static r32 shieldRot = 0.0f;
+
+        const r32 tangentialVel = playerState.direction * 2.0f + playerState.hSpeed;
+        shieldRot += tangentialVel / shieldRadius * dt;
+
+        const Metasprite::Metasprite& shieldMetasprite = Metasprite::GetMetaspritesPtr()[7];
+        static const r64 pi = 3.14159265358979323846;
+        const r32 angleOffset = pi * 2 / shieldCount;
+        for (u32 i = 0; i < shieldCount; i++) {
+            const r32 angle = shieldRot + angleOffset * i;
+            Vec2 pos = { cos(angle) * shieldRadius + playerState.x, sin(angle) * shieldRadius + playerState.y };
+            IVec2 drawPos = WorldPosToScreenPixels(pos);
+
+            Rendering::Util::WriteMetasprite(pRenderContext, shieldMetasprite.spritesRelativePos, shieldMetasprite.spriteCount, spriteOffset, drawPos, false, false);
+            spriteOffset += shieldMetasprite.spriteCount;
+        }
+    }
+
     void Render(Rendering::RenderContext* pRenderContext, r64 dt) {
         Rendering::ClearSprites(pRenderContext, 0, 256);
 
         u32 spriteOffset = 0;
         
         DrawDamageNumbers(pRenderContext, spriteOffset);
-        IVec2 playerPixelPos = WorldPosToScreenPixels(Vec2{ playerState.x, playerState.y });
-        DrawPlayer(pRenderContext, spriteOffset, playerPixelPos, flipCharacter);
+        DrawShield(pRenderContext, dt, spriteOffset);
+        DrawPlayer(pRenderContext, spriteOffset);
         DrawArrows(pRenderContext, spriteOffset);
         DrawHits(pRenderContext, spriteOffset);
 
@@ -348,11 +378,11 @@ namespace Game {
 
     void PlayerInput(r32 dt) {
         if (Input::Down(Input::DPadLeft)) {
-            flipCharacter = true;
+            playerState.direction = DirLeft;
             playerState.hSpeed = -12.5f;
         }
         else if (Input::Down(Input::DPadRight)) {
-            flipCharacter = false;
+            playerState.direction = DirRight;
             playerState.hSpeed = 12.5f;
         }
         else {
@@ -433,21 +463,19 @@ namespace Game {
             PoolHandle<Arrow> handle = arrowPool.Add();
             Arrow* arrow = arrowPool[handle];
             if (arrow != nullptr) {
-                r32 xDir = flipCharacter ? -1.0f : 1.0f;
-
-                const Vec2 fwdOffset = Vec2{ 0.75f * xDir, -0.5f };
-                const Vec2 upOffset = Vec2{ 0.375f * xDir, -1.0f };
-                const Vec2 downOffset = Vec2{ 0.5f * xDir, -0.25f };
+                const Vec2 fwdOffset = Vec2{ 0.75f * playerState.direction, -0.5f };
+                const Vec2 upOffset = Vec2{ 0.375f * playerState.direction, -1.0f };
+                const Vec2 downOffset = Vec2{ 0.5f * playerState.direction, -0.25f };
 
                 arrow->pos = Vec2{ playerState.x, playerState.y };
                 arrow->vel = Vec2{};
 
                 if (playerState.aMode == AimFwd) {
                     arrow->pos = arrow->pos + fwdOffset;
-                    arrow->vel.x = 80.0f * xDir;
+                    arrow->vel.x = 80.0f * playerState.direction;
                 }
                 else {
-                    arrow->vel.x = 56.56f * xDir;
+                    arrow->vel.x = 56.56f * playerState.direction;
                     arrow->vel.y = (playerState.aMode == AimUp) ? -56.56f : 56.56f;
                     arrow->pos = arrow->pos + ((playerState.aMode == AimUp) ? upOffset : downOffset);
                 }
