@@ -251,6 +251,38 @@ namespace Game {
         IVec2 drawPos = WorldPosToScreenPixels(Vec2{ playerState.x, playerState.y });
         drawPos.y += playerState.vOffset;
 
+        // Draw bow first
+        // TODO: Store these in some LUT
+        IVec2 bowOffset;
+        u32 bowMetaspriteIndex = 8;
+        switch (playerState.aMode) {
+        case AimFwd:
+        {
+            bowOffset = { 10 , -4 };
+            break;
+        }
+        case AimUp:
+        {
+            bowOffset = { 9, -14 };
+            bowMetaspriteIndex = 9;
+            break;
+        }
+        case AimDown:
+        {
+            bowOffset = { 10, 4 };
+            bowMetaspriteIndex = 9;
+            break;
+        }
+        default:
+            break;
+        }
+        bowOffset.x *= playerState.direction;
+
+        const Metasprite::Metasprite& bowMetasprite = Metasprite::GetMetaspritesPtr()[bowMetaspriteIndex];
+        Rendering::Util::WriteMetasprite(pRenderContext, bowMetasprite.spritesRelativePos, bowMetasprite.spriteCount, spriteOffset, drawPos + bowOffset, playerState.direction == DirLeft, false);
+        spriteOffset += bowMetasprite.spriteCount;
+
+        // Draw player
         Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[playerState.aMode];
         Rendering::Util::WriteMetasprite(pRenderContext, characterMetasprite.spritesRelativePos, characterMetasprite.spriteCount, spriteOffset, drawPos, playerState.direction == DirLeft, false);
         spriteOffset += characterMetasprite.spriteCount;
@@ -346,7 +378,7 @@ namespace Game {
         u32 spriteOffset = 0;
         
         DrawDamageNumbers(pRenderContext, spriteOffset);
-        DrawShield(pRenderContext, dt, spriteOffset);
+        // DrawShield(pRenderContext, dt, spriteOffset);
         DrawPlayer(pRenderContext, spriteOffset);
         DrawArrows(pRenderContext, spriteOffset);
         DrawHits(pRenderContext, spriteOffset);
