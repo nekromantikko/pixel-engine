@@ -162,11 +162,11 @@ namespace Editor {
             ImGui::Begin("Metasprite");
 
             if (ImGui::Button("Save")) {
-                Metasprite::SaveMetasprites("meta.spr");
+                Metasprite::SaveMetasprites("assets/meta.spr");
             }
             ImGui::SameLine();
             if (ImGui::Button("Revert changes")) {
-                Metasprite::LoadMetasprites("meta.spr");
+                Metasprite::LoadMetasprites("assets/meta.spr");
             }
 
             Metasprite::Metasprite* pMetasprites = Metasprite::GetMetaspritesPtr();
