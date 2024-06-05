@@ -12,6 +12,7 @@
 #include "tileset.h"
 #include "memory_pool.h"
 #include <imgui.h>
+#include "math.h"
 
 namespace Game {
     r64 secondsElapsed = 0.0f;
@@ -60,10 +61,16 @@ namespace Game {
         DirRight = 1
     };
 
+    enum WeaponType {
+        WpnBow,
+        WpnLauncher
+    };
+
     struct PlayerState {
         r32 x, y;
         r32 hSpeed, vSpeed;
         Direction direction;
+        WeaponType weapon;
         HeadMode hMode;
         LegsMode lMode;
         WingMode wMode;
@@ -80,6 +87,8 @@ namespace Game {
     struct Arrow {
         Vec2 pos;
         Vec2 vel;
+        WeaponType type;
+        u32 bounces;
     };
 
     Pool<Arrow> arrowPool;
@@ -139,6 +148,7 @@ namespace Game {
         playerState.x = 30;
         playerState.y = 16;
         playerState.direction = DirRight;
+        playerState.weapon = WpnLauncher;
 
         arrowPool.Init(512);
         hitPool.Init(512);
@@ -192,17 +202,32 @@ namespace Game {
     constexpr u8 playerWingFrameBankOffsets[4] = { 0x00, 0x08, 0x10, 0x18 };
     constexpr u8 playerHeadFrameBankOffsets[9] = { 0x20, 0x24, 0x28, 0x30, 0x34, 0x38, 0x40, 0x44, 0x48 };
     constexpr u8 playerLegsFrameBankOffsets[4] = { 0x50, 0x54, 0x58, 0x5C };
-    constexpr u8 playerBowFrameBankOffsets[3] = { 0x60, 0x68, 0x70 };
+    constexpr u8 playerHandFrameBankOffsets[3] = { 0x60, 0x62, 0x64 };
+    constexpr u8 playerBowFrameBankOffsets[3] = { 0x68, 0x70, 0x78 };
+    constexpr u8 playerLauncherFrameBankOffsets[3] = { 0x80, 0x88, 0x90 };
 
     constexpr u8 playerWingFrameChrOffset = 0x00;
     constexpr u8 playerHeadFrameChrOffset = 0x08;
     constexpr u8 playerLegsFrameChrOffset = 0x0C;
-    constexpr u8 playerBowFrameChrOffset = 0x10;
+    constexpr u8 playerHandFrameChrOffset = 0x10;
+    constexpr u8 playerWeaponFrameChrOffset = 0x12;
 
     constexpr u8 playerWingFrameTileCount = 8;
     constexpr u8 playerHeadFrameTileCount = 4;
     constexpr u8 playerLegsFrameTileCount = 4;
-    constexpr u8 playerBowFrameTileCount = 8;
+    constexpr u8 playerHandFrameTileCount = 2;
+    constexpr u8 playerWeaponFrameTileCount = 8;
+
+    constexpr IVec2 playerBowOffsets[3] = { { 10, -4 }, { 9, -14 }, { 10, 4 } };
+    constexpr u32 playerBowFwdMetaspriteIndex = 8;
+    constexpr u32 playerBowDiagMetaspriteIndex = 9;
+    constexpr u32 playerBowArrowFwdMetaspriteIndex = 3;
+    constexpr u32 playerBowArrowDiagMetaspriteIndex = 4;
+
+    constexpr IVec2 playerLauncherOffsets[3] = { { 5, -5 }, { 7, -12 }, { 8, 1 } };
+    constexpr u32 playerLauncherFwdMetaspriteIndex = 10;
+    constexpr u32 playerLauncherDiagMetaspriteIndex = 11;
+    constexpr u32 playerLauncherGrenadeMetaspriteIndex = 12;
 
     IVec2 WorldPosToScreenPixels(Vec2 pos) {
         return IVec2{
@@ -212,22 +237,60 @@ namespace Game {
     }
 
     void DrawPlayer(Rendering::RenderContext* pRenderContext, u32& spriteOffset) {
+        IVec2 drawPos = WorldPosToScreenPixels(Vec2{ playerState.x, playerState.y });
+        drawPos.y += playerState.vOffset;
+
+        // Draw weapon first
+        IVec2 weaponOffset;
+        u8 weaponFrameBankOffset;
+        u32 weaponMetaspriteIndex;
+        switch (playerState.weapon) {
+        case WpnBow: {
+            weaponOffset = playerBowOffsets[playerState.aMode];
+            weaponFrameBankOffset = playerBowFrameBankOffsets[playerState.aMode];
+            weaponMetaspriteIndex = playerState.aMode == AimFwd ? playerBowFwdMetaspriteIndex : playerBowDiagMetaspriteIndex;
+            break;
+        }
+        case WpnLauncher: {
+            weaponOffset = playerLauncherOffsets[playerState.aMode];
+            weaponFrameBankOffset = playerLauncherFrameBankOffsets[playerState.aMode];
+            weaponMetaspriteIndex = playerState.aMode == AimFwd ? playerLauncherFwdMetaspriteIndex : playerLauncherDiagMetaspriteIndex;
+            break;
+        }
+        default:
+            break;
+        }
+        weaponOffset.x *= playerState.direction;
+
+        Rendering::Util::WriteChrTiles(
+            pRenderContext,
+            spriteChrSheetIndex,
+            playerWeaponFrameTileCount,
+            weaponFrameBankOffset,
+            playerWeaponFrameChrOffset,
+            &playerBank
+        );
+
+        const Metasprite::Metasprite& bowMetasprite = Metasprite::GetMetaspritesPtr()[weaponMetaspriteIndex];
+        Rendering::Util::WriteMetasprite(pRenderContext, bowMetasprite.spritesRelativePos, bowMetasprite.spriteCount, spriteOffset, drawPos + weaponOffset, playerState.direction == DirLeft, false);
+        spriteOffset += bowMetasprite.spriteCount;
+
         // Animate chr sheet using player bank
         // TODO: Maybe do this on the GPU?
         Rendering::Util::WriteChrTiles(
-            pRenderContext, 
+            pRenderContext,
             spriteChrSheetIndex,
-            playerBowFrameTileCount, 
-            playerBowFrameBankOffsets[playerState.aMode], 
-            playerBowFrameChrOffset, 
+            playerHandFrameTileCount,
+            playerHandFrameBankOffsets[playerState.aMode],
+            playerHandFrameChrOffset,
             &playerBank
         );
         Rendering::Util::WriteChrTiles(
-            pRenderContext, 
+            pRenderContext,
             spriteChrSheetIndex,
-            playerHeadFrameTileCount, 
-            playerHeadFrameBankOffsets[playerState.aMode * 3 + playerState.hMode], 
-            playerHeadFrameChrOffset, 
+            playerHeadFrameTileCount,
+            playerHeadFrameBankOffsets[playerState.aMode * 3 + playerState.hMode],
+            playerHeadFrameChrOffset,
             &playerBank
         );
         Rendering::Util::WriteChrTiles(
@@ -238,49 +301,14 @@ namespace Game {
             playerLegsFrameChrOffset,
             &playerBank
         );
-        u8 wingFrame = (playerState.wMode == WingFlap) ? playerState.wingFrame : (playerState.wMode == WingJump ? 2 : 0);
         Rendering::Util::WriteChrTiles(
             pRenderContext,
             spriteChrSheetIndex,
             playerWingFrameTileCount,
-            playerWingFrameBankOffsets[wingFrame],
+            playerWingFrameBankOffsets[playerState.wingFrame],
             playerWingFrameChrOffset,
             &playerBank
         );
-
-        IVec2 drawPos = WorldPosToScreenPixels(Vec2{ playerState.x, playerState.y });
-        drawPos.y += playerState.vOffset;
-
-        // Draw bow first
-        // TODO: Store these in some LUT
-        IVec2 bowOffset;
-        u32 bowMetaspriteIndex = 8;
-        switch (playerState.aMode) {
-        case AimFwd:
-        {
-            bowOffset = { 10 , -4 };
-            break;
-        }
-        case AimUp:
-        {
-            bowOffset = { 9, -14 };
-            bowMetaspriteIndex = 9;
-            break;
-        }
-        case AimDown:
-        {
-            bowOffset = { 10, 4 };
-            bowMetaspriteIndex = 9;
-            break;
-        }
-        default:
-            break;
-        }
-        bowOffset.x *= playerState.direction;
-
-        const Metasprite::Metasprite& bowMetasprite = Metasprite::GetMetaspritesPtr()[bowMetaspriteIndex];
-        Rendering::Util::WriteMetasprite(pRenderContext, bowMetasprite.spritesRelativePos, bowMetasprite.spriteCount, spriteOffset, drawPos + bowOffset, playerState.direction == DirLeft, false);
-        spriteOffset += bowMetasprite.spriteCount;
 
         // Draw player
         Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[playerState.aMode];
@@ -321,14 +349,23 @@ namespace Game {
                 continue;
             }
 
-            bool hFlip = arrow->vel.x < 0.0f;
-            bool vFlip = arrow->vel.y < -10.0f;
-
-            u32 spriteIndex = abs(arrow->vel.y) < 10.0f ? 3 : 4;
-            Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[spriteIndex];
             IVec2 pixelPos = WorldPosToScreenPixels(arrow->pos);
-            Rendering::Util::WriteMetasprite(pRenderContext, metasprite.spritesRelativePos, metasprite.spriteCount, spriteOffset, pixelPos, hFlip, vFlip);
-            spriteOffset += metasprite.spriteCount;
+            if (arrow->type == WpnBow) {
+                bool hFlip = arrow->vel.x < 0.0f;
+                bool vFlip = arrow->vel.y < -10.0f;
+                u32 spriteIndex = abs(arrow->vel.y) < 10.0f ? playerBowArrowFwdMetaspriteIndex : playerBowArrowDiagMetaspriteIndex;
+                Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[spriteIndex];
+                Rendering::Util::WriteMetasprite(pRenderContext, metasprite.spritesRelativePos, metasprite.spriteCount, spriteOffset, pixelPos, hFlip, vFlip);
+                spriteOffset += metasprite.spriteCount;
+            }
+            else {
+                Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[playerLauncherGrenadeMetaspriteIndex];
+                const Vec2 dir = arrow->vel.Normalize();
+                const r32 angle = atan2f(dir.y, dir.x);
+                const s32 frameIndex = (s32)roundf(((angle + pi) / (pi*2)) * 7);
+                Rendering::Util::WriteMetasprite(pRenderContext, metasprite.spritesRelativePos + frameIndex, 1, spriteOffset, pixelPos, false, false);
+                spriteOffset++;
+            }
         }
     }
 
@@ -360,7 +397,6 @@ namespace Game {
         shieldRot += tangentialVel / shieldRadius * dt;
 
         const Metasprite::Metasprite& shieldMetasprite = Metasprite::GetMetaspritesPtr()[7];
-        static const r64 pi = 3.14159265358979323846;
         const r32 angleOffset = pi * 2 / shieldCount;
         for (u32 i = 0; i < shieldCount; i++) {
             const r32 angle = shieldRot + angleOffset * i;
@@ -436,6 +472,8 @@ namespace Game {
 
         if (Input::Pressed(Input::A)) {
             playerState.vSpeed = -31.25f;
+            // Trigger new flap
+            playerState.wingFrame++;
         }
 
         if (playerState.vSpeed < 0 && Input::Released(Input::A)) {
@@ -451,6 +489,12 @@ namespace Game {
             shootTimer = 0.0f;
         }
 
+        if (Input::Pressed(Input::Select)) {
+            if (playerState.weapon == WpnLauncher) {
+                playerState.weapon = WpnBow;
+            }
+            else playerState.weapon = WpnLauncher;
+        }
     }
 
     void PlayerBgCollision(r64 dt, Rendering::RenderContext* pRenderContext) {
@@ -501,6 +545,8 @@ namespace Game {
 
                 arrow->pos = Vec2{ playerState.x, playerState.y };
                 arrow->vel = Vec2{};
+                arrow->type = playerState.weapon;
+                arrow->bounces = 10;
 
                 if (playerState.aMode == AimFwd) {
                     arrow->pos = arrow->pos + fwdOffset;
@@ -512,6 +558,9 @@ namespace Game {
                     arrow->pos = arrow->pos + ((playerState.aMode == AimUp) ? upOffset : downOffset);
                 }
 
+                if (playerState.weapon == WpnLauncher) {
+                    arrow->vel = arrow->vel * 0.75f;
+                }
                 arrow->vel = arrow->vel + Vec2{ playerState.hSpeed, playerState.vSpeed } *dt;
             }
         }
@@ -551,21 +600,16 @@ namespace Game {
             playerState.wMode = WingFall;
         }
         else {
-            if (playerState.wMode == WingJump) {
-                playerState.wingFrame = 2;
-                playerState.wingCounter = 0.0f;
-            }
-            else if (playerState.wMode == WingFall) {
-                playerState.wingFrame = 0;
-                playerState.wingCounter = 0.0f;
-            }
             playerState.wMode = WingFlap;
         }
 
         // Wing flapping
-        playerState.wingCounter += dt / 0.18f;
+        const r32 wingAnimFrameLength = playerState.wMode == WingFlap ? 0.18f : 0.09f;
+        playerState.wingCounter += dt / wingAnimFrameLength;
         while (playerState.wingCounter > 1.0f) {
-            playerState.wingFrame++;
+            if (!(playerState.wMode == WingJump && playerState.wingFrame == 2) && !((playerState.wMode == WingFall && playerState.wingFrame == 0))) {
+                playerState.wingFrame++;
+            }
             playerState.wingCounter -= 1.0f;
         }
         playerState.wingFrame %= 4;
@@ -644,27 +688,38 @@ namespace Game {
                 Collision::HitResult hit{};
                 Collision::SweepBoxHorizontal(&level, hitboxPos, hitboxDimensions, dx, hit);
                 if (hit.blockingHit) {
-                    arrowPool.Remove(handle);
-                    PoolHandle<Impact> hitHandle = hitPool.Add();
-                    Impact* impact = hitPool[hitHandle];
-                    impact->pos = hit.impactPoint;
-                    impact->accumulator = 0.0f;
-                    continue;
-                }
-                arrow->pos.x += dx;
+                    if (arrow->type == WpnBow || arrow->bounces == 0) {
+                        arrowPool.Remove(handle);
+                        PoolHandle<Impact> hitHandle = hitPool.Add();
+                        Impact* impact = hitPool[hitHandle];
+                        impact->pos = hit.impactPoint;
+                        impact->accumulator = 0.0f;
+                        continue;
+                    }
+                    arrow->pos = hit.location;
+                    arrow->vel.x *= -1.0f;
+                    arrow->bounces--;
+                } else arrow->pos.x += dx;
 
+                if (arrow->type == WpnLauncher) {
+                    arrow->vel.y += dt * gravity * 4.0f;
+                }
                 r32 dy = arrow->vel.y * dt;
                 hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
                 Collision::SweepBoxVertical(&level, hitboxPos, hitboxDimensions, dy, hit);
                 if (hit.blockingHit) {
-                    arrowPool.Remove(handle);
-                    PoolHandle<Impact> hitHandle = hitPool.Add();
-                    Impact* impact = hitPool[hitHandle];
-                    impact->pos = hit.impactPoint;
-                    impact->accumulator = 0.0f;
-                    continue;
-                }
-                arrow->pos.y += dy;
+                    if (arrow->type == WpnBow || arrow->bounces == 0) {
+                        arrowPool.Remove(handle);
+                        PoolHandle<Impact> hitHandle = hitPool.Add();
+                        Impact* impact = hitPool[hitHandle];
+                        impact->pos = hit.impactPoint;
+                        impact->accumulator = 0.0f;
+                        continue;
+                    }
+                    arrow->pos = hit.location;
+                    arrow->vel.y *= -1.0f;
+                    arrow->bounces--;
+                } else arrow->pos.y += dy;
 
                 // Collision with enemy
                 hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };

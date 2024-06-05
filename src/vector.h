@@ -37,6 +37,10 @@ inline r32 DotProduct(Vec2 a, Vec2 b) {
     return a.x * b.x + a.y * b.y;
 }
 
+inline Vec2 operator*(const r32& s, const Vec2& vec) {
+    return { vec.x * s, vec.y * s };
+}
+
 struct IVec2 {
     s32 x, y;
 
