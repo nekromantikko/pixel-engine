@@ -33,11 +33,11 @@ namespace Editor {
                 // Save and reload
                 ImGui::SameLine();
                 if (ImGui::Button("Save level")) {
-                    SaveLevel(pLevel, "test.lev");
+                    SaveLevel(pLevel, "assets/test.lev");
                 }
                 ImGui::SameLine();
                 if (ImGui::Button("Revert changes")) {
-                    LoadLevel(pLevel, "test.lev");
+                    LoadLevel(pLevel, "assets/test.lev");
                     RefreshViewport(pViewport, pRenderContext, pLevel);
                 }
                 ImGui::SameLine();

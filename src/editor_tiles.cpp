@@ -56,11 +56,11 @@ namespace Editor {
 			ImGui::Begin("Tileset");
 
 			if (ImGui::Button("Save")) {
-				Tileset::SaveTileset("forest.til");
+				Tileset::SaveTileset("assets/forest.til");
 			}
 			ImGui::SameLine();
 			if (ImGui::Button("Revert changes")) {
-				Tileset::LoadTileset("forest.til");
+				Tileset::LoadTileset("assets/forest.til");
 			}
 
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
