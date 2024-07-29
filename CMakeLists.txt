@@ -35,10 +35,12 @@ set(SOURCES
 		src/system.cpp
 		src/viewport.cpp
 		src/tiles.cpp
-		src/actors.cpp)
+		src/actors.cpp
+		src/audio.cpp)
 
 set(EDITOR_SOURCES
-		src/editor.cpp)
+		src/editor.cpp
+		src/editor_audio.cpp)
 
 set(HEADERS 
 		src/rendering.h

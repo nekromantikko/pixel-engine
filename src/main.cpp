@@ -5,6 +5,7 @@
 #include "system.h"
 #include "game.h"
 #include "input.h"
+#include "audio.h"
 
 #ifdef EDITOR
 #include "editor.h"
@@ -65,6 +66,8 @@ int WinMain(int argc, char** args) {
     Rendering::CreateSurface(pWindow);
     Rendering::Init();
 
+    Audio::AudioContext* pAudioContext = Audio::CreateAudioContext();
+
 #ifdef EDITOR
     Editor::CreateContext();
     Editor::Init(pWindow);
@@ -106,6 +109,7 @@ int WinMain(int argc, char** args) {
 #endif
         }
         
+        Audio::Update(deltaTimeSeconds, pAudioContext);
         Game::Step(deltaTimeSeconds);
 
         if (!minimized) {
@@ -113,7 +117,7 @@ int WinMain(int argc, char** args) {
             UpdateWindowTitle(pWindow, averageFramerate, deltaTimeSeconds);
 
 #ifdef EDITOR
-            Editor::Render();
+            Editor::Render(pAudioContext);
 #endif
             Rendering::Render();
         }
@@ -127,6 +131,8 @@ int WinMain(int argc, char** args) {
 #endif
     Rendering::Free();
     Rendering::DestroyContext();
+
+    Audio::FreeAudioContext(pAudioContext);
 
     SDL_DestroyWindow(pWindow);
     SDL_Quit();

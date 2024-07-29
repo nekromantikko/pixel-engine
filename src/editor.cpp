@@ -13,6 +13,7 @@
 #include "level.h"
 #include "viewport.h"
 #include "actors.h"
+#include "editor_audio.h"
 
 constexpr u32 CLIPBOARD_DIM_TILES = (VIEWPORT_WIDTH_TILES / 2) + 1;
 
@@ -2106,7 +2107,7 @@ void Editor::ProcessEvent(const SDL_Event* event) {
 	ImGui_ImplSDL2_ProcessEvent(event);
 }
 
-void Editor::Render() {
+void Editor::Render(AudioContext* pAudioContext) {
 	Rendering::BeginImGuiFrame();
 	ImGui::NewFrame();
 
@@ -2135,6 +2136,8 @@ void Editor::Render() {
 	if (pContext->actorWindowOpen) {
 		DrawActorWindow();
 	}
+
+	Editor::Audio::DrawAudioWindow(pAudioContext);
 
 	ImGui::Render();
 }
