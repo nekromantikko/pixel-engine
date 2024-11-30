@@ -1,7 +1,7 @@
 #version 450
 #define MAX_SPRITES_PER_SCANLINE 64
 
-layout(local_size_x = 64, local_size_y = 8, local_size_z = 1) in;
+layout(local_size_x = MAX_SPRITES_PER_SCANLINE, local_size_y = 1, local_size_z = 1) in;
 
 struct Sprite
 {
@@ -37,20 +37,37 @@ layout(set = 0, binding = 7) readonly buffer RenderStates
 	RenderState data[];
 } renderStates;
 
+shared ScanlineData sharedData;
+
 void main() {
-	int scanlineIndex = int(gl_GlobalInvocationID.y);
-	uint spriteIndex = gl_WorkGroupID.x * gl_WorkGroupSize.x + gl_LocalInvocationID.x;
-	
-	Sprite sprite = sprites.data[spriteIndex];
-	if (scanlineIndex >= sprite.y && scanlineIndex < sprite.y + 8) {
-		uint scanlineSpriteIndex = atomicAdd(scanlines.data[scanlineIndex].spriteCount, 1);
-		if (scanlineSpriteIndex < MAX_SPRITES_PER_SCANLINE) {
-			scanlines.data[scanlineIndex].spriteIndices[scanlineSpriteIndex] = spriteIndex;
+	uint scanlineIndex = gl_WorkGroupID.y;
+	uint localSpriteIndex = gl_LocalInvocationID.x;
+
+	// Initialize shared scanline data
+	if (localSpriteIndex == 0) {
+		sharedData.spriteCount = 0;
+		sharedData.scrollX = renderStates.data[scanlineIndex].scrollX;
+		sharedData.scrollY = renderStates.data[scanlineIndex].scrollY;
+	}
+	// Wait for initialization to complete
+	barrier();
+
+	uint spriteCount = sprites.data.length();
+	for (uint globalSpriteIndex = localSpriteIndex; globalSpriteIndex < spriteCount; globalSpriteIndex += MAX_SPRITES_PER_SCANLINE) {
+		Sprite sprite = sprites.data[globalSpriteIndex];
+
+		if (scanlineIndex >= sprite.y && scanlineIndex < sprite.y + 8) {
+			uint scanlineSpriteIndex = atomicAdd(sharedData.spriteCount, 1);
+			if (scanlineSpriteIndex < MAX_SPRITES_PER_SCANLINE) {
+				sharedData.spriteIndices[scanlineSpriteIndex] = globalSpriteIndex;
+			}
 		}
 	}
+	// Wait for processing to complete
+	barrier();
+	
 
-	if (gl_LocalInvocationID.x == 0) {
-		scanlines.data[scanlineIndex].scrollX = renderStates.data[scanlineIndex].scrollX;
-		scanlines.data[scanlineIndex].scrollY = renderStates.data[scanlineIndex].scrollY;
+	if (localSpriteIndex == 0) {
+		scanlines.data[scanlineIndex] = sharedData;
 	}
 }
