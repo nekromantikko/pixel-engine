@@ -98,9 +98,10 @@ namespace Rendering
 		u32 renderStateOffset;
 		u32 renderStateSize;
 		u32 computeBufferSize;
+
+		void* renderData;
 		Buffer computeBufferDevice;
-		Buffer computeBufferHost;
-		void* computeBufferHostMappedData;
+		Buffer computeBufferHost[COMMAND_BUFFER_COUNT];
 
 		Buffer scanlineBuffer;
 
@@ -941,10 +942,14 @@ namespace Rendering
 		pContext->renderStateSize = PadBufferSize(sizeof(RenderState) * SCANLINE_COUNT, minOffsetAlignment);
 		pContext->computeBufferSize = pContext->paletteTableSize + pContext->chrSize + pContext->nametableSize + pContext->oamSize + pContext->renderStateSize;
 
-		AllocateBuffer(pContext, pContext->computeBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, pContext->computeBufferHost);
+		pContext->renderData = calloc(1, pContext->computeBufferSize);
+
+		for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
+			AllocateBuffer(pContext, pContext->computeBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, pContext->computeBufferHost[i]);
+			//vkMapMemory(pContext->device, pContext->computeBufferHost[i].memory, 0, pContext->computeBufferSize, 0, &pContext->computeBufferHostMappedData[i]);
+		}
 		AllocateBuffer(pContext, pContext->computeBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pContext->computeBufferDevice);
 
-		vkMapMemory(pContext->device, pContext->computeBufferHost.memory, 0, pContext->computeBufferSize, 0, &pContext->computeBufferHostMappedData);
 	}
 
 	RenderContext *CreateRenderContext(Surface surface) {
@@ -1399,7 +1404,9 @@ namespace Rendering
 		}
 
 		FreeBuffer(pRenderContext, pRenderContext->computeBufferDevice);
-		FreeBuffer(pRenderContext, pRenderContext->computeBufferHost);
+		for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
+			FreeBuffer(pRenderContext, pRenderContext->computeBufferHost[i]);
+		}
 		FreeBuffer(pRenderContext, pRenderContext->scanlineBuffer);
 
 		vkDestroyDevice(pRenderContext->device, nullptr);
@@ -1418,7 +1425,7 @@ namespace Rendering
 		u32 actualOffset = 8 * paletteIndex + offset;
 		u32 computeBufferOffset = pContext->paletteTableOffset + actualOffset;
 
-		memcpy(outColors, (void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), count);
+		memcpy(outColors, (void*)((u8*)pContext->renderData + computeBufferOffset), count);
 	}
 	void WritePaletteColors(RenderContext* pContext, u8 paletteIndex, u32 count, u32 offset, u8* colors) {
 		if (offset + count > 8 || paletteIndex >= 8) {
@@ -1427,11 +1434,11 @@ namespace Rendering
 
 		u32 actualOffset = 8 * paletteIndex + offset;
 		u32 computeBufferOffset = pContext->paletteTableOffset + actualOffset;
-		memcpy((void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), colors, count);
+		memcpy((void*)((u8*)pContext->renderData + computeBufferOffset), colors, count);
 	}
 	// Really just moves the sprites off screen
 	void ClearSprites(RenderContext* pContext, u32 offset, u32 count) {
-		Sprite* spritePtr = (Sprite*)((u8*)pContext->computeBufferHostMappedData + pContext->oamOffset);
+		Sprite* spritePtr = (Sprite*)((u8*)pContext->renderData + pContext->oamOffset);
 		for (u32 i = 0; i < count; i++) {
 			spritePtr[offset + i].y = 288;
 		}
@@ -1446,7 +1453,7 @@ namespace Rendering
 
 		u32 computeBufferOffset = pContext->oamOffset + actualOffset;
 
-		memcpy((void*)outSprites, (void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), size);
+		memcpy((void*)outSprites, (void*)((u8*)pContext->renderData + computeBufferOffset), size);
 	}
 	void WriteSprites(RenderContext* pContext, u32 count, u32 offset, Sprite* sprites) {
 		if (count == 0) {
@@ -1461,7 +1468,7 @@ namespace Rendering
 		u32 size = count * sizeof(Sprite);
 		u32 computeBufferOffset = pContext->oamOffset + actualOffset;
 
-		memcpy((void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), (void*)sprites, size);
+		memcpy((void*)((u8*)pContext->renderData + computeBufferOffset), (void*)sprites, size);
 	}
 	void WriteChrMemory(RenderContext* pContext, u32 size, u32 offset, u8* bytes) {
 		if (offset + size > CHR_MEMORY_SIZE) {
@@ -1469,7 +1476,7 @@ namespace Rendering
 		}
 
 		u32 computeBufferOffset = pContext->chrOffset + offset;
-		memcpy((void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), bytes, size);
+		memcpy((void*)((u8*)pContext->renderData + computeBufferOffset), bytes, size);
 	}
 	void ReadChrMemory(RenderContext* pContext, u32 size, u32 offset, u8* outBytes) {
 		if (offset + size > CHR_MEMORY_SIZE) {
@@ -1477,24 +1484,24 @@ namespace Rendering
 		}
 
 		u32 computeBufferOffset = pContext->chrOffset + offset;
-		memcpy((void*)outBytes, (void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), size);
+		memcpy((void*)outBytes, (void*)((u8*)pContext->renderData + computeBufferOffset), size);
 	}
 	void WriteNametable(RenderContext* pContext, u16 index, u16 count, u16 offset, u8* tiles) {
 		u32 nametableOffset = index * NAMETABLE_SIZE + offset;
 		u32 computeBufferOffset = pContext->nametableOffset + nametableOffset;
-		memcpy((void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), tiles, count);
+		memcpy((void*)((u8*)pContext->renderData + computeBufferOffset), tiles, count);
 	}
 	void ReadNametable(RenderContext* pContext, u16 index, u16 count, u16 offset, u8* outTiles) {
 		u32 nametableOffset = index * NAMETABLE_SIZE + offset;
 		u32 computeBufferOffset = pContext->nametableOffset + nametableOffset;
-		memcpy((void*)outTiles, (void*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset), count);
+		memcpy((void*)outTiles, (void*)((u8*)pContext->renderData + computeBufferOffset), count);
 	}
 
 	void SetRenderState(RenderContext* pContext, u32 scanlineOffset, u32 scanlineCount, RenderState state) {
 		u32 renderStateOffset = sizeof(RenderState) * scanlineOffset;
 		u32 computeBufferOffset = pContext->renderStateOffset + renderStateOffset;
 
-		RenderState* scanlineStates = (RenderState*)((u8*)pContext->computeBufferHostMappedData + computeBufferOffset);
+		RenderState* scanlineStates = (RenderState*)((u8*)pContext->renderData + computeBufferOffset);
 		for (int i = 0; i < scanlineCount; i++) {
 			memcpy(scanlineStates + i, &state, sizeof(RenderState));
 		}
@@ -1833,7 +1840,7 @@ namespace Rendering
 		copyRegion.dstOffset = 0;
 		copyRegion.size = pContext->computeBufferSize;
 
-		vkCmdCopyBuffer(commandBuffer, pContext->computeBufferHost.buffer, pContext->computeBufferDevice.buffer, 1, &copyRegion);
+		vkCmdCopyBuffer(commandBuffer, pContext->computeBufferHost[pContext->currentCbIndex].buffer, pContext->computeBufferDevice.buffer, 1, &copyRegion);
 
 		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -1998,7 +2005,7 @@ namespace Rendering
 		vkCmdEndRenderPass(commandBuffer);
 	}
 
-	void BeginDraw(RenderContext* pRenderContext) {
+	static void BeginDraw(RenderContext* pRenderContext) {
 		// Wait for drawing to finish if it hasn't
 		vkWaitForFences(pRenderContext->device, 1, &pRenderContext->commandBufferFences[pRenderContext->currentCbIndex], VK_TRUE, UINT64_MAX);
 
@@ -2022,7 +2029,7 @@ namespace Rendering
 		// Should be ready to draw now!
 	}
 	
-	void EndDraw(RenderContext* pRenderContext) {
+	static void EndDraw(RenderContext* pRenderContext) {
 		VkCommandBuffer commandBuffer = pRenderContext->primaryCommandBuffers[pRenderContext->currentCbIndex];
 
 		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
@@ -2064,8 +2071,16 @@ namespace Rendering
 		pRenderContext->currentSwaphainIndex = (pRenderContext->currentSwaphainIndex + 1) % SWAPCHAIN_IMAGE_COUNT;
 	}
 
+	static void CopyRenderData(RenderContext* pContext) {
+		void* temp;
+		vkMapMemory(pContext->device, pContext->computeBufferHost[pContext->currentCbIndex].memory, 0, pContext->computeBufferSize, 0, &temp);
+		memcpy(temp, pContext->renderData, pContext->computeBufferSize);
+		vkUnmapMemory(pContext->device, pContext->computeBufferHost[pContext->currentCbIndex].memory);
+	}
+
 	void Render(RenderContext* pContext) {
 		// Just run all the commands
+		CopyRenderData(pContext);
 		BeginDraw(pContext);
 		TransferComputeBufferData(pContext);
 		RunSoftwareRenderer(pContext);
