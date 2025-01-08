@@ -946,7 +946,6 @@ namespace Rendering
 
 		for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
 			AllocateBuffer(pContext, pContext->computeBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, pContext->computeBufferHost[i]);
-			//vkMapMemory(pContext->device, pContext->computeBufferHost[i].memory, 0, pContext->computeBufferSize, 0, &pContext->computeBufferHostMappedData[i]);
 		}
 		AllocateBuffer(pContext, pContext->computeBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pContext->computeBufferDevice);
 
@@ -1407,6 +1406,7 @@ namespace Rendering
 		for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
 			FreeBuffer(pRenderContext, pRenderContext->computeBufferHost[i]);
 		}
+		free(pRenderContext->renderData);
 		FreeBuffer(pRenderContext, pRenderContext->scanlineBuffer);
 
 		vkDestroyDevice(pRenderContext->device, nullptr);
