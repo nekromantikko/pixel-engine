@@ -120,6 +120,10 @@ namespace Game {
 
     bool paused = false;
 
+    s32 enemyHealth = 1000;
+    r32 enemyDamageTimer = 0;
+    constexpr r32 enemyDamageDelay = 0.5f;
+
     Rendering::Sprite* pSprites;
     Rendering::ChrSheet* pChr;
     Rendering::Nametable* pNametables;
@@ -444,10 +448,16 @@ namespace Game {
         DrawHits(&pNextSprite);
 
         // Draw enemy
-        Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
-        IVec2 enemyPixelPos = WorldPosToScreenPixels(enemyPos);
-        Rendering::Util::CopyMetasprite(enemyMetasprite.spritesRelativePos, pNextSprite, enemyMetasprite.spriteCount, enemyPixelPos, false, false);
-        pNextSprite += enemyMetasprite.spriteCount;
+        if (enemyHealth > 0) {
+            Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
+            IVec2 enemyPixelPos = WorldPosToScreenPixels(enemyPos);
+            Rendering::Util::CopyMetasprite(enemyMetasprite.spritesRelativePos, pNextSprite, enemyMetasprite.spriteCount, enemyPixelPos, false, false);
+            if (enemyDamageTimer > 0) {
+                u8 damagePalette = (u8)(secondsElapsed * 20) % 4;
+                Rendering::Util::SetSpritesPalette(pNextSprite, enemyMetasprite.spriteCount, damagePalette);
+            }
+            pNextSprite += enemyMetasprite.spriteCount;
+        }
 
         UpdateHUD(pRenderContext, dt);
         RenderHUD(pRenderContext);
@@ -746,30 +756,35 @@ namespace Game {
                 } else arrow->pos.y += dy;
 
                 // Collision with enemy
-                hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
-                if (hitboxPos.x - hitboxDimensions.x / 2.0f < enemyHitboxPos.x + enemyHitboxDimensions.x / 2.0f &&
-                    hitboxPos.x + hitboxDimensions.x / 2.0f > enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f &&
-                    hitboxPos.y - hitboxDimensions.y / 2.0f < enemyHitboxPos.y + enemyHitboxDimensions.y / 2.0f &&
-                    hitboxPos.y + hitboxDimensions.y / 2.0f > enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f) {
+                if (enemyHealth > 0) {
+                    hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
+                    if (hitboxPos.x - hitboxDimensions.x / 2.0f < enemyHitboxPos.x + enemyHitboxDimensions.x / 2.0f &&
+                        hitboxPos.x + hitboxDimensions.x / 2.0f > enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f &&
+                        hitboxPos.y - hitboxDimensions.y / 2.0f < enemyHitboxPos.y + enemyHitboxDimensions.y / 2.0f &&
+                        hitboxPos.y + hitboxDimensions.y / 2.0f > enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f) {
 
-                    arrowPool.Remove(handle);
-                    PoolHandle<Impact> hitHandle = hitPool.Add();
-                    Impact* impact = hitPool[hitHandle];
-                    impact->pos = arrow->pos;
-                    impact->accumulator = 0.0f;
+                        arrowPool.Remove(handle);
+                        PoolHandle<Impact> hitHandle = hitPool.Add();
+                        Impact* impact = hitPool[hitHandle];
+                        impact->pos = arrow->pos;
+                        impact->accumulator = 0.0f;
 
-                    // Add damage numbers
-                    s32 damage = (rand() % 10) + 5;
-                    // Random point inside enemy hitbox
-                    Vec2 dmgPos = Vec2{ (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.x) + enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f, (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.y) + enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f };
+                        s32 damage = (rand() % 10) + 5;
+                        enemyHealth -= damage;
+                        enemyDamageTimer = enemyDamageDelay;
 
-                    PoolHandle<DamageNumber> dmgHandle = damageNumberPool.Add();
-                    DamageNumber* dmgNumber = damageNumberPool[dmgHandle];
-                    dmgNumber->damage = damage;
-                    dmgNumber->pos = dmgPos;
-                    dmgNumber->accumulator = 0.0f;
+                        // Add damage numbers
+                        // Random point inside enemy hitbox
+                        Vec2 dmgPos = Vec2{ (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.x) + enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f, (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.y) + enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f };
 
-                    continue;
+                        PoolHandle<DamageNumber> dmgHandle = damageNumberPool.Add();
+                        DamageNumber* dmgNumber = damageNumberPool[dmgHandle];
+                        dmgNumber->damage = damage;
+                        dmgNumber->pos = dmgPos;
+                        dmgNumber->accumulator = 0.0f;
+
+                        continue;
+                    }
                 }
 
                 if (arrow->pos.x < viewport.x || arrow->pos.x > viewport.x + viewport.w || arrow->pos.y < viewport.y || arrow->pos.y > viewport.y + viewport.h) {
@@ -809,6 +824,12 @@ namespace Game {
             const r32 amplitude = 7.5f;
             r32 sineTime = sin(secondsElapsed);
             enemyPos.y = yMid + sineTime * amplitude;
+
+            // Enemy damagio
+            if (enemyDamageTimer > dt) {
+                enemyDamageTimer -= dt;
+            }
+            else enemyDamageTimer = 0.0f;
             
             UpdateViewport();
         }
