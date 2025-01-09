@@ -557,7 +557,7 @@ namespace Game {
         }
         else shootTimer = 0.0f;
 
-        if (Input::Down(Input::B) && shootTimer < shootDelay) {
+        if (Input::Down(Input::B) && shootTimer <= 0.0f) {
             shootTimer += shootDelay;
 
             PoolHandle<Arrow> handle = arrowPool.Add();
