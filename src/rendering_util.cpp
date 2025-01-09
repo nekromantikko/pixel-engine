@@ -5,7 +5,7 @@ namespace Rendering
 {
 	namespace Util
 	{
-		void CreateChrSheet(const char* fname, CHRSheet* outSheet) {
+		void CreateChrSheet(const char* fname, ChrSheet* outSheet) {
 			u32 imgWidth, imgHeight;
 			u16 bpp;
 			char* imgData = LoadBitmapBytes(fname, imgWidth, imgHeight, bpp);
@@ -29,9 +29,11 @@ namespace Rendering
 					u32 outPixelIndex = (7 - fineY) * 8 + fineX; // Also pixels go from top to bottom in this program, but bottom to top in bmp, so flip
 
 					u8 pixel = imgData[inPixelIndex];
-					outSheet->p0[tileIndex] = (outSheet->p0[tileIndex] & ~(1ULL << outPixelIndex)) | ((u64)(pixel & 0b00000001) << outPixelIndex);
-					outSheet->p1[tileIndex] = (outSheet->p1[tileIndex] & ~(1ULL << outPixelIndex)) | ((u64)((pixel & 0b00000010) >> 1) << outPixelIndex);
-					outSheet->p2[tileIndex] = (outSheet->p2[tileIndex] & ~(1ULL << outPixelIndex)) | ((u64)((pixel & 0b00000100) >> 2) << outPixelIndex);
+
+					ChrTile& tile = outSheet->tiles[tileIndex];
+					tile.p0 = (tile.p0 & ~(1ULL << outPixelIndex)) | ((u64)(pixel & 0b00000001) << outPixelIndex);
+					tile.p1 = (tile.p1 & ~(1ULL << outPixelIndex)) | ((u64)((pixel & 0b00000010) >> 1) << outPixelIndex);
+					tile.p2 = (tile.p2 & ~(1ULL << outPixelIndex)) | ((u64)((pixel & 0b00000100) >> 2) << outPixelIndex);
 				}
 			}
 
@@ -85,10 +87,10 @@ namespace Rendering
 			free(outSprites);
 		}
 
-		void WriteChrTiles(RenderContext* pContext, bool sheetIndex, u32 tileCount, u8 srcOffset, u8 dstOffset, CHRSheet* sheet) {
-			Rendering::WriteChrMemory(pContext, sizeof(u64)*tileCount, CHR_SHEET_SIZE*sheetIndex + sizeof(u64)*dstOffset, (u8*)sheet + sizeof(u64)*srcOffset);
-			Rendering::WriteChrMemory(pContext, sizeof(u64) * tileCount, CHR_SHEET_SIZE * sheetIndex + sizeof(u64) * dstOffset + 0x800, (u8*)sheet + sizeof(u64) * srcOffset + 0x800);
-			Rendering::WriteChrMemory(pContext, sizeof(u64) * tileCount, CHR_SHEET_SIZE * sheetIndex + sizeof(u64) * dstOffset + 0x1000, (u8*)sheet + sizeof(u64) * srcOffset + 0x1000);
+		void WriteChrTiles(RenderContext* pContext, bool sheetIndex, u32 tileCount, u8 srcOffset, u8 dstOffset, ChrSheet* sheet) {
+			const u32 chrMemOffset = sizeof(ChrSheet) * sheetIndex + sizeof(ChrTile) * dstOffset;
+			ChrTile* srcTile = (ChrTile*)sheet + srcOffset;
+			Rendering::WriteChrMemory(pContext, sizeof(ChrTile) * tileCount, chrMemOffset, (u8*)srcTile);
 		}
 	}
 }

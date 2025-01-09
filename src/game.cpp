@@ -116,7 +116,7 @@ namespace Game {
     };
     Pool<DamageNumber> damageNumberPool;
 
-    Rendering::CHRSheet playerBank;
+    Rendering::ChrSheet playerBank;
 
     bool paused = false;
 
@@ -128,7 +128,7 @@ namespace Game {
 
         // Init chr memory
         // TODO: Pre-process these instead of loading from bitmap at runtime!
-        Rendering::CHRSheet temp;
+        Rendering::ChrSheet temp;
         Rendering::Util::CreateChrSheet("assets/chr000.bmp", &temp);
         Rendering::Util::WriteChrTiles(pRenderContext, 0, 256, 0, 0, &temp);
         Rendering::Util::CreateChrSheet("assets/chr001.bmp", &temp);
