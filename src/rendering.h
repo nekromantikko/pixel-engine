@@ -32,11 +32,14 @@ namespace Rendering
 
 #define CHR_SHEET_SIZE 0x1800
 #define CHR_MEMORY_SIZE CHR_SHEET_SIZE * 2
+	struct ChrTile {
+		u64 p0;
+		u64 p1;
+		u64 p2;
+	};
 
-	struct CHRSheet {
-		u64 p0[256];
-		u64 p1[256];
-		u64 p2[256];
+	struct ChrSheet {
+		ChrTile tiles[256];
 	};
 
 #define TILE_SIZE 8
