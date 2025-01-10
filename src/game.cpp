@@ -124,9 +124,37 @@ namespace Game {
     Rendering::ChrSheet* pChr;
     Rendering::Nametable* pNametables;
 
+    static void InitializeLevel() {
+        LoadLevel(&level, "assets/test.lev");
+
+        playerState.x = 0;
+        playerState.y = 0;
+        playerState.direction = DirRight;
+        playerState.weapon = WpnLauncher;
+
+        // Find first player spawn
+        for (int i = 0; i < level.screenCount; i++) {
+            const Screen& screen = level.screens[i];
+            for (int t = 0; t < LEVEL_SCREEN_WIDTH_METATILES * LEVEL_SCREEN_HEIGHT_METATILES; t++) {
+                const LevelTile& tile = screen.tiles[t];
+
+                if (tile.actorType == ACTOR_PLAYER_START) {
+                    // TODO: Make into util
+                    r32 worldX = ((t % LEVEL_SCREEN_WIDTH_METATILES) + LEVEL_SCREEN_WIDTH_METATILES * i) * Tileset::metatileWorldSize;
+                    r32 worldY = (t / LEVEL_SCREEN_WIDTH_METATILES) * Tileset::metatileWorldSize;
+
+                    playerState.x = worldX + 1.0f;
+                    playerState.y = worldY;
+
+                    break;
+                }
+            }
+        }
+    }
+
 	void Initialize(Rendering::RenderContext* pRenderContext) {
         viewport.x = 0.0f;
-        viewport.y = 12.0f;
+        viewport.y = 0.0f;
         viewport.w = VIEWPORT_WIDTH_TILES;
         viewport.h = VIEWPORT_HEIGHT_TILES;
 
@@ -152,18 +180,14 @@ namespace Game {
         pSprites = Rendering::GetSpritesPtr(pRenderContext, 0);
         Rendering::Util::ClearSprites(pSprites, MAX_SPRITE_COUNT);
 
-        playerState.x = 30;
-        playerState.y = 16;
-        playerState.direction = DirRight;
-        playerState.weapon = WpnLauncher;
-
         arrowPool.Init(512);
         hitPool.Init(512);
         damageNumberPool.Init(512);
 
         Tileset::LoadTileset("assets/forest.til");
         Metasprite::LoadMetasprites("assets/meta.spr");
-        LoadLevel(&level, "assets/test.lev");
+
+        InitializeLevel();
 
         pNametables = Rendering::GetNametablePtr(pRenderContext, 0);
         RefreshViewport(&viewport, pNametables, &level);

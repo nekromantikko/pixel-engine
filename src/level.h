@@ -8,8 +8,21 @@
 #define LEVEL_SCREEN_HEIGHT_TILES NAMETABLE_HEIGHT_TILES
 #define LEVEL_SCREEN_HEIGHT_METATILES (LEVEL_SCREEN_HEIGHT_TILES / Tileset::metatileWorldSize)
 
+enum ActorType : u8 {
+    ACTOR_NONE = 0,
+    ACTOR_PLAYER_START = 1,
+
+};
+
+struct LevelTile {
+    u8 metatile;
+    ActorType actorType;
+    u8 unused1;
+    u8 unused2;
+};
+
 struct Screen {
-    u32 metatiles[LEVEL_SCREEN_WIDTH_METATILES * LEVEL_SCREEN_HEIGHT_METATILES];
+    LevelTile tiles[LEVEL_SCREEN_WIDTH_METATILES * LEVEL_SCREEN_HEIGHT_METATILES];
 };
 
 struct Level {

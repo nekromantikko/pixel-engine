@@ -32,26 +32,28 @@ void MoveViewport(Viewport *viewport, Rendering::Nametable* pNametable, const Le
         s32 metatilesToLoad = abs(currentMetatile - previousMetatile);
         s32 sign = (s32)Sign(dx);
         for (s32 b = 0; b < metatilesToLoad; b++) {
-            s32 block = previousMetatile + sign * b;
+            const s32 block = previousMetatile + sign * b;
 
-            u32 leftMetatileIndex = (u32)(block - bufferWidthInMetatiles);
-            u32 leftScreenIndex = leftMetatileIndex / LEVEL_SCREEN_WIDTH_METATILES;
-            u32 leftScreenMetatileOffset = leftMetatileIndex % LEVEL_SCREEN_WIDTH_METATILES;
-            u32 leftNametableIndex = leftScreenIndex % NAMETABLE_COUNT;
+            const u32 leftMetatileIndex = (u32)(block - bufferWidthInMetatiles);
+            const u32 leftScreenIndex = leftMetatileIndex / LEVEL_SCREEN_WIDTH_METATILES;
+            const u32 leftScreenMetatileOffset = leftMetatileIndex % LEVEL_SCREEN_WIDTH_METATILES;
+            const u32 leftNametableIndex = leftScreenIndex % NAMETABLE_COUNT;
 
-            u32 rightMetatileIndex = (u32)(block + bufferWidthInMetatiles + viewportWidthInMetatiles);
-            u32 rightScreenIndex = rightMetatileIndex / LEVEL_SCREEN_WIDTH_METATILES;
-            u32 rightScreenMetatileOffset = rightMetatileIndex % LEVEL_SCREEN_WIDTH_METATILES;
-            u32 rightNametableIndex = rightScreenIndex % NAMETABLE_COUNT;
+            const u32 rightMetatileIndex = (u32)(block + bufferWidthInMetatiles + viewportWidthInMetatiles);
+            const u32 rightScreenIndex = rightMetatileIndex / LEVEL_SCREEN_WIDTH_METATILES;
+            const u32 rightScreenMetatileOffset = rightMetatileIndex % LEVEL_SCREEN_WIDTH_METATILES;
+            const u32 rightNametableIndex = rightScreenIndex % NAMETABLE_COUNT;
 
             for (int i = 0; i < LEVEL_SCREEN_HEIGHT_METATILES; i++) {
                 if (leftScreenIndex < pLevel->screenCount) {
-                    u32 leftOffset = LEVEL_SCREEN_WIDTH_METATILES * i + leftScreenMetatileOffset;
-                    Tileset::CopyMetatileToNametable(&pNametable[leftNametableIndex], leftScreenMetatileOffset * Tileset::metatileWorldSize, i * Tileset::metatileWorldSize, pLevel->screens[leftScreenIndex].metatiles[leftOffset]);
+                    const u32 leftOffset = LEVEL_SCREEN_WIDTH_METATILES * i + leftScreenMetatileOffset;
+                    const u8 metatileIndex = pLevel->screens[leftScreenIndex].tiles[leftOffset].metatile;
+                    Tileset::CopyMetatileToNametable(&pNametable[leftNametableIndex], leftScreenMetatileOffset * Tileset::metatileWorldSize, i * Tileset::metatileWorldSize, metatileIndex);
                 }
                 if (rightScreenIndex < pLevel->screenCount) {
-                    u32 rightOffset = LEVEL_SCREEN_WIDTH_METATILES * i + rightScreenMetatileOffset;
-                    Tileset::CopyMetatileToNametable(&pNametable[rightNametableIndex], rightScreenMetatileOffset * Tileset::metatileWorldSize, i * Tileset::metatileWorldSize, pLevel->screens[rightScreenIndex].metatiles[rightOffset]);
+                    const u32 rightOffset = LEVEL_SCREEN_WIDTH_METATILES * i + rightScreenMetatileOffset;
+                    const u8 metatileIndex = pLevel->screens[rightScreenIndex].tiles[rightOffset].metatile;
+                    Tileset::CopyMetatileToNametable(&pNametable[rightNametableIndex], rightScreenMetatileOffset * Tileset::metatileWorldSize, i * Tileset::metatileWorldSize, metatileIndex);
                 }
             }
         }
@@ -74,11 +76,12 @@ void RefreshViewport(Viewport* viewport, Rendering::Nametable* pNametable, const
                 continue;
             }
 
-            u32 screenRelativeX = xMetatile % LEVEL_SCREEN_WIDTH_METATILES;
-            u32 screenRelativeY = y % LEVEL_SCREEN_HEIGHT_METATILES;
-            u32 screenMetatileIndex = screenRelativeY * LEVEL_SCREEN_WIDTH_METATILES + screenRelativeX;
+            const u32 screenRelativeX = xMetatile % LEVEL_SCREEN_WIDTH_METATILES;
+            const u32 screenRelativeY = y % LEVEL_SCREEN_HEIGHT_METATILES;
+            const u32 screenTileIndex = screenRelativeY * LEVEL_SCREEN_WIDTH_METATILES + screenRelativeX;
+            const u8 metatileIndex = pLevel->screens[screenIndex].tiles[screenTileIndex].metatile;
             const u32 nametableIndex = screenIndex % NAMETABLE_COUNT;
-            Tileset::CopyMetatileToNametable(&pNametable[nametableIndex], screenRelativeX * Tileset::metatileWorldSize, screenRelativeY * Tileset::metatileWorldSize, pLevel->screens[screenIndex].metatiles[screenMetatileIndex]);
+            Tileset::CopyMetatileToNametable(&pNametable[nametableIndex], screenRelativeX * Tileset::metatileWorldSize, screenRelativeY * Tileset::metatileWorldSize, metatileIndex);
         }
     }
 }
