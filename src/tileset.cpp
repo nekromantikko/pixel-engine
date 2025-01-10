@@ -8,19 +8,19 @@
 namespace Tileset {
 	Tileset tileset;
 
-	Metatile& GetMetatile(u32 index) {
+	Metatile& GetMetatile(u8 index) {
 		return tileset.metatiles[index % tilesetMetatileCount];
 	}
 
-	TileType& GetTileType(u32 index) {
+	TileType& GetTileType(u8 index) {
 		return tileset.types[index % tilesetMetatileCount];
 	}
 
-	u8& GetAttribute(u32 index) {
+	u8& GetAttribute(u8 index) {
 		return tileset.attributes[(index % tilesetMetatileCount) / 4];
 	}
 
-	s32 GetPalette(u32 index) {
+	s32 GetPalette(u8 index) {
 		u8& attribute = GetAttribute(index);
 		u8 attribSubIndex = index % 4;
 		return (attribute >> attribSubIndex * 2) & 0b11;
@@ -62,7 +62,7 @@ namespace Tileset {
 		fclose(pFile);
 	}
 
-	void CopyMetatileToNametable(Rendering::Nametable* pNametable, u16 x, u16 y, u32 metatileIndex) {
+	void CopyMetatileToNametable(Rendering::Nametable* pNametable, u16 x, u16 y, u8 metatileIndex) {
 		const u16 nametableOffset = NAMETABLE_WIDTH_TILES * y + x;
 
 		Metatile& metatile = GetMetatile(metatileIndex);

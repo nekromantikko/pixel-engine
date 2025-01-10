@@ -178,6 +178,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
         Editor::Tiles::DrawTilesetEditor(pEditorContext, pRenderContext);
 
         Editor::LevelEditor::DrawGameWindow(pEditorContext, pRenderContext);
+        Editor::LevelEditor::DrawActorList();
 
         ImGui::Render();
         Rendering::Render(pRenderContext);

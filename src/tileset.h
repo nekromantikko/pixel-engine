@@ -25,12 +25,12 @@ namespace Tileset {
 		u8 attributes[tilesetAttributeCount];
 	};
 
-	Metatile& GetMetatile(u32 index);
-	TileType& GetTileType(u32 index);
-	u8& GetAttribute(u32 index);
-	s32 GetPalette(u32 index);
+	Metatile& GetMetatile(u8 index);
+	TileType& GetTileType(u8 index);
+	u8& GetAttribute(u8 index);
+	s32 GetPalette(u8 index);
 	void LoadTileset(const char* fname);
 	void SaveTileset(const char* fname);
 
-	void CopyMetatileToNametable(Rendering::Nametable* pNametable, u16 x, u16 y, u32 metatileIndex);
+	void CopyMetatileToNametable(Rendering::Nametable* pNametable, u16 x, u16 y, u8 metatileIndex);
 };
