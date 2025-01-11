@@ -49,25 +49,30 @@ namespace Editor {
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             const r32 metatileDrawSize = tileDrawSize * Tileset::metatileWorldSize;
 
-            const u32 leftScreenIndex = pViewport->x / LEVEL_SCREEN_WIDTH_TILES;
-            const u32 rightScreenIndex = (pViewport->x + pViewport->w) / LEVEL_SCREEN_WIDTH_TILES;
+            const bool verticalScroll = pLevel->flags & LFLAGS_SCROLL_VERTICAL;
+            const u32 screenDimension = verticalScroll ? LEVEL_SCREEN_HEIGHT_TILES : LEVEL_SCREEN_WIDTH_TILES;
 
-            const r32 leftScreenOrigin = leftScreenIndex * LEVEL_SCREEN_WIDTH_TILES;
+            const u32 leftScreenIndex = WorldToScreenIndex(pLevel, { pViewport->x, pViewport->y });
+            const u32 rightScreenIndex = WorldToScreenIndex(pLevel, { pViewport->x + pViewport->w, pViewport->y + pViewport->h });
 
             for (u32 i = leftScreenIndex; i <= rightScreenIndex; i++) {
-                const r32 screenLeft = i * LEVEL_SCREEN_WIDTH_TILES;
-                const r32 screenLeftViewportCoords = (screenLeft - pViewport->x) * tileDrawSize;
+                const Vec2 screenPos = ScreenIndexToWorld(pLevel, i);
+                const Vec2 screenViewportCoords = { (screenPos.x - pViewport->x) * tileDrawSize, (screenPos.y - pViewport->y) * tileDrawSize };
                 const Screen& screen = pLevel->screens[i];
 
                 static char screenLabelText[16];
                 snprintf(screenLabelText, 16, "Screen #%d", i);
 
-                drawList->AddLine(ImVec2(topLeft.x + screenLeftViewportCoords, topLeft.y), ImVec2(topLeft.x + screenLeftViewportCoords, btmRight.y), IM_COL32(255, 255, 255, 255), 1.0f);
-                drawList->AddText(ImVec2(topLeft.x + screenLeftViewportCoords + tileDrawSize, btmRight.y - 2 * tileDrawSize), IM_COL32(255, 255, 255, 255), screenLabelText);
+                const ImVec2 lineStart = ImVec2(topLeft.x + screenViewportCoords.x, topLeft.y + screenViewportCoords.y);
+                const ImVec2 lineEnd = verticalScroll ? ImVec2(btmRight.x, topLeft.y + screenViewportCoords.y) : ImVec2(topLeft.x + screenViewportCoords.x, btmRight.y);
+                drawList->AddLine(lineStart, lineEnd, IM_COL32(255, 255, 255, 255), 1.0f);
+
+                const ImVec2 textPos = verticalScroll ? ImVec2(topLeft.x + screenViewportCoords.x + tileDrawSize, topLeft.y + screenViewportCoords.y + tileDrawSize) : ImVec2(topLeft.x + screenViewportCoords.x + tileDrawSize, btmRight.y - 2 * tileDrawSize);
+                drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), screenLabelText);
 
                 for (u32 y = 0; y < LEVEL_SCREEN_HEIGHT_METATILES; y++) {
                     for (u32 x = 0; x < LEVEL_SCREEN_WIDTH_METATILES; x++) {
-                        ImVec2 actorTopLeft = ImVec2(topLeft.x + screenLeftViewportCoords + x * metatileDrawSize, topLeft.y - pViewport->y * tileDrawSize + y * metatileDrawSize);
+                        ImVec2 actorTopLeft = ImVec2(topLeft.x + screenViewportCoords.x + x * metatileDrawSize, topLeft.y + screenViewportCoords.y + y * metatileDrawSize);
                         ImVec2 actorBtmRight = ImVec2(actorTopLeft.x + metatileDrawSize, actorTopLeft.y + metatileDrawSize);
 
                         if (actorBtmRight.x < topLeft.x || actorBtmRight.y < topLeft.y || actorTopLeft.x >= btmRight.x || actorTopLeft.y >= btmRight.y) {
@@ -202,12 +207,10 @@ namespace Editor {
                                 for (u32 y = 0; y < selectionHeight; y++) {
                                     u32 clipboardIndex = y * selectionWidth + x;
 
-                                    const ImVec2 metatileWorldPos = ImVec2(selectionTopLeft.x + x * Tileset::metatileWorldSize, selectionTopLeft.y + y * Tileset::metatileWorldSize);
+                                    const Vec2 metatileWorldPos = { selectionTopLeft.x + x * Tileset::metatileWorldSize, selectionTopLeft.y + y * Tileset::metatileWorldSize };
 
-                                    const u32 screenIndex = ((u32)metatileWorldPos.x) / LEVEL_SCREEN_WIDTH_TILES;
-                                    const u32 screenRelativeX = ((u32)metatileWorldPos.x) % LEVEL_SCREEN_WIDTH_TILES;
-                                    const u32 screenRelativeY = ((u32)metatileWorldPos.y) % LEVEL_SCREEN_HEIGHT_TILES;
-                                    const u32 screenTileIndex = (screenRelativeY / Tileset::metatileWorldSize) * LEVEL_SCREEN_WIDTH_METATILES + (screenRelativeX / Tileset::metatileWorldSize);
+                                    const u32 screenIndex = WorldToScreenIndex(pLevel, metatileWorldPos);
+                                    const u32 screenTileIndex = WorldToMetatileIndex(metatileWorldPos);
                                     const u8 metatileIndex = pLevel->screens[screenIndex].tiles[screenTileIndex].metatile;
 
                                     pEditorContext->levelClipboard[clipboardIndex] = metatileIndex;
@@ -222,7 +225,7 @@ namespace Editor {
                             const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
                             const r32 metatileDrawSize = tileDrawSize * Tileset::metatileWorldSize;
 
-                            const u32 screenIndex = ((u32)hoveredMetatileWorldPos.x) / LEVEL_SCREEN_WIDTH_TILES;
+                            const u32 screenIndex = WorldToScreenIndex(pLevel, { hoveredMetatileWorldPos.x, hoveredMetatileWorldPos.y });
 
                             DrawActor(topLeft, btmRight, metatileInPixelCoords, metatileDrawSize, selectedActorType, 63);
                             drawList->AddRect(metatileInPixelCoords, ImVec2(metatileInPixelCoords.x + metatileDrawSize, metatileInPixelCoords.y + metatileDrawSize), IM_COL32(255, 255, 255, 255));
@@ -230,9 +233,7 @@ namespace Editor {
                             // Paint actors
                             if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
                                 if (screenIndex < pLevel->screenCount) {
-                                    const u32 screenRelativeX = ((u32)hoveredMetatileWorldPos.x) % LEVEL_SCREEN_WIDTH_TILES;
-                                    const u32 screenRelativeY = ((u32)hoveredMetatileWorldPos.y) % LEVEL_SCREEN_HEIGHT_TILES;
-                                    const u32 screenTileIndex = (screenRelativeY / Tileset::metatileWorldSize) * LEVEL_SCREEN_WIDTH_METATILES + (screenRelativeX / Tileset::metatileWorldSize);
+                                    const u32 screenTileIndex = WorldToMetatileIndex({ hoveredMetatileWorldPos.x, hoveredMetatileWorldPos.y });
 
                                     pLevel->screens[screenIndex].tiles[screenTileIndex].actorType = selectedActorType;
                                 }
@@ -246,7 +247,7 @@ namespace Editor {
                             for (u32 x = 0; x < clipboardWidth; x++) {
                                 for (u32 y = 0; y < clipboardHeight; y++) {
                                     u32 clipboardIndex = y * clipboardWidth + x;
-                                    const ImVec2 metatileWorldPos = ImVec2(clipboardTopLeft.x + x* Tileset::metatileWorldSize, clipboardTopLeft.y + y* Tileset::metatileWorldSize);
+                                    const Vec2 metatileWorldPos = { clipboardTopLeft.x + x * Tileset::metatileWorldSize, clipboardTopLeft.y + y * Tileset::metatileWorldSize };
                                     const ImVec2 metatileInViewportCoords = ImVec2(metatileWorldPos.x - pViewport->x, metatileWorldPos.y - pViewport->y);
                                     const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
                                     const u8 metatileIndex = pEditorContext->levelClipboard[clipboardIndex];
@@ -255,18 +256,17 @@ namespace Editor {
 
                                     // Paint metatiles
                                     if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-                                        u32 screenIndex = ((u32)metatileWorldPos.x) / LEVEL_SCREEN_WIDTH_TILES;
+                                        u32 screenIndex = WorldToScreenIndex(pLevel, metatileWorldPos);
                                         if (screenIndex >= pLevel->screenCount) {
                                             continue;
                                         }
 
-                                        const u32 screenRelativeX = ((u32)metatileWorldPos.x) % LEVEL_SCREEN_WIDTH_TILES;
-                                        const u32 screenRelativeY = ((u32)metatileWorldPos.y) % LEVEL_SCREEN_HEIGHT_TILES;
-                                        const u32 screenTileIndex = (screenRelativeY / Tileset::metatileWorldSize) * LEVEL_SCREEN_WIDTH_METATILES + (screenRelativeX / Tileset::metatileWorldSize);
+                                        const Vec2 screenPos = WorldToScreenOffset(metatileWorldPos);
+                                        const u32 screenTileIndex = ScreenOffsetToMetatileIndex(pLevel, screenPos);
 
                                         pLevel->screens[screenIndex].tiles[screenTileIndex].metatile = metatileIndex;
                                         const u32 nametableIndex = screenIndex % NAMETABLE_COUNT;
-                                        Tileset::CopyMetatileToNametable(&pNametables[nametableIndex], screenRelativeX, (u16)metatileWorldPos.y, metatileIndex);
+                                        Tileset::CopyMetatileToNametable(&pNametables[nametableIndex], (u16)screenPos.x, (u16)screenPos.y, metatileIndex);
                                     }
                                 }
                             }

@@ -133,18 +133,17 @@ namespace Game {
         playerState.weapon = WpnLauncher;
 
         // Find first player spawn
-        for (int i = 0; i < level.screenCount; i++) {
+        for (u32 i = 0; i < level.screenCount; i++) {
             const Screen& screen = level.screens[i];
-            for (int t = 0; t < LEVEL_SCREEN_WIDTH_METATILES * LEVEL_SCREEN_HEIGHT_METATILES; t++) {
+            for (u32 t = 0; t < LEVEL_SCREEN_WIDTH_METATILES * LEVEL_SCREEN_HEIGHT_METATILES; t++) {
                 const LevelTile& tile = screen.tiles[t];
 
                 if (tile.actorType == ACTOR_PLAYER_START) {
-                    // TODO: Make into util
-                    r32 worldX = ((t % LEVEL_SCREEN_WIDTH_METATILES) + LEVEL_SCREEN_WIDTH_METATILES * i) * Tileset::metatileWorldSize;
-                    r32 worldY = (t / LEVEL_SCREEN_WIDTH_METATILES) * Tileset::metatileWorldSize;
+                    const Vec2 screenRelativePos = TileIndexToScreenOffset(t);
+                    const Vec2 worldPos = ScreenOffsetToWorld(&level, screenRelativePos, i);
 
-                    playerState.x = worldX + 1.0f;
-                    playerState.y = worldY;
+                    playerState.x = worldPos.x + 1.0f;
+                    playerState.y = worldPos.y;
 
                     break;
                 }

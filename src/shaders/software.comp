@@ -107,10 +107,7 @@ ivec2 Scroll(ScanlineData scanline, ivec2 screenPos, out int nametableIndex) {
 	if (sign(scrollPos.y) == -1) {
 		nametableIndex2d.y -= 1;
 	}
-	nametableIndex2d %= 2;
-	// Hardcoded vertical mirroring
-	nametableIndex2d.y = 0;
-	nametableIndex = nametableIndex2d.x + nametableIndex2d.y * 2;
+	nametableIndex = (nametableIndex2d.x + nametableIndex2d.y) % 2;
 	scrollPos %= nametableSizeTiles;
 	return scrollPos;
 }
