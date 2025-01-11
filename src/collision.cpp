@@ -7,23 +7,15 @@
 
 namespace Collision {
 	u32 GetMetatileIndex(Level* pLevel, IVec2 tilemapCoord) {
-		u32 screenIndex = tilemapCoord.x / LEVEL_SCREEN_WIDTH_METATILES;
+		u32 screenIndex = TilemapToScreenIndex(pLevel, tilemapCoord);
 
 		if (screenIndex >= pLevel->screenCount) {
 			return 0;
 		}
 
-		u32 screenRelativeX = tilemapCoord.x % LEVEL_SCREEN_WIDTH_METATILES;
-		u32 screenRelativeY = tilemapCoord.y % LEVEL_SCREEN_HEIGHT_METATILES;
-		u32 screenTileIndex = screenRelativeY * LEVEL_SCREEN_WIDTH_METATILES + screenRelativeX;
+		u32 screenTileIndex = TilemapToMetatileIndex(tilemapCoord);
 
 		return pLevel->screens[screenIndex].tiles[screenTileIndex].metatile;
-	}
-	s32 WorldToTilemap(r32 world) {
-		return s32(world / Tileset::metatileWorldSize);
-	}
-	r32 TilemapToWorld(s32 tilemap) {
-		return tilemap * (s32)Tileset::metatileWorldSize;
 	}
 
 	void SweepBoxHorizontal(Level* pLevel, Vec2 pos, Vec2 dimensions, r32 dx, HitResult& outHit) {

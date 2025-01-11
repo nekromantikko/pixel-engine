@@ -34,8 +34,6 @@ namespace Collision {
     };
 
     u32 GetMetatileIndex(Level* pLevel, IVec2 metatileCoord);
-    s32 WorldToTilemap(r32 world);
-    r32 TilemapToWorld(s32 tilemap);
 
     void SweepBoxHorizontal(Level* pLevel, Vec2 pos, Vec2 dimensions, r32 dx, HitResult& outHit);
     void SweepBoxVertical(Level* pLevel, Vec2 pos, Vec2 dimensions, r32 dy, HitResult& outHit);
