@@ -5,18 +5,18 @@
 namespace Editor {
 	namespace Debug {
 
-        void DrawNametable(EditorContext* pContext, ImVec2 tablePos, u8* pNametable) {
+        void DrawNametable(EditorContext* pContext, ImVec2 tablePos, const Rendering::Nametable& nametable) {
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             for (int i = 0; i < NAMETABLE_SIZE; i++) {
                 s32 x = i % NAMETABLE_WIDTH_TILES;
                 s32 y = i / NAMETABLE_WIDTH_TILES;
 
-                u8 tile = pNametable[i];
+                u8 tile = nametable.tiles[i];
                 ImVec2 tileCoord = Util::GetTileCoord(tile);
                 ImVec2 tileStart = Util::TileCoordToTexCoord(tileCoord, 0);
                 ImVec2 tileEnd = Util::TileCoordToTexCoord(ImVec2(tileCoord.x + 1, tileCoord.y + 1), 0);
                 ImVec2 pos = ImVec2(tablePos.x + x * 8, tablePos.y + y * 8);
-                u8 paletteIndex = Rendering::Util::GetPaletteIndexFromNametableTileAttrib(pNametable, x, y);
+                u8 paletteIndex = Rendering::Util::GetPaletteIndexFromNametableTileAttrib(nametable, x, y);
 
                 drawList->AddImage(pContext->chrTexture[paletteIndex], pos, ImVec2(pos.x + 8, pos.y + 8), tileStart, tileEnd);
             }
@@ -37,10 +37,9 @@ namespace Editor {
                     ImGui::TableSetupScrollFreeze(0, 1); // Make row always visible
                     ImGui::TableHeadersRow();
 
-                    static Rendering::Sprite sprites[MAX_SPRITE_COUNT];
-                    Rendering::ReadSprites(pRenderContext, MAX_SPRITE_COUNT, 0, sprites);
+                    Rendering::Sprite* sprites = Rendering::GetSpritesPtr(pRenderContext, 0);
                     for (int i = 0; i < MAX_SPRITE_COUNT; i++) {
-                        Rendering::Sprite sprite = sprites[i];
+                        const Rendering::Sprite& sprite = sprites[i];
                         ImGui::PushID(i);
                         ImGui::TableNextRow();
                         ImGui::TableNextColumn();
@@ -61,13 +60,11 @@ namespace Editor {
 
             if (ImGui::TreeNode("Nametables")) {
                 ImVec2 tablePos = Util::DrawTileGrid(pContext, 512, 64);
-                static u8 nametable[NAMETABLE_SIZE];
-                Rendering::ReadNametable(pRenderContext, 0, NAMETABLE_SIZE, 0, nametable);
-                DrawNametable(pContext, tablePos, nametable);
+                Rendering::Nametable* const nametables = Rendering::GetNametablePtr(pRenderContext, 0);
+                DrawNametable(pContext, tablePos, nametables[0]);
                 ImGui::SameLine();
                 tablePos = Util::DrawTileGrid(pContext, 512, 64);
-                Rendering::ReadNametable(pRenderContext, 1, NAMETABLE_SIZE, 0, nametable);
-                DrawNametable(pContext, tablePos, nametable);
+                DrawNametable(pContext, tablePos, nametables[1]);
                 ImGui::TreePop();
             }
 

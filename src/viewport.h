@@ -11,5 +11,5 @@ struct Viewport {
     r32 h;
 };
 
-void MoveViewport(Viewport *viewport, Rendering::RenderContext* pRenderContext, const Level* const pLevel, r32 dx, r32 dy);
-void RefreshViewport(Viewport* viewport, Rendering::RenderContext* pRenderContext, const Level* const pLevel);
+void MoveViewport(Viewport *viewport, Rendering::Nametable* pNametable, const Level* const pLevel, r32 dx, r32 dy);
+void RefreshViewport(Viewport* viewport, Rendering::Nametable* pNametable, const Level* const pLevel);

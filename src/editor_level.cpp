@@ -29,6 +29,7 @@ namespace Editor {
             if (editMode) {
                 Level* pLevel = Game::GetLevel();
                 Viewport* pViewport = Game::GetViewport();
+                Rendering::Nametable* pNametables = Rendering::GetNametablePtr(pRenderContext, 0);
 
                 // Save and reload
                 ImGui::SameLine();
@@ -38,11 +39,11 @@ namespace Editor {
                 ImGui::SameLine();
                 if (ImGui::Button("Revert changes")) {
                     LoadLevel(pLevel, "assets/test.lev");
-                    RefreshViewport(pViewport, pRenderContext, pLevel);
+                    RefreshViewport(pViewport, pNametables, pLevel);
                 }
                 ImGui::SameLine();
                 if (ImGui::Button("Refresh viewport")) {
-                    RefreshViewport(pViewport, pRenderContext, pLevel);
+                    RefreshViewport(pViewport, pNametables, pLevel);
                 }
 
                 // Invisible button to prevent dragging window
@@ -67,7 +68,7 @@ namespace Editor {
                     const r32 dy = -(newDelta.y - dragDelta.y) / renderScale / TILE_SIZE;
                     dragDelta = newDelta;
 
-                    MoveViewport(pViewport, pRenderContext, pLevel, dx, dy);
+                    MoveViewport(pViewport, pNametables, pLevel, dx, dy);
                     scrolling = true;
                 }
 
@@ -159,7 +160,8 @@ namespace Editor {
                                     u32 screenMetatileIndex = (screenRelativeY / Tileset::metatileWorldSize) * LEVEL_SCREEN_WIDTH_METATILES + (screenRelativeX / Tileset::metatileWorldSize);
 
                                     pLevel->screens[screenIndex].metatiles[screenMetatileIndex] = metatileIndex;
-                                    Tileset::WriteMetatileToNametable(pRenderContext, screenIndex, screenRelativeX, (u16)metatileWorldPos.y, metatileIndex);
+                                    const u32 nametableIndex = screenIndex % NAMETABLE_COUNT;
+                                    Tileset::CopyMetatileToNametable(&pNametables[nametableIndex], screenRelativeX, (u16)metatileWorldPos.y, metatileIndex);
                                 }
                             }
                         }

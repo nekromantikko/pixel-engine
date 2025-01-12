@@ -32,5 +32,5 @@ namespace Tileset {
 	void LoadTileset(const char* fname);
 	void SaveTileset(const char* fname);
 
-	void WriteMetatileToNametable(Rendering::RenderContext* pRenderContext, u16 nametableIndex, u16 x, u16 y, u32 metatileIndex);
+	void CopyMetatileToNametable(Rendering::Nametable* pNametable, u16 x, u16 y, u32 metatileIndex);
 };
