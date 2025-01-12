@@ -120,6 +120,10 @@ namespace Game {
 
     bool paused = false;
 
+    Rendering::Sprite* pSprites;
+    Rendering::ChrSheet* pChr;
+    Rendering::Nametable* pNametables;
+
 	void Initialize(Rendering::RenderContext* pRenderContext) {
         viewport.x = 0.0f;
         viewport.y = 12.0f;
@@ -127,23 +131,26 @@ namespace Game {
         viewport.h = VIEWPORT_HEIGHT_TILES;
 
         // Init chr memory
+        pChr = Rendering::GetChrPtr(pRenderContext, 0);
         // TODO: Pre-process these instead of loading from bitmap at runtime!
         Rendering::ChrSheet temp;
         Rendering::Util::CreateChrSheet("assets/chr000.bmp", &temp);
-        Rendering::Util::WriteChrTiles(pRenderContext, 0, 256, 0, 0, &temp);
+        Rendering::Util::CopyChrTiles(temp.tiles, pChr[0].tiles, 256);
         Rendering::Util::CreateChrSheet("assets/chr001.bmp", &temp);
-        Rendering::Util::WriteChrTiles(pRenderContext, 1, 256, 0, 0, &temp);
+        Rendering::Util::CopyChrTiles(temp.tiles, pChr[1].tiles, 256);
 
         Rendering::Util::CreateChrSheet("assets/player.bmp", &playerBank);
 
         u8 paletteColors[8 * 8];
         Rendering::Util::LoadPaletteColorsFromFile("assets/palette.dat", paletteColors);
+        Rendering::Palette* palette = Rendering::GetPalettePtr(pRenderContext, 0);
         // This is kind of silly
         for (u32 i = 0; i < 8; i++) {
-            Rendering::WritePaletteColors(pRenderContext, i, 8, 0, paletteColors + i*8);
+            memcpy(palette[i].colors, paletteColors + i * 8, 8);
         }
 
-        Rendering::ClearSprites(pRenderContext, 0, MAX_SPRITE_COUNT);
+        pSprites = Rendering::GetSpritesPtr(pRenderContext, 0);
+        Rendering::Util::ClearSprites(pSprites, MAX_SPRITE_COUNT);
 
         playerState.x = 30;
         playerState.y = 16;
@@ -158,7 +165,8 @@ namespace Game {
         Metasprite::LoadMetasprites("assets/meta.spr");
         LoadLevel(&level, "assets/test.lev");
 
-        RefreshViewport(&viewport, pRenderContext, &level);
+        pNametables = Rendering::GetNametablePtr(pRenderContext, 0);
+        RefreshViewport(&viewport, pNametables, &level);
 
         // SETTINGS
         pRenderSettings = Rendering::GetSettingsPtr(pRenderContext);
@@ -185,7 +193,7 @@ namespace Game {
     void UpdateHUD(Rendering::RenderContext* pContext, r64 dt) {
         char hudText[128];
         snprintf(hudText, 64, " %4d FPS (%2d ms) (%04d, %04d) %s", (int)(averageFramerate), (int)(dt*1000), (int)viewport.x, (int)viewport.y, level.name);
-        Rendering::WriteNametable(pContext, 0, 128, 0, (u8*)hudText);
+        memcpy(&pNametables[0].tiles, hudText, 128);
     }
 
     void RenderHUD(Rendering::RenderContext* pContext) {
@@ -236,7 +244,7 @@ namespace Game {
         };
     }
 
-    void DrawPlayer(Rendering::RenderContext* pRenderContext, u32& spriteOffset) {
+    void DrawPlayer(Rendering::RenderContext* pRenderContext, Rendering::Sprite** ppNextSprite, r64 dt) {
         IVec2 drawPos = WorldPosToScreenPixels(Vec2{ playerState.x, playerState.y });
         drawPos.y += playerState.vOffset;
 
@@ -262,61 +270,42 @@ namespace Game {
         }
         weaponOffset.x *= playerState.direction;
 
-        Rendering::Util::WriteChrTiles(
-            pRenderContext,
-            spriteChrSheetIndex,
-            playerWeaponFrameTileCount,
-            weaponFrameBankOffset,
-            playerWeaponFrameChrOffset,
-            &playerBank
-        );
+        Rendering::Util::CopyChrTiles(playerBank.tiles + weaponFrameBankOffset, pChr[1].tiles + playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
 
         const Metasprite::Metasprite& bowMetasprite = Metasprite::GetMetaspritesPtr()[weaponMetaspriteIndex];
-        Rendering::Util::WriteMetasprite(pRenderContext, bowMetasprite.spritesRelativePos, bowMetasprite.spriteCount, spriteOffset, drawPos + weaponOffset, playerState.direction == DirLeft, false);
-        spriteOffset += bowMetasprite.spriteCount;
+        Rendering::Util::CopyMetasprite(bowMetasprite.spritesRelativePos, *ppNextSprite, bowMetasprite.spriteCount, drawPos + weaponOffset, playerState.direction == DirLeft, false);
+        *ppNextSprite += bowMetasprite.spriteCount;
 
         // Animate chr sheet using player bank
         // TODO: Maybe do this on the GPU?
-        Rendering::Util::WriteChrTiles(
-            pRenderContext,
-            spriteChrSheetIndex,
-            playerHandFrameTileCount,
-            playerHandFrameBankOffsets[playerState.aMode],
-            playerHandFrameChrOffset,
-            &playerBank
+        Rendering::Util::CopyChrTiles(
+            playerBank.tiles + playerHandFrameBankOffsets[playerState.aMode],
+            pChr[1].tiles + playerHandFrameChrOffset,
+            playerHandFrameTileCount
         );
-        Rendering::Util::WriteChrTiles(
-            pRenderContext,
-            spriteChrSheetIndex,
-            playerHeadFrameTileCount,
-            playerHeadFrameBankOffsets[playerState.aMode * 3 + playerState.hMode],
-            playerHeadFrameChrOffset,
-            &playerBank
+        Rendering::Util::CopyChrTiles(
+            playerBank.tiles + playerHeadFrameBankOffsets[playerState.aMode * 3 + playerState.hMode],
+            pChr[1].tiles + playerHeadFrameChrOffset,
+            playerHeadFrameTileCount
         );
-        Rendering::Util::WriteChrTiles(
-            pRenderContext,
-            spriteChrSheetIndex,
-            playerLegsFrameTileCount,
-            playerLegsFrameBankOffsets[playerState.lMode],
-            playerLegsFrameChrOffset,
-            &playerBank
+        Rendering::Util::CopyChrTiles(
+            playerBank.tiles + playerLegsFrameBankOffsets[playerState.lMode],
+            pChr[1].tiles + playerLegsFrameChrOffset,
+            playerLegsFrameTileCount
         );
-        Rendering::Util::WriteChrTiles(
-            pRenderContext,
-            spriteChrSheetIndex,
-            playerWingFrameTileCount,
-            playerWingFrameBankOffsets[playerState.wingFrame],
-            playerWingFrameChrOffset,
-            &playerBank
+        Rendering::Util::CopyChrTiles(
+            playerBank.tiles + playerWingFrameBankOffsets[playerState.wingFrame],
+            pChr[1].tiles + playerWingFrameChrOffset,
+            playerWingFrameTileCount
         );
 
         // Draw player
         Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[playerState.aMode];
-        Rendering::Util::WriteMetasprite(pRenderContext, characterMetasprite.spritesRelativePos, characterMetasprite.spriteCount, spriteOffset, drawPos, playerState.direction == DirLeft, false);
-        spriteOffset += characterMetasprite.spriteCount;
+        Rendering::Util::CopyMetasprite(characterMetasprite.spritesRelativePos, *ppNextSprite, characterMetasprite.spriteCount, drawPos, playerState.direction == DirLeft, false);
+        *ppNextSprite += characterMetasprite.spriteCount;
     }
 
-    void DrawDamageNumbers(Rendering::RenderContext* pRenderContext, u32& spriteOffset) {
+    void DrawDamageNumbers(Rendering::Sprite** ppNextSprite) {
         char dmgStr[8]{};
 
         for (int i = 0; i < damageNumberPool.Count(); i++) {
@@ -330,18 +319,18 @@ namespace Game {
 
             for (int i = 0; i < strlen(dmgStr); i++) {
                 IVec2 pixelPos = WorldPosToScreenPixels(dmg->pos);
-                Rendering::Sprite sprite = {
+                const Rendering::Sprite sprite = {
                     pixelPos.y,
                     pixelPos.x + i * 5,
                     dmgStr[i] + chrOffset,
                     1
                 };
-                Rendering::WriteSprites(pRenderContext, 1, spriteOffset++, &sprite);
+                *((*ppNextSprite)++) = sprite;
             }
         }
     }
 
-    void DrawArrows(Rendering::RenderContext* pRenderContext, u32& spriteOffset) {
+    void DrawArrows(Rendering::Sprite** ppNextSprite) {
         for (int i = 0; i < arrowPool.Count(); i++) {
             PoolHandle<Arrow> handle = arrowPool.GetHandle(i);
             Arrow* arrow = arrowPool[handle];
@@ -355,21 +344,21 @@ namespace Game {
                 bool vFlip = arrow->vel.y < -10.0f;
                 u32 spriteIndex = abs(arrow->vel.y) < 10.0f ? playerBowArrowFwdMetaspriteIndex : playerBowArrowDiagMetaspriteIndex;
                 Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[spriteIndex];
-                Rendering::Util::WriteMetasprite(pRenderContext, metasprite.spritesRelativePos, metasprite.spriteCount, spriteOffset, pixelPos, hFlip, vFlip);
-                spriteOffset += metasprite.spriteCount;
+                Rendering::Util::CopyMetasprite(metasprite.spritesRelativePos, *ppNextSprite, metasprite.spriteCount, pixelPos, hFlip, vFlip);
+                *ppNextSprite += metasprite.spriteCount;
             }
             else {
                 Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[playerLauncherGrenadeMetaspriteIndex];
                 const Vec2 dir = arrow->vel.Normalize();
                 const r32 angle = atan2f(dir.y, dir.x);
                 const s32 frameIndex = (s32)roundf(((angle + pi) / (pi*2)) * 7);
-                Rendering::Util::WriteMetasprite(pRenderContext, metasprite.spritesRelativePos + frameIndex, 1, spriteOffset, pixelPos, false, false);
-                spriteOffset++;
+                Rendering::Util::CopyMetasprite(metasprite.spritesRelativePos + frameIndex, *ppNextSprite, 1, pixelPos, false, false);
+                (*ppNextSprite)++;
             }
         }
     }
 
-    void DrawHits(Rendering::RenderContext* pRenderContext, u32& spriteOffset) {
+    void DrawHits(Rendering::Sprite** ppNextSprite) {
         for (int i = 0; i < hitPool.Count(); i++) {
             PoolHandle<Impact> handle = hitPool.GetHandle(i);
             Impact* impact = hitPool.Get(handle);
@@ -383,14 +372,14 @@ namespace Game {
                 0x20 + frame,
                 1
             };
-            Rendering::WriteSprites(pRenderContext, 1, spriteOffset++, &debugSprite);
+            *((*ppNextSprite)++) = debugSprite;
         }
     }
 
-    void DrawShield(Rendering::RenderContext* pRenderContext, r64 dt, u32& spriteOffset) {
+    void DrawShield(Rendering::Sprite** ppNextSprite, r64 dt) {
         // Draw shield around player
         static const r32 shieldRadius = 2.0f;
-        static const u32 shieldCount = 6;
+        static const u32 shieldCount = 4;
         static r32 shieldRot = 0.0f;
 
         const r32 tangentialVel = playerState.direction * 2.0f + playerState.hSpeed;
@@ -403,27 +392,26 @@ namespace Game {
             Vec2 pos = { cos(angle) * shieldRadius + playerState.x, sin(angle) * shieldRadius + playerState.y };
             IVec2 drawPos = WorldPosToScreenPixels(pos);
 
-            Rendering::Util::WriteMetasprite(pRenderContext, shieldMetasprite.spritesRelativePos, shieldMetasprite.spriteCount, spriteOffset, drawPos, false, false);
-            spriteOffset += shieldMetasprite.spriteCount;
+            Rendering::Util::CopyMetasprite(shieldMetasprite.spritesRelativePos, *ppNextSprite, shieldMetasprite.spriteCount, drawPos, false, false);
+            *ppNextSprite += shieldMetasprite.spriteCount;
         }
     }
 
     void Render(Rendering::RenderContext* pRenderContext, r64 dt) {
-        Rendering::ClearSprites(pRenderContext, 0, 256);
-
-        u32 spriteOffset = 0;
+        Rendering::Util::ClearSprites(pSprites, 256);
+        Rendering::Sprite* pNextSprite = pSprites;
         
-        DrawDamageNumbers(pRenderContext, spriteOffset);
-        // DrawShield(pRenderContext, dt, spriteOffset);
-        DrawPlayer(pRenderContext, spriteOffset);
-        DrawArrows(pRenderContext, spriteOffset);
-        DrawHits(pRenderContext, spriteOffset);
+        DrawDamageNumbers(&pNextSprite);
+        DrawShield(&pNextSprite, dt);
+        DrawPlayer(pRenderContext, &pNextSprite, dt);
+        DrawArrows(&pNextSprite);
+        DrawHits(&pNextSprite);
 
         // Draw enemy
         Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
         IVec2 enemyPixelPos = WorldPosToScreenPixels(enemyPos);
-        Rendering::Util::WriteMetasprite(pRenderContext, enemyMetasprite.spritesRelativePos, enemyMetasprite.spriteCount, spriteOffset, enemyPixelPos, false, false);
-        spriteOffset += enemyMetasprite.spriteCount;
+        Rendering::Util::CopyMetasprite(enemyMetasprite.spritesRelativePos, pNextSprite, enemyMetasprite.spriteCount, enemyPixelPos, false, false);
+        pNextSprite += enemyMetasprite.spriteCount;
 
         UpdateHUD(pRenderContext, dt);
         RenderHUD(pRenderContext);
@@ -624,7 +612,7 @@ namespace Game {
 
     constexpr Vec2 viewportScrollThreshold = { 8.0f, 6.0f };
 
-    void UpdateViewport(Rendering::RenderContext* pRenderContext) {
+    void UpdateViewport() {
         Vec2 viewportCenter = Vec2{ viewport.x + viewport.w / 2.0f, viewport.y + viewport.h / 2.0f };
         Vec2 playerOffset = Vec2{ playerState.x - viewportCenter.x, playerState.y - viewportCenter.y };
 
@@ -643,7 +631,7 @@ namespace Game {
             delta.y = playerOffset.y + viewportScrollThreshold.y;
         }
 
-        MoveViewport(&viewport, pRenderContext, &level, delta.x, delta.y);
+        MoveViewport(&viewport, pNametables, &level, delta.x, delta.y);
     }
 
     void Step(r64 dt, Rendering::RenderContext* pRenderContext) {
@@ -786,7 +774,7 @@ namespace Game {
             r32 sineTime = sin(secondsElapsed);
             enemyPos.y = yMid + sineTime * amplitude;
             
-            UpdateViewport(pRenderContext);
+            UpdateViewport();
         }
 
 

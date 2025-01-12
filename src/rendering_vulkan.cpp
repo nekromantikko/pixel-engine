@@ -1417,84 +1417,37 @@ namespace Rendering
 
 	//////////////////////////////////////////////////////
 
-	void ReadPaletteColors(RenderContext* pContext, u8 paletteIndex, u32 count, u32 offset, u8* outColors) {
-		if (offset + count > 8 || paletteIndex >= 8) {
-			DEBUG_ERROR("Trying to get palette colors outside range!\n");
+	Palette* GetPalettePtr(RenderContext* pContext, u8 paletteIndex) {
+		if (paletteIndex >= 8) {
+			return nullptr;
 		}
 
-		u32 actualOffset = 8 * paletteIndex + offset;
-		u32 computeBufferOffset = pContext->paletteTableOffset + actualOffset;
-
-		memcpy(outColors, (void*)((u8*)pContext->renderData + computeBufferOffset), count);
+		Palette* pal = (Palette*)((u8*)pContext->renderData + pContext->paletteTableOffset);
+		return pal + paletteIndex;
 	}
-	void WritePaletteColors(RenderContext* pContext, u8 paletteIndex, u32 count, u32 offset, u8* colors) {
-		if (offset + count > 8 || paletteIndex >= 8) {
-			DEBUG_ERROR("Trying to set palette colors outside range!\n");
+	Sprite* GetSpritesPtr(RenderContext* pContext, u32 offset) {
+		if (offset >= MAX_SPRITE_COUNT) {
+			return nullptr;
 		}
 
-		u32 actualOffset = 8 * paletteIndex + offset;
-		u32 computeBufferOffset = pContext->paletteTableOffset + actualOffset;
-		memcpy((void*)((u8*)pContext->renderData + computeBufferOffset), colors, count);
+		Sprite* spr = (Sprite*)((u8*)pContext->renderData + pContext->oamOffset);
+		return spr + offset;
 	}
-	// Really just moves the sprites off screen
-	void ClearSprites(RenderContext* pContext, u32 offset, u32 count) {
-		Sprite* spritePtr = (Sprite*)((u8*)pContext->renderData + pContext->oamOffset);
-		for (u32 i = 0; i < count; i++) {
-			spritePtr[offset + i].y = 288;
-		}
-	}
-	void ReadSprites(RenderContext* pContext, u32 count, u32 offset, Sprite* outSprites) {
-		if (offset + count > MAX_SPRITE_COUNT) {
-			DEBUG_ERROR("Trying to read sprites outside range!\n");
+	ChrSheet* GetChrPtr(RenderContext* pContext, u16 sheetIndex) {
+		if (sheetIndex >= 2) {
+			return nullptr;
 		}
 
-		u32 actualOffset = offset * sizeof(Sprite);
-		u32 size = count * sizeof(Sprite);
-
-		u32 computeBufferOffset = pContext->oamOffset + actualOffset;
-
-		memcpy((void*)outSprites, (void*)((u8*)pContext->renderData + computeBufferOffset), size);
+		ChrSheet* sheet = (ChrSheet*)((u8*)pContext->renderData + pContext->chrOffset);
+		return sheet + sheetIndex;
 	}
-	void WriteSprites(RenderContext* pContext, u32 count, u32 offset, Sprite* sprites) {
-		if (count == 0) {
-			return;
+	Nametable* GetNametablePtr(RenderContext* pContext, u16 index) {
+		if (index >= NAMETABLE_COUNT) {
+			return nullptr;
 		}
 
-		if (offset + count > MAX_SPRITE_COUNT) {
-			DEBUG_ERROR("Trying to write sprites outside range!\n");
-		}
-
-		u32 actualOffset = offset * sizeof(Sprite);
-		u32 size = count * sizeof(Sprite);
-		u32 computeBufferOffset = pContext->oamOffset + actualOffset;
-
-		memcpy((void*)((u8*)pContext->renderData + computeBufferOffset), (void*)sprites, size);
-	}
-	void WriteChrMemory(RenderContext* pContext, u32 size, u32 offset, u8* bytes) {
-		if (offset + size > CHR_MEMORY_SIZE) {
-			DEBUG_ERROR("Trying to write chr memory outside range!\n");
-		}
-
-		u32 computeBufferOffset = pContext->chrOffset + offset;
-		memcpy((void*)((u8*)pContext->renderData + computeBufferOffset), bytes, size);
-	}
-	void ReadChrMemory(RenderContext* pContext, u32 size, u32 offset, u8* outBytes) {
-		if (offset + size > CHR_MEMORY_SIZE) {
-			DEBUG_ERROR("Trying to read chr memory outside range!\n");
-		}
-
-		u32 computeBufferOffset = pContext->chrOffset + offset;
-		memcpy((void*)outBytes, (void*)((u8*)pContext->renderData + computeBufferOffset), size);
-	}
-	void WriteNametable(RenderContext* pContext, u16 index, u16 count, u16 offset, u8* tiles) {
-		u32 nametableOffset = index * NAMETABLE_SIZE + offset;
-		u32 computeBufferOffset = pContext->nametableOffset + nametableOffset;
-		memcpy((void*)((u8*)pContext->renderData + computeBufferOffset), tiles, count);
-	}
-	void ReadNametable(RenderContext* pContext, u16 index, u16 count, u16 offset, u8* outTiles) {
-		u32 nametableOffset = index * NAMETABLE_SIZE + offset;
-		u32 computeBufferOffset = pContext->nametableOffset + nametableOffset;
-		memcpy((void*)outTiles, (void*)((u8*)pContext->renderData + computeBufferOffset), count);
+		Nametable* tbl = (Nametable*)((u8*)pContext->renderData + pContext->nametableOffset);
+		return tbl + index;
 	}
 
 	void SetRenderState(RenderContext* pContext, u32 scanlineOffset, u32 scanlineCount, RenderState state) {

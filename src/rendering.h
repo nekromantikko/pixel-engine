@@ -50,9 +50,17 @@ namespace Rendering
 #define NAMETABLE_ATTRIBUTE_SIZE 0x100
 #define NAMETABLE_WIDTH_TILES 64
 #define NAMETABLE_HEIGHT_TILES 60
+	struct Nametable {
+		u8 tiles[NAMETABLE_ATTRIBUTE_OFFSET];
+		u8 attributes[NAMETABLE_ATTRIBUTE_SIZE];
+	};
 
 #define VIEWPORT_WIDTH_TILES NAMETABLE_WIDTH_TILES
 #define VIEWPORT_HEIGHT_TILES 36
+
+	struct Palette {
+		u8 colors[8];
+	};
 
 #define SCANLINE_COUNT 288
 
@@ -82,15 +90,10 @@ namespace Rendering
 	void ResizeSurface(RenderContext* pRenderContext, u32 width, u32 height);
 
 	// NES commands
-	void ReadPaletteColors(RenderContext* pContext, u8 paletteIndex, u32 count, u32 offset, u8* outColors);
-	void WritePaletteColors(RenderContext* pContext, u8 paletteIndex, u32 count, u32 offset, u8* colors);
-	void ClearSprites(RenderContext* pContext, u32 offset, u32 count);
-	void WriteSprites(RenderContext* pContext, u32 count, u32 offset, Sprite* sprites);
-	void ReadSprites(RenderContext* pContext, u32 count, u32 offset, Sprite* outSprites);
-	void WriteChrMemory(RenderContext* pContext, u32 size, u32 offset, u8* bytes);
-	void ReadChrMemory(RenderContext* pContext, u32 size, u32 offset, u8* outBytes);
-	void WriteNametable(RenderContext* pContext, u16 index, u16 count, u16 offset, u8* tiles);
-	void ReadNametable(RenderContext* pContext, u16 index, u16 count, u16 offset, u8* outTiles);
+	Palette* GetPalettePtr(RenderContext* pContext, u8 paletteIndex);
+	Sprite* GetSpritesPtr(RenderContext* pContext, u32 offset);
+	ChrSheet* GetChrPtr(RenderContext* pContext, u16 sheetIndex);
+	Nametable* GetNametablePtr(RenderContext* pContext, u16 index);
 	void SetRenderState(RenderContext* pContext, u32 scanlineOffset, u32 scanlineCount, RenderState state);
 
 	// ImGui

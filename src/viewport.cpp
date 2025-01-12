@@ -4,7 +4,7 @@
 #include "math.h"
 #include "tileset.h"
 
-void MoveViewport(Viewport *viewport, Rendering::RenderContext* pRenderContext, const Level* const pLevel, r32 dx, r32 dy) {
+void MoveViewport(Viewport *viewport, Rendering::Nametable* pNametable, const Level* const pLevel, r32 dx, r32 dy) {
     r32 xPrevious = viewport->x;
     viewport->x += dx;
     if (viewport->x < 0.0f) {
@@ -37,19 +37,21 @@ void MoveViewport(Viewport *viewport, Rendering::RenderContext* pRenderContext, 
             u32 leftMetatileIndex = (u32)(block - bufferWidthInMetatiles);
             u32 leftScreenIndex = leftMetatileIndex / LEVEL_SCREEN_WIDTH_METATILES;
             u32 leftScreenMetatileOffset = leftMetatileIndex % LEVEL_SCREEN_WIDTH_METATILES;
+            u32 leftNametableIndex = leftScreenIndex % NAMETABLE_COUNT;
 
             u32 rightMetatileIndex = (u32)(block + bufferWidthInMetatiles + viewportWidthInMetatiles);
             u32 rightScreenIndex = rightMetatileIndex / LEVEL_SCREEN_WIDTH_METATILES;
             u32 rightScreenMetatileOffset = rightMetatileIndex % LEVEL_SCREEN_WIDTH_METATILES;
+            u32 rightNametableIndex = rightScreenIndex % NAMETABLE_COUNT;
 
             for (int i = 0; i < LEVEL_SCREEN_HEIGHT_METATILES; i++) {
                 if (leftScreenIndex < pLevel->screenCount) {
                     u32 leftOffset = LEVEL_SCREEN_WIDTH_METATILES * i + leftScreenMetatileOffset;
-                    Tileset::WriteMetatileToNametable(pRenderContext, leftScreenIndex, leftScreenMetatileOffset * Tileset::metatileWorldSize, i * Tileset::metatileWorldSize, pLevel->screens[leftScreenIndex].metatiles[leftOffset]);
+                    Tileset::CopyMetatileToNametable(&pNametable[leftNametableIndex], leftScreenMetatileOffset * Tileset::metatileWorldSize, i * Tileset::metatileWorldSize, pLevel->screens[leftScreenIndex].metatiles[leftOffset]);
                 }
                 if (rightScreenIndex < pLevel->screenCount) {
                     u32 rightOffset = LEVEL_SCREEN_WIDTH_METATILES * i + rightScreenMetatileOffset;
-                    Tileset::WriteMetatileToNametable(pRenderContext, rightScreenIndex, rightScreenMetatileOffset * Tileset::metatileWorldSize, i * Tileset::metatileWorldSize, pLevel->screens[rightScreenIndex].metatiles[rightOffset]);
+                    Tileset::CopyMetatileToNametable(&pNametable[rightNametableIndex], rightScreenMetatileOffset * Tileset::metatileWorldSize, i * Tileset::metatileWorldSize, pLevel->screens[rightScreenIndex].metatiles[rightOffset]);
                 }
             }
         }
@@ -57,7 +59,7 @@ void MoveViewport(Viewport *viewport, Rendering::RenderContext* pRenderContext, 
     }
 }
 
-void RefreshViewport(Viewport* viewport, Rendering::RenderContext* pRenderContext, const Level* const pLevel) {
+void RefreshViewport(Viewport* viewport, Rendering::Nametable* pNametable, const Level* const pLevel) {
     static const s32 bufferWidthInMetatiles = 8;
     const s32 widthInMetatiles = ((s32)viewport->w / Tileset::metatileWorldSize) + bufferWidthInMetatiles * 2;
     const s32 xInMetatiles = (s32)(viewport->x / Tileset::metatileWorldSize);
@@ -75,8 +77,8 @@ void RefreshViewport(Viewport* viewport, Rendering::RenderContext* pRenderContex
             u32 screenRelativeX = xMetatile % LEVEL_SCREEN_WIDTH_METATILES;
             u32 screenRelativeY = y % LEVEL_SCREEN_HEIGHT_METATILES;
             u32 screenMetatileIndex = screenRelativeY * LEVEL_SCREEN_WIDTH_METATILES + screenRelativeX;
-
-            Tileset::WriteMetatileToNametable(pRenderContext, screenIndex, screenRelativeX * Tileset::metatileWorldSize, screenRelativeY * Tileset::metatileWorldSize, pLevel->screens[screenIndex].metatiles[screenMetatileIndex]);
+            const u32 nametableIndex = screenIndex % NAMETABLE_COUNT;
+            Tileset::CopyMetatileToNametable(&pNametable[nametableIndex], screenRelativeX * Tileset::metatileWorldSize, screenRelativeY * Tileset::metatileWorldSize, pLevel->screens[screenIndex].metatiles[screenMetatileIndex]);
         }
     }
 }

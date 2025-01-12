@@ -62,25 +62,22 @@ namespace Tileset {
 		fclose(pFile);
 	}
 
-	void WriteMetatileToNametable(Rendering::RenderContext* pRenderContext, u16 nametableIndex, u16 x, u16 y, u32 metatileIndex) {
+	void CopyMetatileToNametable(Rendering::Nametable* pNametable, u16 x, u16 y, u32 metatileIndex) {
 		const u16 nametableOffset = NAMETABLE_WIDTH_TILES * y + x;
 
 		Metatile& metatile = GetMetatile(metatileIndex);
 
-		// Update nametable
-		Rendering::WriteNametable(pRenderContext, nametableIndex % NAMETABLE_COUNT, 2, nametableOffset, metatile.tiles);
-		Rendering::WriteNametable(pRenderContext, nametableIndex % NAMETABLE_COUNT, 2, nametableOffset + NAMETABLE_WIDTH_TILES, metatile.tiles + 2);
+		// Update nametable tiles
+		memcpy(pNametable->tiles + nametableOffset, metatile.tiles, 2);
+		memcpy(pNametable->tiles + nametableOffset + NAMETABLE_WIDTH_TILES, metatile.tiles + 2, 2);
 
 		// Update nametable attributes
 		u16 xBlock = x / 4;
 		u16 yBlock = y / 4;
 		u8 smallBlockOffset = (x % 4 / 2) + (y % 4 / 2) * 2;
 		u16 blockIndex = (NAMETABLE_WIDTH_TILES / 4) * yBlock + xBlock;
-		u16 attributeMemOffset = NAMETABLE_ATTRIBUTE_OFFSET + blockIndex;
-		u8 blockAttribute;
-		Rendering::ReadNametable(pRenderContext, nametableIndex % NAMETABLE_COUNT, 1, attributeMemOffset, &blockAttribute);
+		u8& blockAttribute = pNametable->attributes[blockIndex];
 		blockAttribute &= ~(0b11 << (smallBlockOffset * 2));
 		blockAttribute |= (GetPalette(metatileIndex) << (smallBlockOffset * 2));
-		Rendering::WriteNametable(pRenderContext, nametableIndex % NAMETABLE_COUNT, 1, attributeMemOffset, &blockAttribute);
 	}
 }

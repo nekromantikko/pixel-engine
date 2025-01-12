@@ -52,45 +52,67 @@ namespace Rendering
 			free(palData);
 		}
 
-		u8 GetPaletteIndexFromNametableTileAttrib(u8* pNametable, s32 xTile, s32 yTile) {
+		u8 GetPaletteIndexFromNametableTileAttrib(const Nametable& nametable, s32 xTile, s32 yTile) {
 			s32 xBlock = xTile / 4;
 			s32 yBlock = yTile / 4;
 			s32 smallBlockOffset = (xTile % 4 / 2) + (yTile % 4 / 2) * 2;
 			s32 blockIndex = (NAMETABLE_WIDTH_TILES / 4) * yBlock + xBlock;
-			s32 nametableOffset = NAMETABLE_ATTRIBUTE_OFFSET + blockIndex;
-			u8 attribute = pNametable[nametableOffset];
+			u8 attribute = nametable.attributes[blockIndex];
 			u8 paletteIndex = (attribute >> (smallBlockOffset * 2)) & 0b11;
 
 			return paletteIndex;
 		}
 
-		void WriteMetasprite(RenderContext* pContext, Sprite* sprites, u32 count, u32 offset, IVec2 pos, bool hFlip, bool vFlip) {
-			// Could probably avoid dynamic memory here by being smarter about it
-			Sprite* outSprites = (Sprite*)calloc(count, sizeof(Sprite));
-
+		void CopyMetasprite(const Sprite* src, Sprite* dst, u32 count, IVec2 pos, bool hFlip, bool vFlip) {
 			for (int i = 0; i < count; i++) {
-				Sprite sprite = sprites[i];
+				Sprite sprite = src[i];
 				if (hFlip) {
-					sprite.attributes = sprite.attributes ^ 0b01000000;
+					FlipSpritesHorizontal(&sprite, 1);
 					sprite.x = sprite.x * -1 - TILE_SIZE;
 				}
 				if (vFlip) {
-					sprite.attributes = sprite.attributes ^ 0b10000000;
+					FlipSpritesVertical(&sprite, 1);
 					sprite.y = sprite.y * -1 - TILE_SIZE;
 				}
 				sprite.y += pos.y;
 				sprite.x += pos.x;
-				outSprites[i] = sprite;
+				dst[i] = sprite;
 			}
-
-			WriteSprites(pContext, count, offset, outSprites);
-			free(outSprites);
 		}
 
-		void WriteChrTiles(RenderContext* pContext, bool sheetIndex, u32 tileCount, u8 srcOffset, u8 dstOffset, ChrSheet* sheet) {
-			const u32 chrMemOffset = sizeof(ChrSheet) * sheetIndex + sizeof(ChrTile) * dstOffset;
-			ChrTile* srcTile = (ChrTile*)sheet + srcOffset;
-			Rendering::WriteChrMemory(pContext, sizeof(ChrTile) * tileCount, chrMemOffset, (u8*)srcTile);
+		void FlipSpritesHorizontal(Sprite* spr, u32 count) {
+			for (int i = 0; i < count; i++) {
+				Sprite& sprite = spr[i];
+				sprite.attributes ^= 0b01000000;
+			}
+		}
+		void FlipSpritesVertical(Sprite* spr, u32 count) {
+			for (int i = 0; i < count; i++) {
+				Sprite& sprite = spr[i];
+				sprite.attributes ^= 0b10000000;
+			}
+		}
+		void SetSpritesPalette(Sprite* spr, u32 count, u8 palette) {
+			for (int i = 0; i < count; i++) {
+				Sprite& sprite = spr[i];
+
+				// Clear palette first
+				sprite.attributes &= 0b11111100;
+				// Set palette
+				sprite.attributes |= palette % 4;
+			}
+		}
+		void ClearSprites(Sprite* spr, u32 count) {
+			for (int i = 0; i < count; i++) {
+				Sprite& sprite = spr[i];
+
+				// Really just moves the sprites off screen (This is how the NES clears sprites as well)
+				sprite.y = 288;
+			}
+		}
+
+		void CopyChrTiles(const ChrTile* src, ChrTile* dst, u32 count) {
+			memcpy(dst, src, sizeof(ChrTile) * count);
 		}
 	}
 }
