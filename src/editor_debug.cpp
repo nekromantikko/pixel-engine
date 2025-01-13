@@ -59,11 +59,13 @@ namespace Editor {
             }
 
             if (ImGui::TreeNode("Nametables")) {
-                ImVec2 tablePos = Util::DrawTileGrid(pContext, 512, 64);
+                // I want to include attributes here too, so can't just use NAMETABLE_HEIGHT_TILES
+                const ImVec2 nametableSizePx = ImVec2(NAMETABLE_WIDTH_TILES * TILE_SIZE, (NAMETABLE_SIZE / NAMETABLE_WIDTH_TILES) * TILE_SIZE);
+                ImVec2 tablePos = Util::DrawTileGrid(pContext, nametableSizePx, TILE_SIZE);
                 Rendering::Nametable* const nametables = Rendering::GetNametablePtr(pRenderContext, 0);
                 DrawNametable(pContext, tablePos, nametables[0]);
                 ImGui::SameLine();
-                tablePos = Util::DrawTileGrid(pContext, 512, 64);
+                tablePos = Util::DrawTileGrid(pContext, nametableSizePx, TILE_SIZE);
                 DrawNametable(pContext, tablePos, nametables[1]);
                 ImGui::TreePop();
             }

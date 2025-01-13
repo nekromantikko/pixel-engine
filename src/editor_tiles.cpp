@@ -26,9 +26,10 @@ namespace Editor {
 			ImGui::Text("0x%02x", selectedMetatileIndex);
 
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
-			ImVec2 tilePos = Util::DrawTileGrid(pContext, tilePreviewSize, 2, &selectedTileIndex);
+			const ImVec2 gridSize = ImVec2(tilePreviewSize, tilePreviewSize);
+			const ImVec2 tilePos = Util::DrawTileGrid(pContext, gridSize, gridStepPixels, &selectedTileIndex);
 			Util::DrawMetatile(pContext, selectedMetatileIndex, tilePos, tilePreviewSize / 2);
-			Util::DrawTileGridSelection(pContext, tilePos, tilePreviewSize, 2, selectedTileIndex);
+			Util::DrawTileGridSelection(pContext, tilePos, gridSize, gridStepPixels, selectedTileIndex);
 
 			ImGui::SameLine();
 			if (ImGui::Button("CHR")) {
@@ -65,7 +66,8 @@ namespace Editor {
 
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
 			u32 newSelection = selectedMetatileIndex;
-			ImVec2 chrPos = Util::DrawTileGrid(pContext, gridSizePixels, gridSizeTiles, &newSelection);
+			const ImVec2 gridSize = ImVec2(gridSizePixels, gridSizePixels);
+			const ImVec2 chrPos = Util::DrawTileGrid(pContext, gridSize, gridStepPixels, &newSelection);
 
 			// Rewrite level editor clipboard if new selection was made
 			if (newSelection != selectedMetatileIndex) {
@@ -81,7 +83,7 @@ namespace Editor {
 
 				Util::DrawMetatile(pContext, i, metatileOffset, gridStepPixels / 2);
 			}
-			Util::DrawTileGridSelection(pContext, chrPos, gridSizePixels, gridSizeTiles, selectedMetatileIndex);
+			Util::DrawTileGridSelection(pContext, chrPos, gridSize, gridStepPixels, selectedMetatileIndex);
 
 			ImGui::End();
 		}

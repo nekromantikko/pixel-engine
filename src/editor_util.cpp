@@ -33,34 +33,33 @@ namespace Editor {
 			return tileCoord;
 		}
 
-		ImVec2 DrawTileGrid(EditorContext* pContext, r32 size, s32 divisions, u32* selection, bool* focused) {
-			r32 gridStep = size / divisions;
-
+		ImVec2 DrawTileGrid(EditorContext* pContext, ImVec2 size, r32 gridStep, u32* selection, bool* focused) {
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
-			ImVec2 topLeft = ImGui::GetCursorScreenPos();
-			ImVec2 btmRight = ImVec2(topLeft.x + size, topLeft.y + size);
+			const ImVec2 topLeft = ImGui::GetCursorScreenPos();
+			const ImVec2 btmRight = ImVec2(topLeft.x + size.x, topLeft.y + size.y);
 
 			// Invisible button to prevent dragging window
-			ImGui::InvisibleButton("##canvas", ImVec2(size, size));
+			ImGui::InvisibleButton("##canvas", size);
 
 			if (focused != nullptr) {
 				*focused = ImGui::IsItemActive();
 			}
 
 			drawList->AddImage(pContext->paletteTexture, topLeft, btmRight, ImVec2(0, 0), ImVec2(0.015625f, 1.0f));
-			for (r32 x = 0; x < size; x += gridStep)
+			for (r32 x = 0; x < size.x; x += gridStep)
 				drawList->AddLine(ImVec2(topLeft.x + x, topLeft.y), ImVec2(topLeft.x + x, btmRight.y), IM_COL32(200, 200, 200, 40));
-			for (r32 y = 0; y < size; y += gridStep)
+			for (r32 y = 0; y < size.y; y += gridStep)
 				drawList->AddLine(ImVec2(topLeft.x, topLeft.y + y), ImVec2(btmRight.x, topLeft.y + y), IM_COL32(200, 200, 200, 40));
 
 			if (selection != nullptr && ImGui::IsItemActive()) {
 				// Handle selection
 				ImGuiIO& io = ImGui::GetIO();
-				bool gridClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left) && io.MousePos.x >= topLeft.x && io.MousePos.x < topLeft.x + size && io.MousePos.y >= topLeft.y && io.MousePos.y < topLeft.y + size;
+				const bool gridClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left) && io.MousePos.x >= topLeft.x && io.MousePos.x < topLeft.x + size.x && io.MousePos.y >= topLeft.y && io.MousePos.y < topLeft.y + size.y;
 				if (gridClicked) {
-					ImVec2 mousePosRelative = ImVec2(io.MousePos.x - topLeft.x, io.MousePos.y - topLeft.y);
-					ImVec2 clickedTileCoord = ImVec2(floor(mousePosRelative.x / gridStep), floor(mousePosRelative.y / gridStep));
-					u32 clickedTileIndex = clickedTileCoord.y * divisions + clickedTileCoord.x;
+					const ImVec2 mousePosRelative = ImVec2(io.MousePos.x - topLeft.x, io.MousePos.y - topLeft.y);
+					const ImVec2 clickedTileCoord = ImVec2(floor(mousePosRelative.x / gridStep), floor(mousePosRelative.y / gridStep));
+					const s32 xDivisions = size.x / gridStep;
+					const u32 clickedTileIndex = clickedTileCoord.y * xDivisions + clickedTileCoord.x;
 					*selection = clickedTileIndex;
 				}
 			}
@@ -68,11 +67,11 @@ namespace Editor {
 			return topLeft;
 		}
 
-		void DrawTileGridSelection(EditorContext* pContext, ImVec2 gridPos, r32 gridSize, s32 divisions, u32 selection) {
-			r32 gridStep = gridSize / divisions;
+		void DrawTileGridSelection(EditorContext* pContext, ImVec2 gridPos, ImVec2 gridSize, r32 gridStep, u32 selection) {
+			const s32 xDivisions = gridSize.x / gridStep;
 
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
-			ImVec2 selectedTilePos = ImVec2(gridPos.x + gridStep * (selection % divisions), gridPos.y + gridStep * (selection / divisions));
+			ImVec2 selectedTilePos = ImVec2(gridPos.x + gridStep * (selection % xDivisions), gridPos.y + gridStep * (selection / xDivisions));
 			drawList->AddRect(selectedTilePos, ImVec2(selectedTilePos.x + gridStep, selectedTilePos.y + gridStep), IM_COL32(255, 255, 255, 255));
 		}
 
