@@ -12,7 +12,7 @@ namespace Editor {
 
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             const ImVec2 gridSize = ImVec2(gridSizePixels, gridSizePixels);
-            const ImVec2 chrPos = Util::DrawTileGrid(pContext, gridSize, gridStepPixels, (u32*)&pContext->chrSelection[index]);
+            const ImVec2 chrPos = Util::DrawTileGrid(pContext, gridSize, gridStepPixels, &pContext->chrSelection[index]);
             drawList->AddImage(pContext->chrTexture[pContext->chrPaletteIndex[index] + index*4], chrPos, ImVec2(chrPos.x + gridSizePixels, chrPos.y + gridSizePixels), ImVec2(0 + 0.5*index, 0), ImVec2(0.5 + 0.5*index, 1));
             Util::DrawTileGridSelection(pContext, chrPos, gridSize, gridStepPixels, pContext->chrSelection[index]);
         }
