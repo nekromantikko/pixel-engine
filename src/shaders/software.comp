@@ -99,8 +99,8 @@ int ReadPaletteTable(int tableIndex, int colorIndex) {
 ivec2 Scroll(ScanlineData scanline, ivec2 screenPos, out int nametableIndex) {
 	ivec2 scrollPos = screenPos;
 	scrollPos += ivec2(scanline.scrollX, scanline.scrollY);
-	ivec2 nametableSizeTiles = ivec2(512, 480);
-	ivec2 nametableIndex2d = (scrollPos / nametableSizeTiles);
+	ivec2 nametableSizePixels = ivec2(512, 480);
+	ivec2 nametableIndex2d = (scrollPos / nametableSizePixels);
 	if (sign(scrollPos.x) == -1) {
 		nametableIndex2d.x -= 1;
 	}
@@ -108,7 +108,7 @@ ivec2 Scroll(ScanlineData scanline, ivec2 screenPos, out int nametableIndex) {
 		nametableIndex2d.y -= 1;
 	}
 	nametableIndex = (nametableIndex2d.x + nametableIndex2d.y) % 2;
-	scrollPos %= nametableSizeTiles;
+	scrollPos %= nametableSizePixels;
 	return scrollPos;
 }
 
