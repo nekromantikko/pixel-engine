@@ -5,8 +5,8 @@
 
 namespace Editor {
 	struct EditorContext {
-		u8 chrPaletteIndex[2];
-		u8 chrSelection[2];
+		u32 chrPaletteIndex[2];
+		u32 chrSelection[2];
 
 		u8 levelClipboard[((VIEWPORT_WIDTH_TILES / 2) + 1) * ((VIEWPORT_HEIGHT_TILES / 2) + 1)];
 		ImVec2 levelSelectionSize;

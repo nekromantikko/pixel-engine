@@ -201,7 +201,7 @@ namespace Editor {
                         0,
                         0,
                         pContext->chrSelection[1],
-                        (u32)pContext->chrPaletteIndex[1],
+                        pContext->chrPaletteIndex[1],
                     };
                 }
                 ImGui::EndDisabled();
@@ -468,7 +468,7 @@ namespace Editor {
                 ImGui::PushID(0); // Buttons with same label need ID
                 ImGui::SameLine();
                 if (ImGui::Button("CHR")) {
-                    index = (s32)pContext->chrSelection[1];
+                    index = pContext->chrSelection[1];
                 }
                 ImGui::PopID();
 
@@ -476,7 +476,7 @@ namespace Editor {
                 ImGui::SameLine();
                 ImGui::PushID(1);
                 if (ImGui::Button("CHR")) {
-                    palette = (s32)pContext->chrPaletteIndex[1];
+                    palette = pContext->chrPaletteIndex[1];
                 }
                 ImGui::PopID();
 
