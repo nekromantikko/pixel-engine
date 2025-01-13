@@ -2,7 +2,10 @@
 #include "rendering.h"
 
 struct Viewport;
-struct Level;
+
+namespace Level {
+	struct Level;
+}
 
 namespace Game {
 	void Initialize(Rendering::RenderContext* pContext);
@@ -13,5 +16,5 @@ namespace Game {
 	void SetPaused(bool paused);
 
 	Viewport* GetViewport();
-	Level* GetLevel();
+	Level::Level* GetLevel();
 }

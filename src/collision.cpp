@@ -6,19 +6,19 @@
 #include "level.h"
 
 namespace Collision {
-	u32 GetMetatileIndex(Level* pLevel, IVec2 tilemapCoord) {
+	u32 GetMetatileIndex(Level::Level* pLevel, IVec2 tilemapCoord) {
 		u32 screenIndex = TilemapToScreenIndex(pLevel, tilemapCoord);
 
 		if (screenIndex >= pLevel->screenCount) {
 			return 0;
 		}
 
-		u32 screenTileIndex = TilemapToMetatileIndex(tilemapCoord);
+		u32 screenTileIndex = Level::TilemapToMetatileIndex(tilemapCoord);
 
 		return pLevel->screens[screenIndex].tiles[screenTileIndex].metatile;
 	}
 
-	void SweepBoxHorizontal(Level* pLevel, Vec2 pos, Vec2 dimensions, r32 dx, HitResult& outHit) {
+	void SweepBoxHorizontal(Level::Level* pLevel, Vec2 pos, Vec2 dimensions, r32 dx, HitResult& outHit) {
 		outHit.blockingHit = false;
 		outHit.distance = abs(dx);
 		outHit.location = Vec2{ pos.x + dx, pos.y };
@@ -31,13 +31,13 @@ namespace Collision {
 		r32 yBottom = pos.y + dimensions.y / 2.0f;
 		r32 xSide = dx < 0.0f ? pos.x - dimensions.x / 2.0f : pos.x + dimensions.x / 2.0f;
 
-		s32 yTopMetatile = WorldToTilemap(yTop);
-		s32 yBottomMetatile = WorldToTilemap(yBottom);
+		s32 yTopMetatile = Level::WorldToTilemap(yTop);
+		s32 yBottomMetatile = Level::WorldToTilemap(yBottom);
 		// Right at the seam, should look at one tile above
-		if (IsNearlyZero(yBottom - TilemapToWorld(yBottomMetatile)))
+		if (IsNearlyZero(yBottom - Level::TilemapToWorld(yBottomMetatile)))
 			yBottomMetatile--;
 		s32 yMetatileDelta = yBottomMetatile - yTopMetatile;
-		s32 xMetatile = WorldToTilemap(xSide);
+		s32 xMetatile = Level::WorldToTilemap(xSide);
 
 		r32 dist = 0.0f;
 
@@ -62,14 +62,14 @@ namespace Collision {
 				}
 			}
 
-			r32 distToNextTile = dx < 0.0f ? xSide - TilemapToWorld(xMetatile) : TilemapToWorld(xMetatile + 1) - xSide;
+			r32 distToNextTile = dx < 0.0f ? xSide - Level::TilemapToWorld(xMetatile) : Level::TilemapToWorld(xMetatile + 1) - xSide;
 			dist += distToNextTile;
 			xSide += Sign(dx) * distToNextTile;
 			xMetatile += (s32)Sign(dx);
 		}
 	}
 
-	void SweepBoxVertical(Level* pLevel, Vec2 pos, Vec2 dimensions, r32 dy, HitResult& outHit) {
+	void SweepBoxVertical(Level::Level* pLevel, Vec2 pos, Vec2 dimensions, r32 dy, HitResult& outHit) {
 		outHit.blockingHit = false;
 		outHit.distance = abs(dy);
 		outHit.location = Vec2{ pos.x, pos.y + dy };
@@ -82,13 +82,13 @@ namespace Collision {
 		r32 xRight = pos.x + dimensions.x / 2.0f;
 		r32 ySide = dy < 0.0f ? pos.y - dimensions.y / 2.0f : pos.y + dimensions.y / 2.0f;
 
-		s32 xLeftMetatile = WorldToTilemap(xLeft);
-		s32 xRightMetatile = WorldToTilemap(xRight);
+		s32 xLeftMetatile = Level::WorldToTilemap(xLeft);
+		s32 xRightMetatile = Level::WorldToTilemap(xRight);
 		// Right at the seam, should look at one tile left
-		if (IsNearlyZero(xRight - TilemapToWorld(xRightMetatile)))
+		if (IsNearlyZero(xRight - Level::TilemapToWorld(xRightMetatile)))
 			xRightMetatile--;
 		s32 xMetatileDelta = xRightMetatile - xLeftMetatile;
-		s32 yMetatile = WorldToTilemap(ySide);
+		s32 yMetatile = Level::WorldToTilemap(ySide);
 
 		r32 dist = 0.0f;
 
@@ -113,7 +113,7 @@ namespace Collision {
 				}
 			}
 
-			r32 distToNextTile = dy < 0.0f ? ySide - TilemapToWorld(yMetatile) : TilemapToWorld(yMetatile + 1) - ySide;
+			r32 distToNextTile = dy < 0.0f ? ySide - Level::TilemapToWorld(yMetatile) : Level::TilemapToWorld(yMetatile + 1) - ySide;
 			dist += distToNextTile;
 			ySide += Sign(dy) * distToNextTile;
 			yMetatile += (s32)Sign(dy);

@@ -2,7 +2,9 @@
 #include "typedef.h"
 #include "rendering.h"
 
-struct Level;
+namespace Level {
+    struct Level;
+}
 
 struct Viewport {
     r32 x;
@@ -11,5 +13,5 @@ struct Viewport {
     r32 h;
 };
 
-void MoveViewport(Viewport *viewport, Rendering::Nametable* pNametable, const Level* const pLevel, r32 dx, r32 dy);
-void RefreshViewport(Viewport* viewport, Rendering::Nametable* pNametable, const Level* const pLevel);
+void MoveViewport(Viewport *viewport, Rendering::Nametable* pNametable, const Level::Level* const pLevel, r32 dx, r32 dy);
+void RefreshViewport(Viewport* viewport, Rendering::Nametable* pNametable, const Level::Level* const pLevel);
