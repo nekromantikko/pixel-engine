@@ -4,7 +4,9 @@
 #include "rendering.h"
 #include "tileset.h"
 
-struct Level;
+namespace Level {
+    struct Level;
+}
 
 namespace Collision {
 
@@ -33,8 +35,8 @@ namespace Collision {
         Tileset::TileType tileType;
     };
 
-    u32 GetMetatileIndex(Level* pLevel, IVec2 metatileCoord);
+    u32 GetMetatileIndex(Level::Level* pLevel, IVec2 metatileCoord);
 
-    void SweepBoxHorizontal(Level* pLevel, Vec2 pos, Vec2 dimensions, r32 dx, HitResult& outHit);
-    void SweepBoxVertical(Level* pLevel, Vec2 pos, Vec2 dimensions, r32 dy, HitResult& outHit);
+    void SweepBoxHorizontal(Level::Level* pLevel, Vec2 pos, Vec2 dimensions, r32 dx, HitResult& outHit);
+    void SweepBoxVertical(Level::Level* pLevel, Vec2 pos, Vec2 dimensions, r32 dy, HitResult& outHit);
 }

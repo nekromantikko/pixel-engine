@@ -27,7 +27,7 @@ namespace Game {
     // Viewport
     Viewport viewport;
 
-    Level level;
+    Level::Level level;
 #define HUD_TILE_COUNT 128
 
     // Sprite stufff
@@ -125,7 +125,7 @@ namespace Game {
     Rendering::Nametable* pNametables;
 
     static void InitializeLevel() {
-        LoadLevel(&level, "assets/test.lev");
+        Level::LoadLevel(&level, "assets/test.lev");
 
         playerState.x = 0;
         playerState.y = 0;
@@ -134,13 +134,13 @@ namespace Game {
 
         // Find first player spawn
         for (u32 i = 0; i < level.screenCount; i++) {
-            const Screen& screen = level.screens[i];
-            for (u32 t = 0; t < LEVEL_SCREEN_WIDTH_METATILES * LEVEL_SCREEN_HEIGHT_METATILES; t++) {
-                const LevelTile& tile = screen.tiles[t];
+            const Level::Screen& screen = level.screens[i];
+            for (u32 t = 0; t < Level::screenWidthMetatiles * Level::screenHeightMetatiles; t++) {
+                const Level::LevelTile& tile = screen.tiles[t];
 
-                if (tile.actorType == ACTOR_PLAYER_START) {
-                    const Vec2 screenRelativePos = TileIndexToScreenOffset(t);
-                    const Vec2 worldPos = ScreenOffsetToWorld(&level, screenRelativePos, i);
+                if (tile.actorType == Level::ACTOR_PLAYER_START) {
+                    const Vec2 screenRelativePos = Level::TileIndexToScreenOffset(t);
+                    const Vec2 worldPos = Level::ScreenOffsetToWorld(&level, screenRelativePos, i);
 
                     playerState.x = worldPos.x + 1.0f;
                     playerState.y = worldPos.y;
@@ -838,7 +838,7 @@ namespace Game {
     Viewport* GetViewport() {
         return &viewport;
     }
-    Level* GetLevel() {
+    Level::Level* GetLevel() {
         return &level;
     }
 }

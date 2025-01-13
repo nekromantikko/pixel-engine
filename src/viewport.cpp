@@ -4,8 +4,8 @@
 #include "math.h"
 #include "tileset.h"
 
-void MoveViewport(Viewport* pViewport, Rendering::Nametable* pNametable, const Level* const pLevel, r32 dx, r32 dy) {
-    const bool verticalScroll = pLevel->flags & LFLAGS_SCROLL_VERTICAL;
+void MoveViewport(Viewport* pViewport, Rendering::Nametable* pNametable, const Level::Level* const pLevel, r32 dx, r32 dy) {
+    const bool verticalScroll = pLevel->flags & Level::LFLAGS_SCROLL_VERTICAL;
 
     r32 posPrev = verticalScroll ? pViewport->y : pViewport->x;
 
@@ -37,7 +37,7 @@ void MoveViewport(Viewport* pViewport, Rendering::Nametable* pNametable, const L
     if (scrollDelta != 0 && crossedMetatileBoundary) {
         static const s32 bufferWidthInMetatiles = 8;
         const u32 viewportDimensionInMetatiles = (s32)(verticalScroll ? pViewport->h : pViewport->w) / Tileset::metatileWorldSize;
-        const u32 screenDimensionInMetatiles = verticalScroll ? LEVEL_SCREEN_HEIGHT_METATILES : LEVEL_SCREEN_WIDTH_METATILES;
+        const u32 screenDimensionInMetatiles = verticalScroll ? Level::screenHeightMetatiles : Level::screenWidthMetatiles;
 
         const s32 metatilesToLoad = abs(currentMetatile - previousMetatile);
         const s32 sign = (s32)Sign(scrollDelta);
@@ -54,23 +54,23 @@ void MoveViewport(Viewport* pViewport, Rendering::Nametable* pNametable, const L
             const u32 rightScreenMetatileOffset = rightMetatileIndex % screenDimensionInMetatiles;
             const u32 rightNametableIndex = rightScreenIndex % NAMETABLE_COUNT;
 
-            const u32 scanDimension = verticalScroll ? LEVEL_SCREEN_WIDTH_METATILES : LEVEL_SCREEN_HEIGHT_METATILES;
+            const u32 scanDimension = verticalScroll ? Level::screenWidthMetatiles : Level::screenHeightMetatiles;
 
             for (u32 i = 0; i < scanDimension; i++) {
                 if (leftScreenIndex < pLevel->screenCount) {
                     const u32 leftOffset = verticalScroll ?
-                        i + LEVEL_SCREEN_WIDTH_METATILES * leftScreenMetatileOffset
-                        : LEVEL_SCREEN_WIDTH_METATILES * i + leftScreenMetatileOffset;
+                        i + Level::screenWidthMetatiles * leftScreenMetatileOffset
+                        : Level::screenWidthMetatiles * i + leftScreenMetatileOffset;
                     const u8 metatileIndex = pLevel->screens[leftScreenIndex].tiles[leftOffset].metatile;
-                    const Vec2 screenTilePos = TileIndexToScreenOffset(leftOffset);
+                    const Vec2 screenTilePos = Level::TileIndexToScreenOffset(leftOffset);
                     Tileset::CopyMetatileToNametable(&pNametable[leftNametableIndex], (u16)screenTilePos.x, (u16)screenTilePos.y, metatileIndex);
                 }
                 if (rightScreenIndex < pLevel->screenCount) {
                     const u32 rightOffset = verticalScroll ?
-                        i + LEVEL_SCREEN_WIDTH_METATILES * rightScreenMetatileOffset
-                        : LEVEL_SCREEN_WIDTH_METATILES * i + rightScreenMetatileOffset;
+                        i + Level::screenWidthMetatiles * rightScreenMetatileOffset
+                        : Level::screenWidthMetatiles * i + rightScreenMetatileOffset;
                     const u8 metatileIndex = pLevel->screens[rightScreenIndex].tiles[rightOffset].metatile;
-                    const Vec2 screenTilePos = TileIndexToScreenOffset(rightOffset);
+                    const Vec2 screenTilePos = Level::TileIndexToScreenOffset(rightOffset);
                     Tileset::CopyMetatileToNametable(&pNametable[rightNametableIndex], (u16)screenTilePos.x, (u16)screenTilePos.y, metatileIndex);
                 }
             }
@@ -79,28 +79,28 @@ void MoveViewport(Viewport* pViewport, Rendering::Nametable* pNametable, const L
     }
 }
 
-void RefreshViewport(Viewport* viewport, Rendering::Nametable* pNametable, const Level* const pLevel) {
+void RefreshViewport(Viewport* viewport, Rendering::Nametable* pNametable, const Level::Level* const pLevel) {
     static const s32 bufferWidthInMetatiles = 8;
 
-    const bool verticalScroll = pLevel->flags & LFLAGS_SCROLL_VERTICAL;
+    const bool verticalScroll = pLevel->flags & Level::LFLAGS_SCROLL_VERTICAL;
 
     const s32 dimensionInMetatiles = ((s32)(verticalScroll ? viewport->h : viewport->w) / Tileset::metatileWorldSize) + bufferWidthInMetatiles * 2;
     const s32 startInMetatiles = (s32)((verticalScroll ? viewport->y : viewport->x) / Tileset::metatileWorldSize) - bufferWidthInMetatiles;
 
     for (int primary = 0; primary < dimensionInMetatiles; primary++) {
-        for (int secondary = 0; secondary < (verticalScroll ? LEVEL_SCREEN_WIDTH_METATILES : LEVEL_SCREEN_HEIGHT_METATILES); secondary++) {
+        for (int secondary = 0; secondary < (verticalScroll ? Level::screenWidthMetatiles : Level::screenHeightMetatiles); secondary++) {
             const u32 primaryMetatile = startInMetatiles + primary;
-            const u32 screenIndex = primaryMetatile / (verticalScroll ? LEVEL_SCREEN_HEIGHT_METATILES : LEVEL_SCREEN_WIDTH_METATILES);
+            const u32 screenIndex = primaryMetatile / (verticalScroll ? Level::screenHeightMetatiles : Level::screenWidthMetatiles);
 
             if (screenIndex >= pLevel->screenCount) {
                 continue;
             }
 
-            const u32 screenRelativePrimary = primaryMetatile % (verticalScroll ? LEVEL_SCREEN_HEIGHT_METATILES : LEVEL_SCREEN_WIDTH_METATILES);
-            const u32 screenRelativeSecondary = secondary % (verticalScroll ? LEVEL_SCREEN_WIDTH_METATILES : LEVEL_SCREEN_HEIGHT_METATILES);
+            const u32 screenRelativePrimary = primaryMetatile % (verticalScroll ? Level::screenHeightMetatiles : Level::screenWidthMetatiles);
+            const u32 screenRelativeSecondary = secondary % (verticalScroll ? Level::screenWidthMetatiles : Level::screenHeightMetatiles);
             const u32 screenTileIndex = verticalScroll
-                ? screenRelativePrimary * LEVEL_SCREEN_WIDTH_METATILES + screenRelativeSecondary
-                : screenRelativeSecondary * LEVEL_SCREEN_WIDTH_METATILES + screenRelativePrimary;
+                ? screenRelativePrimary * Level::screenWidthMetatiles + screenRelativeSecondary
+                : screenRelativeSecondary * Level::screenWidthMetatiles + screenRelativePrimary;
             const u8 metatileIndex = pLevel->screens[screenIndex].tiles[screenTileIndex].metatile;
             const u32 nametableIndex = screenIndex % NAMETABLE_COUNT;
 
