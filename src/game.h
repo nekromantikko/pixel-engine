@@ -10,6 +10,8 @@ namespace Level {
 namespace Game {
 	void Initialize(Rendering::RenderContext* pContext);
 	void Free();
+	void LoadLevel(u32 index);
+	void ReloadLevel();
 	void Step(r64 dt, Rendering::RenderContext* pContext);
 
 	bool IsPaused();

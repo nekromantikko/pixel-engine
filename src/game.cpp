@@ -27,7 +27,7 @@ namespace Game {
     // Viewport
     Viewport viewport;
 
-    Level::Level level;
+    Level::Level* pCurrentLevel = nullptr;
 #define HUD_TILE_COUNT 128
 
     // Sprite stufff
@@ -124,8 +124,20 @@ namespace Game {
     Rendering::ChrSheet* pChr;
     Rendering::Nametable* pNametables;
 
-    static void InitializeLevel() {
-        Level::LoadLevel(&level, "assets/test.lev");
+    void LoadLevel(u32 index) {
+        if (index >= Level::maxLevelCount) {
+            DEBUG_ERROR("Level count exceeded!");
+        }
+
+        pCurrentLevel = Level::GetLevelsPtr() + index;
+
+        ReloadLevel();
+    }
+
+    void ReloadLevel() {
+        if (pCurrentLevel == nullptr) {
+            return;
+        }
 
         playerState.x = 0;
         playerState.y = 0;
@@ -133,14 +145,14 @@ namespace Game {
         playerState.weapon = WpnLauncher;
 
         // Find first player spawn
-        for (u32 i = 0; i < level.screenCount; i++) {
-            const Level::Screen& screen = level.screens[i];
+        for (u32 i = 0; i < pCurrentLevel->screenCount; i++) {
+            const Level::Screen& screen = pCurrentLevel->screens[i];
             for (u32 t = 0; t < Level::screenWidthMetatiles * Level::screenHeightMetatiles; t++) {
                 const Level::LevelTile& tile = screen.tiles[t];
 
                 if (tile.actorType == Level::ACTOR_PLAYER_START) {
                     const Vec2 screenRelativePos = Level::TileIndexToScreenOffset(t);
-                    const Vec2 worldPos = Level::ScreenOffsetToWorld(&level, screenRelativePos, i);
+                    const Vec2 worldPos = Level::ScreenOffsetToWorld(pCurrentLevel, screenRelativePos, i);
 
                     playerState.x = worldPos.x + 1.0f;
                     playerState.y = worldPos.y;
@@ -149,6 +161,8 @@ namespace Game {
                 }
             }
         }
+
+        RefreshViewport(&viewport, pNametables, pCurrentLevel);
     }
 
 	void Initialize(Rendering::RenderContext* pRenderContext) {
@@ -185,11 +199,9 @@ namespace Game {
 
         Tileset::LoadTileset("assets/forest.til");
         Metasprite::LoadMetasprites("assets/meta.spr");
-
-        InitializeLevel();
+        Level::LoadLevels("assets/levels.lev");
 
         pNametables = Rendering::GetNametablePtr(pRenderContext, 0);
-        RefreshViewport(&viewport, pNametables, &level);
 
         // SETTINGS
         pRenderSettings = Rendering::GetSettingsPtr(pRenderContext);
@@ -215,7 +227,8 @@ namespace Game {
 
     void UpdateHUD(Rendering::RenderContext* pContext, r64 dt) {
         char hudText[128];
-        snprintf(hudText, 64, " %4d FPS (%2d ms) (%04d, %04d) %s", (int)(averageFramerate), (int)(dt*1000), (int)viewport.x, (int)viewport.y, level.name);
+        const char* levelName = pCurrentLevel != nullptr ? pCurrentLevel->name : "NO LEVEL LOADED";
+        snprintf(hudText, 64, " %4d FPS (%2d ms) (%04d, %04d) %s", (int)(averageFramerate), (int)(dt*1000), (int)viewport.x, (int)viewport.y, levelName);
         memcpy(&pNametables[0].tiles, hudText, 128);
     }
 
@@ -523,7 +536,7 @@ namespace Game {
         r32 dx = playerState.hSpeed * dt;
 
         Collision::HitResult hit{};
-        Collision::SweepBoxHorizontal(&level, hitboxPos, hitboxDimensions, dx, hit);
+        Collision::SweepBoxHorizontal(pCurrentLevel, hitboxPos, hitboxDimensions, dx, hit);
         playerState.x = hit.location.x;
         if (hit.blockingHit) {
             playerState.hSpeed = 0;
@@ -531,7 +544,7 @@ namespace Game {
 
         r32 dy = playerState.vSpeed * dt;
         hitboxPos = Vec2{ playerState.x + hitbox.xOffset, playerState.y + hitbox.yOffset };
-        Collision::SweepBoxVertical(&level, hitboxPos, hitboxDimensions, dy, hit);
+        Collision::SweepBoxVertical(pCurrentLevel, hitboxPos, hitboxDimensions, dy, hit);
         playerState.y = hit.location.y;
         if (hit.blockingHit) {
             playerState.vSpeed = 0;
@@ -654,7 +667,7 @@ namespace Game {
             delta.y = playerOffset.y + viewportScrollThreshold.y;
         }
 
-        MoveViewport(&viewport, pNametables, &level, delta.x, delta.y);
+        MoveViewport(&viewport, pNametables, pCurrentLevel, delta.x, delta.y);
     }
 
     void Step(r64 dt, Rendering::RenderContext* pRenderContext) {
@@ -697,7 +710,7 @@ namespace Game {
                 r32 dx = arrow->vel.x * dt;
 
                 Collision::HitResult hit{};
-                Collision::SweepBoxHorizontal(&level, hitboxPos, hitboxDimensions, dx, hit);
+                Collision::SweepBoxHorizontal(pCurrentLevel, hitboxPos, hitboxDimensions, dx, hit);
                 if (hit.blockingHit) {
                     if (arrow->type == WpnBow || arrow->bounces == 0) {
                         arrowPool.Remove(handle);
@@ -717,7 +730,7 @@ namespace Game {
                 }
                 r32 dy = arrow->vel.y * dt;
                 hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
-                Collision::SweepBoxVertical(&level, hitboxPos, hitboxDimensions, dy, hit);
+                Collision::SweepBoxVertical(pCurrentLevel, hitboxPos, hitboxDimensions, dy, hit);
                 if (hit.blockingHit) {
                     if (arrow->type == WpnBow || arrow->bounces == 0) {
                         arrowPool.Remove(handle);
@@ -839,6 +852,6 @@ namespace Game {
         return &viewport;
     }
     Level::Level* GetLevel() {
-        return &level;
+        return pCurrentLevel;
     }
 }

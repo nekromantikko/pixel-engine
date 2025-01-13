@@ -18,6 +18,8 @@ namespace Editor {
         Level::ActorType selectedActorType = Level::ACTOR_NONE;
         bool actorMode = false;
 
+        u32 selectedLevel = 0;
+
         static void DrawActor(const ImVec2 contentTopLeft, const ImVec2 contentBtmRight, const ImVec2 actorTopLeft, const r32 metatileDrawSize, const Level::ActorType type, const u8 opacity) {
             if (type == Level::ACTOR_NONE) {
                 return;
@@ -90,11 +92,19 @@ namespace Editor {
 
 		void DrawGameWindow(EditorContext* pEditorContext, Rendering::RenderContext* pRenderContext) {
             ImGui::Begin("Game");
-            bool editMode = Game::IsPaused();
+
+            Level::Level* pLevel = Game::GetLevel();
+            const bool noLevelLoaded = pLevel == nullptr;
+
+            bool editMode = Game::IsPaused() && !noLevelLoaded;
+
+            ImGui::BeginDisabled(noLevelLoaded);
             if (ImGui::Button(editMode ? "Play mode" : "Edit mode")) {
+                Game::ReloadLevel();
                 Game::SetPaused(!editMode);
                 editMode = !editMode;
             }
+            ImGui::EndDisabled();
 
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             ImVec2 topLeft = ImGui::GetCursorScreenPos();
@@ -106,7 +116,6 @@ namespace Editor {
             drawList->AddImage(pEditorContext->gameViewTexture, topLeft, btmRight);
 
             if (editMode) {
-                Level::Level* pLevel = Game::GetLevel();
                 Viewport* pViewport = Game::GetViewport();
                 Rendering::Nametable* pNametables = Rendering::GetNametablePtr(pRenderContext, 0);
 
@@ -119,11 +128,11 @@ namespace Editor {
                 // Save and reload
                 ImGui::SameLine();
                 if (ImGui::Button("Save level")) {
-                    SaveLevel(pLevel, "assets/test.lev");
+                    Level::SaveLevels("assets/levels.lev");
                 }
                 ImGui::SameLine();
                 if (ImGui::Button("Revert changes")) {
-                    LoadLevel(pLevel, "assets/test.lev");
+                    Level::LoadLevels("assets/levels.lev");
                     RefreshViewport(pViewport, pNametables, pLevel);
                 }
                 ImGui::SameLine();
@@ -292,6 +301,81 @@ namespace Editor {
                     selectedActorType = (Level::ActorType)i;
                 }
             }
+
+            ImGui::End();
+        }
+
+        void DrawLevelList(Rendering::RenderContext* pRenderContext) {
+            ImGui::Begin("Levels");
+
+            Level::Level* pCurrentLevel = Game::GetLevel();
+            Viewport* pViewport = Game::GetViewport();
+            Rendering::Nametable* pNametables = Rendering::GetNametablePtr(pRenderContext, 0);
+
+            Level::Level* pLevels = Level::GetLevelsPtr();
+            Level::Level& level = pLevels[selectedLevel];
+
+            const bool editingCurrentLevel = pCurrentLevel == &level;
+            const bool editMode = Game::IsPaused();
+
+            if (ImGui::Button("Save")) {
+                Level::SaveLevels("assets/levels.lev");
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Revert changes")) {
+                Level::LoadLevels("assets/levels.lev");
+
+                if (editingCurrentLevel) {
+                    RefreshViewport(pViewport, pNametables, pCurrentLevel);
+                }
+            }
+
+            if (ImGui::BeginCombo("Level", level.name))
+            {
+                for (u32 i = 0; i < Level::maxLevelCount; i++)
+                {
+                    ImGui::PushID(i);
+                    const bool selected = selectedLevel == i;
+                    if (ImGui::Selectable(pLevels[i].name, selected)) {
+                        selectedLevel = i;
+                    }
+
+                    if (selected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::PopID();
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Load")) {
+                Game::LoadLevel(selectedLevel);
+            }
+
+            ImGui::BeginDisabled(editingCurrentLevel && !editMode);
+
+            ImGui::InputText("Name", level.name, Level::levelMaxNameLength);
+
+            int screenCount = level.screenCount;
+            if (ImGui::InputInt("Screen count", &screenCount)) {
+                level.screenCount = (u32)Max(Min(screenCount, Level::levelMaxScreenCount), 1);
+
+                if (editingCurrentLevel) {
+                    RefreshViewport(pViewport, pNametables, pCurrentLevel);
+                }
+            }
+
+            // Level flags
+            bool scrollVertical = level.flags & Level::LFLAGS_SCROLL_VERTICAL;
+            if (ImGui::Checkbox("Vertical scrolling", &scrollVertical)) {
+                level.flags = (Level::LevelFlagBits)(level.flags ^ Level::LFLAGS_SCROLL_VERTICAL);
+
+                if (editingCurrentLevel) {
+                    RefreshViewport(pViewport, pNametables, pCurrentLevel);
+                }
+            }
+
+            ImGui::EndDisabled();
 
             ImGui::End();
         }

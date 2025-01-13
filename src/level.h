@@ -10,6 +10,10 @@ namespace Level {
     constexpr u32 screenHeightTiles = NAMETABLE_HEIGHT_TILES;
     constexpr u32 screenHeightMetatiles = screenHeightTiles / Tileset::metatileWorldSize;
 
+    constexpr u32 maxLevelCount = 256;
+    constexpr u32 levelMaxNameLength = 256;
+    constexpr u32 levelMaxScreenCount = 64;
+
     enum LevelFlagBits : u32 {
         LFLAGS_NONE = 0,
         LFLAGS_SCROLL_VERTICAL = 1 << 0,
@@ -34,14 +38,19 @@ namespace Level {
     };
 
     struct Level {
-        const char* name;
+        char* name;
         LevelFlagBits flags;
         u32 screenCount;
         Screen* screens;
     };
 
-    void LoadLevel(Level* pLevel, const char* fname);
-    void SaveLevel(Level* pLevel, const char* fname);
+    Level* GetLevelsPtr();
+
+    // Generates empty data
+    void InitializeLevels();
+
+    void LoadLevels(const char* fname);
+    void SaveLevels(const char* fname);
 
     Vec2 ScreenOffsetToWorld(const Level* pLevel, Vec2 screenOffset, u32 screenIndex);
     IVec2 ScreenOffsetToTilemap(const Level* pLevel, Vec2 screenOffset, u32 screenIndex);

@@ -23,6 +23,10 @@ namespace Collision {
 		outHit.distance = abs(dx);
 		outHit.location = Vec2{ pos.x + dx, pos.y };
 
+		if (pLevel == nullptr) {
+			return;
+		}
+
 		if (IsNearlyZero(dx)) {
 			return;
 		}
@@ -73,6 +77,10 @@ namespace Collision {
 		outHit.blockingHit = false;
 		outHit.distance = abs(dy);
 		outHit.location = Vec2{ pos.x, pos.y + dy };
+
+		if (pLevel == nullptr) {
+			return;
+		}
 
 		if (IsNearlyZero(dy)) {
 			return;

@@ -142,7 +142,9 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
     s64 currentTime = GetPerfomanceCounter();
 
     SDL_Init(SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS | SDL_INIT_HAPTIC);
+    
     Game::Initialize(pRenderContext);
+    Game::LoadLevel(0);
 
     running = true;
     while (running) {
@@ -179,6 +181,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
 
         Editor::LevelEditor::DrawGameWindow(pEditorContext, pRenderContext);
         Editor::LevelEditor::DrawActorList();
+        Editor::LevelEditor::DrawLevelList(pRenderContext);
 
         ImGui::Render();
         Rendering::Render(pRenderContext);
