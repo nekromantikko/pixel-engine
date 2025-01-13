@@ -1079,7 +1079,7 @@ namespace Rendering
 		CreateComputeBuffers(context);
 		AllocateBuffer(context, sizeof(ScanlineData) * SCANLINE_COUNT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, context->scanlineBuffer);
 
-		CreateImage(context, 512, 288, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, context->colorImage);
+		CreateImage(context, VIEWPORT_WIDTH_TILES * TILE_SIZE, VIEWPORT_HEIGHT_TILES * TILE_SIZE, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, context->colorImage);
 
 		// Write into descriptor sets...
 		for (int i = 0; i < COMMAND_BUFFER_COUNT; i++) {
@@ -1875,7 +1875,7 @@ namespace Rendering
 
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->softwarePipelineLayout, 0, 1, &pContext->computeDescriptorSet, 0, nullptr);
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->softwarePipeline);
-		vkCmdDispatch(commandBuffer, 16, 9, 1);
+		vkCmdDispatch(commandBuffer, VIEWPORT_WIDTH_TILES * TILE_SIZE / 32, VIEWPORT_HEIGHT_TILES * TILE_SIZE / 32, 1);
 
 		// Transfer images to shader readable layout
 		barrierCount = 1;
