@@ -19,7 +19,9 @@ namespace Metasprite {
 
 	Metasprite* GetMetaspritesPtr();
 
+	// Generates empty data
 	void InitializeMetasprites();
+
 	void LoadMetasprites(const char* fname);
 	void SaveMetasprites(const char* fname);
 }

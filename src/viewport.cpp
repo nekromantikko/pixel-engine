@@ -5,6 +5,10 @@
 #include "tileset.h"
 
 void MoveViewport(Viewport* pViewport, Rendering::Nametable* pNametable, const Level::Level* const pLevel, r32 dx, r32 dy) {
+    if (pLevel == nullptr) {
+        return;
+    }
+
     const bool verticalScroll = pLevel->flags & Level::LFLAGS_SCROLL_VERTICAL;
 
     r32 posPrev = verticalScroll ? pViewport->y : pViewport->x;

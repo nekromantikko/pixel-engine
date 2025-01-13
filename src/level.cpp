@@ -1,47 +1,81 @@
 #include "level.h"
+#include "system.h"
 #include <stdio.h>
 
 namespace Level {
-    void LoadLevel(Level* pLevel, const char* fname)
-    {
+
+    Level levels[maxLevelCount];
+    char nameMemory[maxLevelCount * levelMaxNameLength];
+    Screen screenMemory[maxLevelCount * levelMaxScreenCount];
+
+    Level* GetLevelsPtr() {
+        return levels;
+    }
+
+    void InitializeLevels() {
+        for (u32 i = 0; i < maxLevelCount; i++) {
+            Level& level = levels[i];
+
+            level.name = &nameMemory[i * levelMaxNameLength];
+            nameMemory[i * levelMaxNameLength] = 0;
+
+            level.flags = LFLAGS_NONE;
+
+            level.screens = &screenMemory[i * levelMaxScreenCount];
+            screenMemory[i * levelMaxScreenCount] = Screen{};
+            level.screenCount = 1;
+        }
+    }
+
+    void LoadLevels(const char* fname) {
         FILE* pFile;
         fopen_s(&pFile, fname, "rb");
 
         if (pFile == NULL) {
-            ERROR("Failed to load level file\n");
+            DEBUG_ERROR("Failed to load level file\n");
         }
 
-        const char signature[4]{};
-        fread((void*)signature, sizeof(u8), 4, pFile);
-        LevelFlagBits flags;
-        fread(&flags, sizeof(LevelFlagBits), 1, pFile);
-        u32 screenCount;
-        fread(&screenCount, sizeof(u32), 1, pFile);
-        Screen* screens = (Screen*)calloc(screenCount, sizeof(Screen));
-        fread((void*)screens, sizeof(Screen), screenCount, pFile);
+        char signature[4]{};
+        fread(signature, sizeof(u8), 4, pFile);
 
-        pLevel->name = fname;
-        pLevel->flags = flags;
-        pLevel->screenCount = screenCount;
-        pLevel->screens = screens;
+        for (u32 i = 0; i < maxLevelCount; i++) {
+            Level& level = levels[i];
+            fread(&level.flags, sizeof(LevelFlagBits), 1, pFile);
+            fread(&level.screenCount, sizeof(u32), 1, pFile);
+        }
+
+        fread(nameMemory, levelMaxNameLength, maxLevelCount, pFile);
+        fread(screenMemory, levelMaxScreenCount * sizeof(Screen), maxLevelCount, pFile);
 
         fclose(pFile);
+
+        // Init references
+        for (u32 i = 0; i < maxLevelCount; i++) {
+            Level& level = levels[i];
+            level.name = &nameMemory[i * levelMaxNameLength];
+            level.screens = &screenMemory[i * levelMaxScreenCount];
+        }
     }
 
-    void SaveLevel(Level* pLevel, const char* fname)
-    {
+    void SaveLevels(const char* fname) {
         FILE* pFile;
         fopen_s(&pFile, fname, "wb");
 
         if (pFile == NULL) {
-            ERROR("Failed to write level file\n");
+            DEBUG_ERROR("Failed to write level file\n");
         }
 
         const char signature[4] = "LEV";
         fwrite(signature, sizeof(u8), 4, pFile);
-        fwrite(&pLevel->flags, sizeof(LevelFlagBits), 1, pFile);
-        fwrite(&pLevel->screenCount, sizeof(u32), 1, pFile);
-        fwrite(pLevel->screens, sizeof(Screen), pLevel->screenCount, pFile);
+
+        for (u32 i = 0; i < maxLevelCount; i++) {
+            const Level& level = levels[i];
+            fwrite(&level.flags, sizeof(LevelFlagBits), 1, pFile);
+            fwrite(&level.screenCount, sizeof(u32), 1, pFile);
+        }
+
+        fwrite(nameMemory, levelMaxNameLength, maxLevelCount, pFile);
+        fwrite(screenMemory, levelMaxScreenCount * sizeof(Screen), maxLevelCount, pFile);
 
         fclose(pFile);
     }
