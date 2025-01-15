@@ -7,7 +7,7 @@ namespace Editor {
 
         void DrawNametable(EditorContext* pContext, ImVec2 tablePos, const Rendering::Nametable& nametable) {
             ImDrawList* drawList = ImGui::GetWindowDrawList();
-            for (int i = 0; i < NAMETABLE_SIZE; i++) {
+            for (int i = 0; i < NAMETABLE_ATTRIBUTE_OFFSET; i++) {
                 s32 x = i % NAMETABLE_WIDTH_TILES;
                 s32 y = i / NAMETABLE_WIDTH_TILES;
 
@@ -59,8 +59,7 @@ namespace Editor {
             }
 
             if (ImGui::TreeNode("Nametables")) {
-                // I want to include attributes here too, so can't just use NAMETABLE_HEIGHT_TILES
-                const ImVec2 nametableSizePx = ImVec2(NAMETABLE_WIDTH_TILES * TILE_SIZE, (NAMETABLE_SIZE / NAMETABLE_WIDTH_TILES) * TILE_SIZE);
+                const ImVec2 nametableSizePx = ImVec2(NAMETABLE_WIDTH_TILES * TILE_SIZE, NAMETABLE_HEIGHT_TILES * TILE_SIZE);
                 ImVec2 tablePos = Util::DrawTileGrid(pContext, nametableSizePx, TILE_SIZE);
                 Rendering::Nametable* const nametables = Rendering::GetNametablePtr(pRenderContext, 0);
                 DrawNametable(pContext, tablePos, nametables[0]);
