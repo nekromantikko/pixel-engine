@@ -14,12 +14,18 @@
 #include <imgui.h>
 #include "math.h"
 
+static constexpr u32 viewportWidthInMetatiles = VIEWPORT_WIDTH_TILES / Tileset::metatileWorldSize;
+static constexpr u32 viewportHeightInMetatiles = VIEWPORT_HEIGHT_TILES / Tileset::metatileWorldSize;
+
 namespace Game {
     r64 secondsElapsed = 0.0f;
     r64 averageFramerate;
     // Number of successive frame times used for average framerate calculation
 #define SUCCESSIVE_FRAME_TIME_COUNT 64
     r64 successiveFrameTimes[SUCCESSIVE_FRAME_TIME_COUNT]{0};
+
+    // Seconds elapsed while not paused
+    r64 gameplaySecondsElapsed = 0.0f;
 
     // Settings
     Rendering::Settings* pRenderSettings;
@@ -28,7 +34,36 @@ namespace Game {
     Viewport viewport;
 
     Level::Level* pCurrentLevel = nullptr;
+    s32 enterScreenIndex = -1;
+
+    // This is pretty ugly...
+    u32 nextLevel = 0;
+    s32 nextLevelScreenIndex = -1;
+
 #define HUD_TILE_COUNT 128
+
+    enum GameState {
+        StatePlaying,
+        StateLevelTransition,
+    };
+
+    GameState state = StatePlaying;
+
+    struct LevelTransitionState {
+        // Coordinates in metatiles
+        IVec2 origin;
+        IVec2 windowWorldPos;
+        IVec2 windowSize;
+
+        u32 steps;
+        u32 currentStep;
+        r32 stepDuration;
+
+        r32 accumulator;
+        bool direction;
+    };
+
+    LevelTransitionState levelTransitionState;
 
     // Sprite stufff
     enum HeadMode {
@@ -128,52 +163,63 @@ namespace Game {
     Rendering::ChrSheet* pChr;
     Rendering::Nametable* pNametables;
 
-    void LoadLevel(u32 index) {
+    void LoadLevel(u32 index, s32 screenIndex, bool refresh) {
         if (index >= Level::maxLevelCount) {
             DEBUG_ERROR("Level count exceeded!");
         }
 
         pCurrentLevel = Level::GetLevelsPtr() + index;
+        enterScreenIndex = screenIndex;
 
-        ReloadLevel();
+        ReloadLevel(refresh);
     }
 
-    void ReloadLevel() {
+    static bool SpawnAtFirstDoor(u32 screenIndex) {
+        const Level::Screen& screen = pCurrentLevel->screens[screenIndex];
+        for (u32 i = 0; i < Level::screenWidthMetatiles * Level::screenHeightMetatiles; i++) {
+            const Level::LevelTile& tile = screen.tiles[i];
+
+            if (tile.actorType == Level::ACTOR_DOOR) {
+                const Vec2 screenRelativePos = Level::TileIndexToScreenOffset(i);
+                const Vec2 worldPos = Level::ScreenOffsetToWorld(pCurrentLevel, screenRelativePos, screenIndex);
+
+                playerState.x = worldPos.x + 1.0f;
+                playerState.y = worldPos.y;
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void ReloadLevel(bool refresh) {
         if (pCurrentLevel == nullptr) {
             return;
         }
 
-        playerState.x = 0;
-        playerState.y = 0;
-        playerState.direction = DirRight;
-        playerState.weapon = WpnLauncher;
-
-        // Find first player spawn
-        for (u32 i = 0; i < pCurrentLevel->screenCount; i++) {
-            const Level::Screen& screen = pCurrentLevel->screens[i];
-            for (u32 t = 0; t < Level::screenWidthMetatiles * Level::screenHeightMetatiles; t++) {
-                const Level::LevelTile& tile = screen.tiles[t];
-
-                if (tile.actorType == Level::ACTOR_PLAYER_START) {
-                    const Vec2 screenRelativePos = Level::TileIndexToScreenOffset(t);
-                    const Vec2 worldPos = Level::ScreenOffsetToWorld(pCurrentLevel, screenRelativePos, i);
-
-                    playerState.x = worldPos.x + 1.0f;
-                    playerState.y = worldPos.y;
-
+        if (enterScreenIndex < 0 || !SpawnAtFirstDoor(enterScreenIndex)) {
+            // Loop thru all screens to find any spawnpoint
+            for (u32 i = 0; i < pCurrentLevel->screenCount; i++) {
+                if (SpawnAtFirstDoor(i)) {
                     break;
                 }
             }
         }
 
-        RefreshViewport(&viewport, pNametables, pCurrentLevel);
+        if (refresh) {
+            RefreshViewport(&viewport, pNametables, pCurrentLevel);
+        }
     }
 
 	void Initialize(Rendering::RenderContext* pRenderContext) {
         viewport.x = 0.0f;
         viewport.y = 0.0f;
-        viewport.w = VIEWPORT_WIDTH_TILES;
-        viewport.h = VIEWPORT_HEIGHT_TILES;
+
+        playerState.x = 0;
+        playerState.y = 0;
+        playerState.direction = DirRight;
+        playerState.weapon = WpnLauncher;
 
         // Init chr memory
         pChr = Rendering::GetChrPtr(pRenderContext, 0);
@@ -284,7 +330,7 @@ namespace Game {
         };
     }
 
-    void DrawPlayer(Rendering::RenderContext* pRenderContext, Rendering::Sprite** ppNextSprite, r64 dt) {
+    void DrawPlayer(Rendering::Sprite** ppNextSprite, r64 dt) {
         IVec2 drawPos = WorldPosToScreenPixels(Vec2{ playerState.x, playerState.y });
         drawPos.y += playerState.vOffset;
 
@@ -437,13 +483,15 @@ namespace Game {
         }
     }
 
+    // TODO: Sprite position update could be separate from all the other stuff like animation that is more like game logic
+    // It would make it easier to pause gameplay logic and keep positions updating for the editor
     void Render(Rendering::RenderContext* pRenderContext, r64 dt) {
         Rendering::Util::ClearSprites(pSprites, 256);
         Rendering::Sprite* pNextSprite = pSprites;
         
         DrawDamageNumbers(&pNextSprite);
         DrawShield(&pNextSprite, dt);
-        DrawPlayer(pRenderContext, &pNextSprite, dt);
+        DrawPlayer(&pNextSprite, dt);
         DrawArrows(&pNextSprite);
         DrawHits(&pNextSprite);
 
@@ -453,17 +501,17 @@ namespace Game {
             IVec2 enemyPixelPos = WorldPosToScreenPixels(enemyPos);
             Rendering::Util::CopyMetasprite(enemyMetasprite.spritesRelativePos, pNextSprite, enemyMetasprite.spriteCount, enemyPixelPos, false, false);
             if (enemyDamageTimer > 0) {
-                u8 damagePalette = (u8)(secondsElapsed * 20) % 4;
+                u8 damagePalette = (u8)(gameplaySecondsElapsed * 20) % 4;
                 Rendering::Util::SetSpritesPalette(pNextSprite, enemyMetasprite.spriteCount, damagePalette);
             }
             pNextSprite += enemyMetasprite.spriteCount;
         }
 
-        UpdateHUD(pRenderContext, dt);
-        RenderHUD(pRenderContext);
+        //UpdateHUD(pRenderContext, dt);
+        //RenderHUD(pRenderContext);
 
         /*for (int i = 0; i < 272; i++) {
-            float sine = sin(secondsElapsed + (i / 8.0f));
+            float sine = sin(gameplaySecondsElapsed + (i / 8.0f));
             Rendering::RenderState state = {
                 (s32)((viewport.x + sine) * TILE_SIZE),
                 (s32)(viewport.y * TILE_SIZE)
@@ -475,7 +523,137 @@ namespace Game {
             (s32)(viewport.x * TILE_SIZE),
             (s32)(viewport.y* TILE_SIZE)
         };
-        Rendering::SetRenderState(pRenderContext, 16, 272, state);
+        // TODO: Refactor this so I can get rid of render context as a parameter
+        Rendering::SetRenderState(pRenderContext, 0, 288, state);
+    }
+
+    constexpr Vec2 viewportScrollThreshold = { 8.0f, 6.0f };
+
+    static void UpdateViewport(bool loadTiles = true) {
+        Vec2 viewportCenter = Vec2{ viewport.x + VIEWPORT_WIDTH_TILES / 2.0f, viewport.y + VIEWPORT_HEIGHT_TILES / 2.0f };
+        Vec2 playerOffset = Vec2{ playerState.x - viewportCenter.x, playerState.y - viewportCenter.y };
+
+        Vec2 delta = { 0.0f, 0.0f };
+        if (playerOffset.x > viewportScrollThreshold.x) {
+            delta.x = playerOffset.x - viewportScrollThreshold.x;
+        }
+        else if (playerOffset.x < -viewportScrollThreshold.x) {
+            delta.x = playerOffset.x + viewportScrollThreshold.x;
+        }
+
+        if (playerOffset.y > viewportScrollThreshold.y) {
+            delta.y = playerOffset.y - viewportScrollThreshold.y;
+        }
+        else if (playerOffset.y < -viewportScrollThreshold.y) {
+            delta.y = playerOffset.y + viewportScrollThreshold.y;
+        }
+
+        MoveViewport(&viewport, pNametables, pCurrentLevel, delta.x, delta.y, loadTiles);
+    }
+
+    static void TriggerLevelTransition(bool direction = true) {
+        state = StateLevelTransition;
+
+        static constexpr u32 bufferZoneWidth = 1;
+
+        const IVec2 viewportPosInMetatiles = Level::WorldToTilemap({ viewport.x, viewport.y });
+        // Window a bit larger than viewport to ensure full coverage
+        const IVec2 transitionWindowPos = viewportPosInMetatiles - IVec2{ bufferZoneWidth, bufferZoneWidth };
+        const IVec2 playerPosInMetatiles = Level::WorldToTilemap({ playerState.x, playerState.y });
+        const IVec2 center = playerPosInMetatiles - transitionWindowPos;
+
+        levelTransitionState.origin = center;
+        levelTransitionState.windowWorldPos = transitionWindowPos;
+        const IVec2 transitionWindowSize = IVec2{ viewportWidthInMetatiles + bufferZoneWidth * 2, viewportHeightInMetatiles + bufferZoneWidth * 2 };
+        levelTransitionState.windowSize = transitionWindowSize;
+
+        const u32 stepsToTopLeft = center.x + center.y;
+        const u32 stepsToTopRight = (transitionWindowSize.x - center.x) + center.y;
+        const u32 stepsToBtmLeft = center.x + (transitionWindowSize.y - center.y);
+        const u32 stepsToBtmRight = (transitionWindowSize.x - center.x) + (transitionWindowSize.y - center.y);
+        const u32 maxSteps = Max(Max(Max(stepsToTopLeft, stepsToTopRight), stepsToBtmLeft), stepsToBtmRight);
+
+        levelTransitionState.steps = maxSteps;
+        levelTransitionState.currentStep = 0;
+
+        static constexpr r32 duration = 0.8f;
+
+        levelTransitionState.stepDuration = duration / maxSteps;
+        levelTransitionState.accumulator = 0.0f;
+
+        levelTransitionState.direction = direction;
+    }
+
+    static void UpdateLevelTransition(Rendering::RenderContext* pRenderContext, r64 dt) {
+
+        if (levelTransitionState.currentStep >= levelTransitionState.steps) {
+
+            if (levelTransitionState.direction) {
+                // This could be optimized because it's really stupid but all nametables need to be filled with this tile for the transition to work
+                Tileset::FillAllNametablesWithMetatile(pNametables, 16);
+
+                // Move viewport and sprites before next transition
+                LoadLevel(nextLevel, nextLevelScreenIndex, false);
+                ReloadLevel(false);
+                UpdateViewport(false);
+                Render(pRenderContext, dt);
+
+                TriggerLevelTransition(false);
+            }
+            else {
+                state = StatePlaying;
+                RefreshViewport(&viewport, pNametables, pCurrentLevel);
+            }
+
+            return;
+        }
+
+        levelTransitionState.accumulator += dt;
+
+        while (levelTransitionState.accumulator >= levelTransitionState.stepDuration) {
+            levelTransitionState.accumulator -= levelTransitionState.stepDuration;
+
+            for (s32 row = 0; row < levelTransitionState.windowSize.y; row++) {
+
+                const s32 metatileY = row + levelTransitionState.windowWorldPos.y;
+
+                for (s32 col = 0; col < levelTransitionState.windowSize.x; col++) {
+
+                    const s32 metatileX = col + levelTransitionState.windowWorldPos.x;
+
+                    if (!Level::TileInLevelBounds(pCurrentLevel, { metatileX, metatileY })) {
+                        continue;
+                    }
+
+                    // Calculate the distance from the center
+                    int distance = abs(row - levelTransitionState.origin.y) + abs(col - levelTransitionState.origin.x);
+
+                    // Check if this tile should transition on this step
+                    bool shouldTransition = levelTransitionState.direction ? (levelTransitionState.currentStep == levelTransitionState.steps - distance) : (levelTransitionState.currentStep == distance);
+
+                    if (shouldTransition) {
+                        const u32 screenIndex = Level::TilemapToScreenIndex(pCurrentLevel, { metatileX, metatileY });
+                        if (screenIndex >= pCurrentLevel->screenCount) {
+                            continue;
+                        }
+                        const u32 nametableInd = screenIndex % NAMETABLE_COUNT;
+
+                        const u32 screenTileIndex = Level::TilemapToMetatileIndex({ metatileX, metatileY });
+                        const u8 metatileIndex = pCurrentLevel->screens[screenIndex].tiles[screenTileIndex].metatile;
+                        const Vec2 screenTilePos = Level::TileIndexToScreenOffset(screenTileIndex);
+
+                        if (levelTransitionState.direction) {
+                            Tileset::CopyMetatileToNametable(&pNametables[nametableInd], (u16)screenTilePos.x, (u16)screenTilePos.y, 16);
+                        }
+                        else {
+                            Tileset::CopyMetatileToNametable(&pNametables[nametableInd], (u16)screenTilePos.x, (u16)screenTilePos.y, metatileIndex);
+                        }
+                    }
+                }
+            }
+
+            levelTransitionState.currentStep++;
+        }
     }
 
     void PlayerInput(r32 dt) {
@@ -528,6 +706,20 @@ namespace Game {
                 playerState.weapon = WpnBow;
             }
             else playerState.weapon = WpnLauncher;
+        }
+
+        // Enter door
+        // TODO: Only allow entering when on the ground
+        if (Input::Pressed(Input::DPadUp)) {
+            const Vec2 checkPos = { playerState.x, playerState.y + 1.0f };
+            const u32 screenInd = Level::WorldToScreenIndex(pCurrentLevel, checkPos);
+            const u32 tileInd = Level::WorldToMetatileIndex(checkPos);
+            const Level::Screen& screen = pCurrentLevel->screens[screenInd];
+            if (screen.tiles[tileInd].actorType == Level::ACTOR_DOOR) {
+                nextLevel = screen.exitTargetLevel;
+                nextLevelScreenIndex = screen.exitTargetScreen;
+                TriggerLevelTransition();
+            }
         }
     }
 
@@ -656,30 +848,6 @@ namespace Game {
         }
     }
 
-    constexpr Vec2 viewportScrollThreshold = { 8.0f, 6.0f };
-
-    void UpdateViewport() {
-        Vec2 viewportCenter = Vec2{ viewport.x + viewport.w / 2.0f, viewport.y + viewport.h / 2.0f };
-        Vec2 playerOffset = Vec2{ playerState.x - viewportCenter.x, playerState.y - viewportCenter.y };
-
-        Vec2 delta = { 0.0f, 0.0f };
-        if (playerOffset.x > viewportScrollThreshold.x) {
-            delta.x = playerOffset.x - viewportScrollThreshold.x;
-        }
-        else if (playerOffset.x < -viewportScrollThreshold.x) {
-            delta.x = playerOffset.x + viewportScrollThreshold.x;
-        }
-
-        if (playerOffset.y > viewportScrollThreshold.y) {
-            delta.y = playerOffset.y - viewportScrollThreshold.y;
-        }
-        else if (playerOffset.y < -viewportScrollThreshold.y) {
-            delta.y = playerOffset.y + viewportScrollThreshold.y;
-        }
-
-        MoveViewport(&viewport, pNametables, pCurrentLevel, delta.x, delta.y);
-    }
-
     void Step(r64 dt, Rendering::RenderContext* pRenderContext) {
         secondsElapsed += dt;
         averageFramerate = GetAverageFramerate(dt);
@@ -687,179 +855,163 @@ namespace Game {
         // TODO: Move out of game logic
         Input::Poll();
 
-        if (!paused) {
-            PlayerInput(dt);
-            PlayerBgCollision(dt, pRenderContext);
-            PlayerShoot(dt);
-            PlayerAnimate(dt);
+        if (state == StateLevelTransition) {
+            UpdateLevelTransition(pRenderContext, dt);
+        }
+        else {
+            if (!paused) {
+                gameplaySecondsElapsed += dt;
 
-            Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
-            Collision::Collider enemyHitbox = enemyMetasprite.colliders[0];
-            Vec2 enemyHitboxPos = Vec2{ enemyPos.x + enemyHitbox.xOffset, enemyPos.y + enemyHitbox.yOffset };
-            Vec2 enemyHitboxDimensions = Vec2{ enemyHitbox.width, enemyHitbox.height };
+                PlayerInput(dt);
+                PlayerBgCollision(dt, pRenderContext);
+                PlayerShoot(dt);
+                PlayerAnimate(dt);
 
-            // Update arrows
-            for (int i = 0; i < arrowPool.Count(); i++) {
-                PoolHandle<Arrow> handle = arrowPool.GetHandle(i);
-                Arrow* arrow = arrowPool[handle];
-                if (arrow == nullptr) {
-                    continue;
-                }
+                Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
+                Collision::Collider enemyHitbox = enemyMetasprite.colliders[0];
+                Vec2 enemyHitboxPos = Vec2{ enemyPos.x + enemyHitbox.xOffset, enemyPos.y + enemyHitbox.yOffset };
+                Vec2 enemyHitboxDimensions = Vec2{ enemyHitbox.width, enemyHitbox.height };
 
-                // TODO: Object struct and updater that does this for everything?
-                bool hFlip = arrow->vel.x < 0.0f;
-                bool vFlip = arrow->vel.y < -10.0f;
-
-                u32 spriteIndex = abs(arrow->vel.y) < 10.0f ? 3 : 4;
-                Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[spriteIndex];
-
-                Collision::Collider hitbox = metasprite.colliders[0];
-                Vec2 hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
-                Vec2 hitboxDimensions = Vec2{ hitbox.width, hitbox.height };
-
-                r32 dx = arrow->vel.x * dt;
-
-                Collision::HitResult hit{};
-                Collision::SweepBoxHorizontal(pCurrentLevel, hitboxPos, hitboxDimensions, dx, hit);
-                if (hit.blockingHit) {
-                    if (arrow->type == WpnBow || arrow->bounces == 0) {
-                        arrowPool.Remove(handle);
-                        PoolHandle<Impact> hitHandle = hitPool.Add();
-                        Impact* impact = hitPool[hitHandle];
-                        impact->pos = hit.impactPoint;
-                        impact->accumulator = 0.0f;
+                // Update arrows
+                for (int i = 0; i < arrowPool.Count(); i++) {
+                    PoolHandle<Arrow> handle = arrowPool.GetHandle(i);
+                    Arrow* arrow = arrowPool[handle];
+                    if (arrow == nullptr) {
                         continue;
                     }
-                    arrow->pos = hit.location;
-                    arrow->vel.x *= -1.0f;
-                    arrow->bounces--;
-                } else arrow->pos.x += dx;
 
-                if (arrow->type == WpnLauncher) {
-                    arrow->vel.y += dt * gravity * 4.0f;
-                }
-                r32 dy = arrow->vel.y * dt;
-                hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
-                Collision::SweepBoxVertical(pCurrentLevel, hitboxPos, hitboxDimensions, dy, hit);
-                if (hit.blockingHit) {
-                    if (arrow->type == WpnBow || arrow->bounces == 0) {
-                        arrowPool.Remove(handle);
-                        PoolHandle<Impact> hitHandle = hitPool.Add();
-                        Impact* impact = hitPool[hitHandle];
-                        impact->pos = hit.impactPoint;
-                        impact->accumulator = 0.0f;
-                        continue;
+                    // TODO: Object struct and updater that does this for everything?
+                    bool hFlip = arrow->vel.x < 0.0f;
+                    bool vFlip = arrow->vel.y < -10.0f;
+
+                    u32 spriteIndex = abs(arrow->vel.y) < 10.0f ? 3 : 4;
+                    Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[spriteIndex];
+
+                    Collision::Collider hitbox = metasprite.colliders[0];
+                    Vec2 hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
+                    Vec2 hitboxDimensions = Vec2{ hitbox.width, hitbox.height };
+
+                    r32 dx = arrow->vel.x * dt;
+
+                    Collision::HitResult hit{};
+                    Collision::SweepBoxHorizontal(pCurrentLevel, hitboxPos, hitboxDimensions, dx, hit);
+                    if (hit.blockingHit) {
+                        if (arrow->type == WpnBow || arrow->bounces == 0) {
+                            arrowPool.Remove(handle);
+                            PoolHandle<Impact> hitHandle = hitPool.Add();
+                            Impact* impact = hitPool[hitHandle];
+                            impact->pos = hit.impactPoint;
+                            impact->accumulator = 0.0f;
+                            continue;
+                        }
+                        arrow->pos = hit.location;
+                        arrow->vel.x *= -1.0f;
+                        arrow->bounces--;
+                    } else arrow->pos.x += dx;
+
+                    if (arrow->type == WpnLauncher) {
+                        arrow->vel.y += dt * gravity * 4.0f;
                     }
-                    arrow->pos = hit.location;
-                    arrow->vel.y *= -1.0f;
-                    arrow->bounces--;
-                } else arrow->pos.y += dy;
-
-                // Collision with enemy
-                if (enemyHealth > 0) {
+                    r32 dy = arrow->vel.y * dt;
                     hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
-                    if (hitboxPos.x - hitboxDimensions.x / 2.0f < enemyHitboxPos.x + enemyHitboxDimensions.x / 2.0f &&
-                        hitboxPos.x + hitboxDimensions.x / 2.0f > enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f &&
-                        hitboxPos.y - hitboxDimensions.y / 2.0f < enemyHitboxPos.y + enemyHitboxDimensions.y / 2.0f &&
-                        hitboxPos.y + hitboxDimensions.y / 2.0f > enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f) {
+                    Collision::SweepBoxVertical(pCurrentLevel, hitboxPos, hitboxDimensions, dy, hit);
+                    if (hit.blockingHit) {
+                        if (arrow->type == WpnBow || arrow->bounces == 0) {
+                            arrowPool.Remove(handle);
+                            PoolHandle<Impact> hitHandle = hitPool.Add();
+                            Impact* impact = hitPool[hitHandle];
+                            impact->pos = hit.impactPoint;
+                            impact->accumulator = 0.0f;
+                            continue;
+                        }
+                        arrow->pos = hit.location;
+                        arrow->vel.y *= -1.0f;
+                        arrow->bounces--;
+                    } else arrow->pos.y += dy;
 
+                    // Collision with enemy
+                    if (enemyHealth > 0) {
+                        hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
+                        if (hitboxPos.x - hitboxDimensions.x / 2.0f < enemyHitboxPos.x + enemyHitboxDimensions.x / 2.0f &&
+                            hitboxPos.x + hitboxDimensions.x / 2.0f > enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f &&
+                            hitboxPos.y - hitboxDimensions.y / 2.0f < enemyHitboxPos.y + enemyHitboxDimensions.y / 2.0f &&
+                            hitboxPos.y + hitboxDimensions.y / 2.0f > enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f) {
+
+                            arrowPool.Remove(handle);
+                            PoolHandle<Impact> hitHandle = hitPool.Add();
+                            Impact* impact = hitPool[hitHandle];
+                            impact->pos = arrow->pos;
+                            impact->accumulator = 0.0f;
+
+                            s32 damage = (rand() % 10) + 5;
+                            enemyHealth -= damage;
+                            enemyDamageTimer = enemyDamageDelay;
+
+                            // Add damage numbers
+                            // Random point inside enemy hitbox
+                            Vec2 dmgPos = Vec2{ (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.x) + enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f, (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.y) + enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f };
+
+                            PoolHandle<DamageNumber> dmgHandle = damageNumberPool.Add();
+                            DamageNumber* dmgNumber = damageNumberPool[dmgHandle];
+                            dmgNumber->damage = damage;
+                            dmgNumber->pos = dmgPos;
+                            dmgNumber->accumulator = 0.0f;
+
+                            continue;
+                        }
+                    }
+
+                    if (arrow->pos.x < viewport.x || arrow->pos.x > viewport.x + VIEWPORT_WIDTH_TILES || arrow->pos.y < viewport.y || arrow->pos.y > viewport.y + VIEWPORT_HEIGHT_TILES) {
                         arrowPool.Remove(handle);
-                        PoolHandle<Impact> hitHandle = hitPool.Add();
-                        Impact* impact = hitPool[hitHandle];
-                        impact->pos = arrow->pos;
-                        impact->accumulator = 0.0f;
+                    }
+                }
 
-                        s32 damage = (rand() % 10) + 5;
-                        enemyHealth -= damage;
-                        enemyDamageTimer = enemyDamageDelay;
+                // Update explosions
+                for (int i = 0; i < hitPool.Count(); i++) {
+                    PoolHandle<Impact> handle = hitPool.GetHandle(i);
+                    Impact* impact = hitPool[handle];
+                    impact->accumulator += dt;
 
-                        // Add damage numbers
-                        // Random point inside enemy hitbox
-                        Vec2 dmgPos = Vec2{ (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.x) + enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f, (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.y) + enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f };
-
-                        PoolHandle<DamageNumber> dmgHandle = damageNumberPool.Add();
-                        DamageNumber* dmgNumber = damageNumberPool[dmgHandle];
-                        dmgNumber->damage = damage;
-                        dmgNumber->pos = dmgPos;
-                        dmgNumber->accumulator = 0.0f;
-
+                    if (impact->accumulator >= impactAnimLength) {
+                        hitPool.Remove(handle);
                         continue;
                     }
                 }
 
-                if (arrow->pos.x < viewport.x || arrow->pos.x > viewport.x + viewport.w || arrow->pos.y < viewport.y || arrow->pos.y > viewport.y + viewport.h) {
-                    arrowPool.Remove(handle);
-                }
-            }
+                // Update damage numbers
+                r32 dmgNumberVel = -3.0f;
+                for (int i = 0; i < damageNumberPool.Count(); i++) {
+                    PoolHandle<DamageNumber> handle = damageNumberPool.GetHandle(i);
+                    DamageNumber* dmgNumber = damageNumberPool[handle];
+                    dmgNumber->accumulator += dt;
 
-            // Update explosions
-            for (int i = 0; i < hitPool.Count(); i++) {
-                PoolHandle<Impact> handle = hitPool.GetHandle(i);
-                Impact* impact = hitPool[handle];
-                impact->accumulator += dt;
+                    if (dmgNumber->accumulator >= damageNumberLifetime) {
+                        damageNumberPool.Remove(handle);
+                        continue;
+                    }
 
-                if (impact->accumulator >= impactAnimLength) {
-                    hitPool.Remove(handle);
-                    continue;
-                }
-            }
-
-            // Update damage numbers
-            r32 dmgNumberVel = -3.0f;
-            for (int i = 0; i < damageNumberPool.Count(); i++) {
-                PoolHandle<DamageNumber> handle = damageNumberPool.GetHandle(i);
-                DamageNumber* dmgNumber = damageNumberPool[handle];
-                dmgNumber->accumulator += dt;
-
-                if (dmgNumber->accumulator >= damageNumberLifetime) {
-                    damageNumberPool.Remove(handle);
-                    continue;
+                    dmgNumber->pos.y += dmgNumberVel * dt;
                 }
 
-                dmgNumber->pos.y += dmgNumberVel * dt;
+                // Update enemy pos
+                const r32 yMid = 27.f;
+                const r32 amplitude = 7.5f;
+                r32 sineTime = sin(gameplaySecondsElapsed);
+                enemyPos.y = yMid + sineTime * amplitude;
+
+                // Enemy damagio
+                if (enemyDamageTimer > dt) {
+                    enemyDamageTimer -= dt;
+                }
+                else enemyDamageTimer = 0.0f;
+
+                UpdateViewport();
             }
 
-            // Update enemy pos
-            const r32 yMid = 27.f;
-            const r32 amplitude = 7.5f;
-            r32 sineTime = sin(secondsElapsed);
-            enemyPos.y = yMid + sineTime * amplitude;
-
-            // Enemy damagio
-            if (enemyDamageTimer > dt) {
-                enemyDamageTimer -= dt;
-            }
-            else enemyDamageTimer = 0.0f;
-            
-            UpdateViewport();
+            // TODO: Maybe change the name of this? (It's not actually rendering, just setting up render state)
+            Render(pRenderContext, dt);
         }
 
-
-        Render(pRenderContext, dt);
-
-        // Corrupt CHR mem
-        //int randomInt = rand();
-        //Rendering::WriteChrMemory(pContext, sizeof(int), rand() % (CHR_MEMORY_SIZE - sizeof(int)), (u8*)&randomInt);
-
-        // Animate palette
-        /*static float paletteAccumulator = 0;
-        static int a = 0;
-        paletteAccumulator += dt;
-        if (paletteAccumulator > 0.1f) {
-            a++;
-            paletteAccumulator -= 0.1f;
-            u8 colors[8] = {
-                a % 64,
-                (a + 1) % 64,
-                (a + 2) % 64,
-                (a + 3) % 64,
-                (a + 4) % 64,
-                (a + 5) % 64,
-                (a + 6) % 64,
-                (a + 7) % 64,
-            };
-            Rendering::WritePaletteColors(pContext, 4, 8, 0, colors);
-        }*/
     }
 
     bool IsPaused() {

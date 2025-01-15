@@ -13,7 +13,7 @@ namespace Editor {
 	namespace LevelEditor {
 
         constexpr u32 actorTypeCount = 2;
-        constexpr const char* actorTypeNames[actorTypeCount] = { "None", "PStart" };
+        constexpr const char* actorTypeNames[actorTypeCount] = { "None", "Door" };
 
         Level::ActorType selectedActorType = Level::ACTOR_NONE;
         bool actorMode = false;
@@ -55,7 +55,7 @@ namespace Editor {
             const u32 screenDimension = verticalScroll ? Level::screenHeightTiles : Level::screenWidthTiles;
 
             const u32 leftScreenIndex = WorldToScreenIndex(pLevel, { pViewport->x, pViewport->y });
-            const u32 rightScreenIndex = WorldToScreenIndex(pLevel, { pViewport->x + pViewport->w, pViewport->y + pViewport->h });
+            const u32 rightScreenIndex = WorldToScreenIndex(pLevel, { pViewport->x + VIEWPORT_WIDTH_TILES, pViewport->y + VIEWPORT_HEIGHT_TILES });
 
             for (u32 i = leftScreenIndex; i <= rightScreenIndex; i++) {
                 const Vec2 screenPos = ScreenIndexToWorld(pLevel, i);
@@ -63,7 +63,7 @@ namespace Editor {
                 const Level::Screen& screen = pLevel->screens[i];
 
                 static char screenLabelText[16];
-                snprintf(screenLabelText, 16, "Screen #%d", i);
+                snprintf(screenLabelText, 16, "%#04x", i);
 
                 const ImVec2 lineStart = ImVec2(topLeft.x + screenViewportCoords.x, topLeft.y + screenViewportCoords.y);
                 const ImVec2 lineEnd = verticalScroll ? ImVec2(btmRight.x, topLeft.y + screenViewportCoords.y) : ImVec2(topLeft.x + screenViewportCoords.x, btmRight.y);
@@ -374,6 +374,46 @@ namespace Editor {
                     RefreshViewport(pViewport, pNametables, pCurrentLevel);
                 }
             }
+
+            // Screens
+            if (ImGui::TreeNode("Screens")) {
+
+                for (u32 i = 0; i < level.screenCount; i++) {
+                    Level::Screen& screen = level.screens[i];
+
+                    if (ImGui::TreeNode(&screen, "%#04x", i)) {
+
+                        const Level::Level& exitTargetLevel = pLevels[screen.exitTargetLevel];
+
+                        if (ImGui::BeginCombo("Exit target level", exitTargetLevel.name)) {
+                            for (u32 i = 0; i < Level::maxLevelCount; i++)
+                            {
+                                ImGui::PushID(i);
+                                const bool selected = screen.exitTargetLevel == i;
+                                if (ImGui::Selectable(pLevels[i].name, selected)) {
+                                    screen.exitTargetLevel = i;
+                                }
+
+                                if (selected) {
+                                    ImGui::SetItemDefaultFocus();
+                                }
+                                ImGui::PopID();
+                            }
+                            ImGui::EndCombo();
+                        }
+
+                        int exitScreen = screen.exitTargetScreen;
+                        if (ImGui::InputInt("Exit target screen", &exitScreen)) {
+                            screen.exitTargetScreen = (u32)Max(Min(exitTargetLevel.screenCount - 1, exitScreen), 0);
+                        }
+
+                        ImGui::TreePop();
+                    }
+                }
+
+                ImGui::TreePop();
+            }
+
 
             ImGui::EndDisabled();
 

@@ -80,4 +80,14 @@ namespace Tileset {
 		blockAttribute &= ~(0b11 << (smallBlockOffset * 2));
 		blockAttribute |= (GetPalette(metatileIndex) << (smallBlockOffset * 2));
 	}
+
+	void FillAllNametablesWithMetatile(Rendering::Nametable* pNametables, u8 metatileIndex) {
+		for (u32 i = 0; i < NAMETABLE_COUNT; i++) {
+			for (u32 y = 0; y < NAMETABLE_HEIGHT_TILES / metatileWorldSize; y++) {
+				for (u32 x = 0; x < NAMETABLE_WIDTH_TILES / metatileWorldSize; x++) {
+					CopyMetatileToNametable(&pNametables[i], x * metatileWorldSize, y * metatileWorldSize, metatileIndex);
+				}
+			}
+		}
+	}
 }
