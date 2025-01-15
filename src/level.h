@@ -21,7 +21,7 @@ namespace Level {
 
     enum ActorType : u8 {
         ACTOR_NONE = 0,
-        ACTOR_PLAYER_START = 1,
+        ACTOR_DOOR = 1,
 
     };
 
@@ -33,7 +33,9 @@ namespace Level {
     };
 
     struct Screen {
-        u32 unused1, unused2, unused3, unused4, unused5, unused6, unused7, unused8;
+        u16 exitTargetLevel;
+        u16 exitTargetScreen;
+        u32 unused1, unused2, unused3, unused4, unused5, unused6, unused7;
         LevelTile tiles[screenWidthMetatiles * screenHeightMetatiles];
     };
 
@@ -70,4 +72,6 @@ namespace Level {
     Vec2 TileIndexToScreenOffset(u32 tileIndex);
 
     Vec2 ScreenIndexToWorld(const Level* pLevel, u32 screenIndex);
+
+    bool TileInLevelBounds(const Level* pLevel, IVec2 tilemapCoord);
 }

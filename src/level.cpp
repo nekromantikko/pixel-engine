@@ -146,8 +146,19 @@ namespace Level {
         }
     }
     u32 TilemapToMetatileIndex(IVec2 tilemap) {
-        u32 screenRelativeX = tilemap.x % screenWidthMetatiles;
-        u32 screenRelativeY = tilemap.y % screenHeightMetatiles;
+        // Eliminate negative coordinates:
+        s32 x = tilemap.x;
+        while (x < 0) {
+            x += screenWidthMetatiles;
+        }
+
+        s32 y = tilemap.y;
+        while (y < 0) {
+            y += screenHeightMetatiles;
+        }
+
+        const u32 screenRelativeX = x % screenWidthMetatiles;
+        const u32 screenRelativeY = y % screenHeightMetatiles;
         return screenRelativeY * screenWidthMetatiles + screenRelativeX;
     }
 
@@ -171,6 +182,23 @@ namespace Level {
                 0.0f
             };
         }
+    }
+
+    bool TileInLevelBounds(const Level* pLevel, IVec2 tilemapCoord) {
+        if (tilemapCoord.x < 0 || tilemapCoord.y < 0) {
+            return false;
+        }
+
+        const bool verticalScroll = pLevel->flags & LFLAGS_SCROLL_VERTICAL;
+
+        s32 xMax = verticalScroll ? screenWidthMetatiles : pLevel->screenCount * screenWidthMetatiles;
+        r32 yMax = verticalScroll ? pLevel->screenCount * screenHeightMetatiles : screenHeightMetatiles;
+
+        if (tilemapCoord.x >= xMax || tilemapCoord.y >= yMax) {
+            return false;
+        }
+
+        return true;
     }
 }
 
