@@ -69,6 +69,10 @@ namespace Editor {
                 ImGui::TreePop();
             }
 
+            if (ImGui::Button("Save palette to file")) {
+                Rendering::Util::SavePaletteToFile("generated.pal");
+            }
+
             ImGui::End();
         }
 	}

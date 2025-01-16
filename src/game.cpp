@@ -490,7 +490,7 @@ namespace Game {
         Rendering::Sprite* pNextSprite = pSprites;
         
         DrawDamageNumbers(&pNextSprite);
-        DrawShield(&pNextSprite, dt);
+        //DrawShield(&pNextSprite, dt);
         DrawPlayer(&pNextSprite, dt);
         DrawArrows(&pNextSprite);
         DrawHits(&pNextSprite);

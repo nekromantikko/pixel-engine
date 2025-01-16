@@ -1,10 +1,24 @@
 #include "rendering_util.h"
 #include "system.h"
+#include "math.h"
+#include <stdio.h>
 
 namespace Rendering
 {
 	namespace Util
 	{
+		struct RIFFHeader {
+			char signature[4]; // Should be 'RIFF'
+			u32 size;
+			char type[4];
+		};
+		struct PaletteChunkHeader {
+			char signature[4];
+			u32 size;
+			u16 version;
+			u16 colorCount;
+		};
+
 		void CreateChrSheet(const char* fname, ChrSheet* outSheet) {
 			u32 imgWidth, imgHeight;
 			u16 bpp;
@@ -50,6 +64,107 @@ namespace Rendering
 
 			memcpy(outColors, palData, 8 * 8);
 			free(palData);
+		}
+
+		static inline float ToSrgb(float c) { 
+			return(c < 0.0031308 ? c * 12.92 : 1.055 * pow(c, 0.41666) - 0.055); 
+		}
+
+		static inline float GetColorBrightness(int brightnessLevels, int offset) {
+			//return exp((log(2) / (brightnessLevels - 1)) * offset) - 1;
+			return (float)offset / (brightnessLevels - 1);
+		}
+
+		void GeneratePaletteColors(u32* data) {
+			for (int row = 0; row < 4; row++) {
+
+				u32* rowPixels = data + (row * 16);
+
+				for (int col = 0; col < 16; col++) {
+
+					float y, u, v;
+
+					// Greys in first column
+					if (col == 0) {
+						const float brightness = GetColorBrightness(4, row);
+						y = brightness * brightness;
+						u = 0.0f;
+						v = 0.0f;
+					}
+					else {
+						const int id = (col - 1) + row * 15;
+						const int hue = id / 5;
+						const float brightness = GetColorBrightness(6, (id % 5) + 1);
+
+						const float angleStep = (2 * pi) / 12;
+						const float angle = angleStep * hue;
+
+						y = brightness * brightness;
+						u = cos(angle) * 0.5 * brightness;
+						v = sin(angle) * 0.5 * brightness;
+					}
+
+					// Convert YUV to RGB
+					float r = y + v * 1.139883;
+					float b = y + u * 2.032062;
+					float g = (y - r * 0.299 - b * 0.114) / 0.587;
+
+					r = ToSrgb(Max(Min(r, 1), 0));
+					g = ToSrgb(Max(Min(g, 1), 0));
+					b = ToSrgb(Max(Min(b, 1), 0));
+
+					u32* pixel = rowPixels + col;
+					u8* pixelBytes = (u8*)pixel;
+
+					pixelBytes[0] = (u8)(r * 255);
+					pixelBytes[1] = (u8)(g * 255);
+					pixelBytes[2] = (u8)(b * 255);
+					pixelBytes[3] = 0;
+				}
+			}
+		}
+
+		void SavePaletteToFile(const char* fname) {
+			u32 data[64];
+			GeneratePaletteColors(data);
+			const u32 dataSize = 64 * sizeof(u32);
+
+			FILE* pFile;
+			fopen_s(&pFile, fname, "wb");
+
+			if (pFile == NULL) {
+				DEBUG_ERROR("Failed to write palette file\n");
+			}
+
+			RIFFHeader header{};
+			header.signature[0] = 'R';
+			header.signature[1] = 'I';
+			header.signature[2] = 'F';
+			header.signature[3] = 'F';
+
+			header.type[0] = 'P';
+			header.type[1] = 'A';
+			header.type[2] = 'L';
+			header.type[3] = ' ';
+
+			header.size = dataSize + sizeof(PaletteChunkHeader);
+
+			fwrite(&header, sizeof(RIFFHeader), 1, pFile);
+
+			PaletteChunkHeader chunk{};
+			chunk.signature[0] = 'd';
+			chunk.signature[1] = 'a';
+			chunk.signature[2] = 't';
+			chunk.signature[3] = 'a';
+			
+			chunk.size = dataSize;
+			chunk.version = 0x0300;
+			chunk.colorCount = 64;
+
+			fwrite(&chunk, sizeof(PaletteChunkHeader), 1, pFile);
+			fwrite(data, dataSize, 1, pFile);
+
+			fclose(pFile);
 		}
 
 		u8 GetPaletteIndexFromNametableTileAttrib(const Nametable& nametable, s32 xTile, s32 yTile) {

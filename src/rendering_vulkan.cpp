@@ -7,21 +7,12 @@
 #include <stdlib.h>
 #include <cstring>
 #include "rendering.h"
+#include "rendering_util.h"
 #include "system.h"
 #include <imgui_impl_vulkan.h>
 
 namespace Rendering
 {
-	struct RIFFHeader {
-		const char signature[4]; // Should be 'RIFF'
-		u32 size;
-		const char type[4];
-	};
-	struct PaletteChunkHeader {
-		char signature[4];
-		u32 size;
-	};
-
 	struct ScanlineData {
 		u32 spriteCount;
 		u32 spriteIndices[MAX_SPRITES_PER_SCANLINE];
@@ -795,43 +786,10 @@ namespace Rendering
 	}
 
 	void CreatePalette(RenderContext* pContext) {
-		u32 *paletteData = nullptr;
-		VkDeviceSize paletteSize = 0;
-		u16 colorCount = 0;
+		u32 paletteData[64];
+		const VkDeviceSize paletteSize = sizeof(u32) * 64;
 
-		u32 palFileSize;
-		char *palBin = AllocFileBytes("assets/famicube.pal", palFileSize);
-		DEBUG_LOG("%d\n", palFileSize);
-		if (palFileSize < sizeof(RIFFHeader)) {
-			DEBUG_ERROR("Invalid palette file!\n");
-		}
-		RIFFHeader* header = (RIFFHeader*)palBin;
-		DEBUG_LOG("%.4s\n", header->signature);
-		DEBUG_LOG("%.4s\n", header->type);
-		if (strncmp(header->signature, "RIFF", 4) != 0 || strncmp(header->type, "PAL ", 4) != 0 || header->size + 8 != palFileSize){
-			DEBUG_ERROR("Invalid palette file!\n");
-		}
-		char* pos = palBin + sizeof(RIFFHeader);
-		char* fileEnd = pos + header->size;
-		while (pos + 1 < fileEnd) {
-			PaletteChunkHeader* chunkHeader = (PaletteChunkHeader*)pos;
-			pos += sizeof(PaletteChunkHeader);
-			if (strncmp(chunkHeader->signature, "data", 4) == 0) {
-				u16* palVer = (u16*)pos;
-				DEBUG_LOG("Palette version = 0x%x\n", *palVer);
-				colorCount = *(palVer + 1);
-				DEBUG_LOG("Color count = %d\n", colorCount);
-				paletteData = ((u32*)pos) + 1;
-				paletteSize = colorCount * sizeof(u32);
-				break;
-			}
-			pos += chunkHeader->size;
-		}
-
-		DEBUG_LOG("0x%x\n", paletteData);
-		if (paletteData == nullptr || colorCount == 0) {
-			DEBUG_ERROR("No palette data found in file!\n");
-		}
+		Util::GeneratePaletteColors(paletteData);
 
 		Buffer stagingBuffer;
 		AllocateBuffer(pContext, paletteSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer);
@@ -840,7 +798,7 @@ namespace Rendering
 		vkMapMemory(pContext->device, stagingBuffer.memory, 0, paletteSize, 0, &data);
 		memcpy(data, paletteData, paletteSize);
 		vkUnmapMemory(pContext->device, stagingBuffer.memory);
-		free(palBin);
+		//free(palBin);
 
 		CreateImage(pContext, 64, 1, VK_IMAGE_TYPE_1D, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, pContext->paletteImage);
 
