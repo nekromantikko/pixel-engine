@@ -114,6 +114,8 @@ namespace Game {
         u32 wingFrame;
         s32 vOffset;
         bool slowFall;
+        bool inAir;
+        bool doubleJumped;
     };
 
     PlayerState playerState{};
@@ -682,8 +684,12 @@ namespace Game {
             pRenderSettings->useCRTFilter = !pRenderSettings->useCRTFilter;
         }
 
-        if (Input::Pressed(Input::A)) {
+        if (Input::Pressed(Input::A) && (!playerState.inAir || !playerState.doubleJumped)) {
             playerState.vSpeed = -31.25f;
+            if (playerState.inAir) {
+                playerState.doubleJumped = true;
+            }
+
             // Trigger new flap
             playerState.wingFrame++;
         }
@@ -709,8 +715,7 @@ namespace Game {
         }
 
         // Enter door
-        // TODO: Only allow entering when on the ground
-        if (Input::Pressed(Input::DPadUp)) {
+        if (Input::Pressed(Input::DPadUp) && !playerState.inAir) {
             const Vec2 checkPos = { playerState.x, playerState.y + 1.0f };
             const u32 screenInd = Level::WorldToScreenIndex(pCurrentLevel, checkPos);
             const u32 tileInd = Level::WorldToMetatileIndex(checkPos);
@@ -749,7 +754,17 @@ namespace Game {
         Collision::SweepBoxVertical(pCurrentLevel, hitboxPos, hitboxDimensions, dy, hit);
         playerState.y = hit.location.y;
         if (hit.blockingHit) {
+            // If ground
+            if (playerState.vSpeed > 0) {
+                playerState.inAir = false;
+                playerState.doubleJumped = false;
+            }
+
             playerState.vSpeed = 0;
+        }
+        else {
+            // TODO: Add coyote time
+            playerState.inAir = true;
         }
     }
 
