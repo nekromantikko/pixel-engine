@@ -116,6 +116,7 @@ namespace Game {
         bool slowFall;
         bool inAir;
         bool doubleJumped;
+        r32 damageTimer;
     };
 
     PlayerState playerState{};
@@ -166,7 +167,7 @@ namespace Game {
 
     bool paused = false;
 
-    constexpr r32 enemyDamageDelay = 0.5f;
+    constexpr r32 damageDelay = 0.5f;
 
     Rendering::Sprite* pSprites;
     Rendering::ChrSheet* pChr;
@@ -421,6 +422,10 @@ namespace Game {
         // Draw player
         Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[playerState.aMode];
         Rendering::Util::CopyMetasprite(characterMetasprite.spritesRelativePos, *ppNextSprite, characterMetasprite.spriteCount, drawPos, playerState.direction == DirLeft, false);
+        if (playerState.damageTimer > 0) {
+            u8 damagePalette = (u8)(gameplaySecondsElapsed * 20) % 4;
+            Rendering::Util::SetSpritesPalette(*ppNextSprite, characterMetasprite.spriteCount, damagePalette);
+        }
         *ppNextSprite += characterMetasprite.spriteCount;
     }
 
@@ -919,6 +924,11 @@ namespace Game {
                 PlayerShoot(dt);
                 PlayerAnimate(dt);
 
+                if (playerState.damageTimer > dt) {
+                    playerState.damageTimer -= dt;
+                }
+                else playerState.damageTimer = 0.0f;
+
                 // Update arrows
                 for (int i = 0; i < arrowPool.Count(); i++) {
                     PoolHandle<Arrow> handle = arrowPool.GetHandle(i);
@@ -1003,7 +1013,7 @@ namespace Game {
 
                             s32 damage = (rand() % 2) + 1;
                             enemy->health -= damage;
-                            enemy->damageTimer = enemyDamageDelay;
+                            enemy->damageTimer = damageDelay;
 
                             // Add damage numbers
                             // Random point inside enemy hitbox
@@ -1064,6 +1074,31 @@ namespace Game {
                     static const r32 amplitude = 7.5f;
                     r32 sineTime = sin(gameplaySecondsElapsed);
                     enemy->pos.y = enemy->spawnHeight + sineTime * amplitude;
+
+                    // Player take damage
+                    if (playerState.damageTimer == 0) {
+                        static const Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
+                        static const Collision::Collider enemyHitbox = enemyMetasprite.colliders[0];
+
+                        const Vec2 hitboxPos = Vec2{ enemy->pos.x + enemyHitbox.xOffset, enemy->pos.y + enemyHitbox.yOffset };
+                        const Vec2 hitboxDimensions = Vec2{ enemyHitbox.width, enemyHitbox.height };
+
+                        const Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[0];
+                        const Collision::Collider playerHitbox = characterMetasprite.colliders[0];
+
+                        const Vec2 playerHitboxPos = Vec2{ playerState.x + playerHitbox.xOffset, playerState.y + playerHitbox.yOffset };
+                        const Vec2 playerHitboxDimensions = Vec2{ playerHitbox.width, playerHitbox.height };
+
+                        if (hitboxPos.x - hitboxDimensions.x / 2.0f < playerHitboxPos.x + playerHitboxDimensions.x / 2.0f &&
+                            hitboxPos.x + hitboxDimensions.x / 2.0f > playerHitboxPos.x - playerHitboxDimensions.x / 2.0f &&
+                            hitboxPos.y - hitboxDimensions.y / 2.0f < playerHitboxPos.y + playerHitboxDimensions.y / 2.0f &&
+                            hitboxPos.y + hitboxDimensions.y / 2.0f > playerHitboxPos.y - playerHitboxDimensions.y / 2.0f) {
+
+                            playerState.damageTimer = damageDelay;
+                            // playerState.hSpeed = -8.0f * playerState.direction;
+                            // playerState.vSpeed = -16.0f;
+                        }
+                    }
 
                     if (enemy->damageTimer > dt) {
                         enemy->damageTimer -= dt;
