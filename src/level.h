@@ -22,6 +22,7 @@ namespace Level {
     enum ActorType : u8 {
         ACTOR_NONE = 0,
         ACTOR_DOOR = 1,
+        ACTOR_SKULL_ENEMY = 2,
 
     };
 

@@ -12,8 +12,8 @@
 namespace Editor {
 	namespace LevelEditor {
 
-        constexpr u32 actorTypeCount = 2;
-        constexpr const char* actorTypeNames[actorTypeCount] = { "None", "Door" };
+        constexpr u32 actorTypeCount = 3;
+        constexpr const char* actorTypeNames[actorTypeCount] = { "None", "Door", "Skull" };
 
         Level::ActorType selectedActorType = Level::ACTOR_NONE;
         bool actorMode = false;

@@ -153,12 +153,19 @@ namespace Game {
     };
     Pool<DamageNumber> damageNumberPool;
 
+
+    struct Enemy {
+        Vec2 pos;
+        r32 spawnHeight;
+        s32 health;
+        r32 damageTimer;
+    };
+    Pool<Enemy> enemyPool;
+
     Rendering::ChrSheet playerBank;
 
     bool paused = false;
 
-    s32 enemyHealth = 1000;
-    r32 enemyDamageTimer = 0;
     constexpr r32 enemyDamageDelay = 0.5f;
 
     Rendering::Sprite* pSprites;
@@ -209,6 +216,29 @@ namespace Game {
             }
         }
 
+        enemyPool.Clear();
+        // Spawn actors very stupidly
+        for (u32 i = 0; i < pCurrentLevel->screenCount; i++) {
+            const Level::Screen& screen = pCurrentLevel->screens[i];
+
+            for (u32 t = 0; t < Level::screenWidthMetatiles * Level::screenHeightMetatiles; t++) {
+                const Level::LevelTile& tile = screen.tiles[t];
+
+                if (tile.actorType == Level::ACTOR_SKULL_ENEMY) {
+                    const Vec2 screenRelativePos = Level::TileIndexToScreenOffset(t);
+                    const Vec2 worldPos = Level::ScreenOffsetToWorld(pCurrentLevel, screenRelativePos, i);
+
+                    PoolHandle<Enemy> handle = enemyPool.Add();
+                    Enemy* enemy = enemyPool[handle];
+
+                    enemy->pos = worldPos;
+                    enemy->spawnHeight = worldPos.y;
+                    enemy->health = 10;
+                    enemy->damageTimer = 0.0f;
+                }
+            }
+        }
+
         if (refresh) {
             RefreshViewport(&viewport, pNametables, pCurrentLevel);
         }
@@ -248,6 +278,7 @@ namespace Game {
         arrowPool.Init(512);
         hitPool.Init(512);
         damageNumberPool.Init(512);
+        enemyPool.Init(512);
 
         Tileset::LoadTileset("assets/forest.til");
         Metasprite::LoadMetasprites("assets/meta.spr");
@@ -485,6 +516,23 @@ namespace Game {
         }
     }
 
+    static void DrawEnemies(Rendering::Sprite** ppNextSprite, r64 dt) {
+        Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
+
+        for (int i = 0; i < enemyPool.Count(); i++) {
+            PoolHandle<Enemy> handle = enemyPool.GetHandle(i);
+            Enemy* enemy = enemyPool.Get(handle);
+
+            IVec2 enemyPixelPos = WorldPosToScreenPixels(enemy->pos);
+            Rendering::Util::CopyMetasprite(enemyMetasprite.spritesRelativePos, *ppNextSprite, enemyMetasprite.spriteCount, enemyPixelPos, false, false);
+            if (enemy->damageTimer > 0) {
+                u8 damagePalette = (u8)(gameplaySecondsElapsed * 20) % 4;
+                Rendering::Util::SetSpritesPalette(*ppNextSprite, enemyMetasprite.spriteCount, damagePalette);
+            }
+            *ppNextSprite += enemyMetasprite.spriteCount;
+        }
+    }
+
     // TODO: Sprite position update could be separate from all the other stuff like animation that is more like game logic
     // It would make it easier to pause gameplay logic and keep positions updating for the editor
     void Render(Rendering::RenderContext* pRenderContext, r64 dt) {
@@ -496,18 +544,7 @@ namespace Game {
         DrawPlayer(&pNextSprite, dt);
         DrawArrows(&pNextSprite);
         DrawHits(&pNextSprite);
-
-        // Draw enemy
-        if (enemyHealth > 0) {
-            Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
-            IVec2 enemyPixelPos = WorldPosToScreenPixels(enemyPos);
-            Rendering::Util::CopyMetasprite(enemyMetasprite.spritesRelativePos, pNextSprite, enemyMetasprite.spriteCount, enemyPixelPos, false, false);
-            if (enemyDamageTimer > 0) {
-                u8 damagePalette = (u8)(gameplaySecondsElapsed * 20) % 4;
-                Rendering::Util::SetSpritesPalette(pNextSprite, enemyMetasprite.spriteCount, damagePalette);
-            }
-            pNextSprite += enemyMetasprite.spriteCount;
-        }
+        DrawEnemies(&pNextSprite, dt);
 
         //UpdateHUD(pRenderContext, dt);
         //RenderHUD(pRenderContext);
@@ -882,11 +919,6 @@ namespace Game {
                 PlayerShoot(dt);
                 PlayerAnimate(dt);
 
-                Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
-                Collision::Collider enemyHitbox = enemyMetasprite.colliders[0];
-                Vec2 enemyHitboxPos = Vec2{ enemyPos.x + enemyHitbox.xOffset, enemyPos.y + enemyHitbox.yOffset };
-                Vec2 enemyHitboxDimensions = Vec2{ enemyHitbox.width, enemyHitbox.height };
-
                 // Update arrows
                 for (int i = 0; i < arrowPool.Count(); i++) {
                     PoolHandle<Arrow> handle = arrowPool.GetHandle(i);
@@ -944,9 +976,20 @@ namespace Game {
                         arrow->bounces--;
                     } else arrow->pos.y += dy;
 
+                    hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
+
                     // Collision with enemy
-                    if (enemyHealth > 0) {
-                        hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
+                    // TODO: Need a smarter collision system soon...
+                    for (int e = 0; e < enemyPool.Count(); e++) {
+                        static const Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
+                        static const Collision::Collider enemyHitbox = enemyMetasprite.colliders[0];
+
+                        PoolHandle<Enemy> enemyHandle = enemyPool.GetHandle(e);
+                        Enemy* enemy = enemyPool.Get(enemyHandle);
+
+                        const Vec2 enemyHitboxPos = Vec2{ enemy->pos.x + enemyHitbox.xOffset, enemy->pos.y + enemyHitbox.yOffset };
+                        const Vec2 enemyHitboxDimensions = Vec2{ enemyHitbox.width, enemyHitbox.height };
+
                         if (hitboxPos.x - hitboxDimensions.x / 2.0f < enemyHitboxPos.x + enemyHitboxDimensions.x / 2.0f &&
                             hitboxPos.x + hitboxDimensions.x / 2.0f > enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f &&
                             hitboxPos.y - hitboxDimensions.y / 2.0f < enemyHitboxPos.y + enemyHitboxDimensions.y / 2.0f &&
@@ -958,9 +1001,9 @@ namespace Game {
                             impact->pos = arrow->pos;
                             impact->accumulator = 0.0f;
 
-                            s32 damage = (rand() % 10) + 5;
-                            enemyHealth -= damage;
-                            enemyDamageTimer = enemyDamageDelay;
+                            s32 damage = (rand() % 2) + 1;
+                            enemy->health -= damage;
+                            enemy->damageTimer = enemyDamageDelay;
 
                             // Add damage numbers
                             // Random point inside enemy hitbox
@@ -1008,17 +1051,25 @@ namespace Game {
                     dmgNumber->pos.y += dmgNumberVel * dt;
                 }
 
-                // Update enemy pos
-                const r32 yMid = 27.f;
-                const r32 amplitude = 7.5f;
-                r32 sineTime = sin(gameplaySecondsElapsed);
-                enemyPos.y = yMid + sineTime * amplitude;
+                // Update enemies
+                for (int i = 0; i < enemyPool.Count(); i++) {
+                    PoolHandle<Enemy> handle = enemyPool.GetHandle(i);
+                    Enemy* enemy = enemyPool.Get(handle);
 
-                // Enemy damagio
-                if (enemyDamageTimer > dt) {
-                    enemyDamageTimer -= dt;
+                    if (enemy->health <= 0) {
+                        enemyPool.Remove(handle);
+                        continue;
+                    }
+
+                    static const r32 amplitude = 7.5f;
+                    r32 sineTime = sin(gameplaySecondsElapsed);
+                    enemy->pos.y = enemy->spawnHeight + sineTime * amplitude;
+
+                    if (enemy->damageTimer > dt) {
+                        enemy->damageTimer -= dt;
+                    }
+                    else enemy->damageTimer = 0.0f;
                 }
-                else enemyDamageTimer = 0.0f;
 
                 UpdateViewport();
             }
