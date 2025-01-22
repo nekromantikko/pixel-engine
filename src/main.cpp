@@ -145,7 +145,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
     SDL_Init(SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS | SDL_INIT_HAPTIC);
     
     Game::Initialize(pRenderContext);
-    Game::LoadLevel(0);
+    // Game::LoadLevel(0);
 
     running = true;
     while (running) {
