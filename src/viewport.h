@@ -14,4 +14,3 @@ struct Viewport {
 
 void MoveViewport(Viewport *viewport, Rendering::Nametable* pNametable, const Level::Level* const pLevel, r32 dx, r32 dy, bool loadTiles = true);
 void RefreshViewport(Viewport* viewport, Rendering::Nametable* pNametable, const Level::Level* const pLevel);
-u8 GetMetatileAtNametablePosition(const Level::Level* const pLevel, const Viewport* pViewport, u32 nametableIndex, u32 tileX, u32 tileY);

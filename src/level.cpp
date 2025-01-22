@@ -137,13 +137,18 @@ namespace Level {
             TilemapToWorld(tilemap.y)
         };
     }
+    Vec2 TilemapToScreenOffset(IVec2 tilemap) {
+        return {
+            (float)(tilemap.x % screenWidthMetatiles),
+            (float)(tilemap.y % screenHeightMetatiles)
+        };
+    }
     u32 TilemapToScreenIndex(const Level *pLevel, IVec2 tilemap) {
-        if (pLevel->flags & LFLAGS_SCROLL_VERTICAL) {
-            return tilemap.y / screenHeightMetatiles;
-        }
-        else {
-            return tilemap.x / screenWidthMetatiles;
-        }
+        const bool verticalScroll = pLevel->flags & LFLAGS_SCROLL_VERTICAL;
+        // TODO: Add actual level width property
+        u32 levelWidth = verticalScroll ? 1 : pLevel->screenCount;
+
+        return ((tilemap.x / screenWidthMetatiles) % levelWidth + (tilemap.y / screenHeightMetatiles) * levelWidth) % pLevel->screenCount;
     }
     u32 TilemapToMetatileIndex(IVec2 tilemap) {
         // Eliminate negative coordinates:
@@ -160,6 +165,9 @@ namespace Level {
         const u32 screenRelativeX = x % screenWidthMetatiles;
         const u32 screenRelativeY = y % screenHeightMetatiles;
         return screenRelativeY * screenWidthMetatiles + screenRelativeX;
+    }
+    u32 TilemapToNametableIndex(IVec2 tilemap) {
+        return (tilemap.x / nametableWidthMetatiles + tilemap.y / nametableHeightMetatiles) % NAMETABLE_COUNT;
     }
 
     Vec2 TileIndexToScreenOffset(u32 tileIndex) {
