@@ -43,11 +43,12 @@ namespace Game {
 #define HUD_TILE_COUNT 128
 
     enum GameState {
+        StateTitleScreen,
         StatePlaying,
         StateLevelTransition,
     };
 
-    GameState state = StatePlaying;
+    GameState state = StateTitleScreen;
 
     struct LevelTransitionState {
         // Coordinates in metatiles
@@ -537,31 +538,6 @@ namespace Game {
         }
     }
 
-    // TODO: Sprite position update could be separate from all the other stuff like animation that is more like game logic
-    // It would make it easier to pause gameplay logic and keep positions updating for the editor
-    void Render(r64 dt) {
-        Rendering::Util::ClearSprites(pSprites, 256);
-        Rendering::Sprite* pNextSprite = pSprites;
-        
-        DrawDamageNumbers(&pNextSprite);
-        //DrawShield(&pNextSprite, dt);
-        DrawPlayer(&pNextSprite, dt);
-        DrawArrows(&pNextSprite);
-        DrawHits(&pNextSprite);
-        DrawEnemies(&pNextSprite, dt);
-
-        UpdateHUD(dt);
-
-        // Update scroll
-        const Rendering::Scanline state = {
-            (s32)(viewport.x * TILE_SIZE),
-            (s32)(viewport.y * TILE_SIZE)
-        };
-        for (int i = 16; i < SCANLINE_COUNT; i++) {
-            pScanlines[i] = state;
-        }
-    }
-
     constexpr Vec2 viewportScrollThreshold = { 8.0f, 6.0f };
 
     static void UpdateViewport(bool loadTiles = true) {
@@ -631,7 +607,7 @@ namespace Game {
                 LoadLevel(nextLevel, nextLevelScreenIndex, false);
                 ReloadLevel(false);
                 UpdateViewport(false);
-                Render(dt);
+                // Render(dt);
 
                 TriggerLevelTransition(false);
             }
@@ -900,7 +876,49 @@ namespace Game {
         secondsElapsed += dt;
         averageFramerate = GetAverageFramerate(dt);
 
-        if (state == StateLevelTransition) {
+        static Rendering::Sprite* pNextSprite = pSprites;
+
+        const u32 spritesToClear = pNextSprite - pSprites;
+        Rendering::Util::ClearSprites(pSprites, spritesToClear);
+        pNextSprite = pSprites;
+
+        if (state == StateTitleScreen) {
+            // Render cool title screen
+            const char* text = "Press Start!";
+            const u32 x = (NAMETABLE_WIDTH_TILES - strlen(text)) / 2;
+            const u32 y = NAMETABLE_HEIGHT_TILES / 2;
+            const u32 tileIndex = x + NAMETABLE_WIDTH_TILES * y;
+            u8* dst = &pNametables[0].tiles[tileIndex];
+            strcpy((char*)dst, text);
+
+            // Draw some sprites spinning around
+            static const r32 radius = 8.0f;
+            static const u32 spriteCount = 8;
+            static r32 rot = 0.0f;
+
+            rot += dt;
+
+            const r32 angleOffset = pi * 2 / spriteCount;
+            for (u32 i = 0; i < spriteCount; i++) {
+                const r32 angle = rot + angleOffset * i;
+                Vec2 pos = { cos(angle) * radius + NAMETABLE_WIDTH_TILES / 2, sin(angle) * radius + NAMETABLE_HEIGHT_TILES / 2 };
+                IVec2 drawPos = WorldPosToScreenPixels(pos);
+
+                Rendering::Sprite sprite = {
+                    drawPos.y,
+                    drawPos.x,
+                    32,
+                    0
+                };
+                *((pNextSprite)++) = sprite;
+            }
+
+            if (Input::Pressed(Input::Start)) {
+                state = StatePlaying;
+                LoadLevel(0);
+            }
+        }
+        else if (state == StateLevelTransition) {
             UpdateLevelTransition(dt);
         }
         else {
@@ -1097,8 +1115,23 @@ namespace Game {
                 UpdateViewport();
             }
 
-            // TODO: Maybe change the name of this? (It's not actually rendering, just setting up render state)
-            Render(dt);
+            DrawDamageNumbers(&pNextSprite);
+            //DrawShield(&pNextSprite, dt);
+            DrawPlayer(&pNextSprite, dt);
+            DrawArrows(&pNextSprite);
+            DrawHits(&pNextSprite);
+            DrawEnemies(&pNextSprite, dt);
+
+            UpdateHUD(dt);
+
+            // Update scroll
+            const Rendering::Scanline state = {
+                (s32)(viewport.x * TILE_SIZE),
+                (s32)(viewport.y * TILE_SIZE)
+            };
+            for (int i = 16; i < SCANLINE_COUNT; i++) {
+                pScanlines[i] = state;
+            }
         }
 
     }
