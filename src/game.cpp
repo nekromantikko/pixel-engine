@@ -14,9 +14,6 @@
 #include <imgui.h>
 #include "math.h"
 
-static constexpr u32 viewportWidthInMetatiles = VIEWPORT_WIDTH_TILES / Tileset::metatileWorldSize;
-static constexpr u32 viewportHeightInMetatiles = VIEWPORT_HEIGHT_TILES / Tileset::metatileWorldSize;
-
 namespace Game {
     r64 secondsElapsed = 0.0f;
     r64 averageFramerate;
@@ -575,7 +572,7 @@ namespace Game {
 
         levelTransitionState.origin = center;
         levelTransitionState.windowWorldPos = transitionWindowPos;
-        const IVec2 transitionWindowSize = IVec2{ viewportWidthInMetatiles + bufferZoneWidth * 2, viewportHeightInMetatiles + bufferZoneWidth * 2 };
+        const IVec2 transitionWindowSize = IVec2{ Level::viewportWidthMetatiles + bufferZoneWidth * 2, Level::viewportHeightMetatiles + bufferZoneWidth * 2 };
         levelTransitionState.windowSize = transitionWindowSize;
 
         const u32 stepsToTopLeft = center.x + center.y;
@@ -607,7 +604,15 @@ namespace Game {
                 LoadLevel(nextLevel, nextLevelScreenIndex, false);
                 ReloadLevel(false);
                 UpdateViewport(false);
-                // Render(dt);
+
+                // Update scroll
+                const Rendering::Scanline state = {
+                    (s32)(viewport.x * TILE_SIZE),
+                    (s32)(viewport.y * TILE_SIZE)
+                };
+                for (int i = 0; i < SCANLINE_COUNT; i++) {
+                    pScanlines[i] = state;
+                }
 
                 TriggerLevelTransition(false);
             }
@@ -643,21 +648,23 @@ namespace Game {
                     bool shouldTransition = levelTransitionState.direction ? (levelTransitionState.currentStep == levelTransitionState.steps - distance) : (levelTransitionState.currentStep == distance);
 
                     if (shouldTransition) {
-                        const u32 screenIndex = Level::TilemapToScreenIndex(pCurrentLevel, { metatileX, metatileY });
-                        if (screenIndex >= pCurrentLevel->screenCount) {
-                            continue;
-                        }
-                        const u32 nametableInd = screenIndex % NAMETABLE_COUNT;
+                        const u32 screenOffsetX = metatileX % Level::screenWidthMetatiles;
+                        const u32 nametableOffsetX = metatileX % Level::nametableWidthMetatiles;
 
-                        const u32 screenTileIndex = Level::TilemapToMetatileIndex({ metatileX, metatileY });
-                        const u8 metatileIndex = pCurrentLevel->screens[screenIndex].tiles[screenTileIndex].metatile;
-                        const Vec2 screenTilePos = Level::TileIndexToScreenOffset(screenTileIndex);
+                        const u32 screenIndex = Level::TilemapToScreenIndex(pCurrentLevel, { metatileX, metatileY });
+                        const u32 screenOffsetY = metatileY % Level::screenHeightMetatiles;
+
+                        const u32 nametableIndex = Level::TilemapToNametableIndex({ metatileX, metatileY });
+                        const u32 nametableOffsetY = metatileY % Level::nametableHeightMetatiles;
+
+                        const u32 screenMetatileIndex = Level::TilemapToMetatileIndex({ metatileX, metatileY });
+                        const u8 tilesetIndex = pCurrentLevel->screens[screenIndex].tiles[screenMetatileIndex].metatile;
 
                         if (levelTransitionState.direction) {
-                            Tileset::CopyMetatileToNametable(&pNametables[nametableInd], (u16)screenTilePos.x, (u16)screenTilePos.y, 16);
+                            Tileset::CopyMetatileToNametable(&pNametables[nametableIndex], (u16)nametableOffsetX * Tileset::metatileWorldSize, (u16)nametableOffsetY * Tileset::metatileWorldSize, 16);
                         }
                         else {
-                            Tileset::CopyMetatileToNametable(&pNametables[nametableInd], (u16)screenTilePos.x, (u16)screenTilePos.y, metatileIndex);
+                            Tileset::CopyMetatileToNametable(&pNametables[nametableIndex], (u16)nametableOffsetX * Tileset::metatileWorldSize, (u16)nametableOffsetY * Tileset::metatileWorldSize, tilesetIndex);
                         }
                     }
                 }
@@ -885,9 +892,9 @@ namespace Game {
         if (state == StateTitleScreen) {
             // Render cool title screen
             const char* text = "Press Start!";
-            const u32 x = (NAMETABLE_WIDTH_TILES - strlen(text)) / 2;
-            const u32 y = NAMETABLE_HEIGHT_TILES / 2;
-            const u32 tileIndex = x + NAMETABLE_WIDTH_TILES * y;
+            const u32 x = (VIEWPORT_WIDTH_TILES - strlen(text)) / 2;
+            const u32 y = VIEWPORT_HEIGHT_TILES / 2;
+            const u32 tileIndex = x + VIEWPORT_WIDTH_TILES * y;
             u8* dst = &pNametables[0].tiles[tileIndex];
             strcpy((char*)dst, text);
 
@@ -901,7 +908,7 @@ namespace Game {
             const r32 angleOffset = pi * 2 / spriteCount;
             for (u32 i = 0; i < spriteCount; i++) {
                 const r32 angle = rot + angleOffset * i;
-                Vec2 pos = { cos(angle) * radius + NAMETABLE_WIDTH_TILES / 2, sin(angle) * radius + NAMETABLE_HEIGHT_TILES / 2 };
+                Vec2 pos = { cos(angle) * radius + VIEWPORT_WIDTH_TILES / 2, sin(angle) * radius + VIEWPORT_HEIGHT_TILES / 2 };
                 IVec2 drawPos = WorldPosToScreenPixels(pos);
 
                 Rendering::Sprite sprite = {
@@ -1122,14 +1129,14 @@ namespace Game {
             DrawHits(&pNextSprite);
             DrawEnemies(&pNextSprite, dt);
 
-            UpdateHUD(dt);
+            //UpdateHUD(dt);
 
             // Update scroll
             const Rendering::Scanline state = {
                 (s32)(viewport.x * TILE_SIZE),
                 (s32)(viewport.y * TILE_SIZE)
             };
-            for (int i = 16; i < SCANLINE_COUNT; i++) {
+            for (int i = 0; i < SCANLINE_COUNT; i++) {
                 pScanlines[i] = state;
             }
         }

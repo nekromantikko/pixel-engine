@@ -5,10 +5,14 @@
 
 namespace Level {
 
-    constexpr u32 screenWidthTiles = NAMETABLE_WIDTH_TILES;
+    constexpr u32 screenWidthTiles = VIEWPORT_WIDTH_TILES;
     constexpr u32 screenWidthMetatiles = screenWidthTiles / Tileset::metatileWorldSize;
-    constexpr u32 screenHeightTiles = NAMETABLE_HEIGHT_TILES;
+    constexpr u32 screenHeightTiles = VIEWPORT_HEIGHT_TILES;
     constexpr u32 screenHeightMetatiles = screenHeightTiles / Tileset::metatileWorldSize;
+    constexpr u32 nametableWidthMetatiles = NAMETABLE_WIDTH_TILES / Tileset::metatileWorldSize;
+    constexpr u32 nametableHeightMetatiles = NAMETABLE_HEIGHT_TILES / Tileset::metatileWorldSize;
+    constexpr u32 viewportWidthMetatiles = VIEWPORT_WIDTH_TILES / Tileset::metatileWorldSize;
+    constexpr u32 viewportHeightMetatiles = VIEWPORT_HEIGHT_TILES / Tileset::metatileWorldSize;
 
     constexpr u32 maxLevelCount = 256;
     constexpr u32 levelMaxNameLength = 256;
@@ -67,8 +71,10 @@ namespace Level {
 
     r32 TilemapToWorld(s32 tilemap);
     Vec2 TilemapToWorld(IVec2 tilemap);
+    Vec2 TilemapToScreenOffset(IVec2 tilemap);
     u32 TilemapToScreenIndex(const Level* pLevel, IVec2 tilemap);
     u32 TilemapToMetatileIndex(IVec2 tilemap);
+    u32 TilemapToNametableIndex(IVec2 tilemap);
 
     Vec2 TileIndexToScreenOffset(u32 tileIndex);
 
