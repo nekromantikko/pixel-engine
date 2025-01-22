@@ -172,6 +172,7 @@ namespace Game {
     Rendering::Sprite* pSprites;
     Rendering::ChrSheet* pChr;
     Rendering::Nametable* pNametables;
+    Rendering::Scanline* pScanlines;
 
     void LoadLevel(u32 index, s32 screenIndex, bool refresh) {
         if (index >= Level::maxLevelCount) {
@@ -287,6 +288,12 @@ namespace Game {
 
         pNametables = Rendering::GetNametablePtr(pRenderContext, 0);
 
+        // Initialize scanline state
+        pScanlines = Rendering::GetScanlinePtr(pRenderContext, 0);
+        for (int i = 0; i < SCANLINE_COUNT; i++) {
+            pScanlines[i] = { 0, 0 };
+        }
+
         // SETTINGS
         pRenderSettings = Rendering::GetSettingsPtr(pRenderContext);
 	}
@@ -309,19 +316,11 @@ namespace Game {
         return (r64)SUCCESSIVE_FRAME_TIME_COUNT / sum;
     }
 
-    void UpdateHUD(Rendering::RenderContext* pContext, r64 dt) {
+    void UpdateHUD(r64 dt) {
         char hudText[128];
         const char* levelName = pCurrentLevel != nullptr ? pCurrentLevel->name : "NO LEVEL LOADED";
         snprintf(hudText, 64, " %4d FPS (%2d ms) (%04d, %04d) %s", (int)(averageFramerate), (int)(dt*1000), (int)viewport.x, (int)viewport.y, levelName);
         memcpy(&pNametables[0].tiles, hudText, 128);
-    }
-
-    void RenderHUD(Rendering::RenderContext* pContext) {
-        Rendering::RenderState state = {
-            0,
-            0
-        };
-        Rendering::SetRenderState(pContext, 0, 16, state);
     }
 
     constexpr u8 bgChrSheetIndex = 0;
@@ -540,7 +539,7 @@ namespace Game {
 
     // TODO: Sprite position update could be separate from all the other stuff like animation that is more like game logic
     // It would make it easier to pause gameplay logic and keep positions updating for the editor
-    void Render(Rendering::RenderContext* pRenderContext, r64 dt) {
+    void Render(r64 dt) {
         Rendering::Util::ClearSprites(pSprites, 256);
         Rendering::Sprite* pNextSprite = pSprites;
         
@@ -551,24 +550,16 @@ namespace Game {
         DrawHits(&pNextSprite);
         DrawEnemies(&pNextSprite, dt);
 
-        //UpdateHUD(pRenderContext, dt);
-        //RenderHUD(pRenderContext);
+        UpdateHUD(dt);
 
-        /*for (int i = 0; i < 272; i++) {
-            float sine = sin(gameplaySecondsElapsed + (i / 8.0f));
-            Rendering::RenderState state = {
-                (s32)((viewport.x + sine) * TILE_SIZE),
-                (s32)(viewport.y * TILE_SIZE)
-            };
-            Rendering::SetRenderState(pRenderContext, 16 + i, 1, state);
-        }*/
-
-        Rendering::RenderState state = {
+        // Update scroll
+        const Rendering::Scanline state = {
             (s32)(viewport.x * TILE_SIZE),
-            (s32)(viewport.y* TILE_SIZE)
+            (s32)(viewport.y * TILE_SIZE)
         };
-        // TODO: Refactor this so I can get rid of render context as a parameter
-        Rendering::SetRenderState(pRenderContext, 0, 288, state);
+        for (int i = 16; i < SCANLINE_COUNT; i++) {
+            pScanlines[i] = state;
+        }
     }
 
     constexpr Vec2 viewportScrollThreshold = { 8.0f, 6.0f };
@@ -628,7 +619,7 @@ namespace Game {
         levelTransitionState.direction = direction;
     }
 
-    static void UpdateLevelTransition(Rendering::RenderContext* pRenderContext, r64 dt) {
+    static void UpdateLevelTransition(r64 dt) {
 
         if (levelTransitionState.currentStep >= levelTransitionState.steps) {
 
@@ -640,7 +631,7 @@ namespace Game {
                 LoadLevel(nextLevel, nextLevelScreenIndex, false);
                 ReloadLevel(false);
                 UpdateViewport(false);
-                Render(pRenderContext, dt);
+                Render(dt);
 
                 TriggerLevelTransition(false);
             }
@@ -770,7 +761,7 @@ namespace Game {
         }
     }
 
-    void PlayerBgCollision(r64 dt, Rendering::RenderContext* pRenderContext) {
+    void PlayerBgCollision(r64 dt) {
         if (playerState.slowFall) {
             playerState.vSpeed += (gravity / 4) * dt;
         }
@@ -905,7 +896,7 @@ namespace Game {
         }
     }
 
-    void Step(r64 dt, Rendering::RenderContext* pRenderContext) {
+    void Step(r64 dt) {
         secondsElapsed += dt;
         averageFramerate = GetAverageFramerate(dt);
 
@@ -913,14 +904,14 @@ namespace Game {
         Input::Poll();
 
         if (state == StateLevelTransition) {
-            UpdateLevelTransition(pRenderContext, dt);
+            UpdateLevelTransition(dt);
         }
         else {
             if (!paused) {
                 gameplaySecondsElapsed += dt;
 
                 PlayerInput(dt);
-                PlayerBgCollision(dt, pRenderContext);
+                PlayerBgCollision(dt);
                 PlayerShoot(dt);
                 PlayerAnimate(dt);
 
@@ -1110,7 +1101,7 @@ namespace Game {
             }
 
             // TODO: Maybe change the name of this? (It's not actually rendering, just setting up render state)
-            Render(pRenderContext, dt);
+            Render(dt);
         }
 
     }

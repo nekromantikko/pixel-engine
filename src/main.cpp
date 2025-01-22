@@ -163,7 +163,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
         currentTime = newTime;
 
         if (deltaTimeSeconds >= FLT_MIN) {
-            Game::Step(deltaTimeSeconds, pRenderContext);
+            Game::Step(deltaTimeSeconds);
         }
 
         Rendering::BeginImGuiFrame(pRenderContext);

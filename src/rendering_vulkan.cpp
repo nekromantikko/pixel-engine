@@ -897,7 +897,7 @@ namespace Rendering
 		pContext->oamOffset = pContext->nametableOffset + pContext->nametableSize;
 		pContext->oamSize = PadBufferSize(MAX_SPRITE_COUNT * sizeof(Sprite), minOffsetAlignment);
 		pContext->renderStateOffset = pContext->oamOffset + pContext->oamSize;
-		pContext->renderStateSize = PadBufferSize(sizeof(RenderState) * SCANLINE_COUNT, minOffsetAlignment);
+		pContext->renderStateSize = PadBufferSize(sizeof(Scanline) * SCANLINE_COUNT, minOffsetAlignment);
 		pContext->computeBufferSize = pContext->paletteTableSize + pContext->chrSize + pContext->nametableSize + pContext->oamSize + pContext->renderStateSize;
 
 		pContext->renderData = calloc(1, pContext->computeBufferSize);
@@ -1375,7 +1375,7 @@ namespace Rendering
 
 	//////////////////////////////////////////////////////
 
-	Palette* GetPalettePtr(RenderContext* pContext, u8 paletteIndex) {
+	Palette* GetPalettePtr(RenderContext* pContext, u32 paletteIndex) {
 		if (paletteIndex >= 8) {
 			return nullptr;
 		}
@@ -1391,7 +1391,7 @@ namespace Rendering
 		Sprite* spr = (Sprite*)((u8*)pContext->renderData + pContext->oamOffset);
 		return spr + offset;
 	}
-	ChrSheet* GetChrPtr(RenderContext* pContext, u16 sheetIndex) {
+	ChrSheet* GetChrPtr(RenderContext* pContext, u32 sheetIndex) {
 		if (sheetIndex >= 2) {
 			return nullptr;
 		}
@@ -1399,7 +1399,7 @@ namespace Rendering
 		ChrSheet* sheet = (ChrSheet*)((u8*)pContext->renderData + pContext->chrOffset);
 		return sheet + sheetIndex;
 	}
-	Nametable* GetNametablePtr(RenderContext* pContext, u16 index) {
+	Nametable* GetNametablePtr(RenderContext* pContext, u32 index) {
 		if (index >= NAMETABLE_COUNT) {
 			return nullptr;
 		}
@@ -1407,15 +1407,13 @@ namespace Rendering
 		Nametable* tbl = (Nametable*)((u8*)pContext->renderData + pContext->nametableOffset);
 		return tbl + index;
 	}
-
-	void SetRenderState(RenderContext* pContext, u32 scanlineOffset, u32 scanlineCount, RenderState state) {
-		u32 renderStateOffset = sizeof(RenderState) * scanlineOffset;
-		u32 computeBufferOffset = pContext->renderStateOffset + renderStateOffset;
-
-		RenderState* scanlineStates = (RenderState*)((u8*)pContext->renderData + computeBufferOffset);
-		for (int i = 0; i < scanlineCount; i++) {
-			memcpy(scanlineStates + i, &state, sizeof(RenderState));
+	Scanline* GetScanlinePtr(RenderContext* pContext, u32 offset) {
+		if (offset >= SCANLINE_COUNT) {
+			return nullptr;
 		}
+
+		Scanline* scanlines = (Scanline*)((u8*)pContext->renderData + pContext->renderStateOffset);
+		return scanlines + offset;
 	}
 
 	//////////////////////////////////////////////////////
