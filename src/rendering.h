@@ -25,7 +25,7 @@ namespace Rendering
 		u32 attributes;
 	};
 
-	struct RenderState {
+	struct Scanline {
 		s32 scrollX;
 		s32 scrollY;
 	};
@@ -90,11 +90,11 @@ namespace Rendering
 	void ResizeSurface(RenderContext* pRenderContext, u32 width, u32 height);
 
 	// NES commands
-	Palette* GetPalettePtr(RenderContext* pContext, u8 paletteIndex);
+	Palette* GetPalettePtr(RenderContext* pContext, u32 paletteIndex);
 	Sprite* GetSpritesPtr(RenderContext* pContext, u32 offset);
-	ChrSheet* GetChrPtr(RenderContext* pContext, u16 sheetIndex);
-	Nametable* GetNametablePtr(RenderContext* pContext, u16 index);
-	void SetRenderState(RenderContext* pContext, u32 scanlineOffset, u32 scanlineCount, RenderState state);
+	ChrSheet* GetChrPtr(RenderContext* pContext, u32 sheetIndex);
+	Nametable* GetNametablePtr(RenderContext* pContext, u32 index);
+	Scanline* GetScanlinePtr(RenderContext* pContext, u32 offset);
 
 	// ImGui
 	void InitImGui(RenderContext* pContext);
