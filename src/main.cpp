@@ -6,6 +6,7 @@
 #include "rendering.h"
 #include "system.h"
 #include "game.h"
+#include "input.h"
 
 #include "editor_core.h"
 #include "editor_debug.h"
@@ -163,6 +164,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
         currentTime = newTime;
 
         if (deltaTimeSeconds >= FLT_MIN) {
+            Input::Poll();
             Game::Step(deltaTimeSeconds);
         }
 

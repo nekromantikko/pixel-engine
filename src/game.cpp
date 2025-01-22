@@ -900,9 +900,6 @@ namespace Game {
         secondsElapsed += dt;
         averageFramerate = GetAverageFramerate(dt);
 
-        // TODO: Move out of game logic
-        Input::Poll();
-
         if (state == StateLevelTransition) {
             UpdateLevelTransition(dt);
         }
