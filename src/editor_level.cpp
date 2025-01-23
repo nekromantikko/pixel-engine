@@ -11,6 +11,8 @@
 
 namespace Editor {
 	namespace LevelEditor {
+        constexpr u32 levelTypeCount = 3;
+        constexpr const char* levelTypeNames[levelTypeCount] = { "Sidescroller", "World map", "Title screen" };
 
         constexpr u32 actorTypeCount = 3;
         constexpr const char* actorTypeNames[actorTypeCount] = { "None", "Door", "Skull" };
@@ -330,13 +332,20 @@ namespace Editor {
                 }
             }
 
-            if (ImGui::BeginCombo("Level", level.name))
+            static constexpr u32 maxLabelNameLength = Level::levelMaxNameLength + 8;
+            char label[maxLabelNameLength];
+            snprintf(label, maxLabelNameLength, "%#04x: %s", selectedLevel, pLevels[selectedLevel].name);
+
+            if (ImGui::BeginCombo("Level", label))
             {
                 for (u32 i = 0; i < Level::maxLevelCount; i++)
                 {
                     ImGui::PushID(i);
+
+                    snprintf(label, maxLabelNameLength, "%#04x: %s", i, pLevels[i].name);
+
                     const bool selected = selectedLevel == i;
-                    if (ImGui::Selectable(pLevels[i].name, selected)) {
+                    if (ImGui::Selectable(label, selected)) {
                         selectedLevel = i;
                     }
 
@@ -355,6 +364,38 @@ namespace Editor {
             ImGui::BeginDisabled(editingCurrentLevel && !editMode);
 
             ImGui::InputText("Name", level.name, Level::levelMaxNameLength);
+
+            ImGui::BeginDisabled(selectedLevel == 0);
+            if (ImGui::ArrowButton("##up", ImGuiDir_Up)) {
+                Level::SwapLevels(selectedLevel, selectedLevel - 1);
+                selectedLevel -= 1;
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(selectedLevel == Level::maxLevelCount - 1);
+            if (ImGui::ArrowButton("##down", ImGuiDir_Down)) {
+                Level::SwapLevels(selectedLevel, selectedLevel + 1);
+                selectedLevel += 1;
+            }
+            ImGui::EndDisabled();
+
+            if (ImGui::BeginCombo("Type", levelTypeNames[(int)level.type])) {
+                for (u32 i = 0; i < levelTypeCount; i++) {
+                    ImGui::PushID(i);
+
+                    const bool selected = level.type == i;
+                    if (ImGui::Selectable(levelTypeNames[i], selected)) {
+                        level.type = (Level::LevelType)i;
+                    }
+
+                    if (selected) {
+                        ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::PopID();
+                }
+
+                ImGui::EndCombo();
+            }
 
             int screenCount = level.screenCount;
             if (ImGui::InputInt("Screen count", &screenCount)) {
