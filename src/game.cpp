@@ -171,6 +171,7 @@ namespace Game {
     Rendering::ChrSheet* pChr;
     Rendering::Nametable* pNametables;
     Rendering::Scanline* pScanlines;
+    Rendering::Palette* pPalettes;
 
     void LoadLevel(u32 index, s32 screenIndex, bool refresh) {
         if (index >= Level::maxLevelCount) {
@@ -267,6 +268,8 @@ namespace Game {
         }
     }
 
+    u8 basePaletteColors[Rendering::paletteCount * Rendering::paletteColorCount];
+
 	void Initialize(Rendering::RenderContext* pRenderContext) {
         viewport.x = 0.0f;
         viewport.y = 0.0f;
@@ -287,12 +290,12 @@ namespace Game {
 
         Rendering::Util::CreateChrSheet("assets/player.bmp", &playerBank);
 
-        u8 paletteColors[8 * 8];
-        Rendering::Util::LoadPaletteColorsFromFile("assets/palette.dat", paletteColors);
-        Rendering::Palette* palette = Rendering::GetPalettePtr(pRenderContext, 0);
+        //u8 paletteColors[8 * 8];
+        Rendering::Util::LoadPaletteColorsFromFile("assets/palette.dat", basePaletteColors);
+        pPalettes = Rendering::GetPalettePtr(pRenderContext, 0);
         // This is kind of silly
-        for (u32 i = 0; i < 8; i++) {
-            memcpy(palette[i].colors, paletteColors + i * 8, 8);
+        for (u32 i = 0; i < Rendering::paletteCount * Rendering::paletteColorCount; i++) {
+            memcpy(pPalettes, basePaletteColors, Rendering::paletteCount * Rendering::paletteColorCount);
         }
 
         pSprites = Rendering::GetSpritesPtr(pRenderContext, 0);
@@ -1167,6 +1170,35 @@ namespace Game {
             for (int i = 0; i < SCANLINE_COUNT; i++) {
                 pScanlines[i] = state;
             }
+
+            // Animate color palette brightness
+            /*r32 deltaBrightness = sin(gameplaySecondsElapsed * 1.5f);
+            for (u32 i = 0; i < Rendering::paletteCount * Rendering::paletteColorCount; i++) {
+                u8 baseColor = ((u8*)basePaletteColors)[i];
+
+                s32 brightness = (baseColor & 0b1110000) >> 4;
+                s32 d = (s32)roundf(deltaBrightness * 8);
+
+                s32 newBrightness = brightness + d;
+                newBrightness = (newBrightness < 0) ? 0 : (newBrightness > 7) ? 7 : newBrightness;
+
+                u8 newColor = (baseColor & 0b0001111) | (newBrightness << 4);
+                ((u8*)pPalettes)[i] = newColor;
+            }*/
+
+            // Animate color palette hue
+            /*s32 hueShift = (s32)roundf(gameplaySecondsElapsed * 5.0f);
+            for (u32 i = 0; i < Rendering::paletteCount * Rendering::paletteColorCount; i++) {
+                u8 baseColor = ((u8*)basePaletteColors)[i];
+
+                s32 hue = baseColor & 0b1111;
+
+                s32 newHue = hue + hueShift;
+                newHue &= 0b1111;
+
+                u8 newColor = (baseColor & 0b1110000) | newHue;
+                ((u8*)pPalettes)[i] = newColor;
+            }*/
         }
 
     }

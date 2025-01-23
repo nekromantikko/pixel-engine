@@ -58,76 +58,57 @@ namespace Rendering
 			u32 palFileSize;
 			char* palData = AllocFileBytes(fname, palFileSize);
 
-			if (palFileSize < 8 * 8) {
+			if (palFileSize < paletteCount * paletteColorCount) {
 				DEBUG_ERROR("Invalid palette table file!\n");
 			}
 
-			memcpy(outColors, palData, 8 * 8);
+			memcpy(outColors, palData, paletteCount * paletteColorCount);
 			free(palData);
 		}
 
-		static inline float ToSrgb(float c) { 
-			return(c < 0.0031308 ? c * 12.92 : 1.055 * pow(c, 0.41666) - 0.055); 
-		}
-
-		static inline float GetColorBrightness(int brightnessLevels, int offset) {
-			//return exp((log(2) / (brightnessLevels - 1)) * offset) - 1;
-			return (float)offset / (brightnessLevels - 1);
-		}
-
 		void GeneratePaletteColors(u32* data) {
-			for (int row = 0; row < 4; row++) {
+			for (s32 i = 0; i < colorCount; i++) {
+				s32 hue = i & 0b1111;
+				s32 brightness = (i & 0b1110000) >> 4;
 
-				u32* rowPixels = data + (row * 16);
+				r32 y = (r32)brightness / 7;
+				r32 u = 0.0f; 
+				r32 v = 0.0f;
 
-				for (int col = 0; col < 16; col++) {
+				if (hue != 0) {
+					// No need to have multiple pure blacks and whites
+					y = (r32)(brightness + 1) / 9;
 
-					float y, u, v;
+					r32 angle = 2 * pi * (hue - 1) / 15;
+					r32 radius = 0.5f * (1.0f - abs(y - 0.5f) * 2);
 
-					// Greys in first column
-					if (col == 0) {
-						const float brightness = GetColorBrightness(4, row);
-						y = brightness * brightness;
-						u = 0.0f;
-						v = 0.0f;
-					}
-					else {
-						const int id = (col - 1) + row * 15;
-						const int hue = id / 5;
-						const float brightness = GetColorBrightness(6, (id % 5) + 1);
-
-						const float angleStep = (2 * pi) / 12;
-						const float angle = angleStep * hue;
-
-						y = brightness * brightness;
-						u = cos(angle) * 0.5 * brightness;
-						v = sin(angle) * 0.5 * brightness;
-					}
-
-					// Convert YUV to RGB
-					float r = y + v * 1.139883;
-					float b = y + u * 2.032062;
-					float g = (y - r * 0.299 - b * 0.114) / 0.587;
-
-					r = ToSrgb(Max(Min(r, 1), 0));
-					g = ToSrgb(Max(Min(g, 1), 0));
-					b = ToSrgb(Max(Min(b, 1), 0));
-
-					u32* pixel = rowPixels + col;
-					u8* pixelBytes = (u8*)pixel;
-
-					pixelBytes[0] = (u8)(r * 255);
-					pixelBytes[1] = (u8)(g * 255);
-					pixelBytes[2] = (u8)(b * 255);
-					pixelBytes[3] = 0;
+					u = radius * std::cos(angle);
+					v = radius * std::sin(angle);
 				}
+
+				// Convert YUV to RGB
+				float r = y + v * 1.139883;
+				float g = y - 0.394642 * u - 0.580622 * v;
+				float b = y + u * 2.032062;
+
+				r = Max(Min(r, 1.0f), 0.0f);
+				g = Max(Min(g, 1.0f), 0.0f);
+				b = Max(Min(b, 1.0f), 0.0f);
+
+				u32* pixel = data + i;
+				u8* pixelBytes = (u8*)pixel;
+
+				pixelBytes[0] = (u8)(r * 255);
+				pixelBytes[1] = (u8)(g * 255);
+				pixelBytes[2] = (u8)(b * 255);
+				pixelBytes[3] = 0;
 			}
 		}
 
 		void SavePaletteToFile(const char* fname) {
-			u32 data[64];
+			u32 data[colorCount];
 			GeneratePaletteColors(data);
-			const u32 dataSize = 64 * sizeof(u32);
+			const u32 dataSize = colorCount * sizeof(u32);
 
 			FILE* pFile;
 			fopen_s(&pFile, fname, "wb");
@@ -159,7 +140,7 @@ namespace Rendering
 			
 			chunk.size = dataSize;
 			chunk.version = 0x0300;
-			chunk.colorCount = 64;
+			chunk.colorCount = colorCount;
 
 			fwrite(&chunk, sizeof(PaletteChunkHeader), 1, pFile);
 			fwrite(data, dataSize, 1, pFile);
