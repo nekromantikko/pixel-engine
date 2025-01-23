@@ -58,8 +58,12 @@ namespace Rendering
 #define VIEWPORT_WIDTH_TILES NAMETABLE_WIDTH_TILES
 #define VIEWPORT_HEIGHT_TILES 36
 
+	constexpr u32 colorCount = 0x80;
+
+	constexpr u32 paletteCount = 8;
+	constexpr u32 paletteColorCount = 8;
 	struct Palette {
-		u8 colors[8];
+		u8 colors[paletteColorCount];
 	};
 
 #define SCANLINE_COUNT 288

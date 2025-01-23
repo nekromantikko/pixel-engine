@@ -786,8 +786,8 @@ namespace Rendering
 	}
 
 	void CreatePalette(RenderContext* pContext) {
-		u32 paletteData[64];
-		const VkDeviceSize paletteSize = sizeof(u32) * 64;
+		u32 paletteData[colorCount];
+		const VkDeviceSize paletteSize = sizeof(u32) * colorCount;
 
 		Util::GeneratePaletteColors(paletteData);
 
@@ -800,7 +800,7 @@ namespace Rendering
 		vkUnmapMemory(pContext->device, stagingBuffer.memory);
 		//free(palBin);
 
-		CreateImage(pContext, 64, 1, VK_IMAGE_TYPE_1D, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, pContext->paletteImage);
+		CreateImage(pContext, colorCount, 1, VK_IMAGE_TYPE_1D, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, pContext->paletteImage);
 
 		VkCommandBuffer temp = GetTemporaryCommandBuffer(pContext);
 
@@ -833,7 +833,7 @@ namespace Rendering
 
 		region.imageOffset = { 0, 0, 0 };
 		region.imageExtent = {
-			64,
+			colorCount,
 			1,
 			1
 		};
@@ -889,7 +889,7 @@ namespace Rendering
 		const VkDeviceSize minOffsetAlignment = properties.limits.minStorageBufferOffsetAlignment;
 
 		pContext->paletteTableOffset = 0;
-		pContext->paletteTableSize = PadBufferSize(8 * 8, minOffsetAlignment);
+		pContext->paletteTableSize = PadBufferSize(paletteCount * sizeof(Palette), minOffsetAlignment);
 		pContext->chrOffset = pContext->paletteTableOffset + pContext->paletteTableSize;
 		pContext->chrSize = PadBufferSize(CHR_MEMORY_SIZE, minOffsetAlignment);
 		pContext->nametableOffset = pContext->chrOffset + pContext->chrSize;
@@ -1376,7 +1376,7 @@ namespace Rendering
 	//////////////////////////////////////////////////////
 
 	Palette* GetPalettePtr(RenderContext* pContext, u32 paletteIndex) {
-		if (paletteIndex >= 8) {
+		if (paletteIndex >= paletteCount) {
 			return nullptr;
 		}
 
