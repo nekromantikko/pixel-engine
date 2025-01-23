@@ -40,6 +40,7 @@ namespace Level {
 
         for (u32 i = 0; i < maxLevelCount; i++) {
             Level& level = levels[i];
+            fread(&level.type, sizeof(LevelType), 1, pFile);
             fread(&level.flags, sizeof(LevelFlagBits), 1, pFile);
             fread(&level.screenCount, sizeof(u32), 1, pFile);
         }
@@ -70,6 +71,7 @@ namespace Level {
 
         for (u32 i = 0; i < maxLevelCount; i++) {
             const Level& level = levels[i];
+            fwrite(&level.type, sizeof(LevelType), 1, pFile);
             fwrite(&level.flags, sizeof(LevelFlagBits), 1, pFile);
             fwrite(&level.screenCount, sizeof(u32), 1, pFile);
         }
@@ -78,6 +80,53 @@ namespace Level {
         fwrite(screenMemory, levelMaxScreenCount * sizeof(Screen), maxLevelCount, pFile);
 
         fclose(pFile);
+    }
+
+    // Potentially heavy operation
+    bool SwapLevels(u32 a, u32 b) {
+        if (a > maxLevelCount || b > maxLevelCount) {
+            return false;
+        }
+
+        // No need to swap, task failed successfully
+        if (a == b) {
+            return true;
+        }
+
+        Level& levelA = levels[a];
+        Screen* levelAScreens = &screenMemory[levelMaxScreenCount * a];
+        char* levelAName = &nameMemory[levelMaxNameLength * a];
+        Level& levelB = levels[b];
+        Screen* levelBScreens = &screenMemory[levelMaxScreenCount * b];
+        char* levelBName = &nameMemory[levelMaxNameLength * b];
+
+        // Copy A to temp
+        Level temp = levelA;
+        temp.screens = levelBScreens;
+        temp.name = levelBName;
+
+        void* tempScreens = calloc(sizeof(Screen), levelMaxScreenCount);
+        void* tempName = calloc(sizeof(char), levelMaxNameLength);
+
+        memcpy(tempScreens, levelAScreens, levelMaxScreenCount * sizeof(Screen));
+        memcpy(tempName, levelAName, levelMaxNameLength);
+
+        // Copy B to A
+        levelA = levelB;
+        levelA.screens = levelAScreens;
+        levelA.name = levelAName;
+        memcpy(levelAScreens, levelBScreens, levelMaxScreenCount * sizeof(Screen));
+        memcpy(levelAName, levelBName, levelMaxNameLength);
+
+        // Copy Temp to B
+        levelB = temp;
+        levelB.screens = levelBScreens;
+        levelB.name = levelBName;
+        memcpy(levelBScreens, tempScreens, levelMaxScreenCount * sizeof(Screen));
+        memcpy(levelBName, tempName, levelMaxNameLength);
+
+        free(tempScreens);
+        free(tempName);
     }
 
     // UTILS

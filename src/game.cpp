@@ -180,6 +180,17 @@ namespace Game {
         pCurrentLevel = Level::GetLevelsPtr() + index;
         enterScreenIndex = screenIndex;
 
+        switch (pCurrentLevel->type) {
+        case Level::LTYPE_SIDESCROLLER:
+            state = StatePlaying;
+            break;
+        case Level::LTYPE_TITLESCREEN:
+            state = StateTitleScreen;
+            break;
+        default:
+            break;
+        }
+
         ReloadLevel(refresh);
     }
 
@@ -205,6 +216,18 @@ namespace Game {
     void ReloadLevel(bool refresh) {
         if (pCurrentLevel == nullptr) {
             return;
+        }
+
+        // Reset viewport and scrolling (Gross copypasta)
+        viewport.x = 0;
+        viewport.y = 0;
+
+        const Rendering::Scanline state = {
+            (s32)(viewport.x * TILE_SIZE),
+            (s32)(viewport.y * TILE_SIZE)
+        };
+        for (int i = 0; i < SCANLINE_COUNT; i++) {
+            pScanlines[i] = state;
         }
 
         if (enterScreenIndex < 0 || !SpawnAtFirstDoor(enterScreenIndex)) {
@@ -294,6 +317,9 @@ namespace Game {
 
         // SETTINGS
         pRenderSettings = Rendering::GetSettingsPtr(pRenderContext);
+
+        // TODO: Level should load palettes and tileset?
+        LoadLevel(0);
 	}
 
     void Free() {
@@ -922,7 +948,9 @@ namespace Game {
 
             if (Input::Pressed(Input::Start)) {
                 state = StatePlaying;
-                LoadLevel(0);
+                // TODO: This should be set in level editor
+                const u32 firstLevel = 0x10;
+                LoadLevel(firstLevel);
             }
         }
         else if (state == StateLevelTransition) {

@@ -18,6 +18,12 @@ namespace Level {
     constexpr u32 levelMaxNameLength = 256;
     constexpr u32 levelMaxScreenCount = 64;
 
+    enum LevelType : u32 {
+        LTYPE_SIDESCROLLER = 0,
+        LTYPE_WORLDMAP = 1,
+        LTYPE_TITLESCREEN = 2
+    };
+
     enum LevelFlagBits : u32 {
         LFLAGS_NONE = 0,
         LFLAGS_SCROLL_VERTICAL = 1 << 0,
@@ -46,6 +52,7 @@ namespace Level {
 
     struct Level {
         char* name;
+        LevelType type;
         LevelFlagBits flags;
         u32 screenCount;
         Screen* screens;
@@ -58,6 +65,8 @@ namespace Level {
 
     void LoadLevels(const char* fname);
     void SaveLevels(const char* fname);
+
+    bool SwapLevels(u32 a, u32 b);
 
     Vec2 ScreenOffsetToWorld(const Level* pLevel, Vec2 screenOffset, u32 screenIndex);
     IVec2 ScreenOffsetToTilemap(const Level* pLevel, Vec2 screenOffset, u32 screenIndex);

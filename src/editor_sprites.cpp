@@ -441,7 +441,6 @@ namespace Editor {
                 ImGui::SameLine();
                 ImGui::BeginDisabled(maxSpriteIndex == metasprite.spriteCount - 1);
                 if (ImGui::ArrowButton("##down", ImGuiDir_Down)) {
-                    ImVector<s32> alreadyMoved = {};
                     SwapMultiple(&metasprite, spriteSelection, 1);
                 }
                 ImGui::EndDisabled();
