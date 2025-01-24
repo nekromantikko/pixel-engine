@@ -26,7 +26,6 @@ namespace Level {
 
     enum LevelFlagBits : u32 {
         LFLAGS_NONE = 0,
-        LFLAGS_SCROLL_VERTICAL = 1 << 0,
     };
 
     enum ActorType : u8 {
@@ -54,7 +53,8 @@ namespace Level {
         char* name;
         LevelType type;
         LevelFlagBits flags;
-        u32 screenCount;
+        s32 width;
+        s32 height;
         Screen* screens;
     };
 
@@ -77,6 +77,7 @@ namespace Level {
     u32 WorldToScreenIndex(const Level* pLevel, Vec2 world);
     Vec2 WorldToScreenOffset(Vec2 world);
     u32 WorldToMetatileIndex(Vec2 world);
+    u32 WorldToNametableIndex(Vec2 world);
 
     r32 TilemapToWorld(s32 tilemap);
     Vec2 TilemapToWorld(IVec2 tilemap);
