@@ -11,30 +11,28 @@ void MoveViewport(Viewport* pViewport, Rendering::Nametable* pNametable, const L
         return;
     }
 
-    const bool verticalScroll = pLevel->flags & Level::LFLAGS_SCROLL_VERTICAL;
-
     const r32 prevX = pViewport->x;
     const r32 prevY = pViewport->y;
 
     pViewport->x += dx;
     pViewport->y += dy;
 
-    r32 xMax = verticalScroll ? Level::screenWidthTiles : pLevel->screenCount * Level::screenWidthTiles;
+    r32 xMax = (pLevel->width - 1) * Level::screenWidthTiles;
 
     if (pViewport->x < 0.0f) {
         pViewport->x = 0.0f;
     }
-    else if (pViewport->x + VIEWPORT_WIDTH_TILES >= xMax) {
-        pViewport->x = xMax - VIEWPORT_WIDTH_TILES;
+    else if (pViewport->x >= xMax) {
+        pViewport->x = xMax;
     }
 
-    r32 yMax = verticalScroll ? pLevel->screenCount * Level::screenHeightTiles : Level::screenHeightTiles;
+    r32 yMax = (pLevel->height - 1) * Level::screenHeightTiles;
 
     if (pViewport->y < 0.0f) {
         pViewport->y = 0.0f;
     }
-    else if (pViewport->y + VIEWPORT_HEIGHT_TILES >= yMax) {
-        pViewport->y = yMax - VIEWPORT_HEIGHT_TILES;
+    else if (pViewport->y >= yMax) {
+        pViewport->y = yMax;
     }
     
     if (!loadTiles) {

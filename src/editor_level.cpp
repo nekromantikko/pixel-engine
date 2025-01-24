@@ -53,40 +53,44 @@ namespace Editor {
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             const r32 metatileDrawSize = tileDrawSize * Tileset::metatileWorldSize;
 
-            const bool verticalScroll = pLevel->flags & Level::LFLAGS_SCROLL_VERTICAL;
-            const u32 screenDimension = verticalScroll ? Level::screenHeightTiles : Level::screenWidthTiles;
+            const s32 screenStartX = pViewport->x / Level::screenWidthTiles;
+            const s32 screenStartY = pViewport->y / Level::screenHeightTiles;
 
-            const u32 leftScreenIndex = WorldToScreenIndex(pLevel, { pViewport->x, pViewport->y });
-            const u32 rightScreenIndex = WorldToScreenIndex(pLevel, { pViewport->x + VIEWPORT_WIDTH_TILES, pViewport->y + VIEWPORT_HEIGHT_TILES });
+            const s32 screenEndX = (pViewport->x + VIEWPORT_WIDTH_TILES) / Level::screenWidthTiles;
+            const s32 screenEndY = (pViewport->y + VIEWPORT_HEIGHT_TILES) / Level::screenHeightTiles;
 
-            for (u32 i = leftScreenIndex; i <= rightScreenIndex; i++) {
-                const Vec2 screenPos = ScreenIndexToWorld(pLevel, i);
-                const Vec2 screenViewportCoords = { (screenPos.x - pViewport->x) * tileDrawSize, (screenPos.y - pViewport->y) * tileDrawSize };
-                const Level::Screen& screen = pLevel->screens[i];
+            for (s32 y = screenStartY; y <= screenEndY; y++) {
+                for (s32 x = screenStartX; x <= screenEndX; x++) {
+                    const Vec2 screenPos = { x * Level::screenWidthTiles, y * Level::screenHeightTiles };
+                    const Vec2 screenViewportCoords = { (screenPos.x - pViewport->x) * tileDrawSize, (screenPos.y - pViewport->y) * tileDrawSize };
 
-                static char screenLabelText[16];
-                snprintf(screenLabelText, 16, "%#04x", i);
+                    const s32 i = x + y * pLevel->width;
+                    const Level::Screen& screen = pLevel->screens[i];
 
-                const ImVec2 lineStart = ImVec2(topLeft.x + screenViewportCoords.x, topLeft.y + screenViewportCoords.y);
-                const ImVec2 lineEnd = verticalScroll ? ImVec2(btmRight.x, topLeft.y + screenViewportCoords.y) : ImVec2(topLeft.x + screenViewportCoords.x, btmRight.y);
-                drawList->AddLine(lineStart, lineEnd, IM_COL32(255, 255, 255, 255), 1.0f);
+                    static char screenLabelText[16];
+                    snprintf(screenLabelText, 16, "%#04x", i);
 
-                const ImVec2 textPos = verticalScroll ? ImVec2(topLeft.x + screenViewportCoords.x + tileDrawSize, topLeft.y + screenViewportCoords.y + tileDrawSize) : ImVec2(topLeft.x + screenViewportCoords.x + tileDrawSize, btmRight.y - 2 * tileDrawSize);
-                drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), screenLabelText);
+                    const ImVec2 lineStart = ImVec2(topLeft.x + screenViewportCoords.x, topLeft.y + screenViewportCoords.y);
+                    drawList->AddLine(lineStart, ImVec2(btmRight.x, topLeft.y + screenViewportCoords.y), IM_COL32(255, 255, 255, 255), 1.0f);
+                    drawList->AddLine(lineStart, ImVec2(topLeft.x + screenViewportCoords.x, btmRight.y), IM_COL32(255, 255, 255, 255), 1.0f);
 
-                for (u32 y = 0; y < Level::screenHeightMetatiles; y++) {
-                    for (u32 x = 0; x < Level::screenWidthMetatiles; x++) {
-                        ImVec2 actorTopLeft = ImVec2(topLeft.x + screenViewportCoords.x + x * metatileDrawSize, topLeft.y + screenViewportCoords.y + y * metatileDrawSize);
-                        ImVec2 actorBtmRight = ImVec2(actorTopLeft.x + metatileDrawSize, actorTopLeft.y + metatileDrawSize);
+                    const ImVec2 textPos = ImVec2(topLeft.x + screenViewportCoords.x + tileDrawSize, topLeft.y + screenViewportCoords.y + tileDrawSize);
+                    drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), screenLabelText);
 
-                        if (actorBtmRight.x < topLeft.x || actorBtmRight.y < topLeft.y || actorTopLeft.x >= btmRight.x || actorTopLeft.y >= btmRight.y) {
-                            continue;
+                    for (u32 y = 0; y < Level::screenHeightMetatiles; y++) {
+                        for (u32 x = 0; x < Level::screenWidthMetatiles; x++) {
+                            ImVec2 actorTopLeft = ImVec2(topLeft.x + screenViewportCoords.x + x * metatileDrawSize, topLeft.y + screenViewportCoords.y + y * metatileDrawSize);
+                            ImVec2 actorBtmRight = ImVec2(actorTopLeft.x + metatileDrawSize, actorTopLeft.y + metatileDrawSize);
+
+                            if (actorBtmRight.x < topLeft.x || actorBtmRight.y < topLeft.y || actorTopLeft.x >= btmRight.x || actorTopLeft.y >= btmRight.y) {
+                                continue;
+                            }
+
+                            const u32 tileIndex = x + Level::screenWidthMetatiles * y;
+                            const Level::ActorType type = screen.tiles[tileIndex].actorType;
+
+                            DrawActor(topLeft, btmRight, actorTopLeft, metatileDrawSize, type, actorMode ? 127 : 15);
                         }
-
-                        const u32 tileIndex = x + Level::screenWidthMetatiles * y;
-                        const Level::ActorType type = screen.tiles[tileIndex].actorType;
-
-                        DrawActor(topLeft, btmRight, actorTopLeft, metatileDrawSize, type, actorMode ? 127 : 15);
                     }
                 }
             }
@@ -243,7 +247,7 @@ namespace Editor {
 
                             // Paint actors
                             if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-                                if (screenIndex < pLevel->screenCount) {
+                                if (screenIndex < pLevel->width * pLevel->height) {
                                     const u32 screenTileIndex = Level::WorldToMetatileIndex({ hoveredMetatileWorldPos.x, hoveredMetatileWorldPos.y });
 
                                     pLevel->screens[screenIndex].tiles[screenTileIndex].actorType = selectedActorType;
@@ -268,7 +272,7 @@ namespace Editor {
                                     // Paint metatiles
                                     if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
                                         u32 screenIndex = WorldToScreenIndex(pLevel, metatileWorldPos);
-                                        if (screenIndex >= pLevel->screenCount) {
+                                        if (screenIndex >= pLevel->width * pLevel->height) {
                                             continue;
                                         }
 
@@ -276,8 +280,9 @@ namespace Editor {
                                         const u32 screenTileIndex = ScreenOffsetToMetatileIndex(pLevel, screenPos);
 
                                         pLevel->screens[screenIndex].tiles[screenTileIndex].metatile = metatileIndex;
-                                        const u32 nametableIndex = screenIndex % NAMETABLE_COUNT;
-                                        Tileset::CopyMetatileToNametable(&pNametables[nametableIndex], (u16)screenPos.x, (u16)screenPos.y, metatileIndex);
+                                        const u32 nametableIndex = Level::WorldToNametableIndex(metatileWorldPos);
+
+                                        Tileset::CopyMetatileToNametable(&pNametables[nametableIndex], (u16)metatileWorldPos.x % NAMETABLE_WIDTH_TILES, (u16)metatileWorldPos.y % NAMETABLE_HEIGHT_TILES, metatileIndex);
                                     }
                                 }
                             }
@@ -360,11 +365,7 @@ namespace Editor {
             if (ImGui::Button("Load")) {
                 Game::LoadLevel(selectedLevel);
             }
-
-            ImGui::BeginDisabled(editingCurrentLevel && !editMode);
-
-            ImGui::InputText("Name", level.name, Level::levelMaxNameLength);
-
+            ImGui::SameLine();
             ImGui::BeginDisabled(selectedLevel == 0);
             if (ImGui::ArrowButton("##up", ImGuiDir_Up)) {
                 Level::SwapLevels(selectedLevel, selectedLevel - 1);
@@ -378,6 +379,10 @@ namespace Editor {
                 selectedLevel += 1;
             }
             ImGui::EndDisabled();
+
+            //ImGui::BeginDisabled(editingCurrentLevel && !editMode);
+
+            ImGui::InputText("Name", level.name, Level::levelMaxNameLength);
 
             if (ImGui::BeginCombo("Type", levelTypeNames[(int)level.type])) {
                 for (u32 i = 0; i < levelTypeCount; i++) {
@@ -397,29 +402,19 @@ namespace Editor {
                 ImGui::EndCombo();
             }
 
-            int screenCount = level.screenCount;
-            if (ImGui::InputInt("Screen count", &screenCount)) {
-                level.screenCount = (u32)Max(Min(screenCount, Level::levelMaxScreenCount), 1);
-
-                if (editingCurrentLevel) {
-                    RefreshViewport(pViewport, pNametables, pCurrentLevel);
-                }
-            }
-
-            // Level flags
-            bool scrollVertical = level.flags & Level::LFLAGS_SCROLL_VERTICAL;
-            if (ImGui::Checkbox("Vertical scrolling", &scrollVertical)) {
-                level.flags = (Level::LevelFlagBits)(level.flags ^ Level::LFLAGS_SCROLL_VERTICAL);
-
-                if (editingCurrentLevel) {
-                    RefreshViewport(pViewport, pNametables, pCurrentLevel);
+            s32 size[2] = { level.width, level.height };
+            if (ImGui::InputInt2("Size", size)) {
+                if (size[0] >= 1 && size[1] >= 1 && size[0] * size[1] <= Level::levelMaxScreenCount) {
+                    level.width = size[0];
+                    level.height = size[1];
                 }
             }
 
             // Screens
             if (ImGui::TreeNode("Screens")) {
-
-                for (u32 i = 0; i < level.screenCount; i++) {
+                // TODO: Lay these out nicer
+                u32 screenCount = level.width * level.height;
+                for (u32 i = 0; i < screenCount; i++) {
                     Level::Screen& screen = level.screens[i];
 
                     if (ImGui::TreeNode(&screen, "%#04x", i)) {
@@ -445,7 +440,7 @@ namespace Editor {
 
                         int exitScreen = screen.exitTargetScreen;
                         if (ImGui::InputInt("Exit target screen", &exitScreen)) {
-                            screen.exitTargetScreen = (u32)Max(Min(exitTargetLevel.screenCount - 1, exitScreen), 0);
+                            screen.exitTargetScreen = (u32)Max(Min(Level::levelMaxScreenCount - 1, exitScreen), 0);
                         }
 
                         ImGui::TreePop();
@@ -456,7 +451,7 @@ namespace Editor {
             }
 
 
-            ImGui::EndDisabled();
+            //ImGui::EndDisabled();
 
             ImGui::End();
         }

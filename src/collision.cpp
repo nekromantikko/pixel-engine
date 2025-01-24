@@ -9,7 +9,7 @@ namespace Collision {
 	u32 GetMetatileIndex(Level::Level* pLevel, IVec2 tilemapCoord) {
 		u32 screenIndex = TilemapToScreenIndex(pLevel, tilemapCoord);
 
-		if (screenIndex >= pLevel->screenCount) {
+		if (screenIndex >= pLevel->width * pLevel->height) {
 			return 0;
 		}
 

@@ -23,7 +23,8 @@ namespace Level {
 
             level.screens = &screenMemory[i * levelMaxScreenCount];
             screenMemory[i * levelMaxScreenCount] = Screen{};
-            level.screenCount = 1;
+            level.width = 1;
+            level.height = 1;
         }
     }
 
@@ -42,7 +43,8 @@ namespace Level {
             Level& level = levels[i];
             fread(&level.type, sizeof(LevelType), 1, pFile);
             fread(&level.flags, sizeof(LevelFlagBits), 1, pFile);
-            fread(&level.screenCount, sizeof(u32), 1, pFile);
+            fread(&level.width, sizeof(u32), 1, pFile);
+            fread(&level.height, sizeof(u32), 1, pFile);
         }
 
         fread(nameMemory, levelMaxNameLength, maxLevelCount, pFile);
@@ -73,7 +75,8 @@ namespace Level {
             const Level& level = levels[i];
             fwrite(&level.type, sizeof(LevelType), 1, pFile);
             fwrite(&level.flags, sizeof(LevelFlagBits), 1, pFile);
-            fwrite(&level.screenCount, sizeof(u32), 1, pFile);
+            fwrite(&level.width, sizeof(u32), 1, pFile);
+            fwrite(&level.height, sizeof(u32), 1, pFile);
         }
 
         fwrite(nameMemory, levelMaxNameLength, maxLevelCount, pFile);
@@ -131,18 +134,8 @@ namespace Level {
 
     // UTILS
     Vec2 ScreenOffsetToWorld(const Level* pLevel, Vec2 screenOffset, u32 screenIndex) {
-        if (pLevel->flags & LFLAGS_SCROLL_VERTICAL) {
-            return {
-                screenOffset.x,
-                screenOffset.y + screenIndex * screenHeightTiles
-            };
-        }
-        else {
-            return {
-                screenOffset.x + screenIndex * screenWidthTiles,
-                screenOffset.y
-            };
-        }
+        const Vec2 screenWorld = ScreenIndexToWorld(pLevel, screenIndex);
+        return screenWorld + screenOffset;
     }
     IVec2 ScreenOffsetToTilemap(const Level* pLevel, Vec2 screenOffset, u32 screenIndex) {
         const Vec2 world = ScreenOffsetToWorld(pLevel, screenOffset, screenIndex);
@@ -176,6 +169,10 @@ namespace Level {
         const IVec2 tilemap = WorldToTilemap(world);
         return TilemapToMetatileIndex(tilemap);
     }
+    u32 WorldToNametableIndex(Vec2 world) {
+        const IVec2 tilemap = WorldToTilemap(world);
+        return TilemapToNametableIndex(tilemap);
+    }
 
     r32 TilemapToWorld(s32 tilemap) {
         return tilemap * (s32)Tileset::metatileWorldSize;
@@ -193,11 +190,7 @@ namespace Level {
         };
     }
     u32 TilemapToScreenIndex(const Level *pLevel, IVec2 tilemap) {
-        const bool verticalScroll = pLevel->flags & LFLAGS_SCROLL_VERTICAL;
-        // TODO: Add actual level width property
-        u32 levelWidth = verticalScroll ? 1 : pLevel->screenCount;
-
-        return ((tilemap.x / screenWidthMetatiles) % levelWidth + (tilemap.y / screenHeightMetatiles) * levelWidth) % pLevel->screenCount;
+        return (tilemap.x / screenWidthMetatiles) + (tilemap.y / screenHeightMetatiles) * pLevel->width;
     }
     u32 TilemapToMetatileIndex(IVec2 tilemap) {
         // Eliminate negative coordinates:
@@ -227,18 +220,10 @@ namespace Level {
     }
 
     Vec2 ScreenIndexToWorld(const Level* pLevel, u32 screenIndex) {
-        if (pLevel->flags & LFLAGS_SCROLL_VERTICAL) {
-            return {
-                0.0f,
-                (r32)screenIndex * screenHeightTiles,
-            };
-        }
-        else {
-            return {
-                (r32)screenIndex * screenWidthTiles,
-                0.0f
-            };
-        }
+        return {
+            (r32)(screenIndex % pLevel->width) * screenWidthTiles,
+            (r32)(screenIndex / pLevel->width) * screenHeightTiles
+        };
     }
 
     bool TileInLevelBounds(const Level* pLevel, IVec2 tilemapCoord) {
@@ -246,10 +231,8 @@ namespace Level {
             return false;
         }
 
-        const bool verticalScroll = pLevel->flags & LFLAGS_SCROLL_VERTICAL;
-
-        s32 xMax = verticalScroll ? screenWidthMetatiles : pLevel->screenCount * screenWidthMetatiles;
-        r32 yMax = verticalScroll ? pLevel->screenCount * screenHeightMetatiles : screenHeightMetatiles;
+        s32 xMax = pLevel->width * screenWidthMetatiles;
+        r32 yMax = pLevel->height * screenHeightMetatiles;
 
         if (tilemapCoord.x >= xMax || tilemapCoord.y >= yMax) {
             return false;

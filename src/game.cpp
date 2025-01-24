@@ -196,6 +196,10 @@ namespace Game {
     }
 
     static bool SpawnAtFirstDoor(u32 screenIndex) {
+        if (screenIndex >= pCurrentLevel->width * pCurrentLevel->height) {
+            return false;
+        }
+
         const Level::Screen& screen = pCurrentLevel->screens[screenIndex];
         for (u32 i = 0; i < Level::screenWidthMetatiles * Level::screenHeightMetatiles; i++) {
             const Level::LevelTile& tile = screen.tiles[i];
@@ -233,7 +237,7 @@ namespace Game {
 
         if (enterScreenIndex < 0 || !SpawnAtFirstDoor(enterScreenIndex)) {
             // Loop thru all screens to find any spawnpoint
-            for (u32 i = 0; i < pCurrentLevel->screenCount; i++) {
+            for (u32 i = 0; i < pCurrentLevel->width * pCurrentLevel->height; i++) {
                 if (SpawnAtFirstDoor(i)) {
                     break;
                 }
@@ -242,7 +246,7 @@ namespace Game {
 
         enemyPool.Clear();
         // Spawn actors very stupidly
-        for (u32 i = 0; i < pCurrentLevel->screenCount; i++) {
+        for (u32 i = 0; i < pCurrentLevel->width * pCurrentLevel->height; i++) {
             const Level::Screen& screen = pCurrentLevel->screens[i];
 
             for (u32 t = 0; t < Level::screenWidthMetatiles * Level::screenHeightMetatiles; t++) {
