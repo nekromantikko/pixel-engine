@@ -41,6 +41,7 @@ namespace Game {
 
     enum GameState {
         StateTitleScreen,
+        StateWorldMap,
         StatePlaying,
         StateLevelTransition,
     };
@@ -187,6 +188,9 @@ namespace Game {
             break;
         case Level::LTYPE_TITLESCREEN:
             state = StateTitleScreen;
+            break;
+        case Level::LTYPE_WORLDMAP:
+            state = StateWorldMap;
             break;
         default:
             break;
@@ -958,6 +962,39 @@ namespace Game {
                 // TODO: This should be set in level editor
                 const u32 firstLevel = 0x10;
                 LoadLevel(firstLevel);
+            }
+        }
+        else if (state == StateWorldMap) {
+            gameplaySecondsElapsed += dt;
+
+            Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[13];
+            bool flippy = (u32)(gameplaySecondsElapsed * 2.0f) % 2;
+            Rendering::Util::CopyMetasprite(metasprite.spritesRelativePos, pNextSprite, metasprite.spriteCount, { 256, 144 }, flippy, false);
+            pNextSprite += metasprite.spriteCount;
+
+            r32 dx = 0, dy = 0;
+
+            if (Input::Down(Input::DPadRight)) {
+                dx = 8.0f * dt;
+            }
+            else if (Input::Down(Input::DPadLeft)) {
+                dx = -8.0f * dt;
+            }
+            else if (Input::Down(Input::DPadDown)) {
+                dy = 8.0f * dt;
+            }
+            else if (Input::Down(Input::DPadUp)) {
+                dy = -8.0f * dt;
+            }
+            MoveViewport(&viewport, pNametables, pCurrentLevel, dx, dy);
+
+            // Update scroll (Time to make this a utility soon....)
+            const Rendering::Scanline state = {
+                (s32)(viewport.x * TILE_SIZE),
+                (s32)(viewport.y * TILE_SIZE)
+            };
+            for (int i = 0; i < SCANLINE_COUNT; i++) {
+                pScanlines[i] = state;
             }
         }
         else if (state == StateLevelTransition) {
