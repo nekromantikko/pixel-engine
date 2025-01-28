@@ -1,6 +1,5 @@
 #include <SDL.h>
 #include <cfloat>
-#include <cstdio>
 #include "rendering.h"
 #include "system.h"
 #include "game.h"
@@ -135,5 +134,6 @@ int WinMain(int argc, char** args) {
 
     SDL_DestroyWindow(pWindow);
     SDL_Quit();
+
     return 0;
 }

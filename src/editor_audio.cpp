@@ -21,6 +21,14 @@ namespace Editor {
 
 		PulseControlValues pulses[2];
 
+		struct TriangleControlValues {
+			int period = 1024;
+			int linearPeriod = 64;
+			int length = -1;
+		};
+
+		TriangleControlValues triangle;
+
 		static r32 GetSample(void* data, s32 idx) {
 			return ((r32)((u8*)data)[idx]);
 		}
@@ -46,17 +54,30 @@ namespace Editor {
 			ImGui::SliderInt("Length (index)", &pulses[idx].length, -1, 31);
 			
 			if (ImGui::Button("Play")) {
-				PlayPulse(pAudioContext, 
+				/*PlayPulse(pAudioContext,
 					idx, 
 					pulses[idx].duty, 
-					pulses[idx].volume, 
+					//pulses[idx].volume, 
 					pulses[idx].period, 
 					pulses[idx].sweepEnabled,
 					pulses[idx].sweepAmount,
 					pulses[idx].sweepPeriod,
 					pulses[idx].sweepNegate,
-					!pulses[idx].useEnvelope,
-					pulses[idx].length);
+					//!pulses[idx].useEnvelope,
+					pulses[idx].length);*/
+
+				bool loop = pulses[idx].length == -1;
+				u8 lengthCounterLoad = loop ? 0 : pulses[idx].length;
+
+				u8 byte0 = (pulses[idx].duty << 6) | (loop << 5) | (!pulses[idx].useEnvelope << 4) | pulses[idx].volume;
+				u8 byte1 = (pulses[idx].sweepEnabled << 7) | (pulses[idx].sweepPeriod << 4) | (pulses[idx].sweepNegate << 3) | pulses[idx].sweepAmount;
+				u8 byte2 = pulses[idx].period & 0xff;
+				u8 byte3 = (lengthCounterLoad << 3) | (pulses[idx].period >> 8);
+
+				WritePulse(pAudioContext, idx, 0, byte0);
+				WritePulse(pAudioContext, idx, 1, byte1);
+				WritePulse(pAudioContext, idx, 2, byte2);
+				WritePulse(pAudioContext, idx, 3, byte3);
 			}
 
 			ImGui::PopID();
@@ -70,6 +91,30 @@ namespace Editor {
 
 			DrawPulseControls(pEditorContext, pAudioContext, 0);
 			DrawPulseControls(pEditorContext, pAudioContext, 1);
+
+			ImGui::Text("Triangle");
+			ImGui::SliderInt("Period", &triangle.period, 0, 0x7ff);
+			ImGui::SliderInt("Linear period", &triangle.linearPeriod, 0, 0x7f);
+			ImGui::SliderInt("Length (index)", &triangle.length, -1, 31);
+
+			if (ImGui::Button("Play Triangle")) {
+				/*PlayTriangle(pAudioContext,
+					triangle.period,
+					triangle.linearPeriod);*/
+
+				bool loop = triangle.length == -1;
+				u8 lengthCounterLoad = loop ? 0 : triangle.length;
+
+				u8 byte0 = (loop << 7) | triangle.linearPeriod;
+				u8 byte1 = 0;
+				u8 byte2 = triangle.period & 0xff;
+				u8 byte3 = (lengthCounterLoad << 3) | (triangle.period >> 8);
+
+				WriteTriangle(pAudioContext, 0, byte0);
+				WriteTriangle(pAudioContext, 1, byte1);
+				WriteTriangle(pAudioContext, 2, byte2);
+				WriteTriangle(pAudioContext, 3, byte3);
+			}
 
 			ImGui::End();
 		}

@@ -14,6 +14,10 @@ namespace Audio {
         0b11111100
     };
 
+    constexpr u8 triangleSequence[0x20] = {
+        15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+    };
+
     constexpr u8 lengthTable[0x20] = {
         10, 254, 20, 2, 40, 4, 80, 6, 10, 8, 0, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30
     };
@@ -25,12 +29,51 @@ namespace Audio {
         u32 debugWriteOffset;
         u32 debugReadOffset;
 
-        PulseChannel pulse1;
-        PulseChannel pulse2;
+        PulseChannel pulse[2];
+
+        TriangleChannel triangle;
 
         r64 accumulator;
         s64 clockCounter;
     };
+
+    static u8 ClockTriangle(TriangleChannel& triangle, bool quarterFrame, bool halfFrame) {
+        const u16 period = triangle.reg.periodLow + (triangle.reg.periodHigh << 8);
+        
+        if (quarterFrame) {
+            if (triangle.halt) {
+                triangle.linearCounter = triangle.reg.linearLoad;
+            }
+            else if (triangle.linearCounter != 0) {
+                triangle.linearCounter--;
+            }
+
+            if (!triangle.reg.loop) {
+                triangle.halt = false;
+            }
+        }
+
+        if (halfFrame) {
+            if (!triangle.reg.loop && triangle.lengthCounter != 0) {
+                triangle.lengthCounter--;
+            }
+        }
+
+        for (int i = 0; i < 2; i++) {
+            if (triangle.lengthCounter != 0 && triangle.linearCounter != 0) {
+                triangle.counter--;
+                if (triangle.counter == 0xFFFF) {
+                    triangle.sequenceIdx--;
+                    triangle.counter = period + 1;
+                }
+            }
+        }
+
+        if (triangle.lengthCounter == 0) return 0;
+
+        u8 value = triangleSequence[triangle.sequenceIdx];
+        return value;
+    }
 
     static u8 ClockPulse(PulseChannel& pulse, bool quarterFrame, bool halfFrame, int sweepDiff) {
         
@@ -114,14 +157,20 @@ namespace Audio {
 
         r32 pulseOut = 0.0f;
 
-        u8 pulseSum = ClockPulse(pContext->pulse1, quarterFrame, halfFrame, 1);
-        pulseSum += ClockPulse(pContext->pulse2, quarterFrame, halfFrame, 0);
+        u8 pulseSum = ClockPulse(pContext->pulse[0], quarterFrame, halfFrame, 1);
+        pulseSum += ClockPulse(pContext->pulse[1], quarterFrame, halfFrame, 0);
 
         if (pulseSum > 0) {
             pulseOut = 95.66f / (8128.0f / pulseSum + 100);
         }
 
         r32 tndOut = 0.0f;
+        u8 triangle = ClockTriangle(pContext->triangle, quarterFrame, halfFrame);
+
+
+        if (triangle != 0) {
+            tndOut = 159.79f / (1 / ((r32)triangle / 8227) + 100);
+        }
 
         u8 sample = (u8)((pulseOut + tndOut) * 255);
 
@@ -179,35 +228,74 @@ namespace Audio {
         free(pContext);
     }
 
-    void PlayPulse(AudioContext* pContext, bool idx, u8 dutyCycle, u8 volume, u16 period, bool sweepEnabled, u8 sweepAmount, u8 sweepPeriod, bool sweepNegate, bool constantVolume, int length) {
-        PulseChannel& pulse = idx == 0 ? pContext->pulse1 : pContext->pulse2;
-        pulse.reg.dutyCycle = dutyCycle;
-        pulse.reg.volume = volume;
-        pulse.reg.periodLow = period & 0b11111111;
-        pulse.reg.periodHigh = period >> 8;
-        pulse.counter = period + 1;
-
-        pulse.reg.sweepEnabled = sweepEnabled;
-        pulse.reg.sweepShift = sweepAmount;
-        pulse.reg.sweepPeriod = sweepPeriod;
-        pulse.reg.sweepNegate = sweepNegate;
-        pulse.sweepCounter = sweepPeriod + 1;
-
-        pulse.reg.constantVolume = constantVolume;
-        pulse.envelopeCounter = volume + 1;
-        pulse.envelopeVolume = 15;
-
-        if (length < 0) {
-            pulse.reg.loop = true;
-            pulse.lengthCounter = 0x1f;
-        }
-        else {
-            pulse.reg.loop = false;
-            pulse.reg.lengthCounterLoad = length;
-            pulse.lengthCounter = lengthTable[length];
+    void WritePulse(AudioContext* pContext, bool idx, u8 address, u8 data) {
+        if (address > 3) {
+            return;
         }
 
-        pulse.muted = false;
+        // Write data straight into register
+        PulseChannel& pulse = pContext->pulse[idx];
+        u8* ptr = (u8*)&pulse.reg + address;
+        *ptr = data;
+
+        // Handle side effects
+        if (address == 0) {
+            // From nesdev:
+            // "The duty cycle is changed (see table below), but the sequencer's current position isn't affected." 
+            // So I guess nothing happens? Double check if sounds weird
+        }
+        else if (address == 1) {
+            pulse.sweepCounter = pulse.reg.sweepPeriod + 1;
+        }
+        else if (address == 2) {
+            const u16 period = pulse.reg.periodLow + (pulse.reg.periodHigh << 8);
+            pulse.muted = (period < 0x08);
+        }
+        else if (address == 3) {
+            // From nesdev:
+            // "The sequencer is immediately restarted at the first value of the current sequence. The envelope is also restarted. The period divider is not reset."
+            const u16 period = pulse.reg.periodLow + (pulse.reg.periodHigh << 8);
+            pulse.counter = period + 1;
+            pulse.muted = (period < 0x08);
+
+            const u8 envelopePeriod = pulse.reg.volume;
+            pulse.envelopeCounter = envelopePeriod + 1;
+            pulse.envelopeVolume = 0x0f;
+
+            pulse.lengthCounter = lengthTable[pulse.reg.lengthCounterLoad];
+        }
+    }
+    void WriteTriangle(AudioContext* pContext, u8 address, u8 data) {
+        if (address > 3) {
+            return;
+        }
+
+        TriangleChannel& triangle = pContext->triangle;
+        u8* ptr = (u8*)&triangle.reg + address;
+        *ptr = data;
+
+        // Handle side effects
+        if (address == 0) {
+
+        }
+        else if (address == 1) {
+
+        }
+        else if (address == 2) {
+
+        }
+        else if (address == 3) {
+            // From nesdev:
+            // "Sets the linear counter reload flag"
+            // Also known as halt
+
+            triangle.halt = true;
+
+            const u16 period = triangle.reg.periodLow + (triangle.reg.periodHigh << 8);
+            triangle.counter = period + 1;
+
+            triangle.lengthCounter = lengthTable[triangle.reg.lengthCounterLoad];
+        }
     }
 
     void ReadDebugBuffer(AudioContext* pContext, u8* outSamples, u32 count) {
