@@ -109,7 +109,6 @@ int WinMain(int argc, char** args) {
 #endif
         }
         
-        Audio::Update(deltaTimeSeconds, pAudioContext);
         Game::Step(deltaTimeSeconds);
 
         if (!minimized) {
