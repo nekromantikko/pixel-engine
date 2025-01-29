@@ -3,6 +3,45 @@
 #include "typedef.h"
 
 namespace Audio {
+    enum SoundOpCode : uint8_t {
+        OP_NONE = 0x00,
+        OP_WRITE_PULSE0 = 0x01,
+        OP_WRITE_PULSE1 = 0x02,
+        OP_WRITE_TRIANGLE = 0x03,
+        OP_WRITE_NOISE = 0x04,
+        OP_WRITE_DPCM = 0x05,
+        OP_ENDFRAME = 0x0f
+    };
+
+    struct SoundOperation {
+        u8 opCode : 4;
+        u8 address : 4;
+        u8 data;
+    };
+
+    struct NSFHeader {
+        char signature[4];
+        u32 unused;
+        u32 size;
+        u32 loopPoint;
+    };
+
+    enum ChannelId {
+        CHAN_ID_PULSE0 = 0,
+        CHAN_ID_PULSE1,
+        CHAN_ID_TRIANGLE,
+        CHAN_ID_NOISE,
+        //CHAN_ID_DPCM,
+
+        CHAN_COUNT
+    };
+
+    struct Sound {
+        u32 length;
+        u32 loopPoint;
+        SoundOperation* data;
+    };
+
     struct PulseRegister {
         // Address 0
         u8 volume : 4;
@@ -115,4 +154,10 @@ namespace Audio {
 
 	void ReadDebugBuffer(AudioContext* pContext, u8* outSamples, u32 count);
 	void WriteDebugBuffer(AudioContext* pContext, u8* samples, u32 count);
+
+    Sound LoadSound(AudioContext* pContext, const char* fname);
+    void PlayMusic(AudioContext* pContext, const Sound* pSound, bool loop);
+    void StopMusic(AudioContext* pContext);
+    void PlaySFX(AudioContext* pContext, const Sound* pSound, u32 channel);
+    void FreeSound(AudioContext* pContext, Sound* pSound);
 }

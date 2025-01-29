@@ -42,6 +42,11 @@ namespace Game {
 
     constexpr r32 damageDelay = 0.5f;
 
+    Audio::AudioContext* pAudioCon;
+    Audio::Sound jumpSfx;
+    Audio::Sound gunSfx;
+    Audio::Sound ricochetSfx;
+
 #pragma region Actors
     static void InitializeActor(Actor* pActor) {
         const u32 flags = pActor->pPrototype->behaviour;
@@ -152,7 +157,7 @@ namespace Game {
 
     u8 basePaletteColors[PALETTE_MEMORY_SIZE];
 
-	void Initialize() {
+	void Initialize(Audio::AudioContext* pAudioContext) {
         // Rendering data
         pRenderSettings = Rendering::GetSettingsPtr();
         pChr = Rendering::GetChrPtr(0);
@@ -196,12 +201,21 @@ namespace Game {
 
         actors.Init(512);
 
+        // TEMP SOUND STUFF
+        pAudioCon = pAudioContext;
+        jumpSfx = Audio::LoadSound(pAudioContext, "assets/jump.nsf");
+        gunSfx = Audio::LoadSound(pAudioContext, "assets/gun1.nsf");
+        ricochetSfx = Audio::LoadSound(pAudioContext, "assets/ricochet.nsf");
+
         // TODO: Level should load palettes and tileset?
         LoadLevel(0);
 	}
 
     void Free() {
-        
+        Audio::FreeSound(pAudioCon, &jumpSfx);
+        Audio::FreeSound(pAudioCon, &gunSfx);
+        Audio::FreeSound(pAudioCon, &ricochetSfx);
+    
     }
 
 
@@ -365,6 +379,8 @@ namespace Game {
 
             // Trigger new flap
             playerState.wingFrame++;
+
+            Audio::PlaySFX(pAudioCon, &jumpSfx, Audio::CHAN_ID_PULSE0);
         }
 
         if (pPlayer->velocity.y < 0 && Input::ButtonReleased(BUTTON_A)) {
@@ -424,6 +440,7 @@ namespace Game {
 
                 if (playerState.weapon == WpnLauncher) {
                 pBullet->velocity = pBullet->velocity * 0.75f;
+                Audio::PlaySFX(pAudioCon, &gunSfx, Audio::CHAN_ID_NOISE);
                 }
                 pBullet->velocity = pBullet->velocity + pPlayer->velocity * dt;
 
@@ -617,6 +634,7 @@ namespace Game {
             if (hit.blockingHit) {
                 if (flags & ACTOR_BEHAVIOUR_BOUNCY) {
                     pActor->velocity = pActor->velocity - 2 * DotProduct(pActor->velocity, hit.impactNormal) * hit.impactNormal;
+                    Audio::PlaySFX(pAudioCon, &ricochetSfx, Audio::CHAN_ID_PULSE1);
                 }
                 else if (flags & ACTOR_BEHAVIOUR_FRAGILE) {
                     ActorDie(handle, removeList);
@@ -637,6 +655,7 @@ namespace Game {
 
                 if (flags & ACTOR_BEHAVIOUR_BOUNCY) {
                     pActor->velocity = pActor->velocity - 2 * DotProduct(pActor->velocity, hit.impactNormal) * hit.impactNormal;
+                    Audio::PlaySFX(pAudioCon, &ricochetSfx, Audio::CHAN_ID_PULSE1);
                 }
                 else if (flags & ACTOR_BEHAVIOUR_FRAGILE) {
                     ActorDie(handle, removeList);

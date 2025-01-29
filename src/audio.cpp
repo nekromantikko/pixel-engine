@@ -1,10 +1,14 @@
 #include "audio.h"
 #include <SDL.h>
 #include <vector>
+#include "system.h"
+#include "memory_pool.h"
 
-constexpr u32 debugBufferSize = 1024;
-constexpr r64 nesCpuFreq = 1789773.f;
-constexpr r64 clockFreq = nesCpuFreq / 2.0f;
+static constexpr u32 debugBufferSize = 1024;
+static constexpr r64 nesCpuFreq = 1789773.f;
+static constexpr r64 clockFreq = nesCpuFreq / 2.0f;
+
+static const u32 maxSoundsPlaying = 8;
 
 namespace Audio {
     constexpr u8 pulseSequences[4] = {
@@ -39,7 +43,269 @@ namespace Audio {
 
         r64 accumulator;
         s64 clockCounter;
+
+        // Reserve channels for music while sfx is playing
+        PulseChannel pulseReserve[2];
+        TriangleChannel triangleReserve;
+        NoiseChannel noiseReserve;
+
+        const Sound* pMusic = nullptr;
+        u32 musicPos = 0;
+        bool loopMusic;
+
+        // Max one sfx per channel can play
+        const Sound* sfx[4]{};
+        u32 sfxPos[4]{};
     };
+
+    static void WritePulse(AudioContext* pContext, PulseChannel* pulse, u8 address, u8 data) {
+        if (address > 3) {
+            return;
+        }
+
+        // Write data straight into register
+        u8* ptr = (u8*)&pulse->reg + address;
+        *ptr = data;
+
+        // Handle side effects
+        if (address == 0) {
+            // From nesdev:
+            // "The duty cycle is changed (see table below), but the sequencer's current position isn't affected." 
+            // So I guess nothing happens? Double check if sounds weird
+        }
+        else if (address == 1) {
+            pulse->sweepCounter = pulse->reg.sweepPeriod + 1;
+        }
+        else if (address == 2) {
+            const u16 period = pulse->reg.periodLow + (pulse->reg.periodHigh << 8);
+            pulse->muted = (period < 0x08);
+        }
+        else if (address == 3) {
+            // From nesdev:
+            // "The sequencer is immediately restarted at the first value of the current sequence. The envelope is also restarted. The period divider is not reset."
+            const u16 period = pulse->reg.periodLow + (pulse->reg.periodHigh << 8);
+            pulse->counter = period + 1;
+            pulse->muted = (period < 0x08);
+
+            const u8 envelopePeriod = pulse->reg.volume;
+            pulse->envelopeCounter = envelopePeriod + 1;
+            pulse->envelopeVolume = 0x0f;
+
+            pulse->lengthCounter = lengthTable[pulse->reg.lengthCounterLoad];
+        }
+    }
+
+    void WritePulse(AudioContext* pContext, bool idx, u8 address, u8 data) {
+        PulseChannel& pulse = pContext->pulse[idx];
+        WritePulse(pContext, &pulse, address, data);
+    }
+
+    static void WriteTriangle(AudioContext* pContext, TriangleChannel* triangle, u8 address, u8 data) {
+        if (address > 3) {
+            return;
+        }
+
+        u8* ptr = (u8*)&triangle->reg + address;
+        *ptr = data;
+
+        // Handle side effects
+        if (address == 0) {
+
+        }
+        else if (address == 1) {
+
+        }
+        else if (address == 2) {
+
+        }
+        else if (address == 3) {
+            // From nesdev:
+            // "Sets the linear counter reload flag"
+            // Also known as halt
+
+            triangle->halt = true;
+
+            const u16 period = triangle->reg.periodLow + (triangle->reg.periodHigh << 8);
+            triangle->counter = period + 1;
+
+            triangle->lengthCounter = lengthTable[triangle->reg.lengthCounterLoad];
+        }
+    }
+
+    void WriteTriangle(AudioContext* pContext, u8 address, u8 data) {
+        TriangleChannel& triangle = pContext->triangle;
+        WriteTriangle(pContext, &triangle, address, data);
+    }
+
+    static void WriteNoise(AudioContext* pContext, NoiseChannel* noise, u8 address, u8 data) {
+        if (address > 3) {
+            return;
+        }
+
+        u8* ptr = (u8*)&noise->reg + address;
+        *ptr = data;
+
+        // Handle side effects
+        if (address == 0) {
+
+        }
+        else if (address == 1) {
+
+        }
+        else if (address == 2) {
+
+        }
+        else if (address == 3) {
+            noise->counter = noisePeriodTable[noise->reg.period];
+
+            const u8 envelopePeriod = noise->reg.volume;
+            noise->envelopeCounter = envelopePeriod + 1;
+            noise->envelopeVolume = 0x0f;
+
+            noise->shiftRegister = 1;
+            noise->lengthCounter = lengthTable[noise->reg.lengthCounterLoad];
+        }
+    }
+
+    void WriteNoise(AudioContext* pContext, u8 address, u8 data) {
+        NoiseChannel& noise = pContext->noise;
+        WriteNoise(pContext, &noise, address, data);
+    }
+
+    // Returns true if keep reading
+    static bool HandleSoundOp(AudioContext* pAudioContext, const SoundOperation* operation, PulseChannel* p0, PulseChannel* p1, TriangleChannel* tri, NoiseChannel* noise) {
+        bool keepReading = true;
+        
+        switch (operation->opCode) {
+        case OP_WRITE_PULSE0: {
+            if (p0 != nullptr) {
+                WritePulse(pAudioContext, p0, operation->address, operation->data);
+            }
+            break;
+        }
+        case OP_WRITE_PULSE1: {
+            if (p1 != nullptr) {
+                WritePulse(pAudioContext, p1, operation->address, operation->data);
+            }
+            break;
+        }
+        case OP_WRITE_TRIANGLE: {
+            if (tri != nullptr) {
+                WriteTriangle(pAudioContext, tri, operation->address, operation->data);
+            }
+            break;
+        }
+        case OP_WRITE_NOISE: {
+            if (noise != nullptr) {
+                WriteNoise(pAudioContext, noise, operation->address, operation->data);
+            }
+            break;
+        }
+        case OP_ENDFRAME: {
+            keepReading = false;
+            break;
+        }
+        default:
+            break;
+        }
+
+        return keepReading;
+    }
+
+    // Returns true if sound keeps playing still
+    static bool TickSFX(AudioContext* pContext, u32 channel) {
+        if (channel >= CHAN_COUNT) {
+            return false;
+        }
+
+        const Sound* pSound = pContext->sfx[channel];
+        u32& pos = pContext->sfxPos[channel];
+
+        if (pSound == nullptr) {
+            return false;
+        }
+
+        PulseChannel* p0 = (channel == CHAN_ID_PULSE0) ? &pContext->pulse[0] : nullptr;
+        PulseChannel* p1 = (channel == CHAN_ID_PULSE1) ? &pContext->pulse[1] : nullptr;
+        TriangleChannel* tri = (channel == CHAN_ID_TRIANGLE) ? &pContext->triangle : nullptr;
+        NoiseChannel* noise = (channel == CHAN_ID_NOISE) ? &pContext->noise : nullptr;
+
+        bool keepReading = true;
+        while (keepReading) {
+            const SoundOperation* operation = pSound->data + pos;
+
+            keepReading = HandleSoundOp(pContext, operation, p0, p1, tri, noise);
+
+            if (++pos == pSound->length) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    static bool TickMusic(AudioContext* pContext) {
+        if (pContext->pMusic == nullptr) {
+            return false;
+        }
+
+        PulseChannel* p0 = (pContext->sfx[0] == nullptr) ? &pContext->pulse[0] : &pContext->pulseReserve[0];
+        PulseChannel* p1 = (pContext->sfx[1] == nullptr) ? &pContext->pulse[1] : &pContext->pulseReserve[1];
+        TriangleChannel* tri = (pContext->sfx[2] == nullptr) ? &pContext->triangle : &pContext->triangleReserve;
+        NoiseChannel* noise = (pContext->sfx[3] == nullptr) ? &pContext->noise : &pContext->noiseReserve;
+
+        bool keepReading = true;
+        while (keepReading) {
+            const SoundOperation* operation = pContext->pMusic->data + pContext->musicPos;
+
+            keepReading = HandleSoundOp(pContext, operation, p0, p1, tri, noise);
+
+            if (++pContext->musicPos == pContext->pMusic->length) {
+                if (pContext->loopMusic) {
+                    pContext->musicPos = pContext->pMusic->loopPoint;
+                }
+                else {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    static void TickSoundPlayer(AudioContext* pContext) {
+        for (int channel = 0; channel < CHAN_COUNT; channel++) {
+            if (pContext->sfx[channel] == nullptr) {
+                continue;
+            }
+
+            if (!TickSFX(pContext, channel)) {
+                pContext->sfx[channel] = nullptr;
+
+                // I think this should happen one frame later
+                switch (channel) {
+                case CHAN_ID_PULSE0:
+                    pContext->pulse[0] = pContext->pulseReserve[0];
+                    break;
+                case CHAN_ID_PULSE1:
+                    pContext->pulse[1] = pContext->pulseReserve[1];
+                    break;
+                case CHAN_ID_TRIANGLE:
+                    pContext->triangle = pContext->triangleReserve;
+                    break;
+                case CHAN_ID_NOISE:
+                    pContext->noise = pContext->noiseReserve;
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
+
+        if (!TickMusic(pContext)) {
+            pContext->pMusic = nullptr;
+        }
+    }
 
     static u8 ClockNoise(NoiseChannel& noise, bool quarterFrame, bool halfFrame) {
         // Clock envelope
@@ -202,6 +468,7 @@ namespace Audio {
             quarterFrame = true;
             halfFrame = true;
             pContext->clockCounter = 0;
+            TickSoundPlayer(pContext);
         }
 
         r32 pulseOut = 0.0f;
@@ -246,6 +513,28 @@ namespace Audio {
         WriteDebugBuffer(pContext, stream, len);
     }
 
+    static void ClearRegisters(AudioContext* pContext) {
+        WritePulse(pContext, false, 0, 0);
+        WritePulse(pContext, false, 1, 0);
+        WritePulse(pContext, false, 2, 0);
+        WritePulse(pContext, false, 3, 0);
+
+        WritePulse(pContext, true, 0, 0);
+        WritePulse(pContext, true, 1, 0);
+        WritePulse(pContext, true, 2, 0);
+        WritePulse(pContext, true, 3, 0);
+
+        WriteTriangle(pContext, 0, 0);
+        WriteTriangle(pContext, 1, 0);
+        WriteTriangle(pContext, 2, 0);
+        WriteTriangle(pContext, 3, 0);
+
+        WriteNoise(pContext, 0, 0);
+        WriteNoise(pContext, 1, 0);
+        WriteNoise(pContext, 2, 0);
+        WriteNoise(pContext, 3, 0);
+    }
+
     AudioContext* CreateAudioContext() {
         AudioContext* pContext = (AudioContext*)calloc(1, sizeof(AudioContext));
 
@@ -270,112 +559,13 @@ namespace Audio {
 
         SDL_PauseAudioDevice(pContext->audioDevice, 0);
 
+        ClearRegisters(pContext);
+
         return pContext;
     }
     void FreeAudioContext(AudioContext* pContext) {
         SDL_CloseAudioDevice(pContext->audioDevice);
         free(pContext);
-    }
-
-    void WritePulse(AudioContext* pContext, bool idx, u8 address, u8 data) {
-        if (address > 3) {
-            return;
-        }
-
-        // Write data straight into register
-        PulseChannel& pulse = pContext->pulse[idx];
-        u8* ptr = (u8*)&pulse.reg + address;
-        *ptr = data;
-
-        // Handle side effects
-        if (address == 0) {
-            // From nesdev:
-            // "The duty cycle is changed (see table below), but the sequencer's current position isn't affected." 
-            // So I guess nothing happens? Double check if sounds weird
-        }
-        else if (address == 1) {
-            pulse.sweepCounter = pulse.reg.sweepPeriod + 1;
-        }
-        else if (address == 2) {
-            const u16 period = pulse.reg.periodLow + (pulse.reg.periodHigh << 8);
-            pulse.muted = (period < 0x08);
-        }
-        else if (address == 3) {
-            // From nesdev:
-            // "The sequencer is immediately restarted at the first value of the current sequence. The envelope is also restarted. The period divider is not reset."
-            const u16 period = pulse.reg.periodLow + (pulse.reg.periodHigh << 8);
-            pulse.counter = period + 1;
-            pulse.muted = (period < 0x08);
-
-            const u8 envelopePeriod = pulse.reg.volume;
-            pulse.envelopeCounter = envelopePeriod + 1;
-            pulse.envelopeVolume = 0x0f;
-
-            pulse.lengthCounter = lengthTable[pulse.reg.lengthCounterLoad];
-        }
-    }
-    void WriteTriangle(AudioContext* pContext, u8 address, u8 data) {
-        if (address > 3) {
-            return;
-        }
-
-        TriangleChannel& triangle = pContext->triangle;
-        u8* ptr = (u8*)&triangle.reg + address;
-        *ptr = data;
-
-        // Handle side effects
-        if (address == 0) {
-
-        }
-        else if (address == 1) {
-
-        }
-        else if (address == 2) {
-
-        }
-        else if (address == 3) {
-            // From nesdev:
-            // "Sets the linear counter reload flag"
-            // Also known as halt
-
-            triangle.halt = true;
-
-            const u16 period = triangle.reg.periodLow + (triangle.reg.periodHigh << 8);
-            triangle.counter = period + 1;
-
-            triangle.lengthCounter = lengthTable[triangle.reg.lengthCounterLoad];
-        }
-    }
-
-    void WriteNoise(AudioContext* pContext, u8 address, u8 data) {
-        if (address > 3) {
-            return;
-        }
-
-        NoiseChannel& noise = pContext->noise;
-        u8* ptr = (u8*)&noise.reg + address;
-        *ptr = data;
-
-        // Handle side effects
-        if (address == 0) {
-
-        }
-        else if (address == 1) {
-
-        }
-        else if (address == 2) {
-
-        }
-        else if (address == 3) {
-            noise.counter = noisePeriodTable[noise.reg.period];
-
-            const u8 envelopePeriod = noise.reg.volume;
-            noise.envelopeCounter = envelopePeriod + 1;
-            noise.envelopeVolume = 0x0f;
-
-            noise.shiftRegister = 1;
-            noise.lengthCounter = lengthTable[noise.reg.lengthCounterLoad];
-        }
     }
 
     // For debug only!
@@ -413,6 +603,75 @@ namespace Audio {
             remainingSamples -= samplesToWrite;
             pContext->debugWriteOffset += samplesToWrite;
             pContext->debugWriteOffset %= debugBufferSize;
+        }
+    }
+
+    Sound LoadSound(AudioContext* pContext, const char* fname) {
+        FILE* pFile;
+        fopen_s(&pFile, fname, "rb");
+
+        if (pFile == NULL) {
+            DEBUG_ERROR("Failed to load music file\n");
+        }
+
+        NSFHeader header{};
+        fread(&header, sizeof(NSFHeader), 1, pFile);
+
+        Sound sound{};
+        sound.length = header.size;
+        sound.loopPoint = header.loopPoint;
+
+        sound.data = (SoundOperation*)calloc(sound.length, sizeof(SoundOperation));
+        fread(sound.data, sizeof(SoundOperation), sound.length, pFile);
+
+        fclose(pFile);
+
+        return sound;
+    }
+
+    void PlayMusic(AudioContext* pContext, const Sound* pSound, bool loop) {
+        pContext->pMusic = pSound;
+        pContext->musicPos = 0;
+        pContext->loopMusic = loop;
+    }
+
+    void StopMusic(AudioContext* pContext) {
+        pContext->pMusic = nullptr;
+        ClearRegisters(pContext);
+    }
+
+    void PlaySFX(AudioContext* pContext, const Sound* pSound, u32 channel) {
+        if (channel >= CHAN_COUNT) {
+            return;
+        }
+
+        // Save register state to later continue music
+        if (pContext->sfx[channel] == nullptr) {
+            switch (channel) {
+            case CHAN_ID_PULSE0:
+                pContext->pulseReserve[0] = pContext->pulse[0];
+                break;
+            case CHAN_ID_PULSE1:
+                pContext->pulseReserve[1] = pContext->pulse[1];
+                break;
+            case CHAN_ID_TRIANGLE:
+                pContext->triangleReserve = pContext->triangle;
+                break;
+            case CHAN_ID_NOISE:
+                pContext->noiseReserve = pContext->noise;
+                break;
+            default:
+                break;
+            }
+        }
+
+        pContext->sfx[channel] = pSound;
+        pContext->sfxPos[channel] = 0;
+    }
+
+    void FreeSound(AudioContext* pContext, Sound* pSound) {
+        if (pSound != nullptr) {
+            free(pSound->data);
         }
     }
 }
