@@ -74,6 +74,9 @@ namespace Audio {
     void WritePulse(AudioContext* pContext, bool idx, u8 address, u8 data);
     void WriteTriangle(AudioContext* pContext, u8 address, u8 data);
 
+    void DebugReadPulse(AudioContext* pContext, bool idx, void* outData);
+    void DebugReadTriangle(AudioContext* pContext, void* outData);
+
 	void ReadDebugBuffer(AudioContext* pContext, u8* outSamples, u32 count);
 	void WriteDebugBuffer(AudioContext* pContext, u8* samples, u32 count);
 }

@@ -298,6 +298,16 @@ namespace Audio {
         }
     }
 
+    // For debug only!
+    void DebugReadPulse(AudioContext* pContext, bool idx, void* outData) {
+        PulseChannel& pulse = pContext->pulse[idx];
+        memcpy(outData, &pulse.reg, 4);
+    }
+    void DebugReadTriangle(AudioContext* pContext, void* outData) {
+        TriangleChannel& triangle = pContext->triangle;
+        memcpy(outData, &triangle.reg, 4);
+    }
+
     void ReadDebugBuffer(AudioContext* pContext, u8* outSamples, u32 count) {
         u32 remainingSamples = count;
         while (remainingSamples > 0) {
