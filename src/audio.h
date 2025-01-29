@@ -63,6 +63,40 @@ namespace Audio {
 
         u8 linearCounter : 7;
         bool halt;
+
+        u8 lengthCounter : 5;
+    };
+
+    struct NoiseRegister {
+        // Address 0
+        u8 volume : 4;
+        u8 constantVolume : 1;
+        u8 loop : 1;
+        u8 unused0 : 2;
+
+        // Address 1
+        u8 unused1;
+
+        // Address 2
+        u8 period : 4;
+        u8 unused2 : 3;
+        u8 mode : 1;
+
+        // Address 3
+        u8 unused3 : 3;
+        u8 lengthCounterLoad : 5;
+    };
+
+    struct NoiseChannel {
+        NoiseRegister reg;
+
+        u16 counter;
+
+        s8 envelopeCounter;
+        u8 envelopeVolume;
+
+        u16 shiftRegister : 15;
+
         u8 lengthCounter : 5;
     };
 
@@ -73,9 +107,11 @@ namespace Audio {
 
     void WritePulse(AudioContext* pContext, bool idx, u8 address, u8 data);
     void WriteTriangle(AudioContext* pContext, u8 address, u8 data);
+    void WriteNoise(AudioContext* pContext, u8 address, u8 data);
 
     void DebugReadPulse(AudioContext* pContext, bool idx, void* outData);
     void DebugReadTriangle(AudioContext* pContext, void* outData);
+    void DebugReadNoise(AudioContext* pContext, void* outData);
 
 	void ReadDebugBuffer(AudioContext* pContext, u8* outSamples, u32 count);
 	void WriteDebugBuffer(AudioContext* pContext, u8* samples, u32 count);

@@ -9,8 +9,8 @@ namespace Editor {
 			return ((r32)((u8*)data)[idx]);
 		}
 
-		static void DrawPulseControls(EditorContext* pEditorContext, AudioContext* pAudioContext, bool idx) {
-			ImGui::Text("Pulse %d", idx == 0 ? 1 : 2);
+		static void DrawPulseControls(AudioContext* pAudioContext, bool idx) {
+			ImGui::SeparatorText(idx == 0 ? "Pulse 1" : "Pulse 2");
 
 			ImGui::PushID(idx);
 
@@ -80,16 +80,10 @@ namespace Editor {
 			ImGui::PopID();
 		}
 
-		void DrawAudioWindow(AudioContext* pAudioContext) {
-			ImGui::Begin("Audio");
+		static void DrawTriangleControls(AudioContext* pAudioContext) {
+			ImGui::SeparatorText("Triangle");
 
-			ReadDebugBuffer(pAudioContext, buffer, 1024);
-			ImGui::PlotLines("Waveform", GetSample, buffer, 1024, 0, nullptr, 0.0f, 255.0f, ImVec2(0, 80.0f));
-
-			DrawPulseControls(pEditorContext, pAudioContext, 0);
-			DrawPulseControls(pEditorContext, pAudioContext, 1);
-
-			ImGui::Text("Triangle");
+			ImGui::PushID(2);
 
 			u8 bytes[4];
 			DebugReadTriangle(pAudioContext, bytes);
@@ -119,6 +113,68 @@ namespace Editor {
 				u8 byte3 = (lengthCounterLoad << 3) | (period >> 8);
 				WriteTriangle(pAudioContext, 3, byte3);
 			}
+
+			ImGui::PopID();
+		}
+
+		static void DrawNoiseControls(AudioContext* pAudioContext) {
+			ImGui::SeparatorText("Noise");
+
+			ImGui::PushID(3);
+
+			u8 bytes[4];
+			DebugReadNoise(pAudioContext, bytes);
+
+			int volume = bytes[0] & 0b00001111;
+			bool useEnvelope = !((bytes[0] >> 4) & 1);
+			bool loop = (bytes[0] >> 5) & 1;
+			int period = bytes[2] & 0x0f;
+			bool mode = bytes[2] >> 7;
+			int lengthCounterLoad = (bytes[3] >> 3);
+
+			if (ImGui::Checkbox("Mode", &mode)) {
+				u8 byte2 = (mode << 7) | period;
+				WriteNoise(pAudioContext, 2, byte2);
+			}
+
+			if (ImGui::SliderInt("Volume", &volume, 0, 15)) {
+				u8 byte0 = (loop << 5) | (!useEnvelope << 4) | volume;
+				WriteNoise(pAudioContext, 0, byte0);
+			}
+
+			if (ImGui::SliderInt("Period", &period, 0, 0x0f)) {
+				u8 byte2 = (mode << 7) | period;
+				WriteNoise(pAudioContext, 2, byte2);
+			}
+
+			if (ImGui::Checkbox("Use envelope", &useEnvelope)) {
+				u8 byte0 = (loop << 5) | (!useEnvelope << 4) | volume;
+				WriteNoise(pAudioContext, 0, byte0);
+			}
+
+			if (ImGui::Checkbox("Loop", &loop)) {
+				u8 byte0 = (loop << 5) | (!useEnvelope << 4) | volume;
+				WriteNoise(pAudioContext, 0, byte0);
+			}
+
+			if (ImGui::SliderInt("Length counter load", &lengthCounterLoad, 0, 31)) {
+				u8 byte3 = (lengthCounterLoad << 3);
+				WriteNoise(pAudioContext, 3, byte3);
+			}
+
+			ImGui::PopID();
+		}
+
+		void DrawAudioWindow(AudioContext* pAudioContext) {
+			ImGui::Begin("Audio");
+
+			ReadDebugBuffer(pAudioContext, buffer, 1024);
+			ImGui::PlotLines("Waveform", GetSample, buffer, 1024, 0, nullptr, 0.0f, 255.0f, ImVec2(0, 80.0f));
+
+			DrawPulseControls(pAudioContext, 0);
+			DrawPulseControls(pAudioContext, 1);
+			DrawTriangleControls(pAudioContext);
+			DrawNoiseControls(pAudioContext);
 
 			ImGui::End();
 		}

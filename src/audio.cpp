@@ -22,6 +22,10 @@ namespace Audio {
         10, 254, 20, 2, 40, 4, 80, 6, 10, 8, 0, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30
     };
 
+    constexpr u8 noisePeriodTable[0x10] = {
+        4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
+    };
+
     struct AudioContext {
         SDL_AudioDeviceID audioDevice;
 
@@ -30,12 +34,56 @@ namespace Audio {
         u32 debugReadOffset;
 
         PulseChannel pulse[2];
-
         TriangleChannel triangle;
+        NoiseChannel noise;
 
         r64 accumulator;
         s64 clockCounter;
     };
+
+    static u8 ClockNoise(NoiseChannel& noise, bool quarterFrame, bool halfFrame) {
+        // Clock envelope
+        if (quarterFrame) {
+            if (--noise.envelopeCounter == 0) {
+                const u8 envelopePeriod = noise.reg.volume;
+                noise.envelopeCounter = envelopePeriod + 1;
+                if (noise.envelopeVolume > 0) {
+                    noise.envelopeVolume--;
+                }
+                else if (noise.reg.loop) {
+                    noise.envelopeVolume = (noise.envelopeVolume - 1) & 0x0F;
+                }
+            }
+        }
+
+        // Clock length counter
+        if (halfFrame) {
+            if (!noise.reg.loop && noise.lengthCounter != 0) {
+                noise.lengthCounter--;
+            }
+        }
+
+        noise.counter--;
+        if (noise.counter == 0xFFFF) {
+            
+            u8 modeBitIndex = noise.reg.mode ? 6 : 1;
+            u8 modeBit = noise.shiftRegister >> modeBitIndex;
+            u8 feedbackBit = (noise.shiftRegister ^ modeBit) & 1;
+
+            noise.shiftRegister >>= 1;
+            noise.shiftRegister |= (feedbackBit << 14);
+
+            noise.counter = noisePeriodTable[noise.reg.period];
+        }
+
+        bool muted = (noise.lengthCounter == 0) || (noise.shiftRegister & 1);
+        if (muted) {
+            return 0;
+        }
+
+        u8 volume = noise.reg.constantVolume ? noise.reg.volume : noise.envelopeVolume;
+        return volume;
+    }
 
     static u8 ClockTriangle(TriangleChannel& triangle, bool quarterFrame, bool halfFrame) {
         const u16 period = triangle.reg.periodLow + (triangle.reg.periodHigh << 8);
@@ -79,7 +127,8 @@ namespace Audio {
         
         if (quarterFrame) {
             if (--pulse.envelopeCounter == 0) {
-                pulse.envelopeCounter = pulse.reg.volume + 1;
+                const u8 envelopePeriod = pulse.reg.volume;
+                pulse.envelopeCounter = envelopePeriod + 1;
                 if (pulse.envelopeVolume > 0) {
                     pulse.envelopeVolume--;
                 }
@@ -166,10 +215,10 @@ namespace Audio {
 
         r32 tndOut = 0.0f;
         u8 triangle = ClockTriangle(pContext->triangle, quarterFrame, halfFrame);
+        u8 noise = ClockNoise(pContext->noise, quarterFrame, halfFrame);
 
-
-        if (triangle != 0) {
-            tndOut = 159.79f / (1 / ((r32)triangle / 8227) + 100);
+        if (triangle != 0 || noise != 0) {
+            tndOut = 159.79f / (1 / ((r32)triangle / 8227 + (r32)noise / 12241) + 100);
         }
 
         u8 sample = (u8)((pulseOut + tndOut) * 255);
@@ -298,6 +347,37 @@ namespace Audio {
         }
     }
 
+    void WriteNoise(AudioContext* pContext, u8 address, u8 data) {
+        if (address > 3) {
+            return;
+        }
+
+        NoiseChannel& noise = pContext->noise;
+        u8* ptr = (u8*)&noise.reg + address;
+        *ptr = data;
+
+        // Handle side effects
+        if (address == 0) {
+
+        }
+        else if (address == 1) {
+
+        }
+        else if (address == 2) {
+
+        }
+        else if (address == 3) {
+            noise.counter = noisePeriodTable[noise.reg.period];
+
+            const u8 envelopePeriod = noise.reg.volume;
+            noise.envelopeCounter = envelopePeriod + 1;
+            noise.envelopeVolume = 0x0f;
+
+            noise.shiftRegister = 1;
+            noise.lengthCounter = lengthTable[noise.reg.lengthCounterLoad];
+        }
+    }
+
     // For debug only!
     void DebugReadPulse(AudioContext* pContext, bool idx, void* outData) {
         PulseChannel& pulse = pContext->pulse[idx];
@@ -306,6 +386,10 @@ namespace Audio {
     void DebugReadTriangle(AudioContext* pContext, void* outData) {
         TriangleChannel& triangle = pContext->triangle;
         memcpy(outData, &triangle.reg, 4);
+    }
+    void DebugReadNoise(AudioContext* pContext, void* outData) {
+        NoiseChannel& noise = pContext->noise;
+        memcpy(outData, &noise.reg, 4);
     }
 
     void ReadDebugBuffer(AudioContext* pContext, u8* outSamples, u32 count) {
