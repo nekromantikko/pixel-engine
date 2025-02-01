@@ -1,23 +1,25 @@
 #pragma once
 #include "typedef.h"
+#include <SDL.h>
 
 namespace Input {
     enum ControllerState : u8 {
-        None = 0,
-        A = 1 << 0,
-        B = 1 << 1,
-        Select = 1 << 2,
-        Start = 1 << 3,
-        DPadUp = 1 << 4,
-        DPadDown = 1 << 5,
-        DPadLeft = 1 << 6,
-        DPadRight = 1 << 7
+        CSTATE_NONE = 0,
+        CSTATE_A = 1 << 0,
+        CSTATE_B = 1 << 1,
+        CSTATE_SELECT = 1 << 2,
+        CSTATE_START = 1 << 3,
+        CSTATE_DPAD_UP = 1 << 4,
+        CSTATE_DPAD_DOWN = 1 << 5,
+        CSTATE_DPAD_LEFT = 1 << 6,
+        CSTATE_DPAD_RIGHT = 1 << 7
     };
 
-    void Poll();
+    void Update();
+    void ProcessEvent(const SDL_Event& event);
 
-    bool Down(ControllerState flags);
-    bool Up(ControllerState flags);
-    bool Pressed(ControllerState flags);
-    bool Released(ControllerState flags);
+    bool Down(u8 flags);
+    bool Up(u8 flags);
+    bool Pressed(u8 flags);
+    bool Released(u8 flags);
 }

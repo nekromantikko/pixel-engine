@@ -1,6 +1,7 @@
 #include "editor_sprites.h"
 #include "editor_util.h"
 #include <cmath>
+#include <algorithm>
 #include <stdio.h>
 
 namespace Editor {
@@ -307,19 +308,19 @@ namespace Editor {
                         case Collision::ColliderCircle: {
                             r32 radius = collider.width / 2;
                             if (ImGui::InputFloat("Radius", &radius, 0.125f, 0.0625f)) {
-                                collider.width = max(0.0f, radius*2);
+                                collider.width = std::max(0.0f, radius*2);
                             }
                             break;
                         }
                         case Collision::ColliderBox: {
                             r32 width = collider.width;
                             if (ImGui::InputFloat("Width", &width, 0.125f, 0.0625f)) {
-                                collider.width = max(0.0f, width);
+                                collider.width = std::max(0.0f, width);
                             }
 
                             r32 height = collider.height;
                             if (ImGui::InputFloat("Height", &height, 0.125f, 0.0625f)) {
-                                collider.height = max(0.0f, height);
+                                collider.height = std::max(0.0f, height);
                             }
 
                             break;
@@ -327,12 +328,12 @@ namespace Editor {
                         case Collision::ColliderCapsule: {
                             r32 radius = collider.width / 2;
                             if (ImGui::InputFloat("Radius", &radius, 0.125f, 0.0625f)) {
-                                collider.width = max(0.0f, radius * 2);
+                                collider.width = std::max(0.0f, radius * 2);
                             }
 
                             r32 height = collider.height;
                             if (ImGui::InputFloat("Height", &height, 0.125f, 0.0625f)) {
-                                collider.height = max(0.0f, height);
+                                collider.height = std::max(0.0f, height);
                             }
 
                             break;
@@ -429,8 +430,8 @@ namespace Editor {
                 s32 maxSpriteIndex = 0;
                 
                 for (u32 i = 0; i < spriteSelection.size(); i++) {
-                    minSpriteIndex = min(minSpriteIndex, spriteSelection[i]);
-                    maxSpriteIndex = max(maxSpriteIndex, spriteSelection[i]);
+                    minSpriteIndex = std::min(minSpriteIndex, spriteSelection[i]);
+                    maxSpriteIndex = std::max(maxSpriteIndex, spriteSelection[i]);
                 }
 
                 ImGui::BeginDisabled(minSpriteIndex == 0);

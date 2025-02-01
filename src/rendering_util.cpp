@@ -1,6 +1,7 @@
 #include "rendering_util.h"
 #include "system.h"
 #include "math.h"
+#include <algorithm>
 #include <stdio.h>
 
 namespace Rendering
@@ -91,9 +92,9 @@ namespace Rendering
 				float g = y - 0.394642 * u - 0.580622 * v;
 				float b = y + u * 2.032062;
 
-				r = Max(Min(r, 1.0f), 0.0f);
-				g = Max(Min(g, 1.0f), 0.0f);
-				b = Max(Min(b, 1.0f), 0.0f);
+				r = std::max(std::min(r, 1.0f), 0.0f);
+				g = std::max(std::min(g, 1.0f), 0.0f);
+				b = std::max(std::min(b, 1.0f), 0.0f);
 
 				u32* pixel = data + i;
 				u8* pixelBytes = (u8*)pixel;

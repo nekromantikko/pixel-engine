@@ -1,9 +1,9 @@
 #include "game.h"
 #include "system.h"
 #include "input.h"
-#include <math.h>
-#include <string.h>
-#include <stdio.h>
+#include <algorithm>
+#include <cstring>
+#include <cstdio>
 #include "rendering_util.h"
 #include "level.h"
 #include "viewport.h"
@@ -616,7 +616,7 @@ namespace Game {
         const u32 stepsToTopRight = (transitionWindowSize.x - center.x) + center.y;
         const u32 stepsToBtmLeft = center.x + (transitionWindowSize.y - center.y);
         const u32 stepsToBtmRight = (transitionWindowSize.x - center.x) + (transitionWindowSize.y - center.y);
-        const u32 maxSteps = Max(Max(Max(stepsToTopLeft, stepsToTopRight), stepsToBtmLeft), stepsToBtmRight);
+        const u32 maxSteps = std::max(std::max(std::max(stepsToTopLeft, stepsToTopRight), stepsToBtmLeft), stepsToBtmRight);
 
         levelTransitionState.steps = maxSteps;
         levelTransitionState.currentStep = 0;
@@ -712,11 +712,11 @@ namespace Game {
     }
 
     void PlayerInput(r32 dt) {
-        if (Input::Down(Input::DPadLeft)) {
+        if (Input::Down(Input::CSTATE_DPAD_LEFT)) {
             playerState.direction = DirLeft;
             playerState.hSpeed = -12.5f;
         }
-        else if (Input::Down(Input::DPadRight)) {
+        else if (Input::Down(Input::CSTATE_DPAD_RIGHT)) {
             playerState.direction = DirRight;
             playerState.hSpeed = 12.5f;
         }
@@ -725,19 +725,19 @@ namespace Game {
         }
 
         // Aim mode
-        if (Input::Down(Input::DPadUp)) {
+        if (Input::Down(Input::CSTATE_DPAD_UP)) {
             playerState.aMode = AimUp;
         }
-        else if (Input::Down(Input::DPadDown)) {
+        else if (Input::Down(Input::CSTATE_DPAD_DOWN)) {
             playerState.aMode = AimDown;
         }
         else playerState.aMode = AimFwd;
 
-        if (Input::Pressed(Input::Start)) {
+        if (Input::Pressed(Input::CSTATE_START)) {
             pRenderSettings->useCRTFilter = !pRenderSettings->useCRTFilter;
         }
 
-        if (Input::Pressed(Input::A) && (!playerState.inAir || !playerState.doubleJumped)) {
+        if (Input::Pressed(Input::CSTATE_A) && (!playerState.inAir || !playerState.doubleJumped)) {
             playerState.vSpeed = -31.25f;
             if (playerState.inAir) {
                 playerState.doubleJumped = true;
@@ -747,20 +747,20 @@ namespace Game {
             playerState.wingFrame++;
         }
 
-        if (playerState.vSpeed < 0 && Input::Released(Input::A)) {
+        if (playerState.vSpeed < 0 && Input::Released(Input::CSTATE_A)) {
             playerState.vSpeed /= 2;
         }
 
         playerState.slowFall = true;
-        if (Input::Up(Input::A) || playerState.vSpeed < 0) {
+        if (Input::Up(Input::CSTATE_A) || playerState.vSpeed < 0) {
             playerState.slowFall = false;
         }
 
-        if (Input::Released(Input::B)) {
+        if (Input::Released(Input::CSTATE_B)) {
             shootTimer = 0.0f;
         }
 
-        if (Input::Pressed(Input::Select)) {
+        if (Input::Pressed(Input::CSTATE_SELECT)) {
             if (playerState.weapon == WpnLauncher) {
                 playerState.weapon = WpnBow;
             }
@@ -768,7 +768,7 @@ namespace Game {
         }
 
         // Enter door
-        if (Input::Pressed(Input::DPadUp) && !playerState.inAir) {
+        if (Input::Pressed(Input::CSTATE_DPAD_UP) && !playerState.inAir) {
             const Vec2 checkPos = { playerState.x, playerState.y + 1.0f };
             const u32 screenInd = Level::WorldToScreenIndex(pCurrentLevel, checkPos);
             const u32 tileInd = Level::WorldToMetatileIndex(checkPos);
@@ -827,7 +827,7 @@ namespace Game {
         }
         else shootTimer = 0.0f;
 
-        if (Input::Down(Input::B) && shootTimer <= 0.0f) {
+        if (Input::Down(Input::CSTATE_B) && shootTimer <= 0.0f) {
             shootTimer += shootDelay;
 
             PoolHandle<Arrow> handle = arrowPool.Add();
@@ -957,7 +957,7 @@ namespace Game {
                 *((pNextSprite)++) = sprite;
             }
 
-            if (Input::Pressed(Input::Start)) {
+            if (Input::Pressed(Input::CSTATE_START)) {
                 state = StatePlaying;
                 // TODO: This should be set in level editor
                 const u32 firstLevel = 0x10;
@@ -974,16 +974,16 @@ namespace Game {
 
             r32 dx = 0, dy = 0;
 
-            if (Input::Down(Input::DPadRight)) {
+            if (Input::Down(Input::CSTATE_DPAD_RIGHT)) {
                 dx = 8.0f * dt;
             }
-            else if (Input::Down(Input::DPadLeft)) {
+            else if (Input::Down(Input::CSTATE_DPAD_LEFT)) {
                 dx = -8.0f * dt;
             }
-            else if (Input::Down(Input::DPadDown)) {
+            else if (Input::Down(Input::CSTATE_DPAD_DOWN)) {
                 dy = 8.0f * dt;
             }
-            else if (Input::Down(Input::DPadUp)) {
+            else if (Input::Down(Input::CSTATE_DPAD_UP)) {
                 dy = -8.0f * dt;
             }
             MoveViewport(&viewport, pNametables, pCurrentLevel, dx, dy);

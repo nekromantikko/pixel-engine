@@ -15,6 +15,7 @@ set(IMGUI_SOURCES
 		${IMGUI_PATH}/imstb_truetype.h
 		${IMGUI_PATH}/imgui_tables.cpp
 		${IMGUI_PATH}/imgui_widgets.cpp
+		${IMGUI_PATH}/backends/imgui_impl_sdl2.cpp
 		${IMGUI_PATH}/backends/imgui_impl_win32.cpp
 		${IMGUI_PATH}/backends/imgui_impl_vulkan.cpp)
 
