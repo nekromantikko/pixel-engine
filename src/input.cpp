@@ -11,7 +11,7 @@ namespace Input {
     ControllerState currentState = None;
     ControllerState previousState = None;
 
-    void InitController() {
+    static void InitController() {
         if (SDL_NumJoysticks()) {
             gameController = SDL_GameControllerOpen(0);
             haptic = SDL_HapticOpenFromJoystick(SDL_GameControllerGetJoystick(gameController));
@@ -20,7 +20,7 @@ namespace Input {
         else gameController = nullptr;
     }
 
-    void FreeController() {
+    static void FreeController() {
         if (gameController) {
             SDL_GameControllerClose(gameController);
         }
@@ -30,7 +30,7 @@ namespace Input {
         }
     }
 
-    void HandleControllerButtonEvent(SDL_ControllerButtonEvent& event, u8& outState)
+    static void HandleControllerButtonEvent(SDL_ControllerButtonEvent& event, u8& outState)
     {
         bool pressed = (event.state == SDL_PRESSED);
 
@@ -65,12 +65,12 @@ namespace Input {
         }
     }
 
-    void HandleControllerAxisEvent(SDL_ControllerAxisEvent& event, u8& outState)
+    static void HandleControllerAxisEvent(SDL_ControllerAxisEvent& event, u8& outState)
     {
         // TODO
     }
 
-    void HandleControllerDeviceEvent(SDL_ControllerDeviceEvent& event)
+    static void HandleControllerDeviceEvent(SDL_ControllerDeviceEvent& event)
     {
         switch (event.type)
         {
@@ -88,6 +88,40 @@ namespace Input {
                     FreeController();
             }
 
+            break;
+        default:
+            break;
+        }
+    }
+
+    static void HandleKeyboardEvent(SDL_KeyboardEvent& event, u8& outState) {
+        bool pressed = (event.state == SDL_PRESSED);
+
+        switch (event.keysym.scancode)
+        {
+        case SDL_SCANCODE_LEFT:
+            pressed ? outState |= DPadLeft : outState &= ~DPadLeft;
+            break;
+        case SDL_SCANCODE_RIGHT:
+            pressed ? outState |= DPadRight : outState &= ~DPadRight;
+            break;
+        case SDL_SCANCODE_UP:
+            pressed ? outState |= DPadUp : outState &= ~DPadUp;
+            break;
+        case SDL_SCANCODE_DOWN:
+            pressed ? outState |= DPadDown : outState &= ~DPadDown;
+            break;
+        case SDL_SCANCODE_SPACE:
+            pressed ? outState |= A : outState &= ~A;
+            break;
+        case SDL_SCANCODE_LCTRL:
+            pressed ? outState |= B : outState &= ~B;
+            break;
+        case SDL_SCANCODE_LSHIFT:
+            pressed ? outState |= Select : outState &= ~Select;
+            break;
+        case SDL_SCANCODE_RETURN:
+            pressed ? outState |= Start : outState &= ~Start;
             break;
         default:
             break;
@@ -114,10 +148,15 @@ namespace Input {
                     HandleControllerAxisEvent(event.caxis, stateByte);
                 }
                 break;
+            case SDL_KEYDOWN:
+            case SDL_KEYUP:
+                HandleKeyboardEvent(event.key, stateByte);
+                break;
             case SDL_CONTROLLERDEVICEADDED:
             case SDL_CONTROLLERDEVICEREMOVED:
             case SDL_CONTROLLERDEVICEREMAPPED:
                 HandleControllerDeviceEvent(event.cdevice);
+                break;
             default:
                 break;
             }
@@ -126,11 +165,11 @@ namespace Input {
         currentState = (ControllerState)stateByte;
 	}
 
-    bool Down(ControllerState flags, ControllerState state) {
+    static bool Down(ControllerState flags, ControllerState state) {
         return (flags & state) == flags;
     }
 
-    bool Up(ControllerState flags, ControllerState state) {
+    static bool Up(ControllerState flags, ControllerState state) {
         return (flags & ~state) == flags;
     }
 
