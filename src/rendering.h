@@ -117,8 +117,6 @@ static constexpr RenderSettings DEFAULT_RENDER_SETTINGS = {
 	true
 };
 
-struct RenderContext;
-
 namespace Rendering
 {
 	void CreateContext();

@@ -65,8 +65,9 @@ int WinMain(int argc, char** args) {
     Rendering::CreateSurface(pWindow);
     Rendering::Init();
 
-    Audio::AudioContext* pAudioContext = Audio::CreateAudioContext();
-    //Audio::Sound bgm = Audio::LoadSound(pAudioContext, "assets/music.nsf");
+    Audio::CreateContext();
+    Audio::Init();
+    //Sound bgm = Audio::LoadSound("assets/music.nsf");
     //bool musicPlaying = false;
 
 #ifdef EDITOR
@@ -77,7 +78,7 @@ int WinMain(int argc, char** args) {
     const s64 perfFreq = SDL_GetPerformanceFrequency();
     u64 currentTime = SDL_GetPerformanceCounter();
     
-    Game::Initialize(pAudioContext);
+    Game::Initialize();
     
     bool running = true;
     bool minimized = false;
@@ -114,10 +115,10 @@ int WinMain(int argc, char** args) {
 
         /*if (Input::Pressed(Input::CSTATE_START)) {
             if (!musicPlaying) {
-                Audio::PlayMusic(pAudioContext, &bgm, true);
+                Audio::PlayMusic(&bgm, true);
             }
             else {
-                Audio::StopMusic(pAudioContext);
+                Audio::StopMusic();
             }
             musicPlaying = !musicPlaying;
         }*/
@@ -127,7 +128,7 @@ int WinMain(int argc, char** args) {
             UpdateWindowTitle(pWindow, averageFramerate, deltaTimeSeconds);
 
 #ifdef EDITOR
-            Editor::Render(pAudioContext);
+            Editor::Render();
 #endif
             Rendering::Render();
         }
@@ -142,8 +143,10 @@ int WinMain(int argc, char** args) {
     Rendering::Free();
     Rendering::DestroyContext();
 
-    //Audio::FreeSound(pAudioContext, &bgm);
-    Audio::FreeAudioContext(pAudioContext);
+    Audio::StopMusic();
+    //Audio::FreeSound(&bgm);
+    Audio::Free();
+    Audio::DestroyContext();
 
     SDL_DestroyWindow(pWindow);
     SDL_Quit();

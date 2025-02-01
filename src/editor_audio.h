@@ -5,6 +5,6 @@ using namespace Audio;
 
 namespace Editor {
 	namespace Audio {
-		void DrawAudioWindow(AudioContext* pAudioContext);
+		void DrawAudioWindow();
 	}
 }

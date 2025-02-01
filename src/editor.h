@@ -14,5 +14,5 @@ namespace Editor {
 	void DestroyContext();
 
 	void ProcessEvent(const SDL_Event* event);
-	void Render(Audio::AudioContext* pAudioContext);
+	void Render();
 }

@@ -2107,7 +2107,7 @@ void Editor::ProcessEvent(const SDL_Event* event) {
 	ImGui_ImplSDL2_ProcessEvent(event);
 }
 
-void Editor::Render(AudioContext* pAudioContext) {
+void Editor::Render() {
 	Rendering::BeginImGuiFrame();
 	ImGui::NewFrame();
 
@@ -2137,7 +2137,7 @@ void Editor::Render(AudioContext* pAudioContext) {
 		DrawActorWindow();
 	}
 
-	Editor::Audio::DrawAudioWindow(pAudioContext);
+	Editor::Audio::DrawAudioWindow();
 
 	ImGui::Render();
 }
