@@ -1,20 +1,10 @@
 #pragma once
-#ifdef PLATFORM_WINDOWS
-#include <Windows.h>
-#endif
 #include "typedef.h"
 #include <imgui.h>
+#include <SDL.h>
 
 namespace Rendering
 {
-#ifdef PLATFORM_WINDOWS
-	struct WindowsSurface {
-		HINSTANCE hInstance;
-		HWND hWnd;
-	};
-	#define Surface WindowsSurface
-#endif
-
 #define MAX_SPRITE_COUNT 4096
 #define MAX_SPRITES_PER_SCANLINE 64
 	struct Sprite {
@@ -84,7 +74,7 @@ namespace Rendering
 		true
 	};
 
-	RenderContext* CreateRenderContext(Surface surface);
+	RenderContext* CreateRenderContext(SDL_Window *sdlWindow);
 	void WaitForAllCommands(RenderContext* pRenderContext);
 	void FreeRenderContext(RenderContext* pRenderContext);
 	Settings* GetSettingsPtr(RenderContext* pContext);
@@ -101,7 +91,7 @@ namespace Rendering
 	Scanline* GetScanlinePtr(RenderContext* pContext, u32 offset);
 
 	// ImGui
-	void InitImGui(RenderContext* pContext);
+	void InitImGui(RenderContext* pContext, SDL_Window* sdlWindow);
 	void BeginImGuiFrame(RenderContext* pContext);
 	void ShutdownImGui();
 

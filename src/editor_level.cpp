@@ -5,7 +5,7 @@
 #include "viewport.h"
 #include "level.h"
 #include "tileset.h"
-#include "math.h"
+#include <algorithm>
 #include <cstdio>
 #include "system.h"
 
@@ -33,12 +33,12 @@ namespace Editor {
 
             // Manual clipping
             const ImVec2 clippedActorTopLeft = ImVec2(
-                Max(actorTopLeft.x, contentTopLeft.x),
-                Max(actorTopLeft.y, contentTopLeft.y)
+                std::max(actorTopLeft.x, contentTopLeft.x),
+                std::max(actorTopLeft.y, contentTopLeft.y)
             );
             const ImVec2 clippedActorBtmRight = ImVec2(
-                Min(actorTopLeft.x + metatileDrawSize, contentBtmRight.x),
-                Min(actorTopLeft.y + metatileDrawSize, contentBtmRight.y)
+                std::min(actorTopLeft.x + metatileDrawSize, contentBtmRight.x),
+                std::min(actorTopLeft.y + metatileDrawSize, contentBtmRight.y)
             );
 
             ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -201,8 +201,8 @@ namespace Editor {
                         }
 
                         if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-                            selectionTopLeft = ImVec2(Min(selectionStartPos.x, hoveredMetatileWorldPos.x), Min(selectionStartPos.y, hoveredMetatileWorldPos.y));
-                            selectionBtmRight = ImVec2(Max(selectionStartPos.x, hoveredMetatileWorldPos.x) + Tileset::metatileWorldSize, Max(selectionStartPos.y, hoveredMetatileWorldPos.y) + Tileset::metatileWorldSize);
+                            selectionTopLeft = ImVec2(std::min(selectionStartPos.x, hoveredMetatileWorldPos.x), std::min(selectionStartPos.y, hoveredMetatileWorldPos.y));
+                            selectionBtmRight = ImVec2(std::max(selectionStartPos.x, hoveredMetatileWorldPos.x) + Tileset::metatileWorldSize, std::max(selectionStartPos.y, hoveredMetatileWorldPos.y) + Tileset::metatileWorldSize);
 
                             const ImVec2 selectionTopLeftInPixelCoords = ImVec2((selectionTopLeft.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionTopLeft.y - pViewport->y) * tileDrawSize + topLeft.y);
                             const ImVec2 selectionBtmRightInPixelCoords = ImVec2((selectionBtmRight.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionBtmRight.y - pViewport->y) * tileDrawSize + topLeft.y);
@@ -438,9 +438,9 @@ namespace Editor {
                             ImGui::EndCombo();
                         }
 
-                        int exitScreen = screen.exitTargetScreen;
+                        s32 exitScreen = screen.exitTargetScreen;
                         if (ImGui::InputInt("Exit target screen", &exitScreen)) {
-                            screen.exitTargetScreen = (u32)Max(Min(Level::levelMaxScreenCount - 1, exitScreen), 0);
+                            screen.exitTargetScreen = (u32)std::max(std::min((s32)Level::levelMaxScreenCount - 1, exitScreen), 0);
                         }
 
                         ImGui::TreePop();

@@ -1,6 +1,5 @@
 #ifdef PLATFORM_WINDOWS
 	#define VK_USE_PLATFORM_WIN32_KHR
-	#include <imgui_impl_win32.h>
 #endif
 
 #include <vulkan/vulkan.h>
@@ -9,7 +8,9 @@
 #include "rendering.h"
 #include "rendering_util.h"
 #include "system.h"
+#include <imgui_impl_sdl2.h>
 #include <imgui_impl_vulkan.h>
+#include <SDL_vulkan.h>
 
 namespace Rendering
 {
@@ -909,7 +910,7 @@ namespace Rendering
 
 	}
 
-	RenderContext *CreateRenderContext(Surface surface) {
+	RenderContext *CreateRenderContext(SDL_Window* sdlWindow) {
 		RenderContext *context = (RenderContext*)calloc(1, sizeof(RenderContext));
 		if (context == nullptr) {
 			DEBUG_ERROR("Couldn't allocate memory for renderContext\n");
@@ -918,14 +919,7 @@ namespace Rendering
 		CreateVulkanInstance(context);
 
 		context->surface = VK_NULL_HANDLE;
-#ifdef VK_USE_PLATFORM_WIN32_KHR
-		VkWin32SurfaceCreateInfoKHR surfaceCreateInfo{};
-		surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-		surfaceCreateInfo.hwnd = surface.hWnd;
-		surfaceCreateInfo.hinstance = surface.hInstance;
-
-		vkCreateWin32SurfaceKHR(context->instance, &surfaceCreateInfo, nullptr, &context->surface);
-#endif
+		SDL_Vulkan_CreateSurface(sdlWindow, context->instance, &context->surface);
 
 		GetSuitablePhysicalDevice(context);
 		vkGetPhysicalDeviceSurfaceCapabilitiesKHR(context->physicalDevice, context->surface, &context->surfaceCapabilities);
@@ -1418,7 +1412,7 @@ namespace Rendering
 
 	//////////////////////////////////////////////////////
 
-	void InitImGui(RenderContext* pContext) {
+	void InitImGui(RenderContext* pContext, SDL_Window* sdlWindow) {
 		// Likely overkill pool sizes
 		VkDescriptorPoolSize poolSizes[] = {
 			{ VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
@@ -1443,6 +1437,8 @@ namespace Rendering
 
 		vkCreateDescriptorPool(pContext->device, &poolInfo, nullptr, &pContext->imGuiDescriptorPool);
 
+		ImGui_ImplSDL2_InitForVulkan(sdlWindow);
+
 		ImGui_ImplVulkan_InitInfo vulkanInitInfo{};
 		vulkanInitInfo.Instance = pContext->instance;
 		vulkanInitInfo.PhysicalDevice = pContext->physicalDevice;
@@ -1460,15 +1456,11 @@ namespace Rendering
 	}
 	void BeginImGuiFrame(RenderContext* pContext) {
 		ImGui_ImplVulkan_NewFrame();
-#ifdef PLATFORM_WINDOWS
-		ImGui_ImplWin32_NewFrame();
-#endif
+		ImGui_ImplSDL2_NewFrame();
 	}
 	void ShutdownImGui() {
 		ImGui_ImplVulkan_Shutdown();
-#ifdef PLATFORM_WINDOWS
-		ImGui_ImplWin32_Shutdown();
-#endif
+		ImGui_ImplSDL2_Shutdown();
 	}
 
 	//////////////////////////////////////////////////////
