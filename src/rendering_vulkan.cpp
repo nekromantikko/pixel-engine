@@ -12,6 +12,9 @@
 #include <imgui_impl_vulkan.h>
 #include <SDL_vulkan.h>
 
+static constexpr u32 COMMAND_BUFFER_COUNT = 2;
+static constexpr u32 SWAPCHAIN_IMAGE_COUNT = 3;
+
 namespace Rendering
 {
 	struct ScanlineData {
@@ -49,7 +52,6 @@ namespace Rendering
 		VkDescriptorPool imGuiDescriptorPool;
 
 		u32 currentCbIndex;
-#define COMMAND_BUFFER_COUNT 2
 		VkCommandBuffer primaryCommandBuffers[COMMAND_BUFFER_COUNT];
 		VkFence commandBufferFences[COMMAND_BUFFER_COUNT];
 		VkSemaphore imageAcquiredSemaphores[COMMAND_BUFFER_COUNT];
@@ -57,7 +59,6 @@ namespace Rendering
 
 		VkSwapchainKHR swapchain;
 		u32 currentSwaphainIndex;
-#define SWAPCHAIN_IMAGE_COUNT 3
 		VkImage swapchainImages[SWAPCHAIN_IMAGE_COUNT];
 		VkImageView swapchainImageViews[SWAPCHAIN_IMAGE_COUNT];
 		VkFramebuffer swapchainFramebuffers[SWAPCHAIN_IMAGE_COUNT];
@@ -787,8 +788,8 @@ namespace Rendering
 	}
 
 	void CreatePalette(RenderContext* pContext) {
-		u32 paletteData[colorCount];
-		const VkDeviceSize paletteSize = sizeof(u32) * colorCount;
+		u32 paletteData[COLOR_COUNT];
+		const VkDeviceSize paletteSize = sizeof(u32) * COLOR_COUNT;
 
 		Util::GeneratePaletteColors(paletteData);
 
@@ -801,7 +802,7 @@ namespace Rendering
 		vkUnmapMemory(pContext->device, stagingBuffer.memory);
 		//free(palBin);
 
-		CreateImage(pContext, colorCount, 1, VK_IMAGE_TYPE_1D, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, pContext->paletteImage);
+		CreateImage(pContext, COLOR_COUNT, 1, VK_IMAGE_TYPE_1D, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, pContext->paletteImage);
 
 		VkCommandBuffer temp = GetTemporaryCommandBuffer(pContext);
 
@@ -834,7 +835,7 @@ namespace Rendering
 
 		region.imageOffset = { 0, 0, 0 };
 		region.imageExtent = {
-			colorCount,
+			COLOR_COUNT,
 			1,
 			1
 		};
@@ -890,7 +891,7 @@ namespace Rendering
 		const VkDeviceSize minOffsetAlignment = properties.limits.minStorageBufferOffsetAlignment;
 
 		pContext->paletteTableOffset = 0;
-		pContext->paletteTableSize = PadBufferSize(paletteCount * sizeof(Palette), minOffsetAlignment);
+		pContext->paletteTableSize = PadBufferSize(PALETTE_COUNT * sizeof(Palette), minOffsetAlignment);
 		pContext->chrOffset = pContext->paletteTableOffset + pContext->paletteTableSize;
 		pContext->chrSize = PadBufferSize(CHR_MEMORY_SIZE, minOffsetAlignment);
 		pContext->nametableOffset = pContext->chrOffset + pContext->chrSize;
@@ -1370,7 +1371,7 @@ namespace Rendering
 	//////////////////////////////////////////////////////
 
 	Palette* GetPalettePtr(RenderContext* pContext, u32 paletteIndex) {
-		if (paletteIndex >= paletteCount) {
+		if (paletteIndex >= PALETTE_COUNT) {
 			return nullptr;
 		}
 

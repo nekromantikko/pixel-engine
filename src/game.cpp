@@ -270,7 +270,7 @@ namespace Game {
         }
     }
 
-    u8 basePaletteColors[Rendering::paletteCount * Rendering::paletteColorCount];
+    u8 basePaletteColors[PALETTE_DATA_SIZE];
 
 	void Initialize(Rendering::RenderContext* pRenderContext) {
         viewport.x = 0.0f;
@@ -295,9 +295,9 @@ namespace Game {
         //u8 paletteColors[8 * 8];
         Rendering::Util::LoadPaletteColorsFromFile("assets/palette.dat", basePaletteColors);
         pPalettes = Rendering::GetPalettePtr(pRenderContext, 0);
-        // This is kind of silly
-        for (u32 i = 0; i < Rendering::paletteCount * Rendering::paletteColorCount; i++) {
-            memcpy(pPalettes, basePaletteColors, Rendering::paletteCount * Rendering::paletteColorCount);
+
+        for (u32 i = 0; i < PALETTE_DATA_SIZE; i++) {
+            memcpy(pPalettes, basePaletteColors, PALETTE_DATA_SIZE);
         }
 
         pSprites = Rendering::GetSpritesPtr(pRenderContext, 0);

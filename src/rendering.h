@@ -3,10 +3,34 @@
 #include <imgui.h>
 #include <SDL.h>
 
+constexpr u32 MAX_SPRITE_COUNT = 4096;
+constexpr u32 MAX_SPRITES_PER_SCANLINE = 64;
+
+constexpr u32 CHR_SHEET_SIZE = 0x1800;
+constexpr u32 CHR_MEMORY_SIZE = CHR_SHEET_SIZE * 2;
+
+constexpr u32 TILE_SIZE = 8;
+
+constexpr u32 NAMETABLE_COUNT = 2;
+constexpr u32 NAMETABLE_SIZE = 0x1000;
+constexpr u32 NAMETABLE_ATTRIBUTE_OFFSET = 0xF00;
+constexpr u32 NAMETABLE_ATTRIBUTE_SIZE = 0x100;
+constexpr u32 NAMETABLE_WIDTH_TILES = 64;
+constexpr u32 NAMETABLE_HEIGHT_TILES = 60;
+
+constexpr u32 VIEWPORT_WIDTH_TILES = NAMETABLE_WIDTH_TILES;
+constexpr u32 VIEWPORT_HEIGHT_TILES = 36;
+
+constexpr u32 COLOR_COUNT = 0x80;
+
+constexpr u32 PALETTE_COUNT = 8;
+constexpr u32 PALETTE_COLOR_COUNT = 8;
+constexpr u32 PALETTE_DATA_SIZE = PALETTE_COUNT * PALETTE_COLOR_COUNT;
+
+constexpr u32 SCANLINE_COUNT = 288;
+
 namespace Rendering
 {
-#define MAX_SPRITE_COUNT 4096
-#define MAX_SPRITES_PER_SCANLINE 64
 	struct Sprite {
 		// y is first so we can easily set it offscreen when clearing
 		s32 y;
@@ -20,8 +44,6 @@ namespace Rendering
 		s32 scrollY;
 	};
 
-#define CHR_SHEET_SIZE 0x1800
-#define CHR_MEMORY_SIZE CHR_SHEET_SIZE * 2
 	struct ChrTile {
 		u64 p0;
 		u64 p1;
@@ -32,31 +54,14 @@ namespace Rendering
 		ChrTile tiles[256];
 	};
 
-#define TILE_SIZE 8
-
-#define NAMETABLE_COUNT 2
-#define NAMETABLE_SIZE 0x1000
-#define NAMETABLE_ATTRIBUTE_OFFSET 0xF00
-#define NAMETABLE_ATTRIBUTE_SIZE 0x100
-#define NAMETABLE_WIDTH_TILES 64
-#define NAMETABLE_HEIGHT_TILES 60
 	struct Nametable {
 		u8 tiles[NAMETABLE_ATTRIBUTE_OFFSET];
 		u8 attributes[NAMETABLE_ATTRIBUTE_SIZE];
 	};
 
-#define VIEWPORT_WIDTH_TILES NAMETABLE_WIDTH_TILES
-#define VIEWPORT_HEIGHT_TILES 36
-
-	constexpr u32 colorCount = 0x80;
-
-	constexpr u32 paletteCount = 8;
-	constexpr u32 paletteColorCount = 8;
 	struct Palette {
-		u8 colors[paletteColorCount];
+		u8 colors[PALETTE_COLOR_COUNT];
 	};
-
-#define SCANLINE_COUNT 288
 
 	struct Quad {
 		r32 x, y, w, h;

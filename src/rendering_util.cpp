@@ -59,16 +59,16 @@ namespace Rendering
 			u32 palFileSize;
 			char* palData = AllocFileBytes(fname, palFileSize);
 
-			if (palFileSize < paletteCount * paletteColorCount) {
+			if (palFileSize < PALETTE_DATA_SIZE) {
 				DEBUG_ERROR("Invalid palette table file!\n");
 			}
 
-			memcpy(outColors, palData, paletteCount * paletteColorCount);
+			memcpy(outColors, palData, PALETTE_DATA_SIZE);
 			free(palData);
 		}
 
 		void GeneratePaletteColors(u32* data) {
-			for (s32 i = 0; i < colorCount; i++) {
+			for (s32 i = 0; i < COLOR_COUNT; i++) {
 				s32 hue = i & 0b1111;
 				s32 brightness = (i & 0b1110000) >> 4;
 
@@ -107,9 +107,9 @@ namespace Rendering
 		}
 
 		void SavePaletteToFile(const char* fname) {
-			u32 data[colorCount];
+			u32 data[COLOR_COUNT];
 			GeneratePaletteColors(data);
-			const u32 dataSize = colorCount * sizeof(u32);
+			const u32 dataSize = COLOR_COUNT * sizeof(u32);
 
 			FILE* pFile;
 			fopen_s(&pFile, fname, "wb");
@@ -141,7 +141,7 @@ namespace Rendering
 			
 			chunk.size = dataSize;
 			chunk.version = 0x0300;
-			chunk.colorCount = colorCount;
+			chunk.colorCount = COLOR_COUNT;
 
 			fwrite(&chunk, sizeof(PaletteChunkHeader), 1, pFile);
 			fwrite(data, dataSize, 1, pFile);
