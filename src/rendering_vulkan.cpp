@@ -1240,7 +1240,7 @@ static void EndDraw() {
 
 void Rendering::CreateContext() {
 	// TODO: Handle if context already exists
-	pContext = new RenderContext;
+	pContext = new RenderContext{};
 	assert(pContext != nullptr);
 	
 	CreateVulkanInstance();
