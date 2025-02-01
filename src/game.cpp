@@ -16,10 +16,6 @@
 
 namespace Game {
     r64 secondsElapsed = 0.0f;
-    r64 averageFramerate;
-    // Number of successive frame times used for average framerate calculation
-#define SUCCESSIVE_FRAME_TIME_COUNT 64
-    r64 successiveFrameTimes[SUCCESSIVE_FRAME_TIME_COUNT]{0};
 
     // Seconds elapsed while not paused
     r64 gameplaySecondsElapsed = 0.0f;
@@ -36,8 +32,6 @@ namespace Game {
     // This is pretty ugly...
     u32 nextLevel = 0;
     s32 nextLevelScreenIndex = -1;
-
-#define HUD_TILE_COUNT 128
 
     enum GameState {
         StateTitleScreen,
@@ -335,27 +329,6 @@ namespace Game {
 
     void Free() {
         
-    }
-
-    r64 GetAverageFramerate(r64 dt) {
-        r64 sum = 0.0;
-        // Pop front
-        for (u32 i = 1; i < SUCCESSIVE_FRAME_TIME_COUNT; i++) {
-            sum += successiveFrameTimes[i];
-            successiveFrameTimes[i - 1] = successiveFrameTimes[i];
-        }
-        // Push back
-        sum += dt;
-        successiveFrameTimes[SUCCESSIVE_FRAME_TIME_COUNT - 1] = dt;
-
-        return (r64)SUCCESSIVE_FRAME_TIME_COUNT / sum;
-    }
-
-    void UpdateHUD(r64 dt) {
-        char hudText[128];
-        const char* levelName = pCurrentLevel != nullptr ? pCurrentLevel->name : "NO LEVEL LOADED";
-        snprintf(hudText, 64, " %4d FPS (%2d ms) (%04d, %04d) %s", (int)(averageFramerate), (int)(dt*1000), (int)viewport.x, (int)viewport.y, levelName);
-        memcpy(&pNametables[0].tiles, hudText, 128);
     }
 
     constexpr u8 bgChrSheetIndex = 0;
@@ -918,7 +891,6 @@ namespace Game {
 
     void Step(r64 dt) {
         secondsElapsed += dt;
-        averageFramerate = GetAverageFramerate(dt);
 
         static Rendering::Sprite* pNextSprite = pSprites;
 
@@ -1200,8 +1172,6 @@ namespace Game {
             DrawArrows(&pNextSprite);
             DrawHits(&pNextSprite);
             DrawEnemies(&pNextSprite, dt);
-
-            //UpdateHUD(dt);
 
             // Update scroll
             const Rendering::Scanline state = {
