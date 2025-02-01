@@ -12,7 +12,7 @@ namespace Metasprite {
 	struct Metasprite {
 		char *name;
 		u32 spriteCount;
-		Rendering::Sprite* spritesRelativePos;
+		Sprite* spritesRelativePos;
 		u32 colliderCount;
 		Collision::Collider* colliders;
 	};

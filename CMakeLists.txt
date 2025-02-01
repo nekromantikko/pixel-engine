@@ -34,9 +34,11 @@ set(SOURCES
 		src/rendering_vulkan.cpp
 		src/system.cpp
 		src/tileset.cpp
-		src/viewport.cpp
-		src/editor_chr.cpp
+		src/viewport.cpp)
+
+set(EDITOR_SOURCES
 		src/editor_core.cpp
+		src/editor_chr.cpp
 		src/editor_debug.cpp
 		src/editor_level.cpp
 		src/editor_sprites.cpp
@@ -57,16 +59,18 @@ set(HEADERS
 		src/typedef.h
 		src/vector.h
 		src/viewport.h
-		src/collision.h
-		src/editor_chr.h
+		src/collision.h)
+
+set(EDITOR_HEADERS
 		src/editor_core.h
+		src/editor_chr.h
 		src/editor_debug.h
 		src/editor_level.h
 		src/editor_sprites.h
 		src/editor_tiles.h
 		src/editor_util.h)
 
-add_executable(${PROJECT_NAME} WIN32 ${SOURCES} ${IMGUI_SOURCES} ${HEADERS})
+add_executable(${PROJECT_NAME} WIN32 ${HEADERS} ${SOURCES} ${IMGUI_SOURCES} ${EDITOR_HEADERS} ${EDITOR_SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_PATH} ${IMGUI_PATH}/backends ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2)
 
@@ -110,3 +114,5 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/assets DESTINATION ${CMAKE_CURRENT_BINARY_
 IF(WIN32)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC PLATFORM_WINDOWS)
 ENDIF()
+
+target_compile_definitions(${PROJECT_NAME} PUBLIC EDITOR)

@@ -5,8 +5,8 @@
 namespace Editor {
 	namespace LevelEditor {
 
-		void DrawGameWindow(EditorContext* pContext, Rendering::RenderContext* pRenderContext);
+		void DrawGameWindow(EditorContext* pContext);
 		void DrawActorList();
-		void DrawLevelList(Rendering::RenderContext* pRenderContext);
+		void DrawLevelList();
 	}
 }

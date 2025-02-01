@@ -9,7 +9,7 @@ namespace Editor {
 
         constexpr s32 renderScale = 4;
         constexpr s32 gridSizeTiles = 8;
-        constexpr s32 gridStepPixels = TILE_SIZE * renderScale;
+        constexpr s32 gridStepPixels = TILE_DIM_PIXELS * renderScale;
         constexpr s32 gridSizePixels = gridSizeTiles * gridStepPixels;
 
         s32 selection = 0;
@@ -50,7 +50,7 @@ namespace Editor {
             Metasprite::Metasprite& metasprite = Metasprite::GetMetaspritesPtr()[selection];
 
             for (s32 i = metasprite.spriteCount - 1; i >= 0; i--) {
-                Rendering::Sprite& sprite = metasprite.spritesRelativePos[i];
+                Sprite& sprite = metasprite.spritesRelativePos[i];
                 u8 index = (u8)sprite.tileId;
                 ImVec2 tileCoord = Util::GetTileCoord(index);
                 ImVec2 tileStart = Util::TileCoordToTexCoord(tileCoord, 1);
@@ -70,7 +70,7 @@ namespace Editor {
                 // Move sprite if dragged
                 ImVec2 posWithDrag = selected ? ImVec2(pos.x + dragDelta.x, pos.y + dragDelta.y) : pos;
 
-                drawList->AddImage(pContext->chrTexture[palette], posWithDrag, ImVec2(posWithDrag.x + gridStepPixels, posWithDrag.y + gridStepPixels), ImVec2(flipX ? tileEnd.x : tileStart.x, flipY ? tileEnd.y : tileStart.y), ImVec2(!flipX ? tileEnd.x : tileStart.x, !flipY ? tileEnd.y : tileStart.y));
+                drawList->AddImage(pContext->chrTextures[palette], posWithDrag, ImVec2(posWithDrag.x + gridStepPixels, posWithDrag.y + gridStepPixels), ImVec2(flipX ? tileEnd.x : tileStart.x, flipY ? tileEnd.y : tileStart.y), ImVec2(!flipX ? tileEnd.x : tileStart.x, !flipY ? tileEnd.y : tileStart.y));
 
 
                 // Commit drag
@@ -229,7 +229,7 @@ namespace Editor {
                     ImGui::TableHeadersRow();
 
                     for (int i = 0; i < metasprite.spriteCount; i++) {
-                        Rendering::Sprite& sprite = metasprite.spritesRelativePos[i];
+                        Sprite& sprite = metasprite.spritesRelativePos[i];
                         char labelStr[5];
                         snprintf(labelStr, 5, "%04d", i);
                         bool selected = spriteSelection.contains(i);
@@ -376,7 +376,7 @@ namespace Editor {
                 selectedSprite.spriteCount = copyFromSprite.spriteCount;
                 selectedSprite.colliderCount = copyFromSprite.colliderCount;
                 
-                memcpy(selectedSprite.spritesRelativePos, copyFromSprite.spritesRelativePos, Metasprite::metaspriteMaxSpriteCount * sizeof(Rendering::Sprite));
+                memcpy(selectedSprite.spritesRelativePos, copyFromSprite.spritesRelativePos, Metasprite::metaspriteMaxSpriteCount * sizeof(Sprite));
                 memcpy(selectedSprite.colliders, copyFromSprite.colliders, Metasprite::metaspriteMaxColliderCount * sizeof(Collision::Collider));
             }
             ImGui::EndDisabled();
@@ -392,8 +392,8 @@ namespace Editor {
                 return false;
             }
 
-            Rendering::Sprite& sprite = pMetasprite->spritesRelativePos[spriteIndex];
-            Rendering::Sprite movedSprite = sprite;
+            Sprite& sprite = pMetasprite->spritesRelativePos[spriteIndex];
+            Sprite movedSprite = sprite;
             pMetasprite->spritesRelativePos[spriteIndex] = pMetasprite->spritesRelativePos[spriteIndex + step];
             spriteIndex += step;
             pMetasprite->spritesRelativePos[spriteIndex] = movedSprite;
@@ -449,7 +449,7 @@ namespace Editor {
                 if (ImGui::Button("Duplicate")) {
                     for (u32 i = 0; i < spriteSelection.size(); i++) {
                         s32& index = spriteSelection[i];
-                        Rendering::Sprite sprite = metasprite.spritesRelativePos[index];
+                        Sprite sprite = metasprite.spritesRelativePos[index];
                         index = metasprite.spriteCount++;
                         metasprite.spritesRelativePos[index] = sprite;
                     }
@@ -457,7 +457,7 @@ namespace Editor {
             }
             else {
                 s32& spriteIndex = spriteSelection[0];
-                Rendering::Sprite& sprite = metasprite.spritesRelativePos[spriteIndex];
+                Sprite& sprite = metasprite.spritesRelativePos[spriteIndex];
                 s32 index = (s32)sprite.tileId;
 
                 bool flipX = sprite.attributes & 0b01000000;
@@ -492,7 +492,7 @@ namespace Editor {
                 ImGui::BeginDisabled(spriteIndex == 0);
                 if (ImGui::ArrowButton("##up", ImGuiDir_Up)) {
                     // Swap sprite above this
-                    Rendering::Sprite movedSprite = sprite;
+                    Sprite movedSprite = sprite;
                     metasprite.spritesRelativePos[spriteIndex] = metasprite.spritesRelativePos[spriteIndex-1];
                     metasprite.spritesRelativePos[--spriteIndex] = movedSprite;
                 }
@@ -501,7 +501,7 @@ namespace Editor {
                 ImGui::BeginDisabled(spriteIndex == metasprite.spriteCount-1);
                 if (ImGui::ArrowButton("##down", ImGuiDir_Down)) {
                     // Swap sprite below this
-                    Rendering::Sprite movedSprite = sprite;
+                    Sprite movedSprite = sprite;
                     metasprite.spritesRelativePos[spriteIndex] = metasprite.spritesRelativePos[spriteIndex + 1];
                     metasprite.spritesRelativePos[++spriteIndex] = movedSprite;
                 }

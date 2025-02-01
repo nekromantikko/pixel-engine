@@ -5,7 +5,7 @@
 namespace Editor {
 	namespace Tiles {
 
-		void DrawMetatileEditor(EditorContext* pContext, Rendering::RenderContext* pRenderContext);
-		void DrawTilesetEditor(EditorContext* pContext, Rendering::RenderContext* pRenderContext);
+		void DrawMetatileEditor(EditorContext* pContext);
+		void DrawTilesetEditor(EditorContext* pContext);
 	}
 }

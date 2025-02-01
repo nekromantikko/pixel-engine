@@ -6,7 +6,7 @@ namespace Metasprite {
 
 	Metasprite metasprites[maxMetaspriteCount];
 	char nameMemory[maxMetaspriteCount * metaspriteMaxNameLength];
-	Rendering::Sprite spriteMemory[maxMetaspriteCount * metaspriteMaxSpriteCount];
+	Sprite spriteMemory[maxMetaspriteCount * metaspriteMaxSpriteCount];
 	Collision::Collider colliderMemory[maxMetaspriteCount * metaspriteMaxColliderCount];
 
 	Metasprite* GetMetaspritesPtr() {
@@ -19,7 +19,7 @@ namespace Metasprite {
 			nameMemory[i * metaspriteMaxNameLength] = 0;
 
 			metasprites[i].spritesRelativePos = &spriteMemory[i * metaspriteMaxSpriteCount];
-			spriteMemory[i * metaspriteMaxSpriteCount] = Rendering::Sprite{};
+			spriteMemory[i * metaspriteMaxSpriteCount] = Sprite{};
 
 			metasprites[i].colliders = &colliderMemory[i * metaspriteMaxColliderCount];
 			colliderMemory[i * metaspriteMaxColliderCount] = Collision::Collider{};

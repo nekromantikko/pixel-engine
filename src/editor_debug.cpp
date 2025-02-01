@@ -5,7 +5,7 @@
 namespace Editor {
 	namespace Debug {
 
-        void DrawNametable(EditorContext* pContext, ImVec2 tablePos, const Rendering::Nametable& nametable) {
+        void DrawNametable(EditorContext* pContext, ImVec2 tablePos, const Nametable& nametable) {
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             for (int i = 0; i < NAMETABLE_ATTRIBUTE_OFFSET; i++) {
                 s32 x = i % NAMETABLE_WIDTH_TILES;
@@ -18,11 +18,11 @@ namespace Editor {
                 ImVec2 pos = ImVec2(tablePos.x + x * 8, tablePos.y + y * 8);
                 u8 paletteIndex = Rendering::Util::GetPaletteIndexFromNametableTileAttrib(nametable, x, y);
 
-                drawList->AddImage(pContext->chrTexture[paletteIndex], pos, ImVec2(pos.x + 8, pos.y + 8), tileStart, tileEnd);
+                drawList->AddImage(pContext->chrTextures[paletteIndex], pos, ImVec2(pos.x + 8, pos.y + 8), tileStart, tileEnd);
             }
         }
 
-        void DrawDebugWindow(EditorContext* pContext, Rendering::RenderContext* pRenderContext) {
+        void DrawDebugWindow(EditorContext* pContext) {
             ImGui::Begin("Debug");
 
             // ImGui::Checkbox("CRT filter", (bool*)&(pRenderSettings->useCRTFilter));
@@ -37,9 +37,9 @@ namespace Editor {
                     ImGui::TableSetupScrollFreeze(0, 1); // Make row always visible
                     ImGui::TableHeadersRow();
 
-                    Rendering::Sprite* sprites = Rendering::GetSpritesPtr(pRenderContext, 0);
+                    Sprite* sprites = Rendering::GetSpritesPtr(0);
                     for (int i = 0; i < MAX_SPRITE_COUNT; i++) {
-                        const Rendering::Sprite& sprite = sprites[i];
+                        const Sprite& sprite = sprites[i];
                         ImGui::PushID(i);
                         ImGui::TableNextRow();
                         ImGui::TableNextColumn();
@@ -59,12 +59,12 @@ namespace Editor {
             }
 
             if (ImGui::TreeNode("Nametables")) {
-                const ImVec2 nametableSizePx = ImVec2(NAMETABLE_WIDTH_TILES * TILE_SIZE, NAMETABLE_HEIGHT_TILES * TILE_SIZE);
-                ImVec2 tablePos = Util::DrawTileGrid(pContext, nametableSizePx, TILE_SIZE);
-                Rendering::Nametable* const nametables = Rendering::GetNametablePtr(pRenderContext, 0);
+                const ImVec2 nametableSizePx = ImVec2(NAMETABLE_WIDTH_TILES * TILE_DIM_PIXELS, NAMETABLE_HEIGHT_TILES * TILE_DIM_PIXELS);
+                ImVec2 tablePos = Util::DrawTileGrid(pContext, nametableSizePx, TILE_DIM_PIXELS);
+                Nametable* const nametables = Rendering::GetNametablePtr(0);
                 DrawNametable(pContext, tablePos, nametables[0]);
                 ImGui::SameLine();
-                tablePos = Util::DrawTileGrid(pContext, nametableSizePx, TILE_SIZE);
+                tablePos = Util::DrawTileGrid(pContext, nametableSizePx, TILE_DIM_PIXELS);
                 DrawNametable(pContext, tablePos, nametables[1]);
                 ImGui::TreePop();
             }

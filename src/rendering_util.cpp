@@ -25,7 +25,7 @@ namespace Rendering
 			u16 bpp;
 			char* imgData = LoadBitmapBytes(fname, imgWidth, imgHeight, bpp);
 
-			if (imgWidth != 128 || imgHeight != 128) {
+			if (imgWidth != CHR_DIM_PIXELS || imgHeight != CHR_DIM_PIXELS) {
 				DEBUG_ERROR("Invalid chr image dimensions!\n");
 			}
 
@@ -59,11 +59,11 @@ namespace Rendering
 			u32 palFileSize;
 			char* palData = AllocFileBytes(fname, palFileSize);
 
-			if (palFileSize < PALETTE_DATA_SIZE) {
+			if (palFileSize < PALETTE_MEMORY_SIZE) {
 				DEBUG_ERROR("Invalid palette table file!\n");
 			}
 
-			memcpy(outColors, palData, PALETTE_DATA_SIZE);
+			memcpy(outColors, palData, PALETTE_MEMORY_SIZE);
 			free(palData);
 		}
 
@@ -165,11 +165,11 @@ namespace Rendering
 				Sprite sprite = src[i];
 				if (hFlip) {
 					FlipSpritesHorizontal(&sprite, 1);
-					sprite.x = sprite.x * -1 - TILE_SIZE;
+					sprite.x = sprite.x * -1 - TILE_DIM_PIXELS;
 				}
 				if (vFlip) {
 					FlipSpritesVertical(&sprite, 1);
-					sprite.y = sprite.y * -1 - TILE_SIZE;
+					sprite.y = sprite.y * -1 - TILE_DIM_PIXELS;
 				}
 				sprite.y += pos.y;
 				sprite.x += pos.x;

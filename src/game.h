@@ -8,7 +8,7 @@ namespace Level {
 }
 
 namespace Game {
-	void Initialize(Rendering::RenderContext* pContext);
+	void Initialize();
 	void Free();
 	void LoadLevel(u32 index, s32 screenIndex = -1, bool refresh = true);
 	void ReloadLevel(bool refresh = true);

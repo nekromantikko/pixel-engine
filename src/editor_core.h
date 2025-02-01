@@ -12,11 +12,11 @@ namespace Editor {
 		ImVec2 levelSelectionSize;
 		ImVec2 levelSelectionOffset;
 
-		ImTextureID* chrTexture;
+		ImTextureID* chrTextures;
 		ImTextureID paletteTexture;
 		ImTextureID gameViewTexture;
 	};
 
-	EditorContext* CreateEditorContext(Rendering::RenderContext* pRenderContext);
+	EditorContext* CreateEditorContext();
 	void FreeEditorContext(EditorContext* pContext);
 }

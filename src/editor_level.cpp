@@ -96,7 +96,7 @@ namespace Editor {
             }
         }
 
-		void DrawGameWindow(EditorContext* pEditorContext, Rendering::RenderContext* pRenderContext) {
+		void DrawGameWindow(EditorContext* pEditorContext) {
             ImGui::Begin("Game");
 
             Level::Level* pLevel = Game::GetLevel();
@@ -117,13 +117,13 @@ namespace Editor {
             static const r32 aspectRatio = (r32)VIEWPORT_WIDTH_TILES / VIEWPORT_HEIGHT_TILES;
             const r32 contentWidth = ImGui::GetContentRegionAvail().x;
             const r32 contentHeight = contentWidth / aspectRatio;
-            const r32 renderScale = contentWidth / (VIEWPORT_WIDTH_TILES * TILE_SIZE);
+            const r32 renderScale = contentWidth / (VIEWPORT_WIDTH_TILES * TILE_DIM_PIXELS);
             ImVec2 btmRight = ImVec2(topLeft.x + contentWidth, topLeft.y + contentHeight);
             drawList->AddImage(pEditorContext->gameViewTexture, topLeft, btmRight);
 
             if (editMode) {
                 Viewport* pViewport = Game::GetViewport();
-                Rendering::Nametable* pNametables = Rendering::GetNametablePtr(pRenderContext, 0);
+                Nametable* pNametables = Rendering::GetNametablePtr(0);
 
                 // Toggle actor mode
                 ImGui::SameLine();
@@ -164,8 +164,8 @@ namespace Editor {
 
                 if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
                     const ImVec2 newDelta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
-                    const r32 dx = -(newDelta.x - dragDelta.x) / renderScale / TILE_SIZE;
-                    const r32 dy = -(newDelta.y - dragDelta.y) / renderScale / TILE_SIZE;
+                    const r32 dx = -(newDelta.x - dragDelta.x) / renderScale / TILE_DIM_PIXELS;
+                    const r32 dy = -(newDelta.y - dragDelta.y) / renderScale / TILE_DIM_PIXELS;
                     dragDelta = newDelta;
 
                     MoveViewport(pViewport, pNametables, pLevel, dx, dy);
@@ -177,7 +177,7 @@ namespace Editor {
                     dragDelta = ImVec2(0, 0);
                 }
 
-                const r32 tileDrawSize = TILE_SIZE * renderScale;
+                const r32 tileDrawSize = TILE_DIM_PIXELS * renderScale;
                 DrawActors(pLevel, pViewport, topLeft, btmRight, tileDrawSize);
 
                 // If mouse over
@@ -312,12 +312,12 @@ namespace Editor {
             ImGui::End();
         }
 
-        void DrawLevelList(Rendering::RenderContext* pRenderContext) {
+        void DrawLevelList() {
             ImGui::Begin("Levels");
 
             Level::Level* pCurrentLevel = Game::GetLevel();
             Viewport* pViewport = Game::GetViewport();
-            Rendering::Nametable* pNametables = Rendering::GetNametablePtr(pRenderContext, 0);
+            Nametable* pNametables = Rendering::GetNametablePtr(0);
 
             Level::Level* pLevels = Level::GetLevelsPtr();
             Level::Level& level = pLevels[selectedLevel];

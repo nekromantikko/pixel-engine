@@ -6,7 +6,7 @@ namespace Editor {
 	namespace Debug {
 
 		void DrawNametable(EditorContext* pContext, ImVec2 tablePos, u8* pNametable);
-		void DrawDebugWindow(EditorContext* pContext, Rendering::RenderContext* pRenderContext);
+		void DrawDebugWindow(EditorContext* pContext);
 
 	}
 }

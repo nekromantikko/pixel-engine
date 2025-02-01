@@ -6,7 +6,7 @@
 
 static constexpr s32 bufferDimMetatiles = 2;
 
-void MoveViewport(Viewport* pViewport, Rendering::Nametable* pNametable, const Level::Level* pLevel, r32 dx, r32 dy, bool loadTiles) {
+void MoveViewport(Viewport* pViewport, Nametable* pNametable, const Level::Level* pLevel, r32 dx, r32 dy, bool loadTiles) {
     if (pLevel == nullptr) {
         return;
     }
@@ -88,7 +88,7 @@ void MoveViewport(Viewport* pViewport, Rendering::Nametable* pNametable, const L
     }
 }
 
-void RefreshViewport(Viewport* pViewport, Rendering::Nametable* pNametable, const Level::Level* pLevel) {
+void RefreshViewport(Viewport* pViewport, Nametable* pNametable, const Level::Level* pLevel) {
     if (pLevel == nullptr) {
         return;
     }

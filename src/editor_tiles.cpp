@@ -7,20 +7,20 @@
 namespace Editor {
 	namespace Tiles {
 		constexpr r32 tilePreviewSize = 64;
-		constexpr r32 pixelSize = tilePreviewSize / TILE_SIZE;
+		constexpr r32 pixelSize = tilePreviewSize / TILE_DIM_PIXELS;
 
 		constexpr u32 metatileTypeCount = 2;
 		constexpr const char* metatileTypeNames[metatileTypeCount] = { "Empty", "Solid" };
 
 		constexpr s32 renderScale = 2;
 		constexpr s32 gridSizeTiles = 16;
-		constexpr s32 gridStepPixels = (TILE_SIZE * 2) * renderScale;
+		constexpr s32 gridStepPixels = (TILE_DIM_PIXELS * 2) * renderScale;
 		constexpr s32 gridSizePixels = gridSizeTiles * gridStepPixels;
 
 		u32 selectedMetatileIndex = 0;
 		u32 selectedTileIndex = 0;
 
-		void DrawMetatileEditor(EditorContext* pContext, Rendering::RenderContext* pRenderContext) {
+		void DrawMetatileEditor(EditorContext* pContext) {
 			ImGui::Begin("Metatile Editor");
 
 			ImGui::Text("0x%02x", selectedMetatileIndex);
@@ -53,7 +53,7 @@ namespace Editor {
 			ImGui::End();
 		}
 
-		void DrawTilesetEditor(EditorContext* pContext, Rendering::RenderContext* pRenderContext) {
+		void DrawTilesetEditor(EditorContext* pContext) {
 			ImGui::Begin("Tileset");
 
 			if (ImGui::Button("Save")) {
