@@ -14,7 +14,7 @@
 #include "editor_tiles.h"
 #include "editor_level.h"
 
-static void HandleWindowEvent(const SDL_WindowEvent& event, Rendering::RenderContext* pRenderContext) {
+static void HandleWindowEvent(const SDL_WindowEvent& event, Rendering::RenderContext* pRenderContext, bool& minimized) {
     switch (event.event) {
     case SDL_WINDOWEVENT_RESIZED:
         break;
@@ -22,10 +22,12 @@ static void HandleWindowEvent(const SDL_WindowEvent& event, Rendering::RenderCon
         Rendering::ResizeSurface(pRenderContext, event.data1, event.data2);
         break;
     case SDL_WINDOWEVENT_MINIMIZED:
+        minimized = true;
         break;
     case SDL_WINDOWEVENT_MAXIMIZED:
         break;
     case SDL_WINDOWEVENT_RESTORED:
+        minimized = false;
         break;
     default:
         break;
@@ -50,6 +52,7 @@ int WinMain(int argc, char** args) {
     Game::Initialize(pRenderContext);
     
     bool running = true;
+    bool minimized = false;
     SDL_Event event;
     while (running) {
         s64 newTime = SDL_GetPerformanceCounter();
@@ -67,7 +70,7 @@ int WinMain(int argc, char** args) {
                 running = false;
                 break;
             case SDL_WINDOWEVENT:
-                HandleWindowEvent(event.window, pRenderContext);
+                HandleWindowEvent(event.window, pRenderContext, minimized);
                 break;
             default:
                 break;
@@ -79,25 +82,27 @@ int WinMain(int argc, char** args) {
         
         Game::Step(deltaTimeSeconds);
 
-        Rendering::BeginImGuiFrame(pRenderContext);
-        ImGui::NewFrame();
-        ImGui::ShowDemoWindow();
-        Editor::Debug::DrawDebugWindow(pEditorContext, pRenderContext);
+        if (!minimized) {
+            Rendering::BeginImGuiFrame(pRenderContext);
+            ImGui::NewFrame();
+            ImGui::ShowDemoWindow();
+            Editor::Debug::DrawDebugWindow(pEditorContext, pRenderContext);
 
-        Editor::Sprites::DrawPreviewWindow(pEditorContext);
-        Editor::Sprites::DrawMetaspriteWindow(pEditorContext);
-        Editor::Sprites::DrawSpriteEditor(pEditorContext);
+            Editor::Sprites::DrawPreviewWindow(pEditorContext);
+            Editor::Sprites::DrawMetaspriteWindow(pEditorContext);
+            Editor::Sprites::DrawSpriteEditor(pEditorContext);
 
-        Editor::CHR::DrawCHRWindow(pEditorContext);
-        Editor::Tiles::DrawMetatileEditor(pEditorContext, pRenderContext);
-        Editor::Tiles::DrawTilesetEditor(pEditorContext, pRenderContext);
+            Editor::CHR::DrawCHRWindow(pEditorContext);
+            Editor::Tiles::DrawMetatileEditor(pEditorContext, pRenderContext);
+            Editor::Tiles::DrawTilesetEditor(pEditorContext, pRenderContext);
 
-        Editor::LevelEditor::DrawGameWindow(pEditorContext, pRenderContext);
-        Editor::LevelEditor::DrawActorList();
-        Editor::LevelEditor::DrawLevelList(pRenderContext);
+            Editor::LevelEditor::DrawGameWindow(pEditorContext, pRenderContext);
+            Editor::LevelEditor::DrawActorList();
+            Editor::LevelEditor::DrawLevelList(pRenderContext);
 
-        ImGui::Render();
-        Rendering::Render(pRenderContext);
+            ImGui::Render();
+            Rendering::Render(pRenderContext);
+        }
     }
 
     Game::Free();
