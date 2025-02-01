@@ -127,8 +127,8 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
     MSG message;
 
     Rendering::Surface surface{};
-    surface.hInstance = hInst,
-        surface.hWnd = windowHandle;
+    surface.hInstance = hInst;
+    surface.hWnd = windowHandle;
 
     pRenderContext = Rendering::CreateRenderContext(surface);
     DEBUG_LOG("Render context = %x\n", pRenderContext);
@@ -142,7 +142,8 @@ int APIENTRY WinMain(_In_ HINSTANCE hInst, _In_ HINSTANCE hInstPrev, _In_ PSTR c
     const s64 perfFreq = GetPerformanceFrequency();
     s64 currentTime = GetPerfomanceCounter();
 
-    SDL_Init(SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS | SDL_INIT_HAPTIC);
+    SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS | SDL_INIT_HAPTIC);
+    SDL_Window* sdlWindow = SDL_CreateWindowFrom(windowHandle);
     
     Game::Initialize(pRenderContext);
     // Game::LoadLevel(0);
