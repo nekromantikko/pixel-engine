@@ -1,6 +1,7 @@
 #include "level.h"
 #include "system.h"
-#include <stdio.h>
+#include <cstdio>
+#include <cstring>
 
 namespace Level {
 

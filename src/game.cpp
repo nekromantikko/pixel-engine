@@ -20,8 +20,13 @@ namespace Game {
     // Seconds elapsed while not paused
     r64 gameplaySecondsElapsed = 0.0f;
 
-    // Settings
-    Rendering::Settings* pRenderSettings;
+    // Rendering data
+    RenderSettings* pRenderSettings;
+    Sprite* pSprites;
+    ChrSheet* pChr;
+    Nametable* pNametables;
+    Scanline* pScanlines;
+    Palette* pPalettes;
 
     // Viewport
     Viewport viewport;
@@ -156,17 +161,11 @@ namespace Game {
     };
     Pool<Enemy> enemyPool;
 
-    Rendering::ChrSheet playerBank;
+    ChrSheet playerBank;
 
     bool paused = false;
 
     constexpr r32 damageDelay = 0.5f;
-
-    Rendering::Sprite* pSprites;
-    Rendering::ChrSheet* pChr;
-    Rendering::Nametable* pNametables;
-    Rendering::Scanline* pScanlines;
-    Rendering::Palette* pPalettes;
 
     void LoadLevel(u32 index, s32 screenIndex, bool refresh) {
         if (index >= Level::maxLevelCount) {
@@ -225,9 +224,9 @@ namespace Game {
         viewport.x = 0;
         viewport.y = 0;
 
-        const Rendering::Scanline state = {
-            (s32)(viewport.x * TILE_SIZE),
-            (s32)(viewport.y * TILE_SIZE)
+        const Scanline state = {
+            (s32)(viewport.x * TILE_DIM_PIXELS),
+            (s32)(viewport.y * TILE_DIM_PIXELS)
         };
         for (int i = 0; i < SCANLINE_COUNT; i++) {
             pScanlines[i] = state;
@@ -270,9 +269,17 @@ namespace Game {
         }
     }
 
-    u8 basePaletteColors[PALETTE_DATA_SIZE];
+    u8 basePaletteColors[PALETTE_MEMORY_SIZE];
 
-	void Initialize(Rendering::RenderContext* pRenderContext) {
+	void Initialize() {
+        // Rendering data
+        pRenderSettings = Rendering::GetSettingsPtr();
+        pChr = Rendering::GetChrPtr(0);
+        pPalettes = Rendering::GetPalettePtr(0);
+        pSprites = Rendering::GetSpritesPtr(0);
+        pNametables = Rendering::GetNametablePtr(0);
+        pScanlines = Rendering::GetScanlinePtr(0);
+
         viewport.x = 0.0f;
         viewport.y = 0.0f;
 
@@ -282,25 +289,22 @@ namespace Game {
         playerState.weapon = WpnLauncher;
 
         // Init chr memory
-        pChr = Rendering::GetChrPtr(pRenderContext, 0);
         // TODO: Pre-process these instead of loading from bitmap at runtime!
-        Rendering::ChrSheet temp;
+        ChrSheet temp;
         Rendering::Util::CreateChrSheet("assets/chr000.bmp", &temp);
-        Rendering::Util::CopyChrTiles(temp.tiles, pChr[0].tiles, 256);
+        Rendering::Util::CopyChrTiles(temp.tiles, pChr[0].tiles, CHR_SIZE_TILES);
         Rendering::Util::CreateChrSheet("assets/chr001.bmp", &temp);
-        Rendering::Util::CopyChrTiles(temp.tiles, pChr[1].tiles, 256);
+        Rendering::Util::CopyChrTiles(temp.tiles, pChr[1].tiles, CHR_SIZE_TILES);
 
         Rendering::Util::CreateChrSheet("assets/player.bmp", &playerBank);
 
         //u8 paletteColors[8 * 8];
         Rendering::Util::LoadPaletteColorsFromFile("assets/palette.dat", basePaletteColors);
-        pPalettes = Rendering::GetPalettePtr(pRenderContext, 0);
 
-        for (u32 i = 0; i < PALETTE_DATA_SIZE; i++) {
-            memcpy(pPalettes, basePaletteColors, PALETTE_DATA_SIZE);
+        for (u32 i = 0; i < PALETTE_MEMORY_SIZE; i++) {
+            memcpy(pPalettes, basePaletteColors, PALETTE_MEMORY_SIZE);
         }
 
-        pSprites = Rendering::GetSpritesPtr(pRenderContext, 0);
         Rendering::Util::ClearSprites(pSprites, MAX_SPRITE_COUNT);
 
         arrowPool.Init(512);
@@ -312,16 +316,10 @@ namespace Game {
         Metasprite::LoadMetasprites("assets/meta.spr");
         Level::LoadLevels("assets/levels.lev");
 
-        pNametables = Rendering::GetNametablePtr(pRenderContext, 0);
-
         // Initialize scanline state
-        pScanlines = Rendering::GetScanlinePtr(pRenderContext, 0);
         for (int i = 0; i < SCANLINE_COUNT; i++) {
             pScanlines[i] = { 0, 0 };
         }
-
-        // SETTINGS
-        pRenderSettings = Rendering::GetSettingsPtr(pRenderContext);
 
         // TODO: Level should load palettes and tileset?
         LoadLevel(0);
@@ -366,12 +364,12 @@ namespace Game {
 
     IVec2 WorldPosToScreenPixels(Vec2 pos) {
         return IVec2{
-            (s32)round((pos.x - viewport.x) * TILE_SIZE),
-            (s32)round((pos.y - viewport.y) * TILE_SIZE)
+            (s32)round((pos.x - viewport.x) * TILE_DIM_PIXELS),
+            (s32)round((pos.y - viewport.y) * TILE_DIM_PIXELS)
         };
     }
 
-    void DrawPlayer(Rendering::Sprite** ppNextSprite, r64 dt) {
+    void DrawPlayer(Sprite** ppNextSprite, r64 dt) {
         IVec2 drawPos = WorldPosToScreenPixels(Vec2{ playerState.x, playerState.y });
         drawPos.y += playerState.vOffset;
 
@@ -436,7 +434,7 @@ namespace Game {
         *ppNextSprite += characterMetasprite.spriteCount;
     }
 
-    void DrawDamageNumbers(Rendering::Sprite** ppNextSprite) {
+    void DrawDamageNumbers(Sprite** ppNextSprite) {
         char dmgStr[8]{};
 
         for (int i = 0; i < damageNumberPool.Count(); i++) {
@@ -450,7 +448,7 @@ namespace Game {
 
             for (int i = 0; i < strlen(dmgStr); i++) {
                 IVec2 pixelPos = WorldPosToScreenPixels(dmg->pos);
-                const Rendering::Sprite sprite = {
+                const Sprite sprite = {
                     pixelPos.y,
                     pixelPos.x + i * 5,
                     dmgStr[i] + chrOffset,
@@ -461,7 +459,7 @@ namespace Game {
         }
     }
 
-    void DrawArrows(Rendering::Sprite** ppNextSprite) {
+    void DrawArrows(Sprite** ppNextSprite) {
         for (int i = 0; i < arrowPool.Count(); i++) {
             PoolHandle<Arrow> handle = arrowPool.GetHandle(i);
             Arrow* arrow = arrowPool[handle];
@@ -489,7 +487,7 @@ namespace Game {
         }
     }
 
-    void DrawHits(Rendering::Sprite** ppNextSprite) {
+    void DrawHits(Sprite** ppNextSprite) {
         for (int i = 0; i < hitPool.Count(); i++) {
             PoolHandle<Impact> handle = hitPool.GetHandle(i);
             Impact* impact = hitPool.Get(handle);
@@ -497,9 +495,9 @@ namespace Game {
             u32 frame = (u32)((impact->accumulator / impactAnimLength) * impactFrameCount);
             IVec2 pixelPos = WorldPosToScreenPixels(impact->pos);
 
-            Rendering::Sprite debugSprite = {
-                pixelPos.y - (TILE_SIZE / 2),
-                pixelPos.x - (TILE_SIZE / 2),
+            Sprite debugSprite = {
+                pixelPos.y - (TILE_DIM_PIXELS / 2),
+                pixelPos.x - (TILE_DIM_PIXELS / 2),
                 0x20 + frame,
                 1
             };
@@ -507,7 +505,7 @@ namespace Game {
         }
     }
 
-    void DrawShield(Rendering::Sprite** ppNextSprite, r64 dt) {
+    void DrawShield(Sprite** ppNextSprite, r64 dt) {
         // Draw shield around player
         static const r32 shieldRadius = 2.0f;
         static const u32 shieldCount = 4;
@@ -528,7 +526,7 @@ namespace Game {
         }
     }
 
-    static void DrawEnemies(Rendering::Sprite** ppNextSprite, r64 dt) {
+    static void DrawEnemies(Sprite** ppNextSprite, r64 dt) {
         Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
 
         for (int i = 0; i < enemyPool.Count(); i++) {
@@ -616,9 +614,9 @@ namespace Game {
                 UpdateViewport(false);
 
                 // Update scroll
-                const Rendering::Scanline state = {
-                    (s32)(viewport.x * TILE_SIZE),
-                    (s32)(viewport.y * TILE_SIZE)
+                const Scanline state = {
+                    (s32)(viewport.x * TILE_DIM_PIXELS),
+                    (s32)(viewport.y * TILE_DIM_PIXELS)
                 };
                 for (int i = 0; i < SCANLINE_COUNT; i++) {
                     pScanlines[i] = state;
@@ -892,7 +890,7 @@ namespace Game {
     void Step(r64 dt) {
         secondsElapsed += dt;
 
-        static Rendering::Sprite* pNextSprite = pSprites;
+        static Sprite* pNextSprite = pSprites;
 
         const u32 spritesToClear = pNextSprite - pSprites;
         Rendering::Util::ClearSprites(pSprites, spritesToClear);
@@ -920,7 +918,7 @@ namespace Game {
                 Vec2 pos = { cos(angle) * radius + VIEWPORT_WIDTH_TILES / 2, sin(angle) * radius + VIEWPORT_HEIGHT_TILES / 2 };
                 IVec2 drawPos = WorldPosToScreenPixels(pos);
 
-                Rendering::Sprite sprite = {
+                Sprite sprite = {
                     drawPos.y,
                     drawPos.x,
                     32,
@@ -961,9 +959,9 @@ namespace Game {
             MoveViewport(&viewport, pNametables, pCurrentLevel, dx, dy);
 
             // Update scroll (Time to make this a utility soon....)
-            const Rendering::Scanline state = {
-                (s32)(viewport.x * TILE_SIZE),
-                (s32)(viewport.y * TILE_SIZE)
+            const Scanline state = {
+                (s32)(viewport.x * TILE_DIM_PIXELS),
+                (s32)(viewport.y * TILE_DIM_PIXELS)
             };
             for (int i = 0; i < SCANLINE_COUNT; i++) {
                 pScanlines[i] = state;
@@ -1174,9 +1172,9 @@ namespace Game {
             DrawEnemies(&pNextSprite, dt);
 
             // Update scroll
-            const Rendering::Scanline state = {
-                (s32)(viewport.x * TILE_SIZE),
-                (s32)(viewport.y * TILE_SIZE)
+            const Scanline state = {
+                (s32)(viewport.x * TILE_DIM_PIXELS),
+                (s32)(viewport.y * TILE_DIM_PIXELS)
             };
             for (int i = 0; i < SCANLINE_COUNT; i++) {
                 pScanlines[i] = state;

@@ -12,5 +12,5 @@ struct Viewport {
     r32 y;
 };
 
-void MoveViewport(Viewport* pViewport, Rendering::Nametable* pNametables, const Level::Level* pLevel, r32 dx, r32 dy, bool loadTiles = true);
-void RefreshViewport(Viewport* pViewport, Rendering::Nametable* pNametables, const Level::Level* pLevel);
+void MoveViewport(Viewport* pViewport, Nametable* pNametables, const Level::Level* pLevel, r32 dx, r32 dy, bool loadTiles = true);
+void RefreshViewport(Viewport* pViewport, Nametable* pNametables, const Level::Level* pLevel);

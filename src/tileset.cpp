@@ -62,7 +62,7 @@ namespace Tileset {
 		fclose(pFile);
 	}
 
-	void CopyMetatileToNametable(Rendering::Nametable* pNametable, u16 x, u16 y, u8 metatileIndex) {
+	void CopyMetatileToNametable(Nametable* pNametable, u16 x, u16 y, u8 metatileIndex) {
 		const u16 nametableOffset = NAMETABLE_WIDTH_TILES * y + x;
 
 		Metatile& metatile = GetMetatile(metatileIndex);
@@ -81,7 +81,7 @@ namespace Tileset {
 		blockAttribute |= (GetPalette(metatileIndex) << (smallBlockOffset * 2));
 	}
 
-	void FillAllNametablesWithMetatile(Rendering::Nametable* pNametables, u8 metatileIndex) {
+	void FillAllNametablesWithMetatile(Nametable* pNametables, u8 metatileIndex) {
 		for (u32 i = 0; i < NAMETABLE_COUNT; i++) {
 			for (u32 y = 0; y < NAMETABLE_HEIGHT_TILES / metatileWorldSize; y++) {
 				for (u32 x = 0; x < NAMETABLE_WIDTH_TILES / metatileWorldSize; x++) {

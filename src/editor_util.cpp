@@ -88,7 +88,7 @@ namespace Editor {
 				ImVec2 tileChrCoord = GetTileCoord(tileIndex);
 				ImVec2 tileStart = TileCoordToTexCoord(tileChrCoord, 0);
 				ImVec2 tileEnd = TileCoordToTexCoord(ImVec2(tileChrCoord.x + 1, tileChrCoord.y + 1), 0);
-				drawList->AddImage(pContext->chrTexture[palette], tileOffset, ImVec2(tileOffset.x + tileSize, tileOffset.y + tileSize), tileStart, tileEnd, color);
+				drawList->AddImage(pContext->chrTextures[palette], tileOffset, ImVec2(tileOffset.x + tileSize, tileOffset.y + tileSize), tileStart, tileEnd, color);
 			}
 		}
 
