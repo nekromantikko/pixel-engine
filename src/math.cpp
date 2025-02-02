@@ -17,11 +17,3 @@ r32 Sign(r32 a) {
 	}
 	else return 0.0f;
 }
-
-r32 Max(r32 a, r32 b) {
-	return (a >= b) ? a : b;
-}
-
-r32 Min(r32 a, r32 b) {
-	return (a >= b) ? b : a;
-}

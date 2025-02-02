@@ -7,14 +7,7 @@
 #include "input.h"
 
 #ifdef EDITOR
-#include "imgui.h"
-#include "imgui_impl_sdl2.h"
-#include "editor_core.h"
-#include "editor_debug.h"
-#include "editor_sprites.h"
-#include "editor_chr.h"
-#include "editor_tiles.h"
-#include "editor_level.h"
+#include "editor.h"
 #endif
 
 static constexpr const char* WINDOW_TITLE = "Nekro Pixel Engine";
@@ -73,10 +66,8 @@ int WinMain(int argc, char** args) {
     Rendering::Init();
 
 #ifdef EDITOR
-    ImGui::CreateContext();
-    Rendering::InitImGui(pWindow);
-
-    Editor::EditorContext* pEditorContext = Editor::CreateEditorContext();
+    Editor::CreateContext();
+    Editor::Init(pWindow);
 #endif
 
     const s64 perfFreq = SDL_GetPerformanceFrequency();
@@ -111,7 +102,7 @@ int WinMain(int argc, char** args) {
 
             Input::ProcessEvent(&event);
 #ifdef EDITOR
-            ImGui_ImplSDL2_ProcessEvent(&event);
+            Editor::ProcessEvent(&event);
 #endif
         }
         
@@ -122,24 +113,7 @@ int WinMain(int argc, char** args) {
             UpdateWindowTitle(pWindow, averageFramerate, deltaTimeSeconds);
 
 #ifdef EDITOR
-            Rendering::BeginImGuiFrame();
-            ImGui::NewFrame();
-            ImGui::ShowDemoWindow();
-            Editor::Debug::DrawDebugWindow(pEditorContext);
-
-            Editor::Sprites::DrawPreviewWindow(pEditorContext);
-            Editor::Sprites::DrawMetaspriteWindow(pEditorContext);
-            Editor::Sprites::DrawSpriteEditor(pEditorContext);
-
-            Editor::CHR::DrawCHRWindow(pEditorContext);
-            Editor::Tiles::DrawMetatileEditor(pEditorContext);
-            Editor::Tiles::DrawTilesetEditor(pEditorContext);
-
-            Editor::LevelEditor::DrawGameWindow(pEditorContext);
-            Editor::LevelEditor::DrawActorList();
-            Editor::LevelEditor::DrawLevelList();
-
-            ImGui::Render();
+            Editor::Render();
 #endif
             Rendering::Render();
         }
@@ -148,9 +122,8 @@ int WinMain(int argc, char** args) {
     Game::Free();
     Rendering::WaitForAllCommands();
 #ifdef EDITOR
-    Editor::FreeEditorContext(pEditorContext);
-    Rendering::ShutdownImGui();
-    ImGui::DestroyContext();
+    Editor::Free();
+    Editor::DestroyContext();
 #endif
     Rendering::Free();
     Rendering::DestroyContext();
