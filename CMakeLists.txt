@@ -37,13 +37,7 @@ set(SOURCES
 		src/viewport.cpp)
 
 set(EDITOR_SOURCES
-		src/editor_core.cpp
-		src/editor_chr.cpp
-		src/editor_debug.cpp
-		src/editor_level.cpp
-		src/editor_sprites.cpp
-		src/editor_tiles.cpp
-		src/editor_util.cpp)
+		src/editor.cpp)
 
 set(HEADERS 
 		src/rendering.h
@@ -62,13 +56,7 @@ set(HEADERS
 		src/collision.h)
 
 set(EDITOR_HEADERS
-		src/editor_core.h
-		src/editor_chr.h
-		src/editor_debug.h
-		src/editor_level.h
-		src/editor_sprites.h
-		src/editor_tiles.h
-		src/editor_util.h)
+		src/editor.h)
 
 add_executable(${PROJECT_NAME} WIN32 ${HEADERS} ${SOURCES} ${IMGUI_SOURCES} ${EDITOR_HEADERS} ${EDITOR_SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_PATH} ${IMGUI_PATH}/backends ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS})

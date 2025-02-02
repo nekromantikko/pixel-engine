@@ -2,6 +2,11 @@
 #include "typedef.h"
 #include "rendering.h"
 
+#ifdef EDITOR
+constexpr u32 METATILE_TYPE_COUNT = 2;
+constexpr const char* METATILE_TYPE_NAMES[METATILE_TYPE_COUNT] = { "Empty", "Solid" };
+#endif
+
 namespace Tileset {
 	constexpr u32 tilesetMaxNameLength = 256;
 	constexpr u32 metatileWorldSize = 2;

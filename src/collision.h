@@ -4,6 +4,11 @@
 #include "rendering.h"
 #include "tileset.h"
 
+#ifdef EDITOR
+constexpr u32 COLLIDER_TYPE_COUNT = 4;
+constexpr const char* COLLIDER_TYPE_NAMES[COLLIDER_TYPE_COUNT] = { "Point", "Box", "Circle", "Capsule" };
+#endif
+
 namespace Level {
     struct Level;
 }

@@ -3,6 +3,14 @@
 #include "tileset.h"
 #include "vector.h"
 
+#ifdef EDITOR
+constexpr u32 LEVEL_TYPE_COUNT = 3;
+constexpr const char* LEVEL_TYPE_NAMES[LEVEL_TYPE_COUNT] = { "Sidescroller", "World map", "Title screen" };
+
+constexpr u32 ACTOR_TYPE_COUNT = 3;
+constexpr const char* ACTOR_TYPE_NAMES[ACTOR_TYPE_COUNT] = { "None", "Door", "Skull" };
+#endif
+
 namespace Level {
 
     constexpr u32 screenWidthTiles = VIEWPORT_WIDTH_TILES;
