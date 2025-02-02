@@ -109,7 +109,7 @@ int WinMain(int argc, char** args) {
                 break;
             }
 
-            Input::ProcessEvent(event);
+            Input::ProcessEvent(&event);
 #ifdef EDITOR
             ImGui_ImplSDL2_ProcessEvent(&event);
 #endif
