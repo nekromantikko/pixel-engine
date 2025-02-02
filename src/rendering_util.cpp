@@ -180,23 +180,19 @@ namespace Rendering
 		void FlipSpritesHorizontal(Sprite* spr, u32 count) {
 			for (int i = 0; i < count; i++) {
 				Sprite& sprite = spr[i];
-				sprite.attributes ^= 0b01000000;
+				sprite.flipHorizontal = !sprite.flipHorizontal;
 			}
 		}
 		void FlipSpritesVertical(Sprite* spr, u32 count) {
 			for (int i = 0; i < count; i++) {
 				Sprite& sprite = spr[i];
-				sprite.attributes ^= 0b10000000;
+				sprite.flipVertical = !sprite.flipVertical;
 			}
 		}
 		void SetSpritesPalette(Sprite* spr, u32 count, u8 palette) {
 			for (int i = 0; i < count; i++) {
 				Sprite& sprite = spr[i];
-
-				// Clear palette first
-				sprite.attributes &= 0b11111100;
-				// Set palette
-				sprite.attributes |= palette % 4;
+				sprite.palette = palette;
 			}
 		}
 		void ClearSprites(Sprite* spr, u32 count) {

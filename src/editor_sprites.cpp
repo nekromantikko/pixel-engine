@@ -56,9 +56,9 @@ namespace Editor {
                 ImVec2 tileStart = Util::TileCoordToTexCoord(tileCoord, 1);
                 ImVec2 tileEnd = Util::TileCoordToTexCoord(ImVec2(tileCoord.x + 1, tileCoord.y + 1), 1);
                 ImVec2 pos = ImVec2(origin.x + renderScale * sprite.x, origin.y + renderScale * sprite.y);
-                bool flipX = sprite.attributes & 0b01000000;
-                bool flipY = sprite.attributes & 0b10000000;
-                u8 palette = (sprite.attributes & 3) + 4;
+                bool flipX = sprite.flipHorizontal;
+                bool flipY = sprite.flipVertical;
+                u8 palette = sprite.palette;
 
                 // Select sprite by clicking (Topmost sprite gets selected)
                 bool spriteClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left) && io.MousePos.x >= pos.x && io.MousePos.x < pos.x + gridStepPixels && io.MousePos.y >= pos.y && io.MousePos.y < pos.y + gridStepPixels;
@@ -199,10 +199,10 @@ namespace Editor {
                 ImGui::BeginDisabled(metasprite.spriteCount == Metasprite::metaspriteMaxSpriteCount);
                 if (ImGui::Button("+")) {
                     metasprite.spritesRelativePos[metasprite.spriteCount++] = {
-                        0,
-                        0,
-                        pContext->chrSelection[1],
-                        pContext->chrPaletteIndex[1],
+                        .y = 0,
+                        .x = 0,
+                        .tileId = pContext->chrSelection[1],
+                        .attributes = pContext->chrPaletteIndex[1],
                     };
                 }
                 ImGui::EndDisabled();
@@ -210,10 +210,10 @@ namespace Editor {
                 ImGui::BeginDisabled(metasprite.spriteCount == 0);
                 if (ImGui::Button("-")) {
                     metasprite.spritesRelativePos[--metasprite.spriteCount] = {
-                        0,
-                        0,
-                        0,
-                        0,
+                        .y = 0,
+                        .x = 0,
+                        .tileId = 0,
+                        .attributes = 0,
                     };
                 }
                 ImGui::EndDisabled();
@@ -460,9 +460,9 @@ namespace Editor {
                 Sprite& sprite = metasprite.spritesRelativePos[spriteIndex];
                 s32 index = (s32)sprite.tileId;
 
-                bool flipX = sprite.attributes & 0b01000000;
-                bool flipY = sprite.attributes & 0b10000000;
-                s32 palette = sprite.attributes & 3;
+                bool flipX = sprite.flipHorizontal;
+                bool flipY = sprite.flipVertical;
+                s32 palette = sprite.palette;
 
                 ImGui::InputInt("Tile", &index);
                 ImGui::PushID(0); // Buttons with same label need ID
@@ -485,9 +485,9 @@ namespace Editor {
                 ImGui::Checkbox("Flip vertical", &flipY);
 
                 sprite.tileId = (u8)index;
-                sprite.attributes = (sprite.attributes & ~0b00000011) | palette;
-                sprite.attributes = (sprite.attributes & ~0b01000000) | (flipX << 6);
-                sprite.attributes = (sprite.attributes & ~0b10000000) | (flipY << 7);
+                sprite.palette = palette;
+                sprite.flipHorizontal = flipX;
+                sprite.flipVertical = flipY;
 
                 ImGui::BeginDisabled(spriteIndex == 0);
                 if (ImGui::ArrowButton("##up", ImGuiDir_Up)) {

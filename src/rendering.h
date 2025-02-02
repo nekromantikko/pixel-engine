@@ -45,7 +45,16 @@ struct Sprite {
 	s32 y;
 	s32 x;
 	u32 tileId;
-	u32 attributes;
+	union {
+		struct alignas(4) {
+			u8 palette : 2;
+			u8 unused : 3;
+			u8 priority : 1;
+			bool flipHorizontal : 1;
+			bool flipVertical : 1;
+		};
+		u32 attributes;
+	};
 };
 
 struct Scanline {
