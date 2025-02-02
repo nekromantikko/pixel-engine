@@ -17,7 +17,7 @@
 #include "editor_level.h"
 #endif
 
-static constexpr char* WINDOW_TITLE = "Nekro Pixel Engine";
+static constexpr const char* WINDOW_TITLE = "Nekro Pixel Engine";
 static constexpr u32 WINDOW_TITLE_MAX_LENGTH = 128;
 
 static constexpr u32 SUCCESSIVE_FRAME_TIME_COUNT = 64;
