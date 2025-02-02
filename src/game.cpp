@@ -683,11 +683,11 @@ namespace Game {
     }
 
     void PlayerInput(r32 dt) {
-        if (Input::Down(Input::CSTATE_DPAD_LEFT)) {
+        if (Input::ButtonDown(BUTTON_DPAD_LEFT)) {
             playerState.direction = DirLeft;
             playerState.hSpeed = -12.5f;
         }
-        else if (Input::Down(Input::CSTATE_DPAD_RIGHT)) {
+        else if (Input::ButtonDown(BUTTON_DPAD_RIGHT)) {
             playerState.direction = DirRight;
             playerState.hSpeed = 12.5f;
         }
@@ -696,19 +696,19 @@ namespace Game {
         }
 
         // Aim mode
-        if (Input::Down(Input::CSTATE_DPAD_UP)) {
+        if (Input::ButtonDown(BUTTON_DPAD_UP)) {
             playerState.aMode = AimUp;
         }
-        else if (Input::Down(Input::CSTATE_DPAD_DOWN)) {
+        else if (Input::ButtonDown(BUTTON_DPAD_DOWN)) {
             playerState.aMode = AimDown;
         }
         else playerState.aMode = AimFwd;
 
-        if (Input::Pressed(Input::CSTATE_START)) {
+        if (Input::ButtonPressed(BUTTON_START)) {
             pRenderSettings->useCRTFilter = !pRenderSettings->useCRTFilter;
         }
 
-        if (Input::Pressed(Input::CSTATE_A) && (!playerState.inAir || !playerState.doubleJumped)) {
+        if (Input::ButtonPressed(BUTTON_A) && (!playerState.inAir || !playerState.doubleJumped)) {
             playerState.vSpeed = -31.25f;
             if (playerState.inAir) {
                 playerState.doubleJumped = true;
@@ -718,20 +718,20 @@ namespace Game {
             playerState.wingFrame++;
         }
 
-        if (playerState.vSpeed < 0 && Input::Released(Input::CSTATE_A)) {
+        if (playerState.vSpeed < 0 && Input::ButtonReleased(BUTTON_A)) {
             playerState.vSpeed /= 2;
         }
 
         playerState.slowFall = true;
-        if (Input::Up(Input::CSTATE_A) || playerState.vSpeed < 0) {
+        if (Input::ButtonUp(BUTTON_A) || playerState.vSpeed < 0) {
             playerState.slowFall = false;
         }
 
-        if (Input::Released(Input::CSTATE_B)) {
+        if (Input::ButtonReleased(BUTTON_B)) {
             shootTimer = 0.0f;
         }
 
-        if (Input::Pressed(Input::CSTATE_SELECT)) {
+        if (Input::ButtonPressed(BUTTON_SELECT)) {
             if (playerState.weapon == WpnLauncher) {
                 playerState.weapon = WpnBow;
             }
@@ -739,7 +739,7 @@ namespace Game {
         }
 
         // Enter door
-        if (Input::Pressed(Input::CSTATE_DPAD_UP) && !playerState.inAir) {
+        if (Input::ButtonPressed(BUTTON_DPAD_UP) && !playerState.inAir) {
             const Vec2 checkPos = { playerState.x, playerState.y + 1.0f };
             const u32 screenInd = Level::WorldToScreenIndex(pCurrentLevel, checkPos);
             const u32 tileInd = Level::WorldToMetatileIndex(checkPos);
@@ -798,7 +798,7 @@ namespace Game {
         }
         else shootTimer = 0.0f;
 
-        if (Input::Down(Input::CSTATE_B) && shootTimer <= 0.0f) {
+        if (Input::ButtonDown(BUTTON_B) && shootTimer <= 0.0f) {
             shootTimer += shootDelay;
 
             PoolHandle<Arrow> handle = arrowPool.Add();
@@ -927,7 +927,7 @@ namespace Game {
                 *((pNextSprite)++) = sprite;
             }
 
-            if (Input::Pressed(Input::CSTATE_START)) {
+            if (Input::ButtonPressed(BUTTON_START)) {
                 state = StatePlaying;
                 // TODO: This should be set in level editor
                 const u32 firstLevel = 0x10;
@@ -944,16 +944,16 @@ namespace Game {
 
             r32 dx = 0, dy = 0;
 
-            if (Input::Down(Input::CSTATE_DPAD_RIGHT)) {
+            if (Input::ButtonDown(BUTTON_DPAD_RIGHT)) {
                 dx = 8.0f * dt;
             }
-            else if (Input::Down(Input::CSTATE_DPAD_LEFT)) {
+            else if (Input::ButtonDown(BUTTON_DPAD_LEFT)) {
                 dx = -8.0f * dt;
             }
-            else if (Input::Down(Input::CSTATE_DPAD_DOWN)) {
+            else if (Input::ButtonDown(BUTTON_DPAD_DOWN)) {
                 dy = 8.0f * dt;
             }
-            else if (Input::Down(Input::CSTATE_DPAD_UP)) {
+            else if (Input::ButtonDown(BUTTON_DPAD_UP)) {
                 dy = -8.0f * dt;
             }
             MoveViewport(&viewport, pNametables, pCurrentLevel, dx, dy);
