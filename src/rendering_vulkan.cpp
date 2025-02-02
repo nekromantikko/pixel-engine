@@ -905,7 +905,7 @@ static void CreateComputeBuffers() {
 	pContext->chrOffset = pContext->paletteTableOffset + pContext->paletteTableSize;
 	pContext->chrSize = PadBufferSize(CHR_MEMORY_SIZE, minOffsetAlignment);
 	pContext->nametableOffset = pContext->chrOffset + pContext->chrSize;
-	pContext->nametableSize = PadBufferSize(NAMETABLE_SIZE * NAMETABLE_COUNT, minOffsetAlignment);
+	pContext->nametableSize = PadBufferSize(sizeof(Nametable) * NAMETABLE_COUNT, minOffsetAlignment);
 	pContext->oamOffset = pContext->nametableOffset + pContext->nametableSize;
 	pContext->oamSize = PadBufferSize(MAX_SPRITE_COUNT * sizeof(Sprite), minOffsetAlignment);
 	pContext->renderStateOffset = pContext->oamOffset + pContext->oamSize;

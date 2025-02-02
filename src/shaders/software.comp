@@ -1,6 +1,6 @@
 #version 450
 #define MAX_SPRITES_PER_SCANLINE 64
-#define NAMETABLE_SIZE 0x1000
+#define NAMETABLE_SIZE 0xFF0
 #define NAMETABLE_ATTRIBUTE_OFFSET 0xF00
 
 const ivec2 nametableSizePixels = ivec2(512, 480);

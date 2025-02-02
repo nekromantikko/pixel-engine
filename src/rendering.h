@@ -2,6 +2,7 @@
 #include "typedef.h"
 #include <SDL.h>
 #include <limits>
+#include <cassert>
 
 #ifdef EDITOR
 #include <imgui.h>
@@ -23,11 +24,15 @@ constexpr u32 CHR_COUNT = 2;
 constexpr u32 CHR_MEMORY_SIZE = CHR_SIZE_BYTES * CHR_COUNT;
 
 constexpr u32 NAMETABLE_COUNT = 2;
-constexpr u32 NAMETABLE_SIZE = 0x1000;
-constexpr u32 NAMETABLE_ATTRIBUTE_OFFSET = 0xF00;
-constexpr u32 NAMETABLE_ATTRIBUTE_SIZE = 0x100;
 constexpr u32 NAMETABLE_WIDTH_TILES = 64;
 constexpr u32 NAMETABLE_HEIGHT_TILES = 60;
+
+static_assert((NAMETABLE_WIDTH_TILES & 0b11) == 0);
+static_assert((NAMETABLE_HEIGHT_TILES & 0b11) == 0);
+
+constexpr u32 NAMETABLE_SIZE_TILES = NAMETABLE_WIDTH_TILES * NAMETABLE_HEIGHT_TILES;
+constexpr u32 NAMETABLE_ATTRIBUTE_COUNT = NAMETABLE_SIZE_TILES >> 4;
+constexpr u32 NAMETABLE_MEMORY_SIZE = NAMETABLE_SIZE_TILES + NAMETABLE_ATTRIBUTE_COUNT;
 
 constexpr u32 VIEWPORT_WIDTH_TILES = NAMETABLE_WIDTH_TILES;
 constexpr u32 VIEWPORT_HEIGHT_TILES = 36;
@@ -73,8 +78,8 @@ struct ChrSheet {
 };
 
 struct Nametable {
-	u8 tiles[NAMETABLE_ATTRIBUTE_OFFSET];
-	u8 attributes[NAMETABLE_ATTRIBUTE_SIZE];
+	u8 tiles[NAMETABLE_SIZE_TILES];
+	u8 attributes[NAMETABLE_ATTRIBUTE_COUNT];
 };
 
 struct Palette {

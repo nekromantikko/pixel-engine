@@ -7,7 +7,7 @@ namespace Editor {
 
         void DrawNametable(EditorContext* pContext, ImVec2 tablePos, const Nametable& nametable) {
             ImDrawList* drawList = ImGui::GetWindowDrawList();
-            for (int i = 0; i < NAMETABLE_ATTRIBUTE_OFFSET; i++) {
+            for (int i = 0; i < NAMETABLE_SIZE_TILES; i++) {
                 s32 x = i % NAMETABLE_WIDTH_TILES;
                 s32 y = i / NAMETABLE_WIDTH_TILES;
 
