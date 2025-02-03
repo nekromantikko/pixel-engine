@@ -83,9 +83,9 @@ namespace Tileset {
 
 	void FillAllNametablesWithMetatile(Nametable* pNametables, u8 metatileIndex) {
 		for (u32 i = 0; i < NAMETABLE_COUNT; i++) {
-			for (u32 y = 0; y < NAMETABLE_HEIGHT_TILES / metatileWorldSize; y++) {
-				for (u32 x = 0; x < NAMETABLE_WIDTH_TILES / metatileWorldSize; x++) {
-					CopyMetatileToNametable(&pNametables[i], x * metatileWorldSize, y * metatileWorldSize, metatileIndex);
+			for (u32 y = 0; y < NAMETABLE_HEIGHT_METATILES; y++) {
+				for (u32 x = 0; x < NAMETABLE_WIDTH_METATILES; x++) {
+					CopyMetatileToNametable(&pNametables[i], x * METATILE_DIM_TILES, y * METATILE_DIM_TILES, metatileIndex);
 				}
 			}
 		}

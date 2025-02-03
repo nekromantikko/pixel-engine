@@ -14,13 +14,9 @@ constexpr const char* ACTOR_TYPE_NAMES[ACTOR_TYPE_COUNT] = { "None", "Door", "Sk
 namespace Level {
 
     constexpr u32 screenWidthTiles = VIEWPORT_WIDTH_TILES;
-    constexpr u32 screenWidthMetatiles = screenWidthTiles / Tileset::metatileWorldSize;
+    constexpr u32 screenWidthMetatiles = screenWidthTiles / METATILE_DIM_TILES;
     constexpr u32 screenHeightTiles = VIEWPORT_HEIGHT_TILES;
-    constexpr u32 screenHeightMetatiles = screenHeightTiles / Tileset::metatileWorldSize;
-    constexpr u32 nametableWidthMetatiles = NAMETABLE_WIDTH_TILES / Tileset::metatileWorldSize;
-    constexpr u32 nametableHeightMetatiles = NAMETABLE_HEIGHT_TILES / Tileset::metatileWorldSize;
-    constexpr u32 viewportWidthMetatiles = VIEWPORT_WIDTH_TILES / Tileset::metatileWorldSize;
-    constexpr u32 viewportHeightMetatiles = VIEWPORT_HEIGHT_TILES / Tileset::metatileWorldSize;
+    constexpr u32 screenHeightMetatiles = screenHeightTiles / METATILE_DIM_TILES;
 
     constexpr u32 maxLevelCount = 256;
     constexpr u32 levelMaxNameLength = 256;

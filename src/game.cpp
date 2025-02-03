@@ -580,7 +580,7 @@ namespace Game {
 
         levelTransitionState.origin = center;
         levelTransitionState.windowWorldPos = transitionWindowPos;
-        const IVec2 transitionWindowSize = IVec2{ Level::viewportWidthMetatiles + bufferZoneWidth * 2, Level::viewportHeightMetatiles + bufferZoneWidth * 2 };
+        const IVec2 transitionWindowSize = IVec2{ VIEWPORT_WIDTH_METATILES + bufferZoneWidth * 2, VIEWPORT_HEIGHT_METATILES + bufferZoneWidth * 2 };
         levelTransitionState.windowSize = transitionWindowSize;
 
         const u32 stepsToTopLeft = center.x + center.y;
@@ -657,22 +657,22 @@ namespace Game {
 
                     if (shouldTransition) {
                         const u32 screenOffsetX = metatileX % Level::screenWidthMetatiles;
-                        const u32 nametableOffsetX = metatileX % Level::nametableWidthMetatiles;
+                        const u32 nametableOffsetX = metatileX % NAMETABLE_WIDTH_METATILES;
 
                         const u32 screenIndex = Level::TilemapToScreenIndex(pCurrentLevel, { metatileX, metatileY });
                         const u32 screenOffsetY = metatileY % Level::screenHeightMetatiles;
 
                         const u32 nametableIndex = Level::TilemapToNametableIndex({ metatileX, metatileY });
-                        const u32 nametableOffsetY = metatileY % Level::nametableHeightMetatiles;
+                        const u32 nametableOffsetY = metatileY % NAMETABLE_HEIGHT_METATILES;
 
                         const u32 screenMetatileIndex = Level::TilemapToMetatileIndex({ metatileX, metatileY });
                         const u8 tilesetIndex = pCurrentLevel->screens[screenIndex].tiles[screenMetatileIndex].metatile;
 
                         if (levelTransitionState.direction) {
-                            Tileset::CopyMetatileToNametable(&pNametables[nametableIndex], (u16)nametableOffsetX * Tileset::metatileWorldSize, (u16)nametableOffsetY * Tileset::metatileWorldSize, 16);
+                            Tileset::CopyMetatileToNametable(&pNametables[nametableIndex], (u16)nametableOffsetX * METATILE_DIM_TILES, (u16)nametableOffsetY * METATILE_DIM_TILES, 16);
                         }
                         else {
-                            Tileset::CopyMetatileToNametable(&pNametables[nametableIndex], (u16)nametableOffsetX * Tileset::metatileWorldSize, (u16)nametableOffsetY * Tileset::metatileWorldSize, tilesetIndex);
+                            Tileset::CopyMetatileToNametable(&pNametables[nametableIndex], (u16)nametableOffsetX * METATILE_DIM_TILES, (u16)nametableOffsetY * METATILE_DIM_TILES, tilesetIndex);
                         }
                     }
                 }

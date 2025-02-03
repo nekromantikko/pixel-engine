@@ -9,18 +9,12 @@ constexpr const char* METATILE_TYPE_NAMES[METATILE_TYPE_COUNT] = { "Empty", "Sol
 
 namespace Tileset {
 	constexpr u32 tilesetMaxNameLength = 256;
-	constexpr u32 metatileWorldSize = 2;
-	constexpr u32 metatileTileCount = 4;
 	constexpr u32 tilesetMetatileCount = 256;
 	constexpr u32 tilesetAttributeCount = tilesetMetatileCount / 4;
 
 	enum TileType : u8 {
 		TileEmpty = 0,
 		TileSolid = 1
-	};
-
-	struct Metatile {
-		u8 tiles[metatileTileCount];
 	};
 
 	struct Tileset {
