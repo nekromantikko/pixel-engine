@@ -4,6 +4,78 @@
 #include <algorithm>
 #include <stdio.h>
 
+#pragma region Nametable
+static inline u32 GetNametableAttributeIndex(u32 x, u32 y) {
+	return (x >> 1) + (y >> 1) * NAMETABLE_WIDTH_ATTRIBUTES;
+}
+
+static inline u32 GetNametableAttributeIndex(u32 metatileIndex) {
+	const u32 x = metatileIndex & (NAMETABLE_WIDTH_METATILES - 1);
+	const u32 y = metatileIndex >> NAMETABLE_WIDTH_METATILES_LOG2;
+
+	return (x >> 1) + (y >> 1) * NAMETABLE_WIDTH_ATTRIBUTES;
+}
+
+static inline u8 GetNametableAttributeOffset(u32 x, u32 y) {
+	return (x & 1) + (y & 1) * 2;
+}
+
+static inline u8 GetNametableAttributeOffset(u32 metatileIndex) {
+	const u32 y = metatileIndex >> NAMETABLE_WIDTH_METATILES_LOG2;
+
+	return (metatileIndex & 1) + (y & 1) * 2;
+}
+
+s32 Rendering::Util::GetPalette(u8 attribute, u8 offset) {
+	return (s32)((attribute >> (offset * 2)) & 0b11);
+}
+
+u8 Rendering::Util::SetPalette(u8 attribute, u8 offset, s32 palette) {
+	// Clear bits
+	attribute &= ~(0b11 << offset * 2);
+	// Set bits
+	attribute |= (palette & 0b11) << offset * 2;
+
+	return attribute;
+}
+
+void Rendering::Util::GetNametableMetatile(const Nametable* pNametable, u32 metatileIndex, Metatile& outMetatile, s32& outPalette) {
+	const u32 x = metatileIndex % NAMETABLE_WIDTH_METATILES;
+	const u32 y = metatileIndex / NAMETABLE_WIDTH_METATILES;
+
+	const u32 firstTileIndex = (x << 1) + (y << 1) * NAMETABLE_WIDTH_TILES;
+	
+	outMetatile = {
+		pNametable->tiles[firstTileIndex],
+		pNametable->tiles[firstTileIndex + 1],
+		pNametable->tiles[firstTileIndex + NAMETABLE_WIDTH_TILES],
+		pNametable->tiles[firstTileIndex + NAMETABLE_WIDTH_TILES + 1],
+	};
+
+	outPalette = GetPalette(pNametable->attributes[GetNametableAttributeIndex(x,y)], GetNametableAttributeOffset(x,y));
+}
+
+void Rendering::Util::SetNametableMetatile(Nametable* pNametable, u32 x, u32 y, const Metatile& metatile, const s32 palette) {
+	const u32 firstTileIndex = (x << 1) + (y << 1) * NAMETABLE_WIDTH_TILES;
+	const u32 attributeIndex = GetNametableAttributeIndex(x, y);
+	const u32 attributeOffset = GetNametableAttributeOffset(x, y);
+
+	pNametable->tiles[firstTileIndex] = metatile.tiles[0];
+	pNametable->tiles[firstTileIndex + 1] = metatile.tiles[1];
+	pNametable->tiles[firstTileIndex + NAMETABLE_WIDTH_TILES] = metatile.tiles[2];
+	pNametable->tiles[firstTileIndex + NAMETABLE_WIDTH_TILES + 1] = metatile.tiles[3];
+
+	u8& attribute = pNametable->attributes[attributeIndex];
+	attribute = SetPalette(attribute, attributeOffset, palette);
+}
+
+void Rendering::Util::ClearNametable(Nametable* pNametable, u8 tile, s32 palette) {
+	const u8 attribute = (palette & 0b11) | ((palette & 0b11) << 2) | ((palette & 0b11) << 4) | ((palette & 0b11) << 6);
+	memset(pNametable->tiles, tile, NAMETABLE_SIZE_TILES);
+	memset(pNametable->attributes, attribute, NAMETABLE_ATTRIBUTE_COUNT);
+}
+#pragma endregion
+
 namespace Rendering
 {
 	namespace Util
@@ -147,17 +219,6 @@ namespace Rendering
 			fwrite(data, dataSize, 1, pFile);
 
 			fclose(pFile);
-		}
-
-		u8 GetPaletteIndexFromNametableTileAttrib(const Nametable& nametable, s32 xTile, s32 yTile) {
-			s32 xBlock = xTile / 4;
-			s32 yBlock = yTile / 4;
-			s32 smallBlockOffset = (xTile % 4 / 2) + (yTile % 4 / 2) * 2;
-			s32 blockIndex = (NAMETABLE_WIDTH_TILES / 4) * yBlock + xBlock;
-			u8 attribute = nametable.attributes[blockIndex];
-			u8 paletteIndex = (attribute >> (smallBlockOffset * 2)) & 0b11;
-
-			return paletteIndex;
 		}
 
 		void CopyMetasprite(const Sprite* src, Sprite* dst, u32 count, IVec2 pos, bool hFlip, bool vFlip) {

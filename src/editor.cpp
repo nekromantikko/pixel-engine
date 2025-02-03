@@ -5,7 +5,7 @@
 #include <imgui.h>
 #include <imgui_impl_sdl2.h>
 
-#include "tileset.h"
+#include "tiles.h"
 #include "rendering_util.h"
 #include "metasprite.h"
 #include "game.h"
@@ -48,25 +48,16 @@ struct EditorContext {
 static EditorContext* pContext;
 
 #pragma region Utils
-static ImVec2 GetTileCoord(u8 index) {
-	ImVec2 coord = ImVec2(index % 16, index / 16);
+static ImVec2 GetChrTileCoord(u8 index) {
+	ImVec2 coord = ImVec2(index % CHR_DIM_TILES, index / CHR_DIM_TILES);
 	return coord;
 }
 
-static u8 GetTileIndex(ImVec2 tileCoord) {
-	u8 index = tileCoord.y * 16 + tileCoord.x;
-	return index;
+static ImVec2 ChrTileCoordToTexCoord(ImVec2 coord, u8 chrIndex) {
+	return ImVec2(coord.x / (CHR_DIM_TILES * CHR_COUNT) + ((r32)chrIndex / CHR_COUNT), coord.y / CHR_DIM_TILES);
 }
 
-static ImVec2 TileCoordToTexCoord(ImVec2 coord, bool chrIndex) {
-	ImVec2 normalizedCoord = ImVec2(coord.x / 32.0f, coord.y / 16.0f);
-	if (chrIndex) {
-		normalizedCoord.x += 0.5;
-	}
-	return normalizedCoord;
-}
-
-static ImVec2 TexCoordToTileCoord(ImVec2 normalized) {
+static ImVec2 TexCoordToChrTileCoord(ImVec2 normalized) {
 	if (normalized.x >= 0.5) {
 		normalized.x -= 0.5;
 	}
@@ -117,20 +108,20 @@ static void DrawTileGridSelection(ImVec2 gridPos, ImVec2 gridSize, r32 gridStep,
 	drawList->AddRect(selectedTilePos, ImVec2(selectedTilePos.x + gridStep, selectedTilePos.y + gridStep), IM_COL32(255, 255, 255, 255));
 }
 
-static void DrawMetatile(u32 index, ImVec2 pos, r32 tileSize, ImU32 color = IM_COL32(255, 255, 255, 255)) {
-	Metatile& metatile = Tileset::GetMetatile(index);
-
-	s32 palette = Tileset::GetPalette(index);
+static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, s32 palette, ImU32 color = IM_COL32(255, 255, 255, 255)) {
+	const r32 tileSize = size / METATILE_DIM_TILES;
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	for (s32 t = 0; t < 4; t++) {
-		ImVec2 tileCoord = ImVec2(t % 2, t / 2);
-		ImVec2 tileOffset = ImVec2(pos.x + tileCoord.x * tileSize, pos.y + tileCoord.y * tileSize);
-		u8 tileIndex = metatile.tiles[t];
-		ImVec2 tileChrCoord = GetTileCoord(tileIndex);
-		ImVec2 tileStart = TileCoordToTexCoord(tileChrCoord, 0);
-		ImVec2 tileEnd = TileCoordToTexCoord(ImVec2(tileChrCoord.x + 1, tileChrCoord.y + 1), 0);
-		drawList->AddImage(pContext->chrTextures[palette], tileOffset, ImVec2(tileOffset.x + tileSize, tileOffset.y + tileSize), tileStart, tileEnd, color);
+
+	for (u32 i = 0; i < METATILE_TILE_COUNT; i++) {
+		ImVec2 pMin = ImVec2(pos.x + (i & 1) * tileSize, pos.y + (i >> 1) * tileSize);
+		ImVec2 pMax = ImVec2(pMin.x + tileSize, pMin.y + tileSize);
+
+		ImVec2 chrCoord = GetChrTileCoord(metatile.tiles[i]);
+		ImVec2 uvMin = ChrTileCoordToTexCoord(chrCoord, 0);
+		ImVec2 uvMax = ChrTileCoordToTexCoord(ImVec2(chrCoord.x + 1, chrCoord.y + 1), 0);
+
+		drawList->AddImage(pContext->chrTextures[palette], pMin, pMax, uvMin, uvMax, color);
 	}
 }
 
@@ -139,20 +130,18 @@ static void DrawNametable(ImVec2 size, const Nametable& nametable) {
 	const ImVec2 tablePos = DrawTileGrid(size, gridStep);
 
 	const r32 scale = size.x / NAMETABLE_WIDTH_PIXELS;
-	const r32 tileDrawSize = TILE_DIM_PIXELS * scale;
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	for (int i = 0; i < NAMETABLE_SIZE_TILES; i++) {
-		s32 x = i % NAMETABLE_WIDTH_TILES;
-		s32 y = i / NAMETABLE_WIDTH_TILES;
+	const r32 metatileDrawSize = METATILE_DIM_PIXELS * scale;
 
-		u8 tile = nametable.tiles[i];
-		ImVec2 tileCoord = GetTileCoord(tile);
-		ImVec2 tileStart = TileCoordToTexCoord(tileCoord, 0);
-		ImVec2 tileEnd = TileCoordToTexCoord(ImVec2(tileCoord.x + 1, tileCoord.y + 1), 0);
-		ImVec2 pos = ImVec2(tablePos.x + x * tileDrawSize, tablePos.y + y * tileDrawSize);
-		u8 paletteIndex = Rendering::Util::GetPaletteIndexFromNametableTileAttrib(nametable, x, y);
+	Metatile metatile;
+	s32 palette;
+	for (u32 i = 0; i < NAMETABLE_SIZE_METATILES; i++) {
+		u32 x = i % NAMETABLE_WIDTH_METATILES;
+		u32 y = i / NAMETABLE_WIDTH_METATILES;
 
-		drawList->AddImage(pContext->chrTextures[paletteIndex], pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), tileStart, tileEnd);
+		ImVec2 pos = ImVec2(tablePos.x + (x * metatileDrawSize), tablePos.y + (y * metatileDrawSize));
+
+		Rendering::Util::GetNametableMetatile(&nametable, i, metatile, palette);
+		DrawMetatile(metatile, pos, metatileDrawSize, palette);
 	}
 }
 
@@ -175,23 +164,22 @@ static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
 	}
 }
 
-static void DrawTileset(r32 size, s32* selectedMetatile) {
+static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-	// TODO: Define these properly
-	constexpr u32 tilesetDimMetatiles = 16;
-
-	const r32 renderScale = size / (tilesetDimMetatiles * METATILE_DIM_PIXELS);
+	const r32 renderScale = size / (TILESET_DIM * METATILE_DIM_PIXELS);
 	const r32 gridStepPixels = METATILE_DIM_PIXELS * renderScale;
 
 	const ImVec2 gridSize = ImVec2(size, size);
 	const ImVec2 chrPos = DrawTileGrid(gridSize, gridStepPixels, selectedMetatile);
 
-	for (s32 i = 0; i < Tileset::tilesetMetatileCount; i++) {
-		ImVec2 metatileCoord = ImVec2(i % tilesetDimMetatiles, i / tilesetDimMetatiles);
+	for (s32 i = 0; i < TILESET_SIZE; i++) {
+		ImVec2 metatileCoord = ImVec2(i % TILESET_DIM, i / TILESET_DIM);
 		ImVec2 metatileOffset = ImVec2(chrPos.x + metatileCoord.x * gridStepPixels, chrPos.y + metatileCoord.y * gridStepPixels);
 
-		DrawMetatile(i, metatileOffset, gridStepPixels / METATILE_DIM_TILES);
+		const Metatile& metatile = pTileset->tiles[i].metatile;
+		const s32 palette = Tiles::GetTilesetPalette(pTileset, i);
+		DrawMetatile(metatile, metatileOffset, renderScale * TILESET_DIM, palette);
 	}
 	if (selectedMetatile != nullptr && *selectedMetatile >= 0) {
 		DrawTileGridSelection(chrPos, gridSize, gridStepPixels, *selectedMetatile);
@@ -459,9 +447,9 @@ static void DrawMetaspritePreview(Metasprite::Metasprite& metasprite, ImVector<s
 	for (s32 i = metasprite.spriteCount - 1; i >= 0; i--) {
 		Sprite& sprite = metasprite.spritesRelativePos[i];
 		u8 index = (u8)sprite.tileId;
-		ImVec2 tileCoord = GetTileCoord(index);
-		ImVec2 tileStart = TileCoordToTexCoord(tileCoord, 1);
-		ImVec2 tileEnd = TileCoordToTexCoord(ImVec2(tileCoord.x + 1, tileCoord.y + 1), 1);
+		ImVec2 tileCoord = GetChrTileCoord(index);
+		ImVec2 tileStart = ChrTileCoordToTexCoord(tileCoord, 1);
+		ImVec2 tileEnd = ChrTileCoordToTexCoord(ImVec2(tileCoord.x + 1, tileCoord.y + 1), 1);
 		ImVec2 pos = ImVec2(origin.x + renderScale * sprite.x, origin.y + renderScale * sprite.y);
 		bool flipX = sprite.flipHorizontal;
 		bool flipY = sprite.flipVertical;
@@ -735,15 +723,15 @@ static void DrawMetaspriteEditor(Metasprite::Metasprite& metasprite, ImVector<s3
 
 				// Draw a nice little preview of the sprite
 				u8 index = (u8)sprite.tileId;
-				ImVec2 tileCoord = GetTileCoord(index);
+				ImVec2 tileCoord = GetChrTileCoord(index);
 
 				r32 x1 = sprite.flipHorizontal ? tileCoord.x + 1 : tileCoord.x;
 				r32 x2 = sprite.flipHorizontal ? tileCoord.x : tileCoord.x + 1;
 				r32 y1 = sprite.flipVertical ? tileCoord.y + 1 : tileCoord.y;
 				r32 y2 = sprite.flipVertical ? tileCoord.y : tileCoord.y + 1;
 
-				ImVec2 tileStart = TileCoordToTexCoord(ImVec2(x1, y1), 1);
-				ImVec2 tileEnd = TileCoordToTexCoord(ImVec2(x2, y2), 1);
+				ImVec2 tileStart = ChrTileCoordToTexCoord(ImVec2(x1, y1), 1);
+				ImVec2 tileEnd = ChrTileCoordToTexCoord(ImVec2(x2, y2), 1);
 				ImGuiStyle& style = ImGui::GetStyle();
 				r32 itemHeight = ImGui::GetItemRectSize().y - style.FramePadding.y;
 
@@ -997,10 +985,10 @@ static void DrawTilesetWindow() {
 		if (ImGui::BeginMenu("File"))
 		{
 			if (ImGui::MenuItem("Save")) {
-				Tileset::SaveTileset("assets/forest.til");
+				Tiles::SaveTileset("assets/forest.til");
 			}
 			if (ImGui::MenuItem("Revert changes")) {
-				Tileset::LoadTileset("assets/forest.til");
+				Tiles::LoadTileset("assets/forest.til");
 			}
 			ImGui::EndMenu();
 		}
@@ -1015,7 +1003,8 @@ static void DrawTilesetWindow() {
 	constexpr s32 gridStepPixels = METATILE_DIM_PIXELS * renderScale;
 	constexpr s32 gridSizePixels = gridSizeTiles * gridStepPixels;
 
-	DrawTileset(gridSizePixels, &selectedMetatileIndex);
+	Tileset* pTileset = Tiles::GetTileset();
+	DrawTileset(pTileset, gridSizePixels, &selectedMetatileIndex);
 
 	ImGui::SameLine();
 
@@ -1026,8 +1015,8 @@ static void DrawTilesetWindow() {
 
 		ImGui::SeparatorText("Metatile editor");
 
-		Metatile& metatile = Tileset::GetMetatile(selectedMetatileIndex);
-		s32 palette = Tileset::GetPalette(selectedMetatileIndex);
+		Metatile& metatile = pTileset->tiles[selectedMetatileIndex].metatile;
+		s32 palette = Tiles::GetTilesetPalette(pTileset, selectedMetatileIndex);
 		s32 tileId = metatile.tiles[selectedTileIndex];
 
 		r32 chrSheetSize = 256;
@@ -1041,20 +1030,15 @@ static void DrawTilesetWindow() {
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		const ImVec2 gridSize = ImVec2(tilePreviewSize, tilePreviewSize);
 		const ImVec2 tilePos = DrawTileGrid(gridSize, gridStepPixels, &selectedTileIndex);
-		DrawMetatile(selectedMetatileIndex, tilePos, tilePreviewSize / METATILE_DIM_TILES);
+		DrawMetatile(metatile, tilePos, tilePreviewSize, palette);
 		DrawTileGridSelection(tilePos, gridSize, gridStepPixels, selectedTileIndex);
 
-		Tileset::TileType& type = Tileset::GetTileType(selectedMetatileIndex);
-		s32 typeInt = (s32)type;
-		if (ImGui::SliderInt("Type", &typeInt, 0, METATILE_TYPE_COUNT - 1, METATILE_TYPE_NAMES[typeInt])) {
-			type = (Tileset::TileType)typeInt;
-		}
+		s32& type = pTileset->tiles[selectedMetatileIndex].type;
+		ImGui::SliderInt("Type", &type, 0, TILE_TYPE_COUNT - 1, METATILE_TYPE_NAMES[type]);
 
-		ImGui::SliderInt("Palette", &palette, 0, 3);
-		u8& attribute = Tileset::GetAttribute(selectedMetatileIndex);
-		u8 attribSubIndex = selectedMetatileIndex % 4;
-		attribute &= ~(0b11 << attribSubIndex * 2);
-		attribute |= (palette & 0b11) << attribSubIndex * 2;
+		if (ImGui::SliderInt("Palette", &palette, 0, 3)) {
+			Tiles::SetTilesetPalette(pTileset, selectedMetatileIndex, palette);
+		}
 	}
 	ImGui::EndChild();
 
@@ -1094,19 +1078,21 @@ static void DrawGameViewOverlay(const Level::Level* pLevel, const Viewport* pVie
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	const r32 metatileDrawSize = tileDrawSize * METATILE_DIM_TILES;
 
-	const s32 screenStartX = pViewport->x / Level::screenWidthTiles;
-	const s32 screenStartY = pViewport->y / Level::screenHeightTiles;
+	const s32 screenStartX = pViewport->x / VIEWPORT_WIDTH_TILES;
+	const s32 screenStartY = pViewport->y / VIEWPORT_HEIGHT_TILES;
 
-	const s32 screenEndX = (pViewport->x + VIEWPORT_WIDTH_TILES) / Level::screenWidthTiles;
-	const s32 screenEndY = (pViewport->y + VIEWPORT_HEIGHT_TILES) / Level::screenHeightTiles;
+	const s32 screenEndX = (pViewport->x + VIEWPORT_WIDTH_TILES) / VIEWPORT_WIDTH_TILES;
+	const s32 screenEndY = (pViewport->y + VIEWPORT_HEIGHT_TILES) / VIEWPORT_HEIGHT_TILES;
+
+	const Tilemap* pTilemap = &pLevel->tilemap;
 
 	for (s32 y = screenStartY; y <= screenEndY; y++) {
 		for (s32 x = screenStartX; x <= screenEndX; x++) {
-			const Vec2 screenPos = { x * Level::screenWidthTiles, y * Level::screenHeightTiles };
+			const Vec2 screenPos = { x * VIEWPORT_WIDTH_TILES, y * VIEWPORT_HEIGHT_TILES };
 			const Vec2 screenViewportCoords = { (screenPos.x - pViewport->x) * tileDrawSize, (screenPos.y - pViewport->y) * tileDrawSize };
 
-			const s32 i = x + y * pLevel->width;
-			const Level::Screen& screen = pLevel->screens[i];
+			const s32 i = x + y * pTilemap->width;
+			const Screen& screen = pTilemap->pScreens[i];
 
 			static char screenLabelText[16];
 			snprintf(screenLabelText, 16, "%#04x", i);
@@ -1118,8 +1104,8 @@ static void DrawGameViewOverlay(const Level::Level* pLevel, const Viewport* pVie
 			const ImVec2 textPos = ImVec2(topLeft.x + screenViewportCoords.x + tileDrawSize, topLeft.y + screenViewportCoords.y + tileDrawSize);
 			drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), screenLabelText);
 
-			for (u32 y = 0; y < Level::screenHeightMetatiles; y++) {
-				for (u32 x = 0; x < Level::screenWidthMetatiles; x++) {
+			/*for (u32 y = 0; y < VIEWPORT_HEIGHT_METATILES; y++) {
+				for (u32 x = 0; x < VIEWPORT_WIDTH_METATILES; x++) {
 					ImVec2 actorTopLeft = ImVec2(topLeft.x + screenViewportCoords.x + x * metatileDrawSize, topLeft.y + screenViewportCoords.y + y * metatileDrawSize);
 					ImVec2 actorBtmRight = ImVec2(actorTopLeft.x + metatileDrawSize, actorTopLeft.y + metatileDrawSize);
 
@@ -1127,12 +1113,12 @@ static void DrawGameViewOverlay(const Level::Level* pLevel, const Viewport* pVie
 						continue;
 					}
 
-					const u32 tileIndex = x + Level::screenWidthMetatiles * y;
+					const u32 tileIndex = x + VIEWPORT_WIDTH_METATILES * y;
 					const Level::ActorType type = screen.tiles[tileIndex].actorType;
 
 					DrawActor(topLeft, btmRight, actorTopLeft, metatileDrawSize, type, opacity);
 				}
-			}
+			}*/
 		}
 	}
 }
@@ -1177,7 +1163,7 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 			const r32 dy = -(newDelta.y - dragDelta.y) / renderScale / TILE_DIM_PIXELS;
 			dragDelta = newDelta;
 
-			MoveViewport(pViewport, pNametables, pLevel, dx, dy);
+			MoveViewport(pViewport, pNametables, &pLevel->tilemap, dx, dy);
 			scrolling = true;
 		}
 
@@ -1194,120 +1180,119 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 			const ImVec2 mousePosInViewportCoords = ImVec2((io.MousePos.x - topLeft.x) / tileDrawSize, (io.MousePos.y - topLeft.y) / tileDrawSize);
 			const ImVec2 mousePosInWorldCoords = ImVec2(mousePosInViewportCoords.x + pViewport->x, mousePosInViewportCoords.y + pViewport->y);
 			const ImVec2 hoveredMetatileWorldPos = ImVec2(floorf(mousePosInWorldCoords.x / METATILE_DIM_TILES) * METATILE_DIM_TILES, floorf(mousePosInWorldCoords.y / METATILE_DIM_TILES) * METATILE_DIM_TILES);
-			static bool selecting = false;
 
-			// Selection
-			if (!scrolling && editMode != EDIT_MODE_ACTORS) {
-				static ImVec2 selectionStartPos = ImVec2(0, 0);
-				static ImVec2 selectionTopLeft;
-				static ImVec2 selectionBtmRight;
+			switch (editMode) {
+			case EDIT_MODE_ACTORS:
+			{
+				/*const ImVec2 metatileInViewportCoords = ImVec2(hoveredMetatileWorldPos.x - pViewport->x, hoveredMetatileWorldPos.y - pViewport->y);
+				const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
+				const r32 metatileDrawSize = tileDrawSize * METATILE_DIM_TILES;
 
-				if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
-					selectionStartPos = hoveredMetatileWorldPos;
-					selectionTopLeft = hoveredMetatileWorldPos;
-					selectionBtmRight = ImVec2(hoveredMetatileWorldPos.x + METATILE_DIM_TILES, hoveredMetatileWorldPos.y + METATILE_DIM_TILES);
-					selecting = true;
-				}
+				const u32 screenIndex = WorldToScreenIndex(pLevel, { hoveredMetatileWorldPos.x, hoveredMetatileWorldPos.y });
 
-				if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-					selectionTopLeft = ImVec2(std::min(selectionStartPos.x, hoveredMetatileWorldPos.x), std::min(selectionStartPos.y, hoveredMetatileWorldPos.y));
-					selectionBtmRight = ImVec2(std::max(selectionStartPos.x, hoveredMetatileWorldPos.x) + METATILE_DIM_TILES, std::max(selectionStartPos.y, hoveredMetatileWorldPos.y) + METATILE_DIM_TILES);
+				DrawActor(topLeft, btmRight, metatileInPixelCoords, metatileDrawSize, selectedActorType, 63);
+				drawList->AddRect(metatileInPixelCoords, ImVec2(metatileInPixelCoords.x + metatileDrawSize, metatileInPixelCoords.y + metatileDrawSize), IM_COL32(255, 255, 255, 255));
 
-					const ImVec2 selectionTopLeftInPixelCoords = ImVec2((selectionTopLeft.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionTopLeft.y - pViewport->y) * tileDrawSize + topLeft.y);
-					const ImVec2 selectionBtmRightInPixelCoords = ImVec2((selectionBtmRight.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionBtmRight.y - pViewport->y) * tileDrawSize + topLeft.y);
+				// Paint actors
+				if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+					if (screenIndex < pLevel->width * pLevel->height) {
+						const u32 screenTileIndex = Level::WorldToMetatileIndex({ hoveredMetatileWorldPos.x, hoveredMetatileWorldPos.y });
 
-					drawList->AddRectFilled(selectionTopLeftInPixelCoords, selectionBtmRightInPixelCoords, IM_COL32(255, 255, 255, 63));
-				}
-
-				if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
-					selecting = false;
-					u32 selectionWidth = (selectionBtmRight.x - selectionTopLeft.x) / METATILE_DIM_TILES;
-					u32 selectionHeight = (selectionBtmRight.y - selectionTopLeft.y) / METATILE_DIM_TILES;
-
-					clipboard.size = ImVec2((r32)selectionWidth, (r32)selectionHeight);
-					clipboard.offset = ImVec2(selectionTopLeft.x - hoveredMetatileWorldPos.x, selectionTopLeft.y - hoveredMetatileWorldPos.y);
-
-					for (u32 x = 0; x < selectionWidth; x++) {
-						for (u32 y = 0; y < selectionHeight; y++) {
-							u32 clipboardIndex = y * selectionWidth + x;
-
-							const Vec2 metatileWorldPos = { selectionTopLeft.x + x * METATILE_DIM_TILES, selectionTopLeft.y + y * METATILE_DIM_TILES };
-
-							const u32 screenIndex = WorldToScreenIndex(pLevel, metatileWorldPos);
-							const u32 screenTileIndex = Level::WorldToMetatileIndex(metatileWorldPos);
-							const u8 metatileIndex = pLevel->screens[screenIndex].tiles[screenTileIndex].metatile;
-
-							clipboard.clipboard[clipboardIndex] = metatileIndex;
-						}
+						pLevel->screens[screenIndex].tiles[screenTileIndex].actorType = (Level::ActorType)selectedActorType;
 					}
 				}
+				break;*/
 			}
+			case EDIT_MODE_TILES:
+			{
+				const Tilemap* pTilemap = &pLevel->tilemap;
+				static bool selecting = false;
 
-			if (!selecting) {
-				switch (editMode) {
-				case EDIT_MODE_ACTORS:
-				{
-					const ImVec2 metatileInViewportCoords = ImVec2(hoveredMetatileWorldPos.x - pViewport->x, hoveredMetatileWorldPos.y - pViewport->y);
-					const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
-					const r32 metatileDrawSize = tileDrawSize * METATILE_DIM_TILES;
+				// Selection
+				if (!scrolling) {
+					static ImVec2 selectionStartPos = ImVec2(0, 0);
+					static ImVec2 selectionTopLeft;
+					static ImVec2 selectionBtmRight;
 
-					const u32 screenIndex = WorldToScreenIndex(pLevel, { hoveredMetatileWorldPos.x, hoveredMetatileWorldPos.y });
-
-					DrawActor(topLeft, btmRight, metatileInPixelCoords, metatileDrawSize, selectedActorType, 63);
-					drawList->AddRect(metatileInPixelCoords, ImVec2(metatileInPixelCoords.x + metatileDrawSize, metatileInPixelCoords.y + metatileDrawSize), IM_COL32(255, 255, 255, 255));
-
-					// Paint actors
-					if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-						if (screenIndex < pLevel->width * pLevel->height) {
-							const u32 screenTileIndex = Level::WorldToMetatileIndex({ hoveredMetatileWorldPos.x, hoveredMetatileWorldPos.y });
-
-							pLevel->screens[screenIndex].tiles[screenTileIndex].actorType = (Level::ActorType)selectedActorType;
-						}
+					if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
+						selectionStartPos = hoveredMetatileWorldPos;
+						selectionTopLeft = hoveredMetatileWorldPos;
+						selectionBtmRight = ImVec2(hoveredMetatileWorldPos.x + METATILE_DIM_TILES, hoveredMetatileWorldPos.y + METATILE_DIM_TILES);
+						selecting = true;
 					}
-					break;
-				}
-				case EDIT_MODE_TILES:
-				{
-					const u32 clipboardWidth = (u32)clipboard.size.x;
-					const u32 clipboardHeight = (u32)clipboard.size.y;
-					const ImVec2 clipboardTopLeft = ImVec2(hoveredMetatileWorldPos.x + clipboard.offset.x, hoveredMetatileWorldPos.y + clipboard.offset.y);
-					const ImVec2 clipboardBtmRight = ImVec2(clipboardTopLeft.x + clipboardWidth * METATILE_DIM_TILES, clipboardTopLeft.y + clipboardHeight * METATILE_DIM_TILES);
-					for (u32 x = 0; x < clipboardWidth; x++) {
-						for (u32 y = 0; y < clipboardHeight; y++) {
-							u32 clipboardIndex = y * clipboardWidth + x;
-							const Vec2 metatileWorldPos = { clipboardTopLeft.x + x * METATILE_DIM_TILES, clipboardTopLeft.y + y * METATILE_DIM_TILES };
-							const ImVec2 metatileInViewportCoords = ImVec2(metatileWorldPos.x - pViewport->x, metatileWorldPos.y - pViewport->y);
-							const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
-							const u8 metatileIndex = clipboard.clipboard[clipboardIndex];
 
-							DrawMetatile(metatileIndex, metatileInPixelCoords, tileDrawSize, IM_COL32(255, 255, 255, 127));
+					if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+						selectionTopLeft = ImVec2(std::min(selectionStartPos.x, hoveredMetatileWorldPos.x), std::min(selectionStartPos.y, hoveredMetatileWorldPos.y));
+						selectionBtmRight = ImVec2(std::max(selectionStartPos.x, hoveredMetatileWorldPos.x) + METATILE_DIM_TILES, std::max(selectionStartPos.y, hoveredMetatileWorldPos.y) + METATILE_DIM_TILES);
 
-							// Paint metatiles
-							if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
-								u32 screenIndex = WorldToScreenIndex(pLevel, metatileWorldPos);
-								if (screenIndex >= pLevel->width * pLevel->height) {
-									continue;
-								}
+						const ImVec2 selectionTopLeftInPixelCoords = ImVec2((selectionTopLeft.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionTopLeft.y - pViewport->y) * tileDrawSize + topLeft.y);
+						const ImVec2 selectionBtmRightInPixelCoords = ImVec2((selectionBtmRight.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionBtmRight.y - pViewport->y) * tileDrawSize + topLeft.y);
 
-								const Vec2 screenPos = Level::WorldToScreenOffset(metatileWorldPos);
-								const u32 screenTileIndex = ScreenOffsetToMetatileIndex(pLevel, screenPos);
+						drawList->AddRectFilled(selectionTopLeftInPixelCoords, selectionBtmRightInPixelCoords, IM_COL32(255, 255, 255, 63));
+					}
 
-								pLevel->screens[screenIndex].tiles[screenTileIndex].metatile = metatileIndex;
-								const u32 nametableIndex = Level::WorldToNametableIndex(metatileWorldPos);
+					if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
+						selecting = false;
+						u32 selectionWidth = (selectionBtmRight.x - selectionTopLeft.x) / METATILE_DIM_TILES;
+						u32 selectionHeight = (selectionBtmRight.y - selectionTopLeft.y) / METATILE_DIM_TILES;
 
-								Tileset::CopyMetatileToNametable(&pNametables[nametableIndex], (u16)metatileWorldPos.x % NAMETABLE_WIDTH_TILES, (u16)metatileWorldPos.y % NAMETABLE_HEIGHT_TILES, metatileIndex);
+						clipboard.size = ImVec2((r32)selectionWidth, (r32)selectionHeight);
+						clipboard.offset = ImVec2(selectionTopLeft.x - hoveredMetatileWorldPos.x, selectionTopLeft.y - hoveredMetatileWorldPos.y);
+
+						for (u32 x = 0; x < selectionWidth; x++) {
+							for (u32 y = 0; y < selectionHeight; y++) {
+								u32 clipboardIndex = y * selectionWidth + x;
+
+								const Vec2 metatileWorldPos = { selectionTopLeft.x + x * METATILE_DIM_TILES, selectionTopLeft.y + y * METATILE_DIM_TILES };
+
+								const IVec2 tilemapPos = Tiles::WorldToTilemap(metatileWorldPos);
+								const s32 tilesetIndex = Tiles::GetTilesetIndex(pTilemap, tilemapPos);
+								clipboard.clipboard[clipboardIndex] = tilesetIndex;
 							}
 						}
 					}
+				}
 
-					const ImVec2 clipboardTopLeftInPixelCoords = ImVec2((clipboardTopLeft.x - pViewport->x) * tileDrawSize + topLeft.x, (clipboardTopLeft.y - pViewport->y) * tileDrawSize + topLeft.y);
-					const ImVec2 clipboardBtmRightInPixelCoords = ImVec2((clipboardBtmRight.x - pViewport->x) * tileDrawSize + topLeft.x, (clipboardBtmRight.y - pViewport->y) * tileDrawSize + topLeft.y);
-					drawList->AddRect(clipboardTopLeftInPixelCoords, clipboardBtmRightInPixelCoords, IM_COL32(255, 255, 255, 255));
+				if (selecting) {
 					break;
 				}
-				default:
-					break;
+
+				const u32 clipboardWidth = (u32)clipboard.size.x;
+				const u32 clipboardHeight = (u32)clipboard.size.y;
+				const ImVec2 clipboardTopLeft = ImVec2(hoveredMetatileWorldPos.x + clipboard.offset.x, hoveredMetatileWorldPos.y + clipboard.offset.y);
+				const ImVec2 clipboardBtmRight = ImVec2(clipboardTopLeft.x + clipboardWidth * METATILE_DIM_TILES, clipboardTopLeft.y + clipboardHeight * METATILE_DIM_TILES);
+				for (u32 x = 0; x < clipboardWidth; x++) {
+					for (u32 y = 0; y < clipboardHeight; y++) {
+						u32 clipboardIndex = y * clipboardWidth + x;
+						const Vec2 metatileWorldPos = { clipboardTopLeft.x + x * METATILE_DIM_TILES, clipboardTopLeft.y + y * METATILE_DIM_TILES };
+						const ImVec2 metatileInViewportCoords = ImVec2(metatileWorldPos.x - pViewport->x, metatileWorldPos.y - pViewport->y);
+						const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
+						const u8 metatileIndex = clipboard.clipboard[clipboardIndex];
+							
+						const r32 metatileDrawSize = tileDrawSize * METATILE_DIM_TILES;
+						const Metatile& metatile = pTilemap->pTileset->tiles[metatileIndex].metatile;
+						const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, metatileIndex);
+						DrawMetatile(metatile, metatileInPixelCoords, metatileDrawSize, palette, IM_COL32(255, 255, 255, 127));
+
+						// Paint metatiles
+						if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
+							const IVec2 tilemapPos = Tiles::WorldToTilemap(metatileWorldPos);
+							Tiles::SetMapTile(pTilemap, tilemapPos, metatileIndex);
+
+							const u32 nametableIndex = Tiles::GetNametableIndex(tilemapPos);
+							const IVec2 nametablePos = Tiles::GetNametableOffset(tilemapPos);
+							Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametablePos.x, nametablePos.y, metatile, palette);
+						}
+					}
 				}
+
+				const ImVec2 clipboardTopLeftInPixelCoords = ImVec2((clipboardTopLeft.x - pViewport->x) * tileDrawSize + topLeft.x, (clipboardTopLeft.y - pViewport->y) * tileDrawSize + topLeft.y);
+				const ImVec2 clipboardBtmRightInPixelCoords = ImVec2((clipboardBtmRight.x - pViewport->x) * tileDrawSize + topLeft.x, (clipboardBtmRight.y - pViewport->y) * tileDrawSize + topLeft.y);
+				drawList->AddRect(clipboardTopLeftInPixelCoords, clipboardBtmRightInPixelCoords, IM_COL32(255, 255, 255, 255));
+				break;
+			}
+			default:
+				break;
 			}
 		}
 	}
@@ -1328,7 +1313,7 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 	if (editing) {
 		ImGui::SameLine();
 		if (ImGui::Button("Refresh viewport")) {
-			RefreshViewport(pViewport, pNametables, pLevel);
+			RefreshViewport(pViewport, pNametables, &pLevel->tilemap);
 		}
 	}
 
@@ -1339,16 +1324,12 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 static void DrawLevelTools(u32& selectedLevel, u32& editMode, LevelToolsState& state, LevelClipboard& clipboard, u32& selectedActorType) {
 	const ImGuiTabBarFlags tabBarFlags = ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_AutoSelectNewTabs;
 	
+	Level::Level* pLevels = Level::GetLevelsPtr();
+	Level::Level& level = pLevels[selectedLevel];
+
 	if (ImGui::BeginTabBar("Level tool tabs")) {
 		if (state.propertiesOpen && ImGui::BeginTabItem("Properties", &state.propertiesOpen)) {
 			editMode = EDIT_MODE_NONE;
-
-			Level::Level* pCurrentLevel = Game::GetLevel();
-			Viewport* pViewport = Game::GetViewport();
-			Nametable* pNametables = Rendering::GetNametablePtr(0);
-
-			Level::Level* pLevels = Level::GetLevelsPtr();
-			Level::Level& level = pLevels[selectedLevel];
 
 			ImGui::SeparatorText(level.name);
 
@@ -1372,16 +1353,16 @@ static void DrawLevelTools(u32& selectedLevel, u32& editMode, LevelToolsState& s
 				ImGui::EndCombo();
 			}
 
-			s32 size[2] = { level.width, level.height };
+			s32 size[2] = { level.tilemap.width, level.tilemap.height };
 			if (ImGui::InputInt2("Size", size)) {
 				if (size[0] >= 1 && size[1] >= 1 && size[0] * size[1] <= Level::levelMaxScreenCount) {
-					level.width = size[0];
-					level.height = size[1];
+					level.tilemap.width = size[0];
+					level.tilemap.height = size[1];
 				}
 			}
 
 			// Screens
-			if (ImGui::TreeNode("Screens")) {
+			/*if (ImGui::TreeNode("Screens")) {
 				// TODO: Lay these out nicer
 				u32 screenCount = level.width * level.height;
 				for (u32 i = 0; i < screenCount; i++) {
@@ -1418,7 +1399,7 @@ static void DrawLevelTools(u32& selectedLevel, u32& editMode, LevelToolsState& s
 				}
 
 				ImGui::TreePop();
-			}
+			}*/
 
 			ImGui::EndTabItem();
 		}
@@ -1429,7 +1410,8 @@ static void DrawLevelTools(u32& selectedLevel, u32& editMode, LevelToolsState& s
 
 			const s32 currentSelection = (clipboard.size.x == 1 && clipboard.size.y == 1) ? clipboard.clipboard[0] : -1;
 			s32 newSelection = currentSelection;
-			DrawTileset(ImGui::GetContentRegionAvail().x - style.WindowPadding.x, &newSelection);
+
+			DrawTileset(level.tilemap.pTileset, ImGui::GetContentRegionAvail().x - style.WindowPadding.x, &newSelection);
 
 			// Rewrite level editor clipboard if new selection was made
 			if (newSelection != currentSelection) {
@@ -1504,7 +1486,7 @@ static void DrawGameWindow() {
 			}
 			if (ImGui::MenuItem("Revert changes")) {
 				Level::LoadLevels("assets/levels.lev");
-				RefreshViewport(pViewport, pNametables, pCurrentLevel);
+				RefreshViewport(pViewport, pNametables, &pCurrentLevel->tilemap);
 			}
 			ImGui::EndMenu();
 		}

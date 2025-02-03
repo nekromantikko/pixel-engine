@@ -33,8 +33,8 @@ set(SOURCES
 		src/rendering_util.cpp
 		src/rendering_vulkan.cpp
 		src/system.cpp
-		src/tileset.cpp
-		src/viewport.cpp)
+		src/viewport.cpp
+		src/tiles.cpp)
 
 set(EDITOR_SOURCES
 		src/editor.cpp)
@@ -49,11 +49,11 @@ set(HEADERS
 		src/metasprite.h
 		src/rendering_util.h
 		src/system.h
-		src/tileset.h
 		src/typedef.h
 		src/vector.h
 		src/viewport.h
-		src/collision.h)
+		src/collision.h
+		src/tiles.h)
 
 set(EDITOR_HEADERS
 		src/editor.h)
