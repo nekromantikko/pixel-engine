@@ -148,7 +148,7 @@ namespace Level {
     }
 
     s32 WorldToTilemap(r32 world) {
-        return s32(world / Tileset::metatileWorldSize);
+        return s32(world / METATILE_DIM_TILES);
     }
     IVec2 WorldToTilemap(Vec2 world) {
         return {
@@ -176,7 +176,7 @@ namespace Level {
     }
 
     r32 TilemapToWorld(s32 tilemap) {
-        return tilemap * (s32)Tileset::metatileWorldSize;
+        return tilemap * (s32)METATILE_DIM_TILES;
     }
     Vec2 TilemapToWorld(IVec2 tilemap) {
         return {
@@ -210,13 +210,13 @@ namespace Level {
         return screenRelativeY * screenWidthMetatiles + screenRelativeX;
     }
     u32 TilemapToNametableIndex(IVec2 tilemap) {
-        return (tilemap.x / nametableWidthMetatiles + tilemap.y / nametableHeightMetatiles) % NAMETABLE_COUNT;
+        return (tilemap.x / NAMETABLE_WIDTH_METATILES + tilemap.y / NAMETABLE_HEIGHT_METATILES) % NAMETABLE_COUNT;
     }
 
     Vec2 TileIndexToScreenOffset(u32 tileIndex) {
         return {
-        (r32)((tileIndex % screenWidthMetatiles) * Tileset::metatileWorldSize),
-        (r32)((tileIndex / screenWidthMetatiles) * Tileset::metatileWorldSize),
+        (r32)((tileIndex % screenWidthMetatiles) * METATILE_DIM_TILES),
+        (r32)((tileIndex / screenWidthMetatiles) * METATILE_DIM_TILES),
         };
     }
 
