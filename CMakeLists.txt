@@ -39,8 +39,7 @@ set(SOURCES
 		src/audio.cpp)
 
 set(EDITOR_SOURCES
-		src/editor.cpp
-		src/editor_audio.cpp)
+		src/editor.cpp)
 
 set(HEADERS 
 		src/rendering.h

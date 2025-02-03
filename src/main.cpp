@@ -113,7 +113,7 @@ int WinMain(int argc, char** args) {
         
         Game::Step(deltaTimeSeconds);
 
-        /*if (Input::Pressed(Input::CSTATE_START)) {
+        /*if (Input::ButtonPressed(BUTTON_START)) {
             if (!musicPlaying) {
                 Audio::PlayMusic(&bgm, true);
             }
