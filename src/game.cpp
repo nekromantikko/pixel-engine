@@ -9,7 +9,7 @@
 #include "viewport.h"
 #include "collision.h"
 #include "metasprite.h"
-#include "tileset.h"
+#include "tiles.h"
 #include "memory_pool.h"
 #include <imgui.h>
 #include "math.h"
@@ -193,12 +193,12 @@ namespace Game {
     }
 
     static bool SpawnAtFirstDoor(u32 screenIndex) {
-        if (screenIndex >= pCurrentLevel->width * pCurrentLevel->height) {
+        /*if (screenIndex >= pCurrentLevel->width * pCurrentLevel->height) {
             return false;
         }
 
         const Level::Screen& screen = pCurrentLevel->screens[screenIndex];
-        for (u32 i = 0; i < Level::screenWidthMetatiles * Level::screenHeightMetatiles; i++) {
+        for (u32 i = 0; i < Level::VIEWPORT_WIDTH_METATILES * Level::VIEWPORT_HEIGHT_METATILES; i++) {
             const Level::LevelTile& tile = screen.tiles[i];
 
             if (tile.actorType == Level::ACTOR_DOOR) {
@@ -210,7 +210,7 @@ namespace Game {
 
                 return true;
             }
-        }
+        }*/
 
         return false;
     }
@@ -232,21 +232,26 @@ namespace Game {
             pScanlines[i] = state;
         }
 
-        if (enterScreenIndex < 0 || !SpawnAtFirstDoor(enterScreenIndex)) {
+        // Temporarily set player pos to something sensible
+
+        playerState.x = 12;
+        playerState.y = 12;
+
+        /*if (enterScreenIndex < 0 || !SpawnAtFirstDoor(enterScreenIndex)) {
             // Loop thru all screens to find any spawnpoint
             for (u32 i = 0; i < pCurrentLevel->width * pCurrentLevel->height; i++) {
                 if (SpawnAtFirstDoor(i)) {
                     break;
                 }
             }
-        }
+        }*/
 
         enemyPool.Clear();
         // Spawn actors very stupidly
-        for (u32 i = 0; i < pCurrentLevel->width * pCurrentLevel->height; i++) {
+        /*for (u32 i = 0; i < pCurrentLevel->width * pCurrentLevel->height; i++) {
             const Level::Screen& screen = pCurrentLevel->screens[i];
 
-            for (u32 t = 0; t < Level::screenWidthMetatiles * Level::screenHeightMetatiles; t++) {
+            for (u32 t = 0; t < Level::VIEWPORT_WIDTH_METATILES * Level::VIEWPORT_HEIGHT_METATILES; t++) {
                 const Level::LevelTile& tile = screen.tiles[t];
 
                 if (tile.actorType == Level::ACTOR_SKULL_ENEMY) {
@@ -262,10 +267,10 @@ namespace Game {
                     enemy->damageTimer = 0.0f;
                 }
             }
-        }
+        }*/
 
         if (refresh) {
-            RefreshViewport(&viewport, pNametables, pCurrentLevel);
+            RefreshViewport(&viewport, pNametables, &pCurrentLevel->tilemap);
         }
     }
 
@@ -312,7 +317,7 @@ namespace Game {
         damageNumberPool.Init(512);
         enemyPool.Init(512);
 
-        Tileset::LoadTileset("assets/forest.til");
+        Tiles::LoadTileset("assets/forest.til");
         Metasprite::LoadMetasprites("assets/meta.spr");
         Level::LoadLevels("assets/levels.lev");
 
@@ -564,7 +569,7 @@ namespace Game {
             delta.y = playerOffset.y + viewportScrollThreshold.y;
         }
 
-        MoveViewport(&viewport, pNametables, pCurrentLevel, delta.x, delta.y, loadTiles);
+        MoveViewport(&viewport, pNametables, &pCurrentLevel->tilemap, delta.x, delta.y, loadTiles);
     }
 
     static void TriggerLevelTransition(bool direction = true) {
@@ -572,10 +577,10 @@ namespace Game {
 
         static constexpr u32 bufferZoneWidth = 1;
 
-        const IVec2 viewportPosInMetatiles = Level::WorldToTilemap({ viewport.x, viewport.y });
+        const IVec2 viewportPosInMetatiles = Tiles::WorldToTilemap({ viewport.x, viewport.y });
         // Window a bit larger than viewport to ensure full coverage
         const IVec2 transitionWindowPos = viewportPosInMetatiles - IVec2{ bufferZoneWidth, bufferZoneWidth };
-        const IVec2 playerPosInMetatiles = Level::WorldToTilemap({ playerState.x, playerState.y });
+        const IVec2 playerPosInMetatiles = Tiles::WorldToTilemap({ playerState.x, playerState.y });
         const IVec2 center = playerPosInMetatiles - transitionWindowPos;
 
         levelTransitionState.origin = center;
@@ -606,7 +611,8 @@ namespace Game {
 
             if (levelTransitionState.direction) {
                 // This could be optimized because it's really stupid but all nametables need to be filled with this tile for the transition to work
-                Tileset::FillAllNametablesWithMetatile(pNametables, 16);
+                Rendering::Util::ClearNametable(&pNametables[0], 0xb8);
+                Rendering::Util::ClearNametable(&pNametables[1], 0xb8);
 
                 // Move viewport and sprites before next transition
                 LoadLevel(nextLevel, nextLevelScreenIndex, false);
@@ -626,7 +632,7 @@ namespace Game {
             }
             else {
                 state = StatePlaying;
-                RefreshViewport(&viewport, pNametables, pCurrentLevel);
+                RefreshViewport(&viewport, pNametables, &pCurrentLevel->tilemap);
             }
 
             return;
@@ -634,6 +640,7 @@ namespace Game {
 
         levelTransitionState.accumulator += dt;
 
+        constexpr Metatile CLEAR_METATILE { 0xb8, 0xb8, 0xb8,0xb8 };
         while (levelTransitionState.accumulator >= levelTransitionState.stepDuration) {
             levelTransitionState.accumulator -= levelTransitionState.stepDuration;
 
@@ -645,7 +652,7 @@ namespace Game {
 
                     const s32 metatileX = col + levelTransitionState.windowWorldPos.x;
 
-                    if (!Level::TileInLevelBounds(pCurrentLevel, { metatileX, metatileY })) {
+                    if (!Tiles::TileInMapBounds(&pCurrentLevel->tilemap, { metatileX, metatileY })) {
                         continue;
                     }
 
@@ -656,23 +663,19 @@ namespace Game {
                     bool shouldTransition = levelTransitionState.direction ? (levelTransitionState.currentStep == levelTransitionState.steps - distance) : (levelTransitionState.currentStep == distance);
 
                     if (shouldTransition) {
-                        const u32 screenOffsetX = metatileX % Level::screenWidthMetatiles;
-                        const u32 nametableOffsetX = metatileX % NAMETABLE_WIDTH_METATILES;
-
-                        const u32 screenIndex = Level::TilemapToScreenIndex(pCurrentLevel, { metatileX, metatileY });
-                        const u32 screenOffsetY = metatileY % Level::screenHeightMetatiles;
-
-                        const u32 nametableIndex = Level::TilemapToNametableIndex({ metatileX, metatileY });
-                        const u32 nametableOffsetY = metatileY % NAMETABLE_HEIGHT_METATILES;
-
-                        const u32 screenMetatileIndex = Level::TilemapToMetatileIndex({ metatileX, metatileY });
-                        const u8 tilesetIndex = pCurrentLevel->screens[screenIndex].tiles[screenMetatileIndex].metatile;
+                        const s32 tilesetIndex = Tiles::GetTilesetIndex(&pCurrentLevel->tilemap, { metatileX, metatileY });
+                        const MapTile* tile = Tiles::GetMapTile(&pCurrentLevel->tilemap, tilesetIndex);
+                        
+                        const s32 nametableIndex = Tiles::GetNametableIndex({ metatileX, metatileY });
+                        const IVec2 nametableOffset = Tiles::GetNametableOffset({ metatileX, metatileY });
 
                         if (levelTransitionState.direction) {
-                            Tileset::CopyMetatileToNametable(&pNametables[nametableIndex], (u16)nametableOffsetX * METATILE_DIM_TILES, (u16)nametableOffsetY * METATILE_DIM_TILES, 16);
+                            Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, CLEAR_METATILE, 0);
                         }
                         else {
-                            Tileset::CopyMetatileToNametable(&pNametables[nametableIndex], (u16)nametableOffsetX * METATILE_DIM_TILES, (u16)nametableOffsetY * METATILE_DIM_TILES, tilesetIndex);
+                            const Metatile& metatile = tile->metatile;
+                            const s32 palette = Tiles::GetTilesetPalette(pCurrentLevel->tilemap.pTileset, tilesetIndex);
+                            Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
                         }
                     }
                 }
@@ -739,17 +742,17 @@ namespace Game {
         }
 
         // Enter door
-        if (Input::ButtonPressed(BUTTON_DPAD_UP) && !playerState.inAir) {
+        /*if (Input::ButtonPressed(BUTTON_DPAD_UP) && !playerState.inAir) {
             const Vec2 checkPos = { playerState.x, playerState.y + 1.0f };
-            const u32 screenInd = Level::WorldToScreenIndex(pCurrentLevel, checkPos);
-            const u32 tileInd = Level::WorldToMetatileIndex(checkPos);
-            const Level::Screen& screen = pCurrentLevel->screens[screenInd];
+            const u32 screenInd = Tiles::WorldToScreenIndex(&pCurrentLevel->tilemap, checkPos);
+            const u32 tileInd = Tiles::WorldToMetatileIndex(checkPos);
+            const Screen& screen = pCurrentLevel->tilemap.pScreens[screenInd];
             if (screen.tiles[tileInd].actorType == Level::ACTOR_DOOR) {
                 nextLevel = screen.exitTargetLevel;
                 nextLevelScreenIndex = screen.exitTargetScreen;
                 TriggerLevelTransition();
             }
-        }
+        }*/
     }
 
     void PlayerBgCollision(r64 dt) {
@@ -767,7 +770,7 @@ namespace Game {
         r32 dx = playerState.hSpeed * dt;
 
         Collision::HitResult hit{};
-        Collision::SweepBoxHorizontal(pCurrentLevel, hitboxPos, hitboxDimensions, dx, hit);
+        Collision::SweepBoxHorizontal(&pCurrentLevel->tilemap, hitboxPos, hitboxDimensions, dx, hit);
         playerState.x = hit.location.x;
         if (hit.blockingHit) {
             playerState.hSpeed = 0;
@@ -775,7 +778,7 @@ namespace Game {
 
         r32 dy = playerState.vSpeed * dt;
         hitboxPos = Vec2{ playerState.x + hitbox.xOffset, playerState.y + hitbox.yOffset };
-        Collision::SweepBoxVertical(pCurrentLevel, hitboxPos, hitboxDimensions, dy, hit);
+        Collision::SweepBoxVertical(&pCurrentLevel->tilemap, hitboxPos, hitboxDimensions, dy, hit);
         playerState.y = hit.location.y;
         if (hit.blockingHit) {
             // If ground
@@ -956,7 +959,7 @@ namespace Game {
             else if (Input::ButtonDown(BUTTON_DPAD_UP)) {
                 dy = -8.0f * dt;
             }
-            MoveViewport(&viewport, pNametables, pCurrentLevel, dx, dy);
+            MoveViewport(&viewport, pNametables, &pCurrentLevel->tilemap, dx, dy);
 
             // Update scroll (Time to make this a utility soon....)
             const Scanline state = {
@@ -1006,7 +1009,7 @@ namespace Game {
                     r32 dx = arrow->vel.x * dt;
 
                     Collision::HitResult hit{};
-                    Collision::SweepBoxHorizontal(pCurrentLevel, hitboxPos, hitboxDimensions, dx, hit);
+                    Collision::SweepBoxHorizontal(&pCurrentLevel->tilemap, hitboxPos, hitboxDimensions, dx, hit);
                     if (hit.blockingHit) {
                         if (arrow->type == WpnBow || arrow->bounces == 0) {
                             arrowPool.Remove(handle);
@@ -1026,7 +1029,7 @@ namespace Game {
                     }
                     r32 dy = arrow->vel.y * dt;
                     hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
-                    Collision::SweepBoxVertical(pCurrentLevel, hitboxPos, hitboxDimensions, dy, hit);
+                    Collision::SweepBoxVertical(&pCurrentLevel->tilemap, hitboxPos, hitboxDimensions, dy, hit);
                     if (hit.blockingHit) {
                         if (arrow->type == WpnBow || arrow->bounces == 0) {
                             arrowPool.Remove(handle);

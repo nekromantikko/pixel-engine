@@ -2,16 +2,13 @@
 #include "typedef.h"
 #include "vector.h"
 #include "rendering.h"
-#include "tileset.h"
 
 #ifdef EDITOR
 constexpr u32 COLLIDER_TYPE_COUNT = 4;
 constexpr const char* COLLIDER_TYPE_NAMES[COLLIDER_TYPE_COUNT] = { "Point", "Box", "Circle", "Capsule" };
 #endif
 
-namespace Level {
-    struct Level;
-}
+struct Tilemap;
 
 namespace Collision {
 
@@ -37,11 +34,11 @@ namespace Collision {
         Vec2 impactPoint;
         Vec2 location;
         Vec2 normal;
-        Tileset::TileType tileType;
+        u32 tileType;
     };
 
-    u32 GetMetatileIndex(Level::Level* pLevel, IVec2 metatileCoord);
+    u32 GetMetatileIndex(const Tilemap *pTilemap, IVec2 metatileCoord);
 
-    void SweepBoxHorizontal(Level::Level* pLevel, Vec2 pos, Vec2 dimensions, r32 dx, HitResult& outHit);
-    void SweepBoxVertical(Level::Level* pLevel, Vec2 pos, Vec2 dimensions, r32 dy, HitResult& outHit);
+    void SweepBoxHorizontal(const Tilemap* pTilemap, Vec2 pos, Vec2 dimensions, r32 dx, HitResult& outHit);
+    void SweepBoxVertical(const Tilemap* pTilemap, Vec2 pos, Vec2 dimensions, r32 dy, HitResult& outHit);
 }

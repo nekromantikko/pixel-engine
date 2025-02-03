@@ -2,12 +2,13 @@
 #include "level.h"
 #include "system.h"
 #include "math.h"
-#include "tileset.h"
+#include "tiles.h"
+#include "rendering_util.h"
 
 static constexpr s32 bufferDimMetatiles = 2;
 
-void MoveViewport(Viewport* pViewport, Nametable* pNametable, const Level::Level* pLevel, r32 dx, r32 dy, bool loadTiles) {
-    if (pLevel == nullptr) {
+void MoveViewport(Viewport* pViewport, Nametable* pNametable, const Tilemap *pTilemap, r32 dx, r32 dy, bool loadTiles) {
+    if (pTilemap == nullptr) {
         return;
     }
 
@@ -17,7 +18,7 @@ void MoveViewport(Viewport* pViewport, Nametable* pNametable, const Level::Level
     pViewport->x += dx;
     pViewport->y += dy;
 
-    r32 xMax = (pLevel->width - 1) * Level::screenWidthTiles;
+    r32 xMax = (pTilemap->width - 1) * VIEWPORT_WIDTH_TILES;
 
     if (pViewport->x < 0.0f) {
         pViewport->x = 0.0f;
@@ -26,7 +27,7 @@ void MoveViewport(Viewport* pViewport, Nametable* pNametable, const Level::Level
         pViewport->x = xMax;
     }
 
-    r32 yMax = (pLevel->height - 1) * Level::screenHeightTiles;
+    r32 yMax = (pTilemap->height - 1) * VIEWPORT_HEIGHT_TILES;
 
     if (pViewport->y < 0.0f) {
         pViewport->y = 0.0f;
@@ -62,34 +63,31 @@ void MoveViewport(Viewport* pViewport, Nametable* pNametable, const Level::Level
     const s32 yEnd = VIEWPORT_HEIGHT_METATILES + currMetatileY + bufferDimMetatiles;
 
     for (s32 x = xStart; x < xEnd; x++) {
-        const u32 screenOffsetX = x % Level::screenWidthMetatiles;
-        const u32 nametableOffsetX = x % NAMETABLE_WIDTH_METATILES;
-
         for (s32 y = yStart; y < yEnd; y++) {
-            if (!Level::TileInLevelBounds(pLevel, { x, y })) {
-                continue;
-            }
-
             // Only load tiles that weren't already loaded
             if (xStartPrev <= x && x <= xEndPrev && yStartPrev <= y && y <= yEndPrev) {
                 continue;
             }
 
-            const u32 screenIndex = Level::TilemapToScreenIndex(pLevel, { x, y });
-            const u32 screenOffsetY = y % Level::screenHeightMetatiles;
+            const s32 tilesetIndex = Tiles::GetTilesetIndex(pTilemap, { x, y });
+            const MapTile* tile = Tiles::GetMapTile(pTilemap, tilesetIndex);
 
-            const u32 nametableIndex = Level::TilemapToNametableIndex({ x, y });
-            const u32 nametableOffsetY = y % NAMETABLE_HEIGHT_METATILES;
+            if (!tile) {
+                continue;
+            }
 
-            const u32 screenMetatileIndex = Level::TilemapToMetatileIndex({ x,y });
-            const u8 tilesetIndex = pLevel->screens[screenIndex].tiles[screenMetatileIndex].metatile;
-            Tileset::CopyMetatileToNametable(&pNametable[nametableIndex], (u16)nametableOffsetX * METATILE_DIM_TILES, (u16)nametableOffsetY * METATILE_DIM_TILES, tilesetIndex);
+            const s32 nametableIndex = Tiles::GetNametableIndex({ x, y });
+            const IVec2 nametableOffset = Tiles::GetNametableOffset({ x, y });
+
+            const Metatile& metatile = tile->metatile;
+            const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, tilesetIndex);
+            Rendering::Util::SetNametableMetatile(&pNametable[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
         }
     }
 }
 
-void RefreshViewport(Viewport* pViewport, Nametable* pNametable, const Level::Level* pLevel) {
-    if (pLevel == nullptr) {
+void RefreshViewport(Viewport* pViewport, Nametable* pNametable, const Tilemap* pTilemap) {
+    if (pTilemap == nullptr) {
         return;
     }
 
@@ -103,23 +101,20 @@ void RefreshViewport(Viewport* pViewport, Nametable* pNametable, const Level::Le
     const s32 yEnd = VIEWPORT_HEIGHT_METATILES + yInMetatiles + bufferDimMetatiles;
 
     for (s32 x = xStart; x < xEnd; x++) {
-        const u32 screenOffsetX = x % Level::screenWidthMetatiles;
-        const u32 nametableOffsetX = x % NAMETABLE_WIDTH_METATILES;
-
         for (s32 y = yStart; y < yEnd; y++) {
-            if (!Level::TileInLevelBounds(pLevel, { x, y })) {
+            const s32 tilesetIndex = Tiles::GetTilesetIndex(pTilemap, { x, y });
+            const MapTile* tile = Tiles::GetMapTile(pTilemap, tilesetIndex);
+
+            if (!tile) {
                 continue;
             }
 
-            const u32 screenIndex = Level::TilemapToScreenIndex(pLevel, { x, y });
-            const u32 screenOffsetY = y % Level::screenHeightMetatiles;
+            const s32 nametableIndex = Tiles::GetNametableIndex({ x, y });
+            const IVec2 nametableOffset = Tiles::GetNametableOffset({ x, y });
 
-            const u32 nametableIndex = Level::TilemapToNametableIndex({ x, y });
-            const u32 nametableOffsetY = y % NAMETABLE_HEIGHT_METATILES;
-
-            const u32 screenMetatileIndex = Level::TilemapToMetatileIndex({ x,y });
-            const u8 tilesetIndex = pLevel->screens[screenIndex].tiles[screenMetatileIndex].metatile;
-            Tileset::CopyMetatileToNametable(&pNametable[nametableIndex], (u16)nametableOffsetX * METATILE_DIM_TILES, (u16)nametableOffsetY * METATILE_DIM_TILES, tilesetIndex);
+            const Metatile& metatile = tile->metatile;
+            const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, tilesetIndex);
+            Rendering::Util::SetNametableMetatile(&pNametable[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
         }
     }
 }
