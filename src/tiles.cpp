@@ -43,28 +43,6 @@ bool Tiles::SetTilesetPalette(Tileset* tileset, u32 tileIndex, s32 palette) {
 }
 #pragma endregion
 
-#pragma region Old API
-s32 Tiles::WorldToTilemap(r32 world) {
-    return s32(world / METATILE_DIM_TILES);
-}
-IVec2 Tiles::WorldToTilemap(Vec2 world) {
-    return {
-        WorldToTilemap(world.x),
-        WorldToTilemap(world.y)
-    };
-}
-
-r32 Tiles::TilemapToWorld(s32 tilemap) {
-    return tilemap * (s32)METATILE_DIM_TILES;
-}
-Vec2 Tiles::TilemapToWorld(IVec2 tilemap) {
-    return {
-        TilemapToWorld(tilemap.x),
-        TilemapToWorld(tilemap.y)
-    };
-}
-#pragma endregion
-
 #pragma region New API
 bool Tiles::TileInMapBounds(const Tilemap* pTilemap, const IVec2& pos) {
     if (pos.x < 0 || pos.y < 0) {

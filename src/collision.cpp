@@ -23,21 +23,21 @@ namespace Collision {
 		r32 yBottom = pos.y + dimensions.y / 2.0f;
 		r32 xSide = dx < 0.0f ? pos.x - dimensions.x / 2.0f : pos.x + dimensions.x / 2.0f;
 
-		s32 yTopMetatile = Tiles::WorldToTilemap(yTop);
-		s32 yBottomMetatile = Tiles::WorldToTilemap(yBottom);
+		s32 yTopTile = (s32)floorf(yTop);
+		s32 yBottomTile = (s32)floorf(yBottom);
 		// Right at the seam, should look at one tile above
-		if (IsNearlyZero(yBottom - Tiles::TilemapToWorld(yBottomMetatile)))
-			yBottomMetatile--;
-		s32 yMetatileDelta = yBottomMetatile - yTopMetatile;
-		s32 xMetatile = Tiles::WorldToTilemap(xSide);
+		if (IsNearlyZero(yBottom - (r32)yBottomTile))
+			yBottomTile--;
+		s32 yTileDelta = yBottomTile - yTopTile;
+		s32 xTile = (s32)floorf(xSide);
 
 		r32 dist = 0.0f;
 
 		while (!outHit.blockingHit && dist < fabs(dx)) {
-			for (s32 i = 0; i <= yMetatileDelta; i++) {
-				IVec2 metatileCoord = IVec2{ xMetatile, yTopMetatile + i };
+			for (s32 i = 0; i <= yTileDelta; i++) {
+				IVec2 tileCoord = IVec2{ xTile, yTopTile + i };
 
-				const MapTile* tile = Tiles::GetMapTile(pTilemap, metatileCoord);
+				const MapTile* tile = Tiles::GetMapTile(pTilemap, tileCoord);
 
 				// Treat outside of screen as solid wall
 				if (!tile || tile->type == TILE_SOLID) {
@@ -54,10 +54,10 @@ namespace Collision {
 				}
 			}
 
-			r32 distToNextTile = dx < 0.0f ? xSide - Tiles::TilemapToWorld(xMetatile) : Tiles::TilemapToWorld(xMetatile + 1) - xSide;
+			r32 distToNextTile = dx < 0.0f ? xSide - xTile : xTile + 1 - xSide;
 			dist += distToNextTile;
 			xSide += Sign(dx) * distToNextTile;
-			xMetatile += (s32)Sign(dx);
+			xTile += (s32)Sign(dx);
 		}
 	}
 
@@ -78,19 +78,19 @@ namespace Collision {
 		r32 xRight = pos.x + dimensions.x / 2.0f;
 		r32 ySide = dy < 0.0f ? pos.y - dimensions.y / 2.0f : pos.y + dimensions.y / 2.0f;
 
-		s32 xLeftMetatile = Tiles::WorldToTilemap(xLeft);
-		s32 xRightMetatile = Tiles::WorldToTilemap(xRight);
+		s32 xLeftTile = (s32)floorf(xLeft);
+		s32 xRightTile = (s32)floorf(xRight);
 		// Right at the seam, should look at one tile left
-		if (IsNearlyZero(xRight - Tiles::TilemapToWorld(xRightMetatile)))
-			xRightMetatile--;
-		s32 xMetatileDelta = xRightMetatile - xLeftMetatile;
-		s32 yMetatile = Tiles::WorldToTilemap(ySide);
+		if (IsNearlyZero(xRight - (r32)xRightTile))
+			xRightTile--;
+		s32 xTileDelta = xRightTile - xLeftTile;
+		s32 yTile = (s32)floorf(ySide);
 
 		r32 dist = 0.0f;
 
 		while (!outHit.blockingHit && dist < fabs(dy)) {
-			for (s32 i = 0; i <= xMetatileDelta; i++) {
-				IVec2 metatileCoord = IVec2{ xLeftMetatile + i, yMetatile };
+			for (s32 i = 0; i <= xTileDelta; i++) {
+				IVec2 metatileCoord = IVec2{ xLeftTile + i, yTile };
 
 				const MapTile* tile = Tiles::GetMapTile(pTilemap, metatileCoord);
 				
@@ -109,10 +109,10 @@ namespace Collision {
 				}
 			}
 
-			r32 distToNextTile = dy < 0.0f ? ySide - Tiles::TilemapToWorld(yMetatile) : Tiles::TilemapToWorld(yMetatile + 1) - ySide;
+			r32 distToNextTile = dy < 0.0f ? ySide - yTile : yTile + 1 - ySide;
 			dist += distToNextTile;
 			ySide += Sign(dy) * distToNextTile;
-			yMetatile += (s32)Sign(dy);
+			yTile += (s32)Sign(dy);
 		}
 	}
 }
