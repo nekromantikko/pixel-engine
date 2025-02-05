@@ -1,5 +1,7 @@
 #pragma once
 #include "rendering.h"
+#include "memory_pool.h"
+#include "actors.h"
 
 struct Viewport;
 
@@ -11,6 +13,7 @@ namespace Game {
 	void Initialize();
 	void Free();
 	void LoadLevel(u32 index, s32 screenIndex = -1, bool refresh = true);
+	void UnloadLevel(bool refresh = true);
 	void ReloadLevel(bool refresh = true);
 	void Step(r64 dt);
 
@@ -19,4 +22,6 @@ namespace Game {
 
 	Viewport* GetViewport();
 	Level::Level* GetLevel();
+
+	Pool<Actor>* GetActors();
 }

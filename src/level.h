@@ -2,13 +2,14 @@
 #include "rendering.h"
 #include "vector.h"
 #include "tiles.h"
+#include "actors.h"
+#include "memory_pool.h"
+
+constexpr u32 LEVEL_MAX_ACTOR_COUNT = 256;
 
 #ifdef EDITOR
 constexpr u32 LEVEL_TYPE_COUNT = 3;
 constexpr const char* LEVEL_TYPE_NAMES[LEVEL_TYPE_COUNT] = { "Sidescroller", "World map", "Title screen" };
-
-constexpr u32 ACTOR_TYPE_COUNT = 3;
-constexpr const char* ACTOR_TYPE_NAMES[ACTOR_TYPE_COUNT] = { "None", "Door", "Skull" };
 #endif
 
 namespace Level {
@@ -26,25 +27,13 @@ namespace Level {
         LFLAGS_NONE = 0,
     };
 
-    enum ActorType : u8 {
-        ACTOR_NONE = 0,
-        ACTOR_DOOR = 1,
-        ACTOR_SKULL_ENEMY = 2,
-
-    };
-
-    struct LevelTile {
-        u8 metatile;
-        ActorType actorType;
-        u8 unused1;
-        u8 unused2;
-    };
-
     struct Level {
         char* name;
         LevelType type;
         LevelFlagBits flags;
         Tilemap tilemap;
+
+        Pool<Actor> actors;
     };
 
     Level* GetLevelsPtr();
@@ -54,6 +43,4 @@ namespace Level {
 
     void LoadLevels(const char* fname);
     void SaveLevels(const char* fname);
-
-    bool SwapLevels(u32 a, u32 b);
 }

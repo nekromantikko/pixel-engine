@@ -10,9 +10,9 @@
 #include "collision.h"
 #include "metasprite.h"
 #include "tiles.h"
-#include "memory_pool.h"
 #include <imgui.h>
 #include "math.h"
+#include <vector>
 
 namespace Game {
     r64 secondsElapsed = 0.0f;
@@ -62,74 +62,10 @@ namespace Game {
 
     LevelTransitionState levelTransitionState;
 
-    // Sprite stufff
-    enum HeadMode {
-        HeadIdle,
-        HeadFwd,
-        HeadFall
-    };
+    Pool<Actor> actors;
+    Actor* pViewportTarget = nullptr;
 
-    enum LegsMode {
-        LegsIdle,
-        LegsFwd,
-        LegsJump,
-        LegsFall
-    };
-
-    enum WingMode {
-        WingFlap,
-        WingJump,
-        WingFall
-    };
-
-    enum AimMode {
-        AimFwd,
-        AimUp,
-        AimDown
-    };
-
-    enum Direction {
-        DirLeft = -1,
-        DirRight = 1
-    };
-
-    enum WeaponType {
-        WpnBow,
-        WpnLauncher
-    };
-
-    struct PlayerState {
-        r32 x, y;
-        r32 hSpeed, vSpeed;
-        Direction direction;
-        WeaponType weapon;
-        HeadMode hMode;
-        LegsMode lMode;
-        WingMode wMode;
-        AimMode aMode;
-        r32 wingCounter;
-        u32 wingFrame;
-        s32 vOffset;
-        bool slowFall;
-        bool inAir;
-        bool doubleJumped;
-        r32 damageTimer;
-    };
-
-    PlayerState playerState{};
     r32 gravity = 35;
-
-    struct Arrow {
-        Vec2 pos;
-        Vec2 vel;
-        WeaponType type;
-        u32 bounces;
-    };
-
-    Pool<Arrow> arrowPool;
-
-    constexpr r32 shootDelay = 0.16f;
-    r32 shootTimer = 0;
 
     constexpr u32 impactFrameCount = 4;
     constexpr r32 impactAnimLength = 0.16f;
@@ -151,20 +87,68 @@ namespace Game {
     };
     Pool<DamageNumber> damageNumberPool;
 
-
-    struct Enemy {
-        Vec2 pos;
-        r32 spawnHeight;
-        s32 health;
-        r32 damageTimer;
-    };
-    Pool<Enemy> enemyPool;
-
     ChrSheet playerBank;
 
     bool paused = false;
 
     constexpr r32 damageDelay = 0.5f;
+
+#pragma region Actors
+    static void InitializeActor(Actor* pActor) {
+        switch (pActor->pPreset->behaviour) {
+        case ACTOR_BEHAVIOUR_PLAYER: {
+            PlayerState& state = *(PlayerState*)pActor->state;
+            state.direction = DirRight;
+            state.weapon = WpnLauncher;
+            break;
+        }
+        case ACTOR_BEHAVIOUR_ENEMY_SKULL: {
+            EnemyState& state = *(EnemyState*)pActor->state;
+            state.baseHeight = pActor->position.y;
+            state.health = 10;
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    static Actor* SpawnActor(const Actor* pTemplate) {
+        PoolHandle<Actor> handle = actors.Add();
+        Actor* pActor = actors.Get(handle);
+
+        if (pActor == nullptr) {
+            return nullptr;
+        }
+
+        *pActor = *pTemplate;
+        InitializeActor(pActor);
+        return pActor;
+    }
+
+    static Actor* SpawnActor(u32 presetIndex) {
+        PoolHandle<Actor> handle = actors.Add();
+        Actor* pActor = actors.Get(handle);
+
+        if (pActor == nullptr) {
+            return nullptr;
+        }
+
+        pActor->pPreset = Actors::GetPreset(presetIndex);
+        InitializeActor(pActor);
+        return pActor;
+    }
+#pragma endregion
+
+    static void UpdateScreenScroll() {
+        const Scanline state = {
+            (s32)(viewport.x * METATILE_DIM_PIXELS),
+            (s32)(viewport.y * METATILE_DIM_PIXELS)
+        };
+        for (int i = 0; i < SCANLINE_COUNT; i++) {
+            pScanlines[i] = state;
+        }
+    }
 
     void LoadLevel(u32 index, s32 screenIndex, bool refresh) {
         if (index >= Level::maxLevelCount) {
@@ -188,7 +172,13 @@ namespace Game {
             break;
         }
 
-        ReloadLevel(refresh);
+        viewport.x = 0;
+        viewport.y = 0;
+        UpdateScreenScroll();
+
+        if (refresh) {
+            RefreshViewport(&viewport, pNametables, &pCurrentLevel->tilemap);
+        }
     }
 
     static bool SpawnAtFirstDoor(u32 screenIndex) {
@@ -214,59 +204,44 @@ namespace Game {
         return false;
     }
 
+    void UnloadLevel(bool refresh) {
+        if (pCurrentLevel == nullptr) {
+            return;
+        }
+
+        viewport.x = 0;
+        viewport.y = 0;
+        UpdateScreenScroll();
+
+        // Clear actors
+        actors.Clear();
+        pViewportTarget = nullptr;
+
+        if (refresh) {
+            RefreshViewport(&viewport, pNametables, &pCurrentLevel->tilemap);
+        }
+    }
+
     void ReloadLevel(bool refresh) {
         if (pCurrentLevel == nullptr) {
             return;
         }
 
-        // Reset viewport and scrolling (Gross copypasta)
-        viewport.x = 0;
-        viewport.y = 0;
+        UnloadLevel(refresh);
+        
+        for (u32 i = 0; i < pCurrentLevel->actors.Count(); i++)
+        {
+            PoolHandle<Actor> handle = pCurrentLevel->actors.GetHandle(i);
+            const Actor* pActor = pCurrentLevel->actors.Get(handle);
 
-        const Scanline state = {
-            (s32)(viewport.x * METATILE_DIM_PIXELS),
-            (s32)(viewport.y * METATILE_DIM_PIXELS)
-        };
-        for (int i = 0; i < SCANLINE_COUNT; i++) {
-            pScanlines[i] = state;
+            Actor* pSpawned = SpawnActor(pActor);
+
+            if (pSpawned->pPreset->behaviour == ACTOR_BEHAVIOUR_PLAYER) {
+                pViewportTarget = pSpawned;
+            }
         }
 
-        // Temporarily set player pos to something sensible
-
-        playerState.x = 6;
-        playerState.y = 6;
-
-        /*if (enterScreenIndex < 0 || !SpawnAtFirstDoor(enterScreenIndex)) {
-            // Loop thru all screens to find any spawnpoint
-            for (u32 i = 0; i < pCurrentLevel->width * pCurrentLevel->height; i++) {
-                if (SpawnAtFirstDoor(i)) {
-                    break;
-                }
-            }
-        }*/
-
-        enemyPool.Clear();
-        // Spawn actors very stupidly
-        /*for (u32 i = 0; i < pCurrentLevel->width * pCurrentLevel->height; i++) {
-            const Level::Screen& screen = pCurrentLevel->screens[i];
-
-            for (u32 t = 0; t < Level::VIEWPORT_WIDTH_METATILES * Level::VIEWPORT_HEIGHT_METATILES; t++) {
-                const Level::LevelTile& tile = screen.tiles[t];
-
-                if (tile.actorType == Level::ACTOR_SKULL_ENEMY) {
-                    const Vec2 screenRelativePos = Level::TileIndexToScreenOffset(t);
-                    const Vec2 worldPos = Level::ScreenOffsetToWorld(pCurrentLevel, screenRelativePos, i);
-
-                    PoolHandle<Enemy> handle = enemyPool.Add();
-                    Enemy* enemy = enemyPool[handle];
-
-                    enemy->pos = worldPos;
-                    enemy->spawnHeight = worldPos.y;
-                    enemy->health = 10;
-                    enemy->damageTimer = 0.0f;
-                }
-            }
-        }*/
+        gameplaySecondsElapsed = 0.0f;
 
         if (refresh) {
             RefreshViewport(&viewport, pNametables, &pCurrentLevel->tilemap);
@@ -283,14 +258,6 @@ namespace Game {
         pSprites = Rendering::GetSpritesPtr(0);
         pNametables = Rendering::GetNametablePtr(0);
         pScanlines = Rendering::GetScanlinePtr(0);
-
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-
-        playerState.x = 0;
-        playerState.y = 0;
-        playerState.direction = DirRight;
-        playerState.weapon = WpnLauncher;
 
         // Init chr memory
         // TODO: Pre-process these instead of loading from bitmap at runtime!
@@ -311,19 +278,23 @@ namespace Game {
 
         Rendering::Util::ClearSprites(pSprites, MAX_SPRITE_COUNT);
 
-        arrowPool.Init(512);
         hitPool.Init(512);
         damageNumberPool.Init(512);
-        enemyPool.Init(512);
 
         Tiles::LoadTileset("assets/forest.til");
-        Metasprite::LoadMetasprites("assets/meta.spr");
+        Metasprites::Load("assets/meta.spr");
         Level::LoadLevels("assets/levels.lev");
+        Actors::LoadPresets("assets/actors.pfb");
 
         // Initialize scanline state
         for (int i = 0; i < SCANLINE_COUNT; i++) {
             pScanlines[i] = { 0, 0 };
         }
+
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+
+        actors.Init(512);
 
         // TODO: Level should load palettes and tileset?
         LoadLevel(0);
@@ -366,15 +337,16 @@ namespace Game {
     constexpr u32 playerLauncherDiagMetaspriteIndex = 11;
     constexpr u32 playerLauncherGrenadeMetaspriteIndex = 12;
 
-    IVec2 WorldPosToScreenPixels(Vec2 pos) {
+    static IVec2 WorldPosToScreenPixels(Vec2 pos) {
         return IVec2{
             (s32)round((pos.x - viewport.x) * METATILE_DIM_PIXELS),
             (s32)round((pos.y - viewport.y) * METATILE_DIM_PIXELS)
         };
     }
 
-    void DrawPlayer(Sprite** ppNextSprite, r64 dt) {
-        IVec2 drawPos = WorldPosToScreenPixels(Vec2{ playerState.x, playerState.y });
+    static void DrawPlayer(Actor* pPlayer, Sprite** ppNextSprite, r64 dt) {
+        PlayerState& playerState = *(PlayerState*)pPlayer->state;
+        IVec2 drawPos = WorldPosToScreenPixels(pPlayer->position);
         drawPos.y += playerState.vOffset;
 
         // Draw weapon first
@@ -401,9 +373,9 @@ namespace Game {
 
         Rendering::Util::CopyChrTiles(playerBank.tiles + weaponFrameBankOffset, pChr[1].tiles + playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
 
-        const Metasprite::Metasprite& bowMetasprite = Metasprite::GetMetaspritesPtr()[weaponMetaspriteIndex];
-        Rendering::Util::CopyMetasprite(bowMetasprite.spritesRelativePos, *ppNextSprite, bowMetasprite.spriteCount, drawPos + weaponOffset, playerState.direction == DirLeft, false);
-        *ppNextSprite += bowMetasprite.spriteCount;
+        const Metasprite* bowMetasprite = Metasprites::GetMetasprite(weaponMetaspriteIndex);
+        Rendering::Util::CopyMetasprite(bowMetasprite->spritesRelativePos, *ppNextSprite, bowMetasprite->spriteCount, drawPos + weaponOffset, playerState.direction == DirLeft, false);
+        *ppNextSprite += bowMetasprite->spriteCount;
 
         // Animate chr sheet using player bank
         // TODO: Maybe do this on the GPU?
@@ -429,13 +401,14 @@ namespace Game {
         );
 
         // Draw player
-        Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[playerState.aMode];
-        Rendering::Util::CopyMetasprite(characterMetasprite.spritesRelativePos, *ppNextSprite, characterMetasprite.spriteCount, drawPos, playerState.direction == DirLeft, false);
+        //Metasprite* characterMetasprite = Metasprites::GetMetasprite(playerState.aMode);
+        const Metasprite* pMetasprite = pPlayer->pPreset->pMetasprite;
+        Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, *ppNextSprite, pMetasprite->spriteCount, drawPos, playerState.direction == DirLeft, false);
         if (playerState.damageTimer > 0) {
             u8 damagePalette = (u8)(gameplaySecondsElapsed * 20) % 4;
-            Rendering::Util::SetSpritesPalette(*ppNextSprite, characterMetasprite.spriteCount, damagePalette);
+            Rendering::Util::SetSpritesPalette(*ppNextSprite, pMetasprite->spriteCount, damagePalette);
         }
-        *ppNextSprite += characterMetasprite.spriteCount;
+        *ppNextSprite += pMetasprite->spriteCount;
     }
 
     void DrawDamageNumbers(Sprite** ppNextSprite) {
@@ -463,34 +436,6 @@ namespace Game {
         }
     }
 
-    void DrawArrows(Sprite** ppNextSprite) {
-        for (int i = 0; i < arrowPool.Count(); i++) {
-            PoolHandle<Arrow> handle = arrowPool.GetHandle(i);
-            Arrow* arrow = arrowPool[handle];
-            if (arrow == nullptr) {
-                continue;
-            }
-
-            IVec2 pixelPos = WorldPosToScreenPixels(arrow->pos);
-            if (arrow->type == WpnBow) {
-                bool hFlip = arrow->vel.x < 0.0f;
-                bool vFlip = arrow->vel.y < -10.0f;
-                u32 spriteIndex = abs(arrow->vel.y) < 10.0f ? playerBowArrowFwdMetaspriteIndex : playerBowArrowDiagMetaspriteIndex;
-                Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[spriteIndex];
-                Rendering::Util::CopyMetasprite(metasprite.spritesRelativePos, *ppNextSprite, metasprite.spriteCount, pixelPos, hFlip, vFlip);
-                *ppNextSprite += metasprite.spriteCount;
-            }
-            else {
-                Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[playerLauncherGrenadeMetaspriteIndex];
-                const Vec2 dir = arrow->vel.Normalize();
-                const r32 angle = atan2f(dir.y, dir.x);
-                const s32 frameIndex = (s32)roundf(((angle + pi) / (pi*2)) * 7);
-                Rendering::Util::CopyMetasprite(metasprite.spritesRelativePos + frameIndex, *ppNextSprite, 1, pixelPos, false, false);
-                (*ppNextSprite)++;
-            }
-        }
-    }
-
     void DrawHits(Sprite** ppNextSprite) {
         for (int i = 0; i < hitPool.Count(); i++) {
             PoolHandle<Impact> handle = hitPool.GetHandle(i);
@@ -509,7 +454,7 @@ namespace Game {
         }
     }
 
-    void DrawShield(Sprite** ppNextSprite, r64 dt) {
+    /*void DrawShield(Sprite** ppNextSprite, r64 dt) {
         // Draw shield around player
         static const r32 shieldRadius = 2.0f;
         static const u32 shieldCount = 4;
@@ -518,67 +463,55 @@ namespace Game {
         const r32 tangentialVel = playerState.direction * 2.0f + playerState.hSpeed;
         shieldRot += tangentialVel / shieldRadius * dt;
 
-        const Metasprite::Metasprite& shieldMetasprite = Metasprite::GetMetaspritesPtr()[7];
+        const Metasprite* shieldMetasprite = Metasprites::GetMetasprite(7);
         const r32 angleOffset = pi * 2 / shieldCount;
         for (u32 i = 0; i < shieldCount; i++) {
             const r32 angle = shieldRot + angleOffset * i;
             Vec2 pos = { cos(angle) * shieldRadius + playerState.x, sin(angle) * shieldRadius + playerState.y };
             IVec2 drawPos = WorldPosToScreenPixels(pos);
 
-            Rendering::Util::CopyMetasprite(shieldMetasprite.spritesRelativePos, *ppNextSprite, shieldMetasprite.spriteCount, drawPos, false, false);
-            *ppNextSprite += shieldMetasprite.spriteCount;
+            Rendering::Util::CopyMetasprite(shieldMetasprite->spritesRelativePos, *ppNextSprite, shieldMetasprite->spriteCount, drawPos, false, false);
+            *ppNextSprite += shieldMetasprite->spriteCount;
         }
-    }
-
-    static void DrawEnemies(Sprite** ppNextSprite, r64 dt) {
-        Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
-
-        for (int i = 0; i < enemyPool.Count(); i++) {
-            PoolHandle<Enemy> handle = enemyPool.GetHandle(i);
-            Enemy* enemy = enemyPool.Get(handle);
-
-            IVec2 enemyPixelPos = WorldPosToScreenPixels(enemy->pos);
-            Rendering::Util::CopyMetasprite(enemyMetasprite.spritesRelativePos, *ppNextSprite, enemyMetasprite.spriteCount, enemyPixelPos, false, false);
-            if (enemy->damageTimer > 0) {
-                u8 damagePalette = (u8)(gameplaySecondsElapsed * 20) % 4;
-                Rendering::Util::SetSpritesPalette(*ppNextSprite, enemyMetasprite.spriteCount, damagePalette);
-            }
-            *ppNextSprite += enemyMetasprite.spriteCount;
-        }
-    }
+    }*/
 
     constexpr Vec2 viewportScrollThreshold = { 4.0f, 3.0f };
 
     static void UpdateViewport(bool loadTiles = true) {
+        if (pViewportTarget == nullptr) {
+            return;
+        }
+
         Vec2 viewportCenter = Vec2{ viewport.x + VIEWPORT_WIDTH_METATILES / 2.0f, viewport.y + VIEWPORT_HEIGHT_METATILES / 2.0f };
-        Vec2 playerOffset = Vec2{ playerState.x - viewportCenter.x, playerState.y - viewportCenter.y };
+        Vec2 targetOffset = pViewportTarget->position - viewportCenter;
 
         Vec2 delta = { 0.0f, 0.0f };
-        if (playerOffset.x > viewportScrollThreshold.x) {
-            delta.x = playerOffset.x - viewportScrollThreshold.x;
+        if (targetOffset.x > viewportScrollThreshold.x) {
+            delta.x = targetOffset.x - viewportScrollThreshold.x;
         }
-        else if (playerOffset.x < -viewportScrollThreshold.x) {
-            delta.x = playerOffset.x + viewportScrollThreshold.x;
+        else if (targetOffset.x < -viewportScrollThreshold.x) {
+            delta.x = targetOffset.x + viewportScrollThreshold.x;
         }
 
-        if (playerOffset.y > viewportScrollThreshold.y) {
-            delta.y = playerOffset.y - viewportScrollThreshold.y;
+        if (targetOffset.y > viewportScrollThreshold.y) {
+            delta.y = targetOffset.y - viewportScrollThreshold.y;
         }
-        else if (playerOffset.y < -viewportScrollThreshold.y) {
-            delta.y = playerOffset.y + viewportScrollThreshold.y;
+        else if (targetOffset.y < -viewportScrollThreshold.y) {
+            delta.y = targetOffset.y + viewportScrollThreshold.y;
         }
 
         MoveViewport(&viewport, pNametables, &pCurrentLevel->tilemap, delta.x, delta.y, loadTiles);
     }
 
     static void TriggerLevelTransition(bool direction = true) {
-        state = StateLevelTransition;
+        /*state = StateLevelTransition;
 
         static constexpr u32 bufferZoneWidth = 1;
 
         // Window a bit larger than viewport to ensure full coverage
+        Actor* pPlayer = actors.Get(playerHandle);
         const Vec2 transitionWindowPos = Vec2{ viewport.x - bufferZoneWidth, viewport.y - bufferZoneWidth };
-        const Vec2 center = Vec2{ playerState.x - transitionWindowPos.x, playerState.y - transitionWindowPos.y };
+        const Vec2 center = pPlayer->position - transitionWindowPos;
 
         levelTransitionState.origin = center;
         levelTransitionState.windowWorldPos = transitionWindowPos;
@@ -599,7 +532,7 @@ namespace Game {
         levelTransitionState.stepDuration = duration / maxSteps;
         levelTransitionState.accumulator = 0.0f;
 
-        levelTransitionState.direction = direction;
+        levelTransitionState.direction = direction;*/
     }
 
     static void UpdateLevelTransition(r64 dt) {
@@ -615,15 +548,7 @@ namespace Game {
                 LoadLevel(nextLevel, nextLevelScreenIndex, false);
                 ReloadLevel(false);
                 UpdateViewport(false);
-
-                // Update scroll
-                const Scanline state = {
-                    (s32)(viewport.x * METATILE_DIM_PIXELS),
-                    (s32)(viewport.y * METATILE_DIM_PIXELS)
-                };
-                for (int i = 0; i < SCANLINE_COUNT; i++) {
-                    pScanlines[i] = state;
-                }
+                UpdateScreenScroll();
 
                 TriggerLevelTransition(false);
             }
@@ -682,17 +607,25 @@ namespace Game {
         }
     }
 
-    void PlayerInput(r32 dt) {
+    static void DrawDefaultActor(Actor* pActor, Sprite** ppNextSprite) {
+        IVec2 drawPos = WorldPosToScreenPixels(pActor->position);
+        const Metasprite* pMetasprite = pActor->pPreset->pMetasprite;
+        Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, *ppNextSprite, pMetasprite->spriteCount, drawPos, false, false);
+        *ppNextSprite += pMetasprite->spriteCount;
+    }
+
+    static void PlayerInput(Actor* pPlayer, r64 dt) {
+        PlayerState& playerState = *(PlayerState*)pPlayer->state;
         if (Input::ButtonDown(BUTTON_DPAD_LEFT)) {
             playerState.direction = DirLeft;
-            playerState.hSpeed = -6.25f;
+            playerState.velocity.x = -6.25f;
         }
         else if (Input::ButtonDown(BUTTON_DPAD_RIGHT)) {
             playerState.direction = DirRight;
-            playerState.hSpeed = 6.25f;
+            playerState.velocity.x = 6.25f;
         }
         else {
-            playerState.hSpeed = 0;
+            playerState.velocity.x = 0;
         }
 
         // Aim mode
@@ -709,7 +642,7 @@ namespace Game {
         }
 
         if (Input::ButtonPressed(BUTTON_A) && (!playerState.inAir || !playerState.doubleJumped)) {
-            playerState.vSpeed = -15.625f;
+            playerState.velocity.y = -15.625f;
             if (playerState.inAir) {
                 playerState.doubleJumped = true;
             }
@@ -718,17 +651,17 @@ namespace Game {
             playerState.wingFrame++;
         }
 
-        if (playerState.vSpeed < 0 && Input::ButtonReleased(BUTTON_A)) {
-            playerState.vSpeed /= 2;
+        if (playerState.velocity.y < 0 && Input::ButtonReleased(BUTTON_A)) {
+            playerState.velocity.y /= 2;
         }
 
         playerState.slowFall = true;
-        if (Input::ButtonUp(BUTTON_A) || playerState.vSpeed < 0) {
+        if (Input::ButtonUp(BUTTON_A) || playerState.velocity.y < 0) {
             playerState.slowFall = false;
         }
 
         if (Input::ButtonReleased(BUTTON_B)) {
-            shootTimer = 0.0f;
+            playerState.shootTimer = 0.0f;
         }
 
         if (Input::ButtonPressed(BUTTON_SELECT)) {
@@ -752,39 +685,36 @@ namespace Game {
         }*/
     }
 
-    void PlayerBgCollision(r64 dt) {
+    static void PlayerBgCollision(Actor* pPlayer, r64 dt) {
+        PlayerState& playerState = *(PlayerState*)pPlayer->state;
+        const Hitbox& hitbox = pPlayer->pPreset->hitbox;
         if (playerState.slowFall) {
-            playerState.vSpeed += (gravity / 4) * dt;
+            playerState.velocity.y += (gravity / 4) * dt;
         }
         else {
-            playerState.vSpeed += gravity * dt;
+            playerState.velocity.y += gravity * dt;
         }
 
-        Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[0];
-        Collision::Collider hitbox = characterMetasprite.colliders[0];
-        Vec2 hitboxPos = Vec2{ playerState.x + hitbox.xOffset, playerState.y + hitbox.yOffset };
-        Vec2 hitboxDimensions = Vec2{ hitbox.width, hitbox.height };
-        r32 dx = playerState.hSpeed * dt;
+        r32 dx = playerState.velocity.x * dt;
 
-        Collision::HitResult hit{};
-        Collision::SweepBoxHorizontal(&pCurrentLevel->tilemap, hitboxPos, hitboxDimensions, dx, hit);
-        playerState.x = hit.location.x;
+        HitResult hit{};
+        Collision::SweepBoxHorizontal(&pCurrentLevel->tilemap, pPlayer->position + hitbox.offset, hitbox.dimensions, dx, hit);
+        pPlayer->position.x = hit.location.x;
         if (hit.blockingHit) {
-            playerState.hSpeed = 0;
+            playerState.velocity.x = 0;
         }
 
-        r32 dy = playerState.vSpeed * dt;
-        hitboxPos = Vec2{ playerState.x + hitbox.xOffset, playerState.y + hitbox.yOffset };
-        Collision::SweepBoxVertical(&pCurrentLevel->tilemap, hitboxPos, hitboxDimensions, dy, hit);
-        playerState.y = hit.location.y;
+        r32 dy = playerState.velocity.y * dt;
+        Collision::SweepBoxVertical(&pCurrentLevel->tilemap, pPlayer->position + hitbox.offset, hitbox.dimensions, dy, hit);
+        pPlayer->position.y = hit.location.y;
         if (hit.blockingHit) {
             // If ground
-            if (playerState.vSpeed > 0) {
+            if (playerState.velocity.y > 0) {
                 playerState.inAir = false;
                 playerState.doubleJumped = false;
             }
 
-            playerState.vSpeed = 0;
+            playerState.velocity.y = 0;
         }
         else {
             // TODO: Add coyote time
@@ -792,54 +722,59 @@ namespace Game {
         }
     }
 
-    void PlayerShoot(r64 dt) {
-        if (shootTimer > dt) {
-            shootTimer -= dt;
+    static void PlayerShoot(Actor* pPlayer, r64 dt) {
+        constexpr r32 shootDelay = 0.16f;
+
+        PlayerState& playerState = *(PlayerState*)pPlayer->state;
+        if (playerState.shootTimer > dt) {
+            playerState.shootTimer -= dt;
         }
-        else shootTimer = 0.0f;
+        else playerState.shootTimer = 0.0f;
 
-        if (Input::ButtonDown(BUTTON_B) && shootTimer <= 0.0f) {
-            shootTimer += shootDelay;
+        if (Input::ButtonDown(BUTTON_B) && playerState.shootTimer <= 0.0f) {
+            playerState.shootTimer += shootDelay;
 
-            PoolHandle<Arrow> handle = arrowPool.Add();
-            Arrow* arrow = arrowPool[handle];
+            constexpr s32 grenadePresetIndex = 1;
+            Actor* arrow = SpawnActor(grenadePresetIndex);
             if (arrow != nullptr) {
+                GrenadeState& grenadeState = *(GrenadeState*)arrow->state;
                 const Vec2 fwdOffset = Vec2{ 0.375f * playerState.direction, -0.25f };
                 const Vec2 upOffset = Vec2{ 0.1875f * playerState.direction, -0.5f };
                 const Vec2 downOffset = Vec2{ 0.25f * playerState.direction, -0.125f };
 
-                arrow->pos = Vec2{ playerState.x, playerState.y };
-                arrow->vel = Vec2{};
-                arrow->type = playerState.weapon;
-                arrow->bounces = 10;
+                arrow->position = pPlayer->position;
+                grenadeState.velocity = Vec2{};
+                //arrow->type = playerState.weapon;
+                grenadeState.bounces = 10;
 
                 if (playerState.aMode == AimFwd) {
-                    arrow->pos = arrow->pos + fwdOffset;
-                    arrow->vel.x = 40.0f * playerState.direction;
+                    arrow->position = arrow->position + fwdOffset;
+                    grenadeState.velocity.x = 40.0f * playerState.direction;
                 }
                 else {
-                    arrow->vel.x = 28.28f * playerState.direction;
-                    arrow->vel.y = (playerState.aMode == AimUp) ? -28.28f : 28.28f;
-                    arrow->pos = arrow->pos + ((playerState.aMode == AimUp) ? upOffset : downOffset);
+                    grenadeState.velocity.x = 28.28f * playerState.direction;
+                    grenadeState.velocity.y = (playerState.aMode == AimUp) ? -28.28f : 28.28f;
+                    arrow->position = arrow->position + ((playerState.aMode == AimUp) ? upOffset : downOffset);
                 }
 
-                if (playerState.weapon == WpnLauncher) {
-                    arrow->vel = arrow->vel * 0.75f;
-                }
-                arrow->vel = arrow->vel + Vec2{ playerState.hSpeed, playerState.vSpeed } *dt;
+                //if (playerState.weapon == WpnLauncher) {
+                grenadeState.velocity = grenadeState.velocity * 0.75f;
+                //}
+                grenadeState.velocity = grenadeState.velocity + playerState.velocity * dt;
             }
         }
     }
 
-    void PlayerAnimate(r64 dt) {
+    static void PlayerAnimate(Actor* pPlayer, r64 dt) {
+        PlayerState& playerState = *(PlayerState*)pPlayer->state;
         // Legs mode
-        if (playerState.vSpeed < 0) {
+        if (playerState.velocity.y < 0) {
             playerState.lMode = LegsJump;
         }
-        else if (playerState.vSpeed > 0) {
+        else if (playerState.velocity.y > 0) {
             playerState.lMode = LegsFall;
         }
-        else if (abs(playerState.hSpeed) > 0) {
+        else if (abs(playerState.velocity.x) > 0) {
             playerState.lMode = LegsFwd;
         }
         else {
@@ -847,10 +782,10 @@ namespace Game {
         }
 
         // Head mode
-        if (playerState.vSpeed > 0 && !playerState.slowFall) {
+        if (playerState.velocity.y > 0 && !playerState.slowFall) {
             playerState.hMode = HeadFall;
         }
-        else if (abs(playerState.hSpeed) > 0) {
+        else if (abs(playerState.velocity.x) > 0) {
             playerState.hMode = HeadFwd;
         }
         else {
@@ -858,10 +793,10 @@ namespace Game {
         }
 
         // Wing mode
-        if (playerState.vSpeed < 0) {
+        if (playerState.velocity.y < 0) {
             playerState.wMode = WingJump;
         }
-        else if (playerState.vSpeed > 0 && !playerState.slowFall) {
+        else if (playerState.velocity.y > 0 && !playerState.slowFall) {
             playerState.wMode = WingFall;
         }
         else {
@@ -879,11 +814,215 @@ namespace Game {
         }
         playerState.wingFrame %= 4;
 
-        if (playerState.vSpeed == 0) {
+        if (playerState.velocity.y == 0) {
             playerState.vOffset = playerState.wingFrame > 1 ? -1 : 0;
         }
         else {
             playerState.vOffset = 0;
+        }
+
+        // Animate chr sheet using player bank
+        Rendering::Util::CopyChrTiles(
+            playerBank.tiles + playerHandFrameBankOffsets[playerState.aMode],
+            pChr[1].tiles + playerHandFrameChrOffset,
+            playerHandFrameTileCount
+        );
+        Rendering::Util::CopyChrTiles(
+            playerBank.tiles + playerHeadFrameBankOffsets[playerState.aMode * 3 + playerState.hMode],
+            pChr[1].tiles + playerHeadFrameChrOffset,
+            playerHeadFrameTileCount
+        );
+        Rendering::Util::CopyChrTiles(
+            playerBank.tiles + playerLegsFrameBankOffsets[playerState.lMode],
+            pChr[1].tiles + playerLegsFrameChrOffset,
+            playerLegsFrameTileCount
+        );
+        Rendering::Util::CopyChrTiles(
+            playerBank.tiles + playerWingFrameBankOffsets[playerState.wingFrame],
+            pChr[1].tiles + playerWingFrameChrOffset,
+            playerWingFrameTileCount
+        );
+    }
+
+    static void UpdateActors(Sprite** ppNextSprite, r64 dt) {
+        // TODO: Temporarily using a vector for this, change later
+        static std::vector<PoolHandle<Actor>> removeList;
+        removeList.clear();
+
+        for (u32 i = 0; i < actors.Count(); i++)
+        {
+            PoolHandle<Actor> handle = actors.GetHandle(i);
+            Actor* pActor = actors.Get(handle);
+
+            // Can this ever bet true?
+            if (pActor == nullptr) {
+                continue;
+            }
+
+            switch (pActor->pPreset->behaviour) {
+            case ACTOR_BEHAVIOUR_PLAYER: {
+                PlayerState& state = *(PlayerState*)pActor->state;
+                PlayerInput(pActor, dt);
+                PlayerBgCollision(pActor, dt);
+                PlayerShoot(pActor, dt);
+                PlayerAnimate(pActor, dt);
+
+                if (state.damageTimer > dt) {
+                    state.damageTimer -= dt;
+                }
+                else state.damageTimer = 0.0f;
+
+                DrawPlayer(pActor, ppNextSprite, dt);
+
+                break;
+            }
+            case ACTOR_BEHAVIOUR_GRENADE: {
+                GrenadeState& state = *(GrenadeState*)pActor->state;
+                const Hitbox& hitbox = pActor->pPreset->hitbox;
+
+                r32 dx = state.velocity.x * dt;
+
+                HitResult hit{};
+                Collision::SweepBoxHorizontal(&pCurrentLevel->tilemap, pActor->position + hitbox.offset, hitbox.dimensions, dx, hit);
+                if (hit.blockingHit) {
+                    //if (arrow->type == WpnBow || arrow->bounces == 0) {
+                    if (state.bounces == 0) {
+                        removeList.push_back(handle);
+                        //PoolHandle<Impact> hitHandle = hitPool.Add();
+                        //Impact* impact = hitPool[hitHandle];
+                        //impact->pos = hit.impactPoint;
+                        //impact->accumulator = 0.0f;
+                        continue;
+                    }
+                    pActor->position.x = hit.location.x;
+                    state.velocity.x *= -1.0f;
+                    state.bounces--;
+                }
+                else pActor->position.x += dx;
+
+                //if (arrow->type == WpnLauncher) {
+                state.velocity.y += dt * gravity * 4.0f;
+                //}
+                r32 dy = state.velocity.y * dt;
+
+                Collision::SweepBoxVertical(&pCurrentLevel->tilemap, pActor->position + hitbox.offset, hitbox.dimensions, dy, hit);
+                if (hit.blockingHit) {
+                    //if (arrow->type == WpnBow || arrow->bounces == 0) {
+                    if (state.bounces == 0) {
+                        removeList.push_back(handle);
+                        //PoolHandle<Impact> hitHandle = hitPool.Add();
+                        //Impact* impact = hitPool[hitHandle];
+                        //impact->pos = hit.impactPoint;
+                        //impact->accumulator = 0.0f;
+                        continue;
+                    }
+                    pActor->position.y = hit.location.y;
+                    state.velocity.y *= -1.0f;
+                    //arrow->bounces--;
+                }
+                else pActor->position.y += dy;
+
+                if (pActor->position.x < viewport.x || pActor->position.x > viewport.x + VIEWPORT_WIDTH_METATILES || pActor->position.y < viewport.y || pActor->position.y > viewport.y + VIEWPORT_HEIGHT_METATILES) {
+                    removeList.push_back(handle);
+                }
+
+                DrawDefaultActor(pActor, ppNextSprite);
+
+                break;
+            }
+            case ACTOR_BEHAVIOUR_ENEMY_SKULL: {
+                EnemyState& state = *(EnemyState*)pActor->state;
+                if (state.health <= 0) {
+                    removeList.push_back(handle);
+                    continue;
+                }
+
+                static const r32 amplitude = 2.5f;
+                r32 sineTime = sin(gameplaySecondsElapsed);
+                pActor->position.y = state.baseHeight + sineTime * amplitude;
+
+                // Stupid collision with bullets
+                for (int e = 0; e < actors.Count(); e++) {
+                    PoolHandle<Actor> otherHandle = actors.GetHandle(e);
+                    Actor* pOther = actors.Get(otherHandle);
+                    if (pOther == nullptr || pOther->pPreset->type != ACTOR_TYPE_PROJECTILE_FRIENDLY) {
+                        continue;
+                    }
+
+                    if (Collision::BoxesOverlap(pActor->pPreset->hitbox, pOther->pPreset->hitbox, pActor->position, pOther->position)) {
+                        removeList.push_back(otherHandle);
+
+                        /*PoolHandle<Impact> hitHandle = hitPool.Add();
+                        Impact* impact = hitPool[hitHandle];
+                        impact->pos = arrow->pos;
+                        impact->accumulator = 0.0f;*/
+
+                        s32 damage = (rand() % 2) + 1;
+                        state.health -= damage;
+                        state.damageTimer = damageDelay;
+
+                        // Add damage numbers
+                        // Random point inside enemy hitbox
+                        /*Vec2 dmgPos = Vec2{(r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.x) + enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f, (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.y) + enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f};
+
+                        PoolHandle<DamageNumber> dmgHandle = damageNumberPool.Add();
+                        DamageNumber* dmgNumber = damageNumberPool[dmgHandle];
+                        dmgNumber->damage = damage;
+                        dmgNumber->pos = dmgPos;
+                        dmgNumber->accumulator = 0.0f;*/
+                    }
+                }
+
+                // Player take damage
+                /*if (playerState.damageTimer == 0) {
+                    static const Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
+                    static const Collision::Collider enemyHitbox = enemyMetasprite.colliders[0];
+
+                    const Vec2 hitboxPos = Vec2{ enemy->pos.x + enemyHitbox.xOffset, enemy->pos.y + enemyHitbox.yOffset };
+                    const Vec2 hitboxDimensions = Vec2{ enemyHitbox.width, enemyHitbox.height };
+
+                    const Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[0];
+                    const Collision::Collider playerHitbox = characterMetasprite.colliders[0];
+
+                    const Vec2 playerHitboxPos = Vec2{ playerState.x + playerHitbox.xOffset, playerState.y + playerHitbox.yOffset };
+                    const Vec2 playerHitboxDimensions = Vec2{ playerHitbox.width, playerHitbox.height };
+
+                    if (hitboxPos.x - hitboxDimensions.x / 2.0f < playerHitboxPos.x + playerHitboxDimensions.x / 2.0f &&
+                        hitboxPos.x + hitboxDimensions.x / 2.0f > playerHitboxPos.x - playerHitboxDimensions.x / 2.0f &&
+                        hitboxPos.y - hitboxDimensions.y / 2.0f < playerHitboxPos.y + playerHitboxDimensions.y / 2.0f &&
+                        hitboxPos.y + hitboxDimensions.y / 2.0f > playerHitboxPos.y - playerHitboxDimensions.y / 2.0f) {
+
+                        playerState.damageTimer = damageDelay;
+                        // playerState.hSpeed = -8.0f * playerState.direction;
+                        // playerState.vSpeed = -16.0f;
+                    }
+                }*/
+
+                if (state.damageTimer > dt) {
+                    state.damageTimer -= dt;
+                }
+                else state.damageTimer = 0.0f;
+
+                IVec2 drawPos = WorldPosToScreenPixels(pActor->position);
+                const Metasprite* pMetasprite = pActor->pPreset->pMetasprite;
+                Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, *ppNextSprite, pMetasprite->spriteCount, drawPos, false, false);
+                if (state.damageTimer > 0) {
+                    u8 damagePalette = (u8)(gameplaySecondsElapsed * 20) % 4;
+                    Rendering::Util::SetSpritesPalette(*ppNextSprite, pMetasprite->spriteCount, damagePalette);
+                }
+                *ppNextSprite += pMetasprite->spriteCount;
+
+                break;
+            }
+            default: {
+                DrawDefaultActor(pActor, ppNextSprite);
+                break;
+            }
+            }
+
+            for (auto& handle : removeList) {
+                actors.Remove(handle);
+            }
         }
     }
 
@@ -937,10 +1076,10 @@ namespace Game {
         else if (state == StateWorldMap) {
             gameplaySecondsElapsed += dt;
 
-            Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[13];
+            Metasprite* metasprite = Metasprites::GetMetasprite(13);
             bool flippy = (u32)(gameplaySecondsElapsed * 2.0f) % 2;
-            Rendering::Util::CopyMetasprite(metasprite.spritesRelativePos, pNextSprite, metasprite.spriteCount, { 256, 144 }, flippy, false);
-            pNextSprite += metasprite.spriteCount;
+            Rendering::Util::CopyMetasprite(metasprite->spritesRelativePos, pNextSprite, metasprite->spriteCount, { 256, 144 }, flippy, false);
+            pNextSprite += metasprite->spriteCount;
 
             r32 dx = 0, dy = 0;
 
@@ -957,15 +1096,7 @@ namespace Game {
                 dy = -8.0f * dt;
             }
             MoveViewport(&viewport, pNametables, &pCurrentLevel->tilemap, dx, dy);
-
-            // Update scroll (Time to make this a utility soon....)
-            const Scanline state = {
-                (s32)(viewport.x * METATILE_DIM_PIXELS),
-                (s32)(viewport.y * METATILE_DIM_PIXELS)
-            };
-            for (int i = 0; i < SCANLINE_COUNT; i++) {
-                pScanlines[i] = state;
-            }
+            UpdateScreenScroll();
         }
         else if (state == StateLevelTransition) {
             UpdateLevelTransition(dt);
@@ -974,120 +1105,7 @@ namespace Game {
             if (!paused) {
                 gameplaySecondsElapsed += dt;
 
-                PlayerInput(dt);
-                PlayerBgCollision(dt);
-                PlayerShoot(dt);
-                PlayerAnimate(dt);
-
-                if (playerState.damageTimer > dt) {
-                    playerState.damageTimer -= dt;
-                }
-                else playerState.damageTimer = 0.0f;
-
-                // Update arrows
-                for (int i = 0; i < arrowPool.Count(); i++) {
-                    PoolHandle<Arrow> handle = arrowPool.GetHandle(i);
-                    Arrow* arrow = arrowPool[handle];
-                    if (arrow == nullptr) {
-                        continue;
-                    }
-
-                    // TODO: Object struct and updater that does this for everything?
-                    bool hFlip = arrow->vel.x < 0.0f;
-                    bool vFlip = arrow->vel.y < -10.0f;
-
-                    u32 spriteIndex = abs(arrow->vel.y) < 10.0f ? 3 : 4;
-                    Metasprite::Metasprite metasprite = Metasprite::GetMetaspritesPtr()[spriteIndex];
-
-                    Collision::Collider hitbox = metasprite.colliders[0];
-                    Vec2 hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
-                    Vec2 hitboxDimensions = Vec2{ hitbox.width, hitbox.height };
-
-                    r32 dx = arrow->vel.x * dt;
-
-                    Collision::HitResult hit{};
-                    Collision::SweepBoxHorizontal(&pCurrentLevel->tilemap, hitboxPos, hitboxDimensions, dx, hit);
-                    if (hit.blockingHit) {
-                        if (arrow->type == WpnBow || arrow->bounces == 0) {
-                            arrowPool.Remove(handle);
-                            PoolHandle<Impact> hitHandle = hitPool.Add();
-                            Impact* impact = hitPool[hitHandle];
-                            impact->pos = hit.impactPoint;
-                            impact->accumulator = 0.0f;
-                            continue;
-                        }
-                        arrow->pos = hit.location;
-                        arrow->vel.x *= -1.0f;
-                        arrow->bounces--;
-                    } else arrow->pos.x += dx;
-
-                    if (arrow->type == WpnLauncher) {
-                        arrow->vel.y += dt * gravity * 4.0f;
-                    }
-                    r32 dy = arrow->vel.y * dt;
-                    hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
-                    Collision::SweepBoxVertical(&pCurrentLevel->tilemap, hitboxPos, hitboxDimensions, dy, hit);
-                    if (hit.blockingHit) {
-                        if (arrow->type == WpnBow || arrow->bounces == 0) {
-                            arrowPool.Remove(handle);
-                            PoolHandle<Impact> hitHandle = hitPool.Add();
-                            Impact* impact = hitPool[hitHandle];
-                            impact->pos = hit.impactPoint;
-                            impact->accumulator = 0.0f;
-                            continue;
-                        }
-                        arrow->pos = hit.location;
-                         arrow->vel.y *= -1.0f;
-                        arrow->bounces--;
-                    } else arrow->pos.y += dy;
-
-                    hitboxPos = Vec2{ arrow->pos.x + hitbox.xOffset * (hFlip ? -1.0f : 1.0f), arrow->pos.y + hitbox.yOffset * (vFlip ? -1.0f : 1.0f) };
-
-                    // Collision with enemy
-                    // TODO: Need a smarter collision system soon...
-                    for (int e = 0; e < enemyPool.Count(); e++) {
-                        static const Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
-                        static const Collision::Collider enemyHitbox = enemyMetasprite.colliders[0];
-
-                        PoolHandle<Enemy> enemyHandle = enemyPool.GetHandle(e);
-                        Enemy* enemy = enemyPool.Get(enemyHandle);
-
-                        const Vec2 enemyHitboxPos = Vec2{ enemy->pos.x + enemyHitbox.xOffset, enemy->pos.y + enemyHitbox.yOffset };
-                        const Vec2 enemyHitboxDimensions = Vec2{ enemyHitbox.width, enemyHitbox.height };
-
-                        if (hitboxPos.x - hitboxDimensions.x / 2.0f < enemyHitboxPos.x + enemyHitboxDimensions.x / 2.0f &&
-                            hitboxPos.x + hitboxDimensions.x / 2.0f > enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f &&
-                            hitboxPos.y - hitboxDimensions.y / 2.0f < enemyHitboxPos.y + enemyHitboxDimensions.y / 2.0f &&
-                            hitboxPos.y + hitboxDimensions.y / 2.0f > enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f) {
-
-                            arrowPool.Remove(handle);
-                            PoolHandle<Impact> hitHandle = hitPool.Add();
-                            Impact* impact = hitPool[hitHandle];
-                            impact->pos = arrow->pos;
-                            impact->accumulator = 0.0f;
-
-                            s32 damage = (rand() % 2) + 1;
-                            enemy->health -= damage;
-                            enemy->damageTimer = damageDelay;
-
-                            // Add damage numbers
-                            // Random point inside enemy hitbox
-                            Vec2 dmgPos = Vec2{ (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.x) + enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f, (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.y) + enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f };
-
-                            PoolHandle<DamageNumber> dmgHandle = damageNumberPool.Add();
-                            DamageNumber* dmgNumber = damageNumberPool[dmgHandle];
-                            dmgNumber->damage = damage;
-                            dmgNumber->pos = dmgPos;
-                            dmgNumber->accumulator = 0.0f;
-
-                            continue;
-                        }
-                    }
-
-                    if (arrow->pos.x < viewport.x || arrow->pos.x > viewport.x + VIEWPORT_WIDTH_TILES || arrow->pos.y < viewport.y || arrow->pos.y > viewport.y + VIEWPORT_HEIGHT_TILES) {
-                        arrowPool.Remove(handle);
-                    }
-                }
+                UpdateActors(&pNextSprite, dt);
 
                 // Update explosions
                 for (int i = 0; i < hitPool.Count(); i++) {
@@ -1116,69 +1134,10 @@ namespace Game {
                     dmgNumber->pos.y += dmgNumberVel * dt;
                 }
 
-                // Update enemies
-                for (int i = 0; i < enemyPool.Count(); i++) {
-                    PoolHandle<Enemy> handle = enemyPool.GetHandle(i);
-                    Enemy* enemy = enemyPool.Get(handle);
-
-                    if (enemy->health <= 0) {
-                        enemyPool.Remove(handle);
-                        continue;
-                    }
-
-                    static const r32 amplitude = 7.5f;
-                    r32 sineTime = sin(gameplaySecondsElapsed);
-                    enemy->pos.y = enemy->spawnHeight + sineTime * amplitude;
-
-                    // Player take damage
-                    if (playerState.damageTimer == 0) {
-                        static const Metasprite::Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
-                        static const Collision::Collider enemyHitbox = enemyMetasprite.colliders[0];
-
-                        const Vec2 hitboxPos = Vec2{ enemy->pos.x + enemyHitbox.xOffset, enemy->pos.y + enemyHitbox.yOffset };
-                        const Vec2 hitboxDimensions = Vec2{ enemyHitbox.width, enemyHitbox.height };
-
-                        const Metasprite::Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[0];
-                        const Collision::Collider playerHitbox = characterMetasprite.colliders[0];
-
-                        const Vec2 playerHitboxPos = Vec2{ playerState.x + playerHitbox.xOffset, playerState.y + playerHitbox.yOffset };
-                        const Vec2 playerHitboxDimensions = Vec2{ playerHitbox.width, playerHitbox.height };
-
-                        if (hitboxPos.x - hitboxDimensions.x / 2.0f < playerHitboxPos.x + playerHitboxDimensions.x / 2.0f &&
-                            hitboxPos.x + hitboxDimensions.x / 2.0f > playerHitboxPos.x - playerHitboxDimensions.x / 2.0f &&
-                            hitboxPos.y - hitboxDimensions.y / 2.0f < playerHitboxPos.y + playerHitboxDimensions.y / 2.0f &&
-                            hitboxPos.y + hitboxDimensions.y / 2.0f > playerHitboxPos.y - playerHitboxDimensions.y / 2.0f) {
-
-                            playerState.damageTimer = damageDelay;
-                            // playerState.hSpeed = -8.0f * playerState.direction;
-                            // playerState.vSpeed = -16.0f;
-                        }
-                    }
-
-                    if (enemy->damageTimer > dt) {
-                        enemy->damageTimer -= dt;
-                    }
-                    else enemy->damageTimer = 0.0f;
-                }
-
                 UpdateViewport();
             }
 
-            DrawDamageNumbers(&pNextSprite);
-            //DrawShield(&pNextSprite, dt);
-            DrawPlayer(&pNextSprite, dt);
-            DrawArrows(&pNextSprite);
-            DrawHits(&pNextSprite);
-            DrawEnemies(&pNextSprite, dt);
-
-            // Update scroll
-            const Scanline state = {
-                (s32)(viewport.x * METATILE_DIM_PIXELS),
-                (s32)(viewport.y * METATILE_DIM_PIXELS)
-            };
-            for (int i = 0; i < SCANLINE_COUNT; i++) {
-                pScanlines[i] = state;
-            }
+            UpdateScreenScroll();
 
             // Animate color palette brightness
             /*r32 deltaBrightness = sin(gameplaySecondsElapsed * 1.5f);
@@ -1224,5 +1183,8 @@ namespace Game {
     }
     Level::Level* GetLevel() {
         return pCurrentLevel;
+    }
+    Pool<Actor>* GetActors() {
+        return &actors;
     }
 }

@@ -11,6 +11,7 @@
 #include "game.h"
 #include "level.h"
 #include "viewport.h"
+#include "actors.h"
 
 constexpr u32 CLIPBOARD_DIM_TILES = (VIEWPORT_WIDTH_TILES / 2) + 1;
 
@@ -43,6 +44,7 @@ struct EditorContext {
 	bool spriteWindowOpen = false;
 	bool tilesetWindowOpen = false;
 	bool gameWindowOpen = false;
+	bool actorWindowOpen = false;
 };
 
 static EditorContext* pContext;
@@ -186,6 +188,104 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 	}
 }
 
+static void DrawMetasprite(const Metasprite* pMetasprite, ImVec2 origin, r32 renderScale, ImU32 color = IM_COL32(255, 255, 255, 255)) {
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	const r32 tileDrawSize = TILE_DIM_PIXELS * renderScale;
+	for (s32 i = pMetasprite->spriteCount - 1; i >= 0; i--) {
+		Sprite& sprite = pMetasprite->spritesRelativePos[i];
+		u8 index = (u8)sprite.tileId;
+		ImVec2 tileCoord = GetChrTileCoord(index);
+		ImVec2 tileStart = ChrTileCoordToTexCoord(tileCoord, 1);
+		ImVec2 tileEnd = ChrTileCoordToTexCoord(ImVec2(tileCoord.x + 1, tileCoord.y + 1), 1);
+		ImVec2 pos = ImVec2(origin.x + renderScale * sprite.x, origin.y + renderScale * sprite.y);
+		bool flipX = sprite.flipHorizontal;
+		bool flipY = sprite.flipVertical;
+		u8 palette = sprite.palette;
+
+		drawList->AddImage(pContext->chrTextures[4 + palette], pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), ImVec2(flipX ? tileEnd.x : tileStart.x, flipY ? tileEnd.y : tileStart.y), ImVec2(!flipX ? tileEnd.x : tileStart.x, !flipY ? tileEnd.y : tileStart.y), color);
+	}
+}
+
+static ImVec2 DrawMetaspriteGrid(const Metasprite* pMetasprite, r32 size) {
+	constexpr s32 gridSizeTiles = 8;
+
+	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
+	const r32 gridStepPixels = TILE_DIM_PIXELS * renderScale;
+	ImVec2 gridPos = DrawTileGrid(ImVec2(size, size), gridStepPixels);
+	ImVec2 origin = ImVec2(gridPos.x + size / 2, gridPos.y + size / 2);
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	drawList->AddLine(ImVec2(origin.x - 10, origin.y), ImVec2(origin.x + 10, origin.y), IM_COL32(200, 200, 200, 255));
+	drawList->AddLine(ImVec2(origin.x, origin.y - 10), ImVec2(origin.x, origin.y + 10), IM_COL32(200, 200, 200, 255));
+
+	DrawMetasprite(pMetasprite, origin, renderScale);
+
+	return gridPos;
+}
+
+static void DrawHitbox(const Hitbox* pHitbox, const ImVec2 origin, const r32 renderScale, ImU32 color = IM_COL32(0, 255, 0, 80)) {
+	const r32 colliderDrawScale = METATILE_DIM_PIXELS * renderScale;
+
+	ImVec2 colliderPos = ImVec2(origin.x + colliderDrawScale * pHitbox->offset.x, origin.y + colliderDrawScale * pHitbox->offset.y);
+
+	ImVec2 topLeft = ImVec2(colliderPos.x - colliderDrawScale * pHitbox->dimensions.x / 2, colliderPos.y - colliderDrawScale * pHitbox->dimensions.y / 2);
+	ImVec2 btmRight = ImVec2(colliderPos.x + colliderDrawScale * pHitbox->dimensions.x / 2, colliderPos.y + colliderDrawScale * pHitbox->dimensions.y / 2);
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	drawList->AddRectFilled(topLeft, btmRight, color);
+}
+
+
+static void SwapMetasprites(Metasprite* pMetasprites, s32 a, s32 b) {
+	Metasprite& metaspriteA = pMetasprites[a];
+	char* nameA = Metasprites::GetName(a);
+	Metasprite& metaspriteB = pMetasprites[b];
+	char* nameB = Metasprites::GetName(b);
+
+	Metasprite temp = metaspriteA;
+	char tempName[METASPRITE_MAX_NAME_LENGTH];
+
+	memcpy(tempName, nameA, METASPRITE_MAX_NAME_LENGTH);
+
+	metaspriteA = metaspriteB;
+	memcpy(nameA, nameB, METASPRITE_MAX_NAME_LENGTH);
+
+	metaspriteB = temp;
+	memcpy(nameB, tempName, METASPRITE_MAX_NAME_LENGTH);
+}
+
+static void SwapLevels(Level::Level* pLevels, s32 a, s32 b) {
+	Level::Level& levelA = pLevels[a];
+	Screen* levelAScreens = levelA.tilemap.pScreens;
+	char* levelAName = levelA.name;
+	Level::Level& levelB = pLevels[b];
+	Screen* levelBScreens = levelB.tilemap.pScreens;
+	char* levelBName = levelB.name;
+
+	// Copy A to temp
+	Level::Level temp = levelA;
+
+	Screen tempScreens[Level::levelMaxScreenCount];
+	char tempName[Level::levelMaxNameLength];
+
+	memcpy(tempScreens, levelAScreens, Level::levelMaxScreenCount * sizeof(Screen));
+	memcpy(tempName, levelAName, Level::levelMaxNameLength);
+
+	// Copy B to A (But keep pointers pointing in original location)
+	levelA = levelB;
+	levelA.tilemap.pScreens = levelAScreens;
+	levelA.name = levelAName;
+	memcpy(levelAScreens, levelBScreens, Level::levelMaxScreenCount * sizeof(Screen));
+	memcpy(levelAName, levelBName, Level::levelMaxNameLength);
+
+	// Copy Temp to B
+	levelB = temp;
+	levelB.tilemap.pScreens = levelBScreens;
+	levelB.name = levelBName;
+	memcpy(levelBScreens, tempScreens, Level::levelMaxScreenCount * sizeof(Screen));
+	memcpy(levelBName, tempName, Level::levelMaxNameLength);
+}
+
 template <typename T>
 static void SwapElements(T* elements, s32 a, s32 b) {
 	T temp = elements[a];
@@ -194,7 +294,7 @@ static void SwapElements(T* elements, s32 a, s32 b) {
 }
 
 template <typename T>
-static bool TrySwapElements(T* elements, ImVector<s32>& elementIndices, s32 i, s32 dir) {
+static bool TrySwapElements(T* elements, ImVector<s32>& elementIndices, s32 i, s32 dir, void (*swapFunction)(T*, s32, s32) = nullptr) {
 	s32& elementIndex = elementIndices[i];
 	s32 nextElementIndex = elementIndex + dir;
 
@@ -202,14 +302,19 @@ static bool TrySwapElements(T* elements, ImVector<s32>& elementIndices, s32 i, s
 		return false;
 	}
 
-	SwapElements(elements, elementIndex, nextElementIndex);
+	if (swapFunction == nullptr) {
+		SwapElements(elements, elementIndex, nextElementIndex);
+	}
+	else {
+		swapFunction(elements, elementIndex, nextElementIndex);
+	}
 	elementIndex += dir;
 
 	return true;
 }
 
 template <typename T>
-static void MoveElements(T* elements, ImVector<s32>& elementIndices, s32 step) {
+static void MoveElements(T* elements, ImVector<s32>& elementIndices, s32 step, void (*swapFunction)(T*, s32, s32) = nullptr) {
 	if (step == 0) {
 		return;
 	}
@@ -225,7 +330,7 @@ static void MoveElements(T* elements, ImVector<s32>& elementIndices, s32 step) {
 				if (alreadyMoved.contains(i))
 					continue;
 
-				if (TrySwapElements(elements, elementIndices, i, dir)) {
+				if (TrySwapElements(elements, elementIndices, i, dir, swapFunction)) {
 					alreadyMoved.push_back(i);
 				}
 			}
@@ -366,15 +471,16 @@ static void DrawDebugWindow() {
 
 #pragma region Sprites
 static void DrawMetaspriteList(s32& selection) {
-	static constexpr u32 maxLabelNameLength = Metasprite::metaspriteMaxNameLength + 8;
+	static constexpr u32 maxLabelNameLength = METASPRITE_MAX_NAME_LENGTH + 8;
 	char label[maxLabelNameLength];
 
-	Metasprite::Metasprite* pMetasprites = Metasprite::GetMetaspritesPtr();
-	for (u32 i = 0; i < Metasprite::maxMetaspriteCount; i++)
+	Metasprite* pMetasprites = Metasprites::GetMetasprite(0);
+	for (u32 i = 0; i < MAX_METASPRITE_COUNT; i++)
 	{
+		const char* name = Metasprites::GetName(i);
 		ImGui::PushID(i);
 
-		snprintf(label, maxLabelNameLength, "0x%02x: %s", i, pMetasprites[i].name);
+		snprintf(label, maxLabelNameLength, "0x%02x: %s", i, name);
 
 		const bool selected = selection == i;
 		if (ImGui::Selectable(label, selected)) {
@@ -388,7 +494,7 @@ static void DrawMetaspriteList(s32& selection) {
 		if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
 		{
 			ImGui::SetDragDropPayload("dd_metasprites", &i, sizeof(u32));
-			ImGui::Text("%s", pMetasprites[i].name);
+			ImGui::Text("%s", name);
 
 			ImGui::EndDragDropSource();
 		}
@@ -403,10 +509,10 @@ static void DrawMetaspriteList(s32& selection) {
 				ImVector<s32> vec;
 				vec.push_back(sourceIndex);
 
-				const bool canMove = CanMoveElements(Metasprite::maxMetaspriteCount, vec, step);
+				const bool canMove = CanMoveElements(MAX_METASPRITE_COUNT, vec, step);
 
 				if (canMove) {
-					MoveElements<Metasprite::Metasprite>(pMetasprites, vec, step);
+					MoveElements<Metasprite>(pMetasprites, vec, step, SwapMetasprites);
 					selection = vec[0];
 				}
 			}
@@ -416,7 +522,7 @@ static void DrawMetaspriteList(s32& selection) {
 	}
 }
 
-static void DrawMetaspritePreview(Metasprite::Metasprite& metasprite, ImVector<s32>& spriteSelection, bool selectionLocked, bool showColliderPreview, r32 size) {
+static void DrawMetaspritePreview(Metasprite& metasprite, ImVector<s32>& spriteSelection, bool selectionLocked, r32 size) {
 	constexpr s32 gridSizeTiles = 8;
 
 	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
@@ -504,55 +610,9 @@ static void DrawMetaspritePreview(Metasprite::Metasprite& metasprite, ImVector<s
 		dragging = false;
 		dragDelta = ImVec2(0, 0);
 	}
-
-	// Draw collider visualization
-	if (showColliderPreview) {
-		const r32 colliderDrawScale = METATILE_DIM_PIXELS * renderScale;
-		for (u32 i = 0; i < metasprite.colliderCount; i++) {
-			Collision::Collider& collider = metasprite.colliders[i];
-
-			ImVec2 colliderPos = ImVec2(origin.x + colliderDrawScale * collider.xOffset, origin.y + colliderDrawScale * collider.yOffset);
-
-			switch (collider.type) {
-			case Collision::ColliderPoint: {
-				drawList->AddLine(ImVec2(colliderPos.x - 10, colliderPos.y), ImVec2(colliderPos.x + 10, colliderPos.y), IM_COL32(0, 255, 0, 255));
-				drawList->AddLine(ImVec2(colliderPos.x, colliderPos.y - 10), ImVec2(colliderPos.x, colliderPos.y + 10), IM_COL32(0, 255, 0, 255));
-				break;
-			}
-			case Collision::ColliderCircle: {
-				drawList->AddCircleFilled(colliderPos, collider.width / 2 * colliderDrawScale, IM_COL32(0, 255, 0, 80));
-				break;
-			}
-			case Collision::ColliderBox: {
-				ImVec2 topLeft = ImVec2(colliderPos.x - colliderDrawScale * collider.width / 2, colliderPos.y - colliderDrawScale * collider.height / 2);
-				ImVec2 btmRight = ImVec2(colliderPos.x + colliderDrawScale * collider.width / 2, colliderPos.y + colliderDrawScale * collider.height / 2);
-
-				drawList->AddRectFilled(topLeft, btmRight, IM_COL32(0, 255, 0, 80));
-				break;
-			}
-			case Collision::ColliderCapsule: {
-				ImVec2 topLeft = ImVec2(colliderPos.x - colliderDrawScale * collider.width / 2, colliderPos.y + colliderDrawScale * collider.height / 2);
-				ImVec2 btmRight = ImVec2(colliderPos.x + colliderDrawScale * collider.width / 2, colliderPos.y - colliderDrawScale * collider.height / 2);
-				drawList->AddRectFilled(topLeft, btmRight, IM_COL32(0, 255, 0, 80));
-
-				drawList->PushClipRect(ImVec2(topLeft.x, btmRight.y - (collider.width / 2) * colliderDrawScale), ImVec2(btmRight.x, btmRight.y));
-				drawList->AddCircleFilled(ImVec2(colliderPos.x, colliderPos.y - collider.height / 2 * colliderDrawScale), collider.width / 2 * colliderDrawScale, IM_COL32(0, 255, 0, 80));
-				drawList->PopClipRect();
-
-				drawList->PushClipRect(ImVec2(topLeft.x, topLeft.y), ImVec2(btmRight.x, topLeft.y + (collider.width / 2) * colliderDrawScale));
-				drawList->AddCircleFilled(ImVec2(colliderPos.x, colliderPos.y + collider.height / 2 * colliderDrawScale), collider.width / 2 * colliderDrawScale, IM_COL32(0, 255, 0, 80));
-				drawList->PopClipRect();
-
-				break;
-			}
-			default:
-				break;
-			}
-		}
-	}
 }
 
-static void DrawSpriteEditor(Metasprite::Metasprite& metasprite, ImVector<s32>& spriteSelection) {
+static void DrawSpriteEditor(Metasprite& metasprite, ImVector<s32>& spriteSelection) {
 	ImGui::SeparatorText("Sprite editor");
 	
 	if (spriteSelection.empty()) {
@@ -602,14 +662,14 @@ static void DrawSpriteEditor(Metasprite::Metasprite& metasprite, ImVector<s32>& 
 	}
 }
 
-static u32 PushSprite(Metasprite::Metasprite& metasprite, const Sprite& sprite) {
+static u32 PushSprite(Metasprite& metasprite, const Sprite& sprite) {
 	const u32 newIndex = metasprite.spriteCount++;
 	metasprite.spritesRelativePos[newIndex] = sprite;
 
 	return newIndex;
 }
 
-static u32 PushSprite(Metasprite::Metasprite& metasprite) {
+static u32 PushSprite(Metasprite& metasprite) {
 	return PushSprite(metasprite, {
 		.y = 0,
 		.x = 0,
@@ -618,7 +678,7 @@ static u32 PushSprite(Metasprite::Metasprite& metasprite) {
 	});
 }
 
-static void PopSprite(Metasprite::Metasprite& metasprite) {
+static void PopSprite(Metasprite& metasprite) {
 	metasprite.spritesRelativePos[--metasprite.spriteCount] = {
 		.y = 0,
 		.x = 0,
@@ -627,7 +687,7 @@ static void PopSprite(Metasprite::Metasprite& metasprite) {
 	};
 }
 
-static bool SelectSprite(Metasprite::Metasprite& metasprite, ImVector<s32>& spriteSelection, bool selectionLocked, s32 index) {
+static bool SelectSprite(Metasprite& metasprite, ImVector<s32>& spriteSelection, bool selectionLocked, s32 index) {
 	bool multiple = ImGui::IsKeyDown(ImGuiKey_ModCtrl);
 	bool selected = spriteSelection.contains(index);
 
@@ -649,250 +709,135 @@ static bool SelectSprite(Metasprite::Metasprite& metasprite, ImVector<s32>& spri
 	return true;
 }
 
-static void DrawMetaspriteEditor(Metasprite::Metasprite& metasprite, ImVector<s32>& spriteSelection, bool& selectionLocked, bool& showColliderPreview) {
-	if (ImGui::BeginTabBar("Metasprite editor tabs")) {
-		if (ImGui::BeginTabItem("Sprites")) {
-			ImGui::Checkbox("Lock selection", &selectionLocked);
+static void DrawMetaspriteEditor(Metasprite& metasprite, ImVector<s32>& spriteSelection, bool& selectionLocked, bool& showColliderPreview) {
+	ImGui::Checkbox("Lock selection", &selectionLocked);
 
-			ImGui::BeginDisabled(metasprite.spriteCount == Metasprite::metaspriteMaxSpriteCount);
-			if (ImGui::Button("+")) {
-				PushSprite(metasprite);
-			}
-			ImGui::EndDisabled();
-			ImGui::SameLine();
-			ImGui::BeginDisabled(metasprite.spriteCount == 0);
-			if (ImGui::Button("-")) {
+	ImGui::BeginDisabled(metasprite.spriteCount == METASPRITE_MAX_SPRITE_COUNT);
+	if (ImGui::Button("+")) {
+		PushSprite(metasprite);
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::BeginDisabled(metasprite.spriteCount == 0);
+	if (ImGui::Button("-")) {
+		PopSprite(metasprite);
+	}
+	ImGui::EndDisabled();
+
+	ImGui::BeginChild("Sprite list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
+
+	ImGuiSelectableFlags selectableFlags = ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap;
+	for (u32 i = 0; i < metasprite.spriteCount; i++) {
+		Sprite& sprite = metasprite.spritesRelativePos[i];
+		char labelStr[6];
+		snprintf(labelStr, 6, "0x%03x", i);
+
+		bool selected = spriteSelection.contains(i);
+
+		ImGui::PushID(i);
+		ImGui::SetNextItemAllowOverlap();
+		if (ImGui::Selectable(labelStr, selected, selectableFlags, ImVec2(0, 0))) {
+			SelectSprite(metasprite, spriteSelection, selectionLocked, i);
+		}
+		if (ImGui::BeginPopupContextItem())
+		{
+			if (ImGui::Selectable("Remove")) {
+				if (selected) {
+					spriteSelection.find_erase_unsorted(i);
+				}
+				MoveElementsRange<Sprite>(metasprite.spritesRelativePos, i + 1, metasprite.spriteCount, -1, &spriteSelection);
 				PopSprite(metasprite);
 			}
-			ImGui::EndDisabled();
-
-			ImGui::BeginChild("Sprite list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-
-			ImGuiSelectableFlags selectableFlags = ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap;
-			for (u32 i = 0; i < metasprite.spriteCount; i++) {
-				Sprite& sprite = metasprite.spritesRelativePos[i];
-				char labelStr[6];
-				snprintf(labelStr, 6, "0x%03x", i);
-
-				bool selected = spriteSelection.contains(i);
-
-				ImGui::PushID(i);
-				ImGui::SetNextItemAllowOverlap();
-				if (ImGui::Selectable(labelStr, selected, selectableFlags, ImVec2(0, 0))) {
-					SelectSprite(metasprite, spriteSelection, selectionLocked, i);
+			if (ImGui::Selectable("Insert above")) {
+				u32 newInd = PushSprite(metasprite);
+				MoveElementsRange<Sprite>(metasprite.spritesRelativePos, i, newInd, 1, &spriteSelection);
+				if (!selectionLocked) {
+					spriteSelection.clear();
+					spriteSelection.push_back(i);
 				}
-				if (ImGui::BeginPopupContextItem())
-				{
-					if (ImGui::Selectable("Remove")) {
-						if (selected) {
-							spriteSelection.find_erase_unsorted(i);
-						}
-						MoveElementsRange<Sprite>(metasprite.spritesRelativePos, i + 1, metasprite.spriteCount, -1, &spriteSelection);
-						PopSprite(metasprite);
-					}
-					if (ImGui::Selectable("Insert above")) {
-						u32 newInd = PushSprite(metasprite);
-						MoveElementsRange<Sprite>(metasprite.spritesRelativePos, i, newInd, 1, &spriteSelection);
-						if (!selectionLocked) {
-							spriteSelection.clear();
-							spriteSelection.push_back(i);
-						}
-					}
-					if (ImGui::Selectable("Insert below")) {
-						u32 newInd = PushSprite(metasprite);
-						MoveElementsRange<Sprite>(metasprite.spritesRelativePos, i + 1, newInd, 1, &spriteSelection);
-						if (!selectionLocked) {
-							spriteSelection.clear();
-							spriteSelection.push_back(i+1);
-						}
-					}
-					if (ImGui::Selectable("Duplicate")) { // And insert below
-						u32 newInd = PushSprite(metasprite, sprite);
-						MoveElementsRange<Sprite>(metasprite.spritesRelativePos, i + 1, newInd, 1, &spriteSelection);
-						if (!selectionLocked) {
-							spriteSelection.clear();
-							spriteSelection.push_back(i+1);
-						}
-					}
-					ImGui::EndPopup();
-				}
-
-				if (selected) {
-					ImGui::SetItemDefaultFocus();
-				}
-
-				// Draw a nice little preview of the sprite
-				u8 index = (u8)sprite.tileId;
-				ImVec2 tileCoord = GetChrTileCoord(index);
-
-				r32 x1 = sprite.flipHorizontal ? tileCoord.x + 1 : tileCoord.x;
-				r32 x2 = sprite.flipHorizontal ? tileCoord.x : tileCoord.x + 1;
-				r32 y1 = sprite.flipVertical ? tileCoord.y + 1 : tileCoord.y;
-				r32 y2 = sprite.flipVertical ? tileCoord.y : tileCoord.y + 1;
-
-				ImVec2 tileStart = ChrTileCoordToTexCoord(ImVec2(x1, y1), 1);
-				ImVec2 tileEnd = ChrTileCoordToTexCoord(ImVec2(x2, y2), 1);
-				ImGuiStyle& style = ImGui::GetStyle();
-				r32 itemHeight = ImGui::GetItemRectSize().y - style.FramePadding.y;
-
-				ImDrawList* drawList = ImGui::GetWindowDrawList();
-				const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
-				const ImVec2 topLeft = ImVec2(ImGui::GetItemRectMin().x + 64, ImGui::GetItemRectMin().y + style.FramePadding.y);
-				const ImVec2 btmRight = ImVec2(topLeft.x + itemHeight, topLeft.y + itemHeight);
-				drawList->AddImage(pContext->chrTextures[sprite.palette + 4], topLeft, btmRight, tileStart, tileEnd);
-
-				if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
-				{
-					if (selected || SelectSprite(metasprite, spriteSelection, selectionLocked, i)) {
-						// Set payload to carry the index of our item (could be anything)
-						ImGui::SetDragDropPayload("swap_sprites", &i, sizeof(u32));
-						ImGui::Text("%s", labelStr);
-					}
-					else {
-						ImGui::Text("Selection locked!");
-					}
-
-					ImGui::EndDragDropSource();
-				}
-				if (ImGui::BeginDragDropTarget())
-				{
-					if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("swap_sprites"))
-					{
-						int sourceIndex = *(const u32*)payload->Data;
-
-						s32 step = i - sourceIndex;
-						const bool canMove = CanMoveElements(metasprite.spriteCount, spriteSelection, step);
-
-						if (canMove) {
-							MoveElements<Sprite>(metasprite.spritesRelativePos, spriteSelection, step);
-						}
-					}
-					ImGui::EndDragDropTarget();
-				}
-
-				ImGui::PopID();
 			}
-
-			ImGui::EndChild();
-
-			ImGui::SameLine();
-
-			ImGui::BeginChild("Sprite editor");
-			DrawSpriteEditor(metasprite, spriteSelection);
-			ImGui::EndChild();
-
-			ImGui::EndTabItem();
+			if (ImGui::Selectable("Insert below")) {
+				u32 newInd = PushSprite(metasprite);
+				MoveElementsRange<Sprite>(metasprite.spritesRelativePos, i + 1, newInd, 1, &spriteSelection);
+				if (!selectionLocked) {
+					spriteSelection.clear();
+					spriteSelection.push_back(i+1);
+				}
+			}
+			if (ImGui::Selectable("Duplicate")) { // And insert below
+				u32 newInd = PushSprite(metasprite, sprite);
+				MoveElementsRange<Sprite>(metasprite.spritesRelativePos, i + 1, newInd, 1, &spriteSelection);
+				if (!selectionLocked) {
+					spriteSelection.clear();
+					spriteSelection.push_back(i+1);
+				}
+			}
+			ImGui::EndPopup();
 		}
 
-		static u32 selectedCollider = 0;
+		if (selected) {
+			ImGui::SetItemDefaultFocus();
+		}
 
-		// TODO: Move collider stuff out of the sprite editor?
-		if (ImGui::BeginTabItem("Colliders")) {
-			ImGui::Checkbox("Show collider preview", &showColliderPreview);
+		// Draw a nice little preview of the sprite
+		u8 index = (u8)sprite.tileId;
+		ImVec2 tileCoord = GetChrTileCoord(index);
 
-			ImGui::BeginDisabled(metasprite.colliderCount == Metasprite::metaspriteMaxColliderCount);
-			if (ImGui::Button("+")) {
-				metasprite.colliders[metasprite.colliderCount++] = Collision::Collider{};
+		r32 x1 = sprite.flipHorizontal ? tileCoord.x + 1 : tileCoord.x;
+		r32 x2 = sprite.flipHorizontal ? tileCoord.x : tileCoord.x + 1;
+		r32 y1 = sprite.flipVertical ? tileCoord.y + 1 : tileCoord.y;
+		r32 y2 = sprite.flipVertical ? tileCoord.y : tileCoord.y + 1;
+
+		ImVec2 tileStart = ChrTileCoordToTexCoord(ImVec2(x1, y1), 1);
+		ImVec2 tileEnd = ChrTileCoordToTexCoord(ImVec2(x2, y2), 1);
+		ImGuiStyle& style = ImGui::GetStyle();
+		r32 itemHeight = ImGui::GetItemRectSize().y - style.FramePadding.y;
+
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+		const ImVec2 topLeft = ImVec2(ImGui::GetItemRectMin().x + 64, ImGui::GetItemRectMin().y + style.FramePadding.y);
+		const ImVec2 btmRight = ImVec2(topLeft.x + itemHeight, topLeft.y + itemHeight);
+		drawList->AddImage(pContext->chrTextures[sprite.palette + 4], topLeft, btmRight, tileStart, tileEnd);
+
+		if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+		{
+			if (selected || SelectSprite(metasprite, spriteSelection, selectionLocked, i)) {
+				// Set payload to carry the index of our item (could be anything)
+				ImGui::SetDragDropPayload("swap_sprites", &i, sizeof(u32));
+				ImGui::Text("%s", labelStr);
 			}
-			ImGui::EndDisabled();
-			ImGui::SameLine();
-			ImGui::BeginDisabled(metasprite.colliderCount == 0);
-			if (ImGui::Button("-") && metasprite.colliderCount > 1) {
-				metasprite.colliders[--metasprite.colliderCount] = Collision::Collider{};;
-			}
-			ImGui::EndDisabled();
-
-			ImGui::BeginChild("Collider list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-
-			ImGuiSelectableFlags selectableFlags = ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap;
-			for (u32 i = 0; i < metasprite.colliderCount; i++) {
-				Collision::Collider& collider = metasprite.colliders[i];
-				char labelStr[4];
-				snprintf(labelStr, 4, "0x%01x", i);
-				bool selected = selectedCollider == i;
-
-				ImGui::PushID(i);
-				if (ImGui::Selectable(labelStr, selected, selectableFlags, ImVec2(0, 0))) {
-					selectedCollider = i;
-				}
-
-				if (selected) {
-					ImGui::SetItemDefaultFocus();
-				}
-
-				ImGui::PopID();
+			else {
+				ImGui::Text("Selection locked!");
 			}
 
-			ImGui::EndChild();
-
-			ImGui::SameLine();
-
-			ImGui::BeginChild("Collider editor");
+			ImGui::EndDragDropSource();
+		}
+		if (ImGui::BeginDragDropTarget())
+		{
+			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("swap_sprites"))
 			{
-				ImGui::SeparatorText("Collider editor");
-				if (selectedCollider >= metasprite.colliderCount) {
-					ImGui::TextUnformatted("No collider selected");
+				int sourceIndex = *(const u32*)payload->Data;
+
+				s32 step = i - sourceIndex;
+				const bool canMove = CanMoveElements(metasprite.spriteCount, spriteSelection, step);
+
+				if (canMove) {
+					MoveElements<Sprite>(metasprite.spritesRelativePos, spriteSelection, step);
 				}
-				else {
-					Collision::Collider& collider = metasprite.colliders[selectedCollider];
-
-					ImGui::SliderInt("Type", (s32*)&collider.type, 0, COLLIDER_TYPE_COUNT - 1, COLLIDER_TYPE_NAMES[collider.type]);
-
-					r32 offset[2] = { collider.xOffset, collider.yOffset };
-
-					if (ImGui::InputFloat2("Offset", offset)) {
-						collider.xOffset = offset[0];
-						collider.yOffset = offset[1];
-					}
-
-					switch (collider.type) {
-					case Collision::ColliderPoint:
-						break;
-					case Collision::ColliderCircle: {
-						r32 radius = collider.width / 2;
-						if (ImGui::InputFloat("Radius", &radius, 0.125f, 0.0625f)) {
-							collider.width = std::max(0.0f, radius * 2);
-						}
-						break;
-					}
-					case Collision::ColliderBox: {
-						r32 width = collider.width;
-						if (ImGui::InputFloat("Width", &width, 0.125f, 0.0625f)) {
-							collider.width = std::max(0.0f, width);
-						}
-
-						r32 height = collider.height;
-						if (ImGui::InputFloat("Height", &height, 0.125f, 0.0625f)) {
-							collider.height = std::max(0.0f, height);
-						}
-
-						break;
-					}
-					case Collision::ColliderCapsule: {
-						r32 radius = collider.width / 2;
-						if (ImGui::InputFloat("Radius", &radius, 0.125f, 0.0625f)) {
-							collider.width = std::max(0.0f, radius * 2);
-						}
-
-						r32 height = collider.height;
-						if (ImGui::InputFloat("Height", &height, 0.125f, 0.0625f)) {
-							collider.height = std::max(0.0f, height);
-						}
-
-						break;
-					}
-					default:
-						break;
-					}
-				}
-
 			}
-			ImGui::EndChild();
-
-			ImGui::EndTabItem();
+			ImGui::EndDragDropTarget();
 		}
-		ImGui::EndTabBar();
+
+		ImGui::PopID();
 	}
+
+	ImGui::EndChild();
+
+	ImGui::SameLine();
+
+	ImGui::BeginChild("Sprite editor");
+	DrawSpriteEditor(metasprite, spriteSelection);
+	ImGui::EndChild();
 }
 
 static void DrawSpriteWindow() {
@@ -900,8 +845,8 @@ static void DrawSpriteWindow() {
 
 	static s32 selection = 0;
 
-	Metasprite::Metasprite* pMetasprites = Metasprite::GetMetaspritesPtr();
-	Metasprite::Metasprite& selectedMetasprite = pMetasprites[selection];
+	Metasprite* pMetasprites = Metasprites::GetMetasprite(0);
+	Metasprite& selectedMetasprite = pMetasprites[selection];
 
 	static ImVector<s32> spriteSelection;
 	static bool selectionLocked = false;
@@ -913,10 +858,10 @@ static void DrawSpriteWindow() {
 		if (ImGui::BeginMenu("File"))
 		{
 			if (ImGui::MenuItem("Save")) {
-				Metasprite::SaveMetasprites("assets/meta.spr");
+				Metasprites::Save("assets/meta.spr");
 			}
 			if (ImGui::MenuItem("Revert changes")) {
-				Metasprite::LoadMetasprites("assets/meta.spr");
+				Metasprites::Load("assets/meta.spr");
 				spriteSelection.clear();
 			}
 			ImGui::EndMenu();
@@ -937,14 +882,15 @@ static void DrawSpriteWindow() {
 
 	ImGui::BeginChild("Metasprite editor");
 
-	ImGui::SeparatorText(selectedMetasprite.name);
-	ImGui::InputText("Name", selectedMetasprite.name, Metasprite::metaspriteMaxNameLength);
+	char* name = Metasprites::GetName(selection);
+	ImGui::SeparatorText(name);
+	ImGui::InputText("Name", name, METASPRITE_MAX_NAME_LENGTH);
 
 	ImGui::Separator();
 
 	constexpr r32 previewSize = 256;
 	ImGui::BeginChild("Metasprite preview", ImVec2(previewSize, previewSize));
-	DrawMetaspritePreview(selectedMetasprite, spriteSelection, selectionLocked, showColliderPreview, previewSize);
+	DrawMetaspritePreview(selectedMetasprite, spriteSelection, selectionLocked, previewSize);
 	ImGui::EndChild();
 
 	ImGui::Separator();
@@ -965,7 +911,7 @@ static void DrawSpriteWindow() {
 			// Would be nice to have a tooltip here but it didn't work :c
 
 			if (metaspriteIndex != selection) {
-				Metasprite::Metasprite sourceMetasprite = pMetasprites[metaspriteIndex];
+				Metasprite sourceMetasprite = pMetasprites[metaspriteIndex];
 				selectedMetasprite = sourceMetasprite;
 			}
 		}
@@ -1047,35 +993,55 @@ static void DrawTilesetWindow() {
 #pragma endregion
 
 #pragma region Level editor
-static void DrawActor(const ImVec2 contentTopLeft, const ImVec2 contentBtmRight, const ImVec2 actorTopLeft, const r32 metatileDrawSize, const u32 type, const u8 opacity) {
-	if (type == Level::ACTOR_NONE) {
-		return;
-	}
-
-	const char* label = ACTOR_TYPE_NAMES[type];
-	const ImVec2 textSize = ImGui::CalcTextSize(label);
-	const ImVec2 textPos = ImVec2(actorTopLeft.x + metatileDrawSize / 2 - textSize.x / 2, actorTopLeft.y + metatileDrawSize / 2 - textSize.y / 2);
-
-	// Manual clipping
-	const ImVec2 clippedActorTopLeft = ImVec2(
-		std::max(actorTopLeft.x, contentTopLeft.x),
-		std::max(actorTopLeft.y, contentTopLeft.y)
-	);
-	const ImVec2 clippedActorBtmRight = ImVec2(
-		std::min(actorTopLeft.x + metatileDrawSize, contentBtmRight.x),
-		std::min(actorTopLeft.y + metatileDrawSize, contentBtmRight.y)
-	);
-
+static void DrawScreenBorders(u32 index, ImVec2 pMin, ImVec2 pMax, r32 renderScale) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	
+	static char screenLabelText[16];
+	snprintf(screenLabelText, 16, "%#04x", index);
 
-	drawList->AddRectFilled(clippedActorTopLeft, clippedActorBtmRight, IM_COL32(0, 255, 255, opacity));
-	//drawList->PushClipRect(clippedActorTopLeft, clippedActorBtmRight);
-	drawList->AddText(textPos, IM_COL32(255, 255, 255, opacity), label);
-	//drawList->PopClipRect();
+	drawList->AddRect(pMin, pMax, IM_COL32(255, 255, 255, 255));
+
+	const ImVec2 textPos = ImVec2(pMin.x + TILE_DIM_PIXELS * renderScale, pMin.y + TILE_DIM_PIXELS * renderScale);
+	drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), screenLabelText);
 }
 
-static void DrawGameViewOverlay(const Level::Level* pLevel, const Viewport* pViewport, const ImVec2 topLeft, const ImVec2 btmRight, const r32 tileDrawSize, u8 opacity) {
+static void DrawScreenCollisionCells(ImVec2 pMin, ImVec2 pMax, ImVec2 viewportDrawSize) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+	for (s32 y = 0; y < 4; y++) {
+		r32 yPos = pMin.y + (viewportDrawSize.y / 4) * y;
+		for (s32 x = 0; x < 4; x++) {
+			r32 xPos = pMin.x + (viewportDrawSize.x / 4) * x;
+
+			ImVec2 pMin2 = ImVec2(xPos, yPos);
+			ImVec2 pMax2 = ImVec2(pMin2.x + viewportDrawSize.x / 4, pMin2.y + viewportDrawSize.y / 4);
+
+			drawList->AddRectFilled(pMin2, pMax2, IM_COL32(255, 0, 0, 63));
+			drawList->AddRect(pMin2, pMax2, IM_COL32(255, 255, 255, 63));
+		}
+	}
+}
+
+static void DrawActorColliders(const Viewport* pViewport, const ImVec2 topLeft, const r32 renderScale) {
+	const Pool<Actor>* actors = Game::GetActors();
+
+	const Vec2 viewportPixelPos = { pViewport->x * METATILE_DIM_PIXELS, pViewport->y * METATILE_DIM_PIXELS };
+	for (u32 i = 0; i < actors->Count(); i++)
+	{
+		PoolHandle<Actor> handle = actors->GetHandle(i);
+		const Actor* pActor = actors->Get(handle);
+
+		const Vec2 actorPixelPos = pActor->position * METATILE_DIM_PIXELS;
+		const Vec2 pixelOffset = actorPixelPos - viewportPixelPos;
+		const ImVec2 drawPos = ImVec2(topLeft.x + pixelOffset.x * renderScale, topLeft.y + pixelOffset.y * renderScale);
+
+		DrawHitbox(&pActor->pPreset->hitbox, drawPos, renderScale);
+	}
+}
+
+static void DrawGameViewOverlay(const Level::Level* pLevel, const Viewport* pViewport, const ImVec2 topLeft, const ImVec2 btmRight, const r32 renderScale, bool drawBorders, bool drawCollisionCells, bool drawHitboxes) {
+	const Vec2 viewportPixelPos = { pViewport->x * METATILE_DIM_PIXELS, pViewport->y * METATILE_DIM_PIXELS };
+	const ImVec2 viewportDrawSize = ImVec2(VIEWPORT_WIDTH_PIXELS * renderScale, VIEWPORT_HEIGHT_PIXELS * renderScale);
 
 	const s32 screenStartX = pViewport->x / VIEWPORT_WIDTH_METATILES;
 	const s32 screenStartY = pViewport->y / VIEWPORT_HEIGHT_METATILES;
@@ -1087,42 +1053,28 @@ static void DrawGameViewOverlay(const Level::Level* pLevel, const Viewport* pVie
 
 	for (s32 y = screenStartY; y <= screenEndY; y++) {
 		for (s32 x = screenStartX; x <= screenEndX; x++) {
-			const Vec2 screenPos = { x * VIEWPORT_WIDTH_METATILES, y * VIEWPORT_HEIGHT_METATILES };
-			const Vec2 screenViewportCoords = { (screenPos.x - pViewport->x) * tileDrawSize, (screenPos.y - pViewport->y) * tileDrawSize };
+			const Vec2 screenPixelPos = { x * VIEWPORT_WIDTH_PIXELS, y * VIEWPORT_HEIGHT_PIXELS };
+			const ImVec2 pMin = ImVec2((screenPixelPos.x - viewportPixelPos.x) * renderScale + topLeft.x, (screenPixelPos.y - viewportPixelPos.y) * renderScale + topLeft.y);
+			const ImVec2 pMax = ImVec2(pMin.x + viewportDrawSize.x, pMin.y + viewportDrawSize.y);
 
 			const s32 i = x + y * pTilemap->width;
-			const Screen& screen = pTilemap->pScreens[i];
 
-			static char screenLabelText[16];
-			snprintf(screenLabelText, 16, "%#04x", i);
+			if (drawBorders) {
+				DrawScreenBorders(i, pMin, pMax, renderScale);
+			}
 
-			const ImVec2 lineStart = ImVec2(topLeft.x + screenViewportCoords.x, topLeft.y + screenViewportCoords.y);
-			drawList->AddLine(lineStart, ImVec2(btmRight.x, topLeft.y + screenViewportCoords.y), IM_COL32(255, 255, 255, 255), 1.0f);
-			drawList->AddLine(lineStart, ImVec2(topLeft.x + screenViewportCoords.x, btmRight.y), IM_COL32(255, 255, 255, 255), 1.0f);
+			if (drawCollisionCells) {
+				DrawScreenCollisionCells(pMin, pMax, viewportDrawSize);
+			}
 
-			const ImVec2 textPos = ImVec2(topLeft.x + screenViewportCoords.x + tileDrawSize, topLeft.y + screenViewportCoords.y + tileDrawSize);
-			drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), screenLabelText);
-
-			/*for (u32 y = 0; y < VIEWPORT_HEIGHT_METATILES; y++) {
-				for (u32 x = 0; x < VIEWPORT_WIDTH_METATILES; x++) {
-					ImVec2 actorTopLeft = ImVec2(topLeft.x + screenViewportCoords.x + x * metatileDrawSize, topLeft.y + screenViewportCoords.y + y * metatileDrawSize);
-					ImVec2 actorBtmRight = ImVec2(actorTopLeft.x + metatileDrawSize, actorTopLeft.y + metatileDrawSize);
-
-					if (actorBtmRight.x < topLeft.x || actorBtmRight.y < topLeft.y || actorTopLeft.x >= btmRight.x || actorTopLeft.y >= btmRight.y) {
-						continue;
-					}
-
-					const u32 tileIndex = x + VIEWPORT_WIDTH_METATILES * y;
-					const Level::ActorType type = screen.tiles[tileIndex].actorType;
-
-					DrawActor(topLeft, btmRight, actorTopLeft, metatileDrawSize, type, opacity);
-				}
-			}*/
+			if (drawHitboxes) {
+				DrawActorColliders(pViewport, topLeft, renderScale);
+			}
 		}
 	}
 }
 
-static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode, LevelClipboard& clipboard, u32 selectedActorType, u32& selectedLevel) {
+static void DrawGameView(Level::Level* pLevel, bool editing, u32 editMode, LevelClipboard& clipboard, u32 selectedActorPreset, u32& selectedLevel) {
 	Viewport* pViewport = Game::GetViewport();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
 
@@ -1134,8 +1086,28 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 	const r32 renderScale = contentWidth / VIEWPORT_WIDTH_PIXELS;
 	ImVec2 btmRight = ImVec2(topLeft.x + contentWidth, topLeft.y + contentHeight);
 
+	ImGuiIO& io = ImGui::GetIO();
+	const r32 tileDrawSize = METATILE_DIM_PIXELS * renderScale;
+	const ImVec2 mousePosInViewportCoords = ImVec2((io.MousePos.x - topLeft.x) / tileDrawSize, (io.MousePos.y - topLeft.y) / tileDrawSize);
+	const ImVec2 mousePosInWorldCoords = ImVec2(mousePosInViewportCoords.x + pViewport->x, mousePosInViewportCoords.y + pViewport->y);
+
 	// Invisible button to prevent dragging window
 	ImGui::InvisibleButton("##canvas", ImVec2(contentWidth, contentHeight), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
+
+	// Context menu handling
+	if (editing && editMode == EDIT_MODE_ACTORS) {
+		if (ImGui::BeginPopupContextItem("actor_popup"))
+		{
+			if (ImGui::Selectable("Add actor")) {
+				PoolHandle<Actor> handle = pLevel->actors.Add();
+				Actor* pActor = pLevel->actors.Get(handle);
+				pActor->pPreset = Actors::GetPreset(selectedActorPreset);
+
+				pActor->position = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
+			}
+			ImGui::EndPopup();
+		}
+	}
 
 	const bool hovered = ImGui::IsItemHovered(); // Hovered
 	const bool active = ImGui::IsItemActive();   // Held
@@ -1144,20 +1116,37 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 
 	drawList->AddImage(pContext->gameViewTexture, topLeft, btmRight);
 
+	static bool drawCollisionCells = false;
+	static bool drawHitboxes = false;
+
+	DrawGameViewOverlay(pLevel, pViewport, topLeft, btmRight, renderScale, editing, drawCollisionCells, drawHitboxes);
+
 	if (editing) {
-		ImGuiIO& io = ImGui::GetIO();
+		// Draw actors
+		const Vec2 viewportPixelPos = { pViewport->x * METATILE_DIM_PIXELS, pViewport->y * METATILE_DIM_PIXELS };
+		for (u32 i = 0; i < pLevel->actors.Count(); i++)
+		{
+			PoolHandle<Actor> handle = pLevel->actors.GetHandle(i);
+			const Actor* pActor = pLevel->actors.Get(handle);
+
+			const Vec2 actorPixelPos = pActor->position * METATILE_DIM_PIXELS;
+			const Vec2 pixelOffset = actorPixelPos - viewportPixelPos;
+			const ImVec2 drawPos = ImVec2(topLeft.x + pixelOffset.x * renderScale, topLeft.y + pixelOffset.y * renderScale);
+
+			DrawMetasprite(pActor->pPreset->pMetasprite, drawPos, renderScale, IM_COL32(255, 255, 255, 80));
+		}
 
 		// View scrolling
 		static ImVec2 dragStartPos = ImVec2(0, 0);
 		static ImVec2 dragDelta = ImVec2(0, 0);
 		bool scrolling = false;
 
-		if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+		if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
 			dragStartPos = io.MousePos;
 		}
 
-		if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
-			const ImVec2 newDelta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
+		if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+			const ImVec2 newDelta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Middle);
 			const r32 dx = -(newDelta.x - dragDelta.x) / renderScale / METATILE_DIM_PIXELS;
 			const r32 dy = -(newDelta.y - dragDelta.y) / renderScale / METATILE_DIM_PIXELS;
 			dragDelta = newDelta;
@@ -1167,17 +1156,12 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 		}
 
 		// Reset drag delta when mouse released
-		if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
+		if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
 			dragDelta = ImVec2(0, 0);
 		}
 
-		const r32 tileDrawSize = METATILE_DIM_PIXELS * renderScale;
-		DrawGameViewOverlay(pLevel, pViewport, topLeft, btmRight, tileDrawSize, editMode == EDIT_MODE_ACTORS ? 127 : 15);
-
 		// If mouse over
 		if (hovered) {
-			const ImVec2 mousePosInViewportCoords = ImVec2((io.MousePos.x - topLeft.x) / tileDrawSize, (io.MousePos.y - topLeft.y) / tileDrawSize);
-			const ImVec2 mousePosInWorldCoords = ImVec2(mousePosInViewportCoords.x + pViewport->x, mousePosInViewportCoords.y + pViewport->y);
 			const ImVec2 hoveredTileWorldPos = ImVec2(floorf(mousePosInWorldCoords.x), floorf(mousePosInWorldCoords.y));
 
 			switch (editMode) {
@@ -1201,6 +1185,7 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 					}
 				}
 				break;*/
+				break;
 			}
 			case EDIT_MODE_TILES:
 			{
@@ -1213,14 +1198,14 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 					static ImVec2 selectionTopLeft;
 					static ImVec2 selectionBtmRight;
 
-					if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
+					if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
 						selectionStartPos = hoveredTileWorldPos;
 						selectionTopLeft = hoveredTileWorldPos;
 						selectionBtmRight = ImVec2(hoveredTileWorldPos.x + 1, hoveredTileWorldPos.y + 1);
 						selecting = true;
 					}
 
-					if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+					if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
 						selectionTopLeft = ImVec2(std::min(selectionStartPos.x, hoveredTileWorldPos.x), std::min(selectionStartPos.y, hoveredTileWorldPos.y));
 						selectionBtmRight = ImVec2(std::max(selectionStartPos.x, hoveredTileWorldPos.x) + 1, std::max(selectionStartPos.y, hoveredTileWorldPos.y) + 1);
 
@@ -1230,7 +1215,7 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 						drawList->AddRectFilled(selectionTopLeftInPixelCoords, selectionBtmRightInPixelCoords, IM_COL32(255, 255, 255, 63));
 					}
 
-					if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
+					if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
 						selecting = false;
 						u32 selectionWidth = (selectionBtmRight.x - selectionTopLeft.x);
 						u32 selectionHeight = (selectionBtmRight.y - selectionTopLeft.y);
@@ -1295,14 +1280,18 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 
 	ImGui::BeginDisabled(pLevel == nullptr);
 	if (ImGui::Button(editing ? "Play mode" : "Edit mode")) {
-		Game::ReloadLevel();
-		Game::SetPaused(!editing);
-
 		if (!editing) {
 			// This is a little bit cursed
 			u32 loadedLevelIndex = pLevel - Level::GetLevelsPtr();
 			selectedLevel = loadedLevelIndex;
+
+			Game::UnloadLevel();
 		}
+		else {
+			Game::ReloadLevel();
+		}
+
+		Game::SetPaused(!editing);
 	}
 	ImGui::EndDisabled();
 	if (editing) {
@@ -1314,9 +1303,13 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 
 	ImGui::Text("Currently loaded level: %s", pLevel->name);
 	ImGui::Text("Viewport pos = (%f, %f)", pViewport->x, pViewport->y);
+
+	ImGui::SeparatorText("Debug");
+	ImGui::Checkbox("Draw collision cells", &drawCollisionCells);
+	ImGui::Checkbox("Draw actor hitboxes", &drawHitboxes);
 }
 
-static void DrawLevelTools(u32& selectedLevel, u32& editMode, LevelToolsState& state, LevelClipboard& clipboard, u32& selectedActorType) {
+static void DrawLevelTools(u32& selectedLevel, u32& editMode, LevelToolsState& state, LevelClipboard& clipboard, u32& selectedActorPreset) {
 	const ImGuiTabBarFlags tabBarFlags = ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_AutoSelectNewTabs;
 	
 	Level::Level* pLevels = Level::GetLevelsPtr();
@@ -1424,15 +1417,15 @@ static void DrawLevelTools(u32& selectedLevel, u32& editMode, LevelToolsState& s
 
 		if (state.actorsOpen && ImGui::BeginTabItem("Actors", &state.actorsOpen)) {
 			editMode = EDIT_MODE_ACTORS;
-			if (ImGui::BeginCombo("Actor type", ACTOR_TYPE_NAMES[selectedActorType])) {
-				for (u32 i = 0; i < ACTOR_TYPE_COUNT; i++) {
+			if (ImGui::BeginCombo("Actor preset", Actors::GetPresetName(selectedActorPreset))) {
+				for (u32 i = 0; i < MAX_ACTOR_PRESET_COUNT; i++) {
 					ImGui::PushID(i);
 
-					const bool selected = selectedActorType == i;
+					const bool selected = selectedActorPreset == i;
 
-					const char* actorTypeName = ACTOR_TYPE_NAMES[i];
-					if (ImGui::Selectable(actorTypeName, selectedActorType == i)) {
-						selectedActorType = (Level::ActorType)i;
+					const char* presetName = Actors::GetPresetName(i);
+					if (ImGui::Selectable(presetName, selectedActorPreset == i)) {
+						selectedActorPreset = i;
 					}
 
 					if (selected) {
@@ -1457,7 +1450,7 @@ static void DrawGameWindow() {
 	Viewport* pViewport = Game::GetViewport();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
 
-	static u32 selectedActorType = Level::ACTOR_NONE;
+	static u32 selectedActorPreset = 0;
 	static u32 selectedLevel = 0;
 
 	static u32 editMode = EDIT_MODE_NONE;
@@ -1553,27 +1546,10 @@ static void DrawGameWindow() {
 					const bool canMove = CanMoveElements(Level::maxLevelCount, vec, step);
 
 					if (canMove) {
-						MoveElements<Level::Level>(pLevels, vec, step);
+						MoveElements<Level::Level>(pLevels, vec, step, SwapLevels);
 
 						Game::ReloadLevel();
 						selectedLevel = editing ? (pCurrentLevel - pLevels) : vec[0];
-					}
-				}
-				ImGui::EndDragDropTarget();
-			}
-
-			if (ImGui::BeginDragDropTarget())
-			{
-				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("swap_levels"))
-				{
-					int sourceIndex = *(const u32*)payload->Data;
-
-					// This may later be allowed, when level loading is handled differently
-					const bool canSwap = !isCurrent && (pCurrentLevel != pLevels + sourceIndex);
-
-					if (canSwap) {
-						Level::SwapLevels(sourceIndex, i);
-						selectedLevel = i;
 					}
 				}
 				ImGui::EndDragDropTarget();
@@ -1601,7 +1577,7 @@ static void DrawGameWindow() {
 
 	ImGui::BeginChild("Game view", ImVec2(gameViewWidth, 0));
 	ImGui::NewLine();
-	DrawGameView(pCurrentLevel, editing, editMode, clipboard, selectedActorType, selectedLevel);
+	DrawGameView(pCurrentLevel, editing, editMode, clipboard, selectedActorPreset, selectedLevel);
 	ImGui::EndChild();
 
 	ImGui::SameLine();
@@ -1610,9 +1586,209 @@ static void DrawGameWindow() {
 	editMode = EDIT_MODE_NONE;
 	if (showToolsWindow) {
 		ImGui::BeginChild("Level tools", ImVec2(toolWindowWidth,0));
-		DrawLevelTools(selectedLevel, editMode, toolsState, clipboard, selectedActorType);
+		DrawLevelTools(selectedLevel, editMode, toolsState, clipboard, selectedActorPreset);
 		ImGui::EndChild();
 	}
+
+	ImGui::End();
+}
+#pragma endregion
+
+#pragma region Actor presets
+static void DrawActorPresetList(s32& selection) {
+	static constexpr u32 maxLabelNameLength = ACTOR_MAX_NAME_LENGTH + 8;
+	char label[maxLabelNameLength];
+
+	ActorPreset* pPresets = Actors::GetPreset(0);
+	for (u32 i = 0; i < MAX_ACTOR_PRESET_COUNT; i++)
+	{
+		const char* name = Actors::GetPresetName(i);
+		ImGui::PushID(i);
+
+		snprintf(label, maxLabelNameLength, "0x%02x: %s", i, name);
+
+		const bool selected = selection == i;
+		if (ImGui::Selectable(label, selected)) {
+			selection = i;
+		}
+
+		if (selected) {
+			ImGui::SetItemDefaultFocus();
+		}
+
+		/*if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+		{
+			ImGui::SetDragDropPayload("dd_actors", &i, sizeof(u32));
+			ImGui::Text("%s", name);
+
+			ImGui::EndDragDropSource();
+		}
+		if (ImGui::BeginDragDropTarget())
+		{
+			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dd_metasprites"))
+			{
+				int sourceIndex = *(const u32*)payload->Data;
+
+				s32 step = i - sourceIndex;
+
+				ImVector<s32> vec;
+				vec.push_back(sourceIndex);
+
+				const bool canMove = CanMoveElements(MAX_METASPRITE_COUNT, vec, step);
+
+				if (canMove) {
+					MoveElements<Metasprite>(pMetasprites, vec, step);
+					selection = vec[0];
+				}
+			}
+			ImGui::EndDragDropTarget();
+		}*/
+		ImGui::PopID();
+	}
+}
+
+static void DrawActorWindow() {
+	ImGui::Begin("Actor presets", &pContext->actorWindowOpen, ImGuiWindowFlags_MenuBar);
+
+	static s32 selection;
+	static bool showHitboxPreview = false;
+
+	if (ImGui::BeginMenuBar())
+	{
+		if (ImGui::BeginMenu("File"))
+		{
+			if (ImGui::MenuItem("Save")) {
+				Actors::SavePresets("assets/actors.pfb");
+			}
+			if (ImGui::MenuItem("Revert changes")) {
+				Actors::LoadPresets("assets/actors.pfb");
+			}
+			ImGui::EndMenu();
+		}
+		ImGui::EndMenuBar();
+	}
+
+	ImGui::BeginChild("Preset list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
+	DrawActorPresetList(selection);
+	ImGui::EndChild();
+
+	ImGui::SameLine();
+	ImGui::BeginChild("Preset editor");
+	{
+		ActorPreset* preset = Actors::GetPreset(selection);
+		char* name = Actors::GetPresetName(selection);
+		ImGui::SeparatorText(name);
+
+		ImGui::InputText("Name", name, ACTOR_MAX_NAME_LENGTH);
+
+		ImGui::Separator();
+
+		constexpr r32 previewSize = 256;
+		ImGui::BeginChild("Actor preview", ImVec2(previewSize, previewSize));
+
+		ImVec2 metaspriteGridPos = DrawMetaspriteGrid(preset->pMetasprite, previewSize);
+
+		if (showHitboxPreview) {
+			Hitbox& hitbox = preset->hitbox;
+
+			const r32 gridSizeTiles = 8;
+			const r32 renderScale = previewSize / (gridSizeTiles * TILE_DIM_PIXELS);
+
+			ImVec2 origin = ImVec2(metaspriteGridPos.x + previewSize / 2, metaspriteGridPos.y + previewSize / 2);
+
+			DrawHitbox(&hitbox, origin, renderScale);
+		}
+		ImGui::EndChild();
+
+		if (ImGui::BeginTabBar("Actor editor tabs")) {
+			if (ImGui::BeginTabItem("Common")) {
+				if (ImGui::BeginCombo("Type", ACTOR_TYPE_NAMES[(int)preset->type])) {
+					for (u32 i = 0; i < ACTOR_TYPE_COUNT; i++) {
+						ImGui::PushID(i);
+
+						const bool selected = preset->type == i;
+						if (ImGui::Selectable(ACTOR_TYPE_NAMES[i], selected)) {
+							preset->type = i;
+						}
+
+						if (selected) {
+							ImGui::SetItemDefaultFocus();
+						}
+						ImGui::PopID();
+					}
+					ImGui::EndCombo();
+				}
+
+				if (ImGui::BeginCombo("Behaviour", ACTOR_BEHAVIOUR_NAMES[(int)preset->behaviour])) {
+					for (u32 i = 0; i < ACTOR_BEHAVIOUR_COUNT; i++) {
+						ImGui::PushID(i);
+
+						const bool selected = preset->behaviour == i;
+						if (ImGui::Selectable(ACTOR_BEHAVIOUR_NAMES[i], selected)) {
+							preset->behaviour = i;
+						}
+
+						if (selected) {
+							ImGui::SetItemDefaultFocus();
+						}
+						ImGui::PopID();
+					}
+					ImGui::EndCombo();
+				}
+				ImGui::EndTabItem();
+			}
+
+			if (ImGui::BeginTabItem("Sprites")) {
+				s32 presetMetaspriteIndex = Metasprites::GetIndex(preset->pMetasprite);
+				if (ImGui::BeginCombo("Behaviour", Metasprites::GetName(presetMetaspriteIndex))) {
+					for (u32 i = 0; i < MAX_METASPRITE_COUNT; i++) {
+						ImGui::PushID(i);
+
+						const bool selected = presetMetaspriteIndex == i;
+						if (ImGui::Selectable(Metasprites::GetName(i), selected)) {
+							preset->pMetasprite = Metasprites::GetMetasprite(i);
+						}
+
+						if (selected) {
+							ImGui::SetItemDefaultFocus();
+						}
+						ImGui::PopID();
+					}
+					ImGui::EndCombo();
+				}
+				ImGui::EndTabItem();
+			}
+
+			if (ImGui::BeginTabItem("Collision")) {
+				ImGui::Checkbox("Show hitbox preview", &showHitboxPreview);
+
+				ImGui::BeginChild("Collider editor");
+				{
+					ImGui::SeparatorText("Hitbox editor");
+
+					Hitbox& hitbox = preset->hitbox;
+					ImGui::InputFloat2("Offset", (r32*)&hitbox.offset);
+
+					r32 width = hitbox.dimensions.x;
+					if (ImGui::InputFloat("Width", &width, 0.125f, 0.0625f)) {
+						hitbox.dimensions.x = std::max(0.0f, width);
+					}
+
+					r32 height = hitbox.dimensions.y;
+					if (ImGui::InputFloat("Height", &height, 0.125f, 0.0625f)) {
+						hitbox.dimensions.y = std::max(0.0f, height);
+					}
+
+				}
+				ImGui::EndChild();
+
+				ImGui::EndTabItem();
+			}
+			ImGui::EndTabBar();
+		}
+
+	}
+	ImGui::EndChild();
 
 	ImGui::End();
 }
@@ -1634,6 +1810,9 @@ static void DrawMainMenu() {
 			}
 			if (ImGui::MenuItem("Level editor")) {
 				pContext->gameWindowOpen = true;
+			}
+			if (ImGui::MenuItem("Actor presets")) {
+				pContext->actorWindowOpen = true;
 			}
 			ImGui::Separator();
 			if (ImGui::MenuItem("ImGui Demo")) {
@@ -1706,6 +1885,10 @@ void Editor::Render() {
 
 	if (pContext->gameWindowOpen) {
 		DrawGameWindow();
+	}
+
+	if (pContext->actorWindowOpen) {
+		DrawActorWindow();
 	}
 
 	ImGui::Render();

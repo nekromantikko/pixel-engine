@@ -34,7 +34,8 @@ set(SOURCES
 		src/rendering_vulkan.cpp
 		src/system.cpp
 		src/viewport.cpp
-		src/tiles.cpp)
+		src/tiles.cpp
+		src/actors.cpp)
 
 set(EDITOR_SOURCES
 		src/editor.cpp)
@@ -53,7 +54,8 @@ set(HEADERS
 		src/vector.h
 		src/viewport.h
 		src/collision.h
-		src/tiles.h)
+		src/tiles.h
+		src/actors.h)
 
 set(EDITOR_HEADERS
 		src/editor.h)

@@ -115,4 +115,16 @@ namespace Collision {
 			yTile += (s32)Sign(dy);
 		}
 	}
+
+	bool BoxesOverlap(const Hitbox& a, const Hitbox& b, const Vec2& aPos, const Vec2& bPos) {
+		const Vec2 aTopLeft = aPos + a.offset - a.dimensions / 2.0f;
+		const Vec2 aBtmRight = aPos + a.offset + a.dimensions / 2.0f;
+		const Vec2 bTopLeft = bPos + b.offset - b.dimensions / 2.0f;
+		const Vec2 bBtmRight = bPos + b.offset + b.dimensions / 2.0f;
+
+		return (aTopLeft.x < bBtmRight.x &&
+			aBtmRight.x > bTopLeft.x &&
+			aTopLeft.y < bBtmRight.y &&
+			aBtmRight.y > bTopLeft.y);
+	}
 }
