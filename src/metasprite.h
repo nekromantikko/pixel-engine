@@ -2,26 +2,23 @@
 #include "rendering.h"
 #include "collision.h"
 
-namespace Metasprite {
-	
-	constexpr u32 maxMetaspriteCount = 256;
-	constexpr u32 metaspriteMaxNameLength = 256;
-	constexpr u32 metaspriteMaxSpriteCount = 64;
-	constexpr u32 metaspriteMaxColliderCount = 8;
+constexpr u32 MAX_METASPRITE_COUNT = 256;
+constexpr u32 METASPRITE_MAX_NAME_LENGTH = 256;
+constexpr u32 METASPRITE_MAX_SPRITE_COUNT = 64;
 
-	struct Metasprite {
-		char *name;
-		u32 spriteCount;
-		Sprite* spritesRelativePos;
-		u32 colliderCount;
-		Collision::Collider* colliders;
-	};
+struct Metasprite {
+	u32 spriteCount;
+	Sprite* spritesRelativePos;
+};
 
-	Metasprite* GetMetaspritesPtr();
+namespace Metasprites {
+	Metasprite* GetMetasprite(s32 index);
+	char* GetName(s32 index);
+	s32 GetIndex(const Metasprite* pMetasprite);
 
 	// Generates empty data
-	void InitializeMetasprites();
+	void Clear();
 
-	void LoadMetasprites(const char* fname);
-	void SaveMetasprites(const char* fname);
+	void Load(const char* fname);
+	void Save(const char* fname);
 }

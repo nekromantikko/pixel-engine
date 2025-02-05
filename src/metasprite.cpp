@@ -2,80 +2,76 @@
 #include "system.h"
 #include <stdio.h>
 
-namespace Metasprite {
+static Metasprite metasprites[MAX_METASPRITE_COUNT];
+static char nameMemory[MAX_METASPRITE_COUNT * METASPRITE_MAX_NAME_LENGTH];
+static Sprite spriteMemory[MAX_METASPRITE_COUNT * METASPRITE_MAX_SPRITE_COUNT];
 
-	Metasprite metasprites[maxMetaspriteCount];
-	char nameMemory[maxMetaspriteCount * metaspriteMaxNameLength];
-	Sprite spriteMemory[maxMetaspriteCount * metaspriteMaxSpriteCount];
-	Collision::Collider colliderMemory[maxMetaspriteCount * metaspriteMaxColliderCount];
+Metasprite* Metasprites::GetMetasprite(s32 index) {
+	return &metasprites[index];
+}
 
-	Metasprite* GetMetaspritesPtr() {
-		return metasprites;
+char* Metasprites::GetName(s32 index) {
+	return &nameMemory[index * METASPRITE_MAX_NAME_LENGTH];
+}
+
+s32 Metasprites::GetIndex(const Metasprite* pMetasprite) {
+	s32 index = pMetasprite - metasprites;
+	if (index < 0 || index >= MAX_METASPRITE_COUNT) {
+		return -1;
 	}
 
-	void InitializeMetasprites() {
-		for (u32 i = 0; i < maxMetaspriteCount; i++) {
-			metasprites[i].name = &nameMemory[i * metaspriteMaxNameLength];
-			nameMemory[i * metaspriteMaxNameLength] = 0;
+	return index;
+}
 
-			metasprites[i].spritesRelativePos = &spriteMemory[i * metaspriteMaxSpriteCount];
-			spriteMemory[i * metaspriteMaxSpriteCount] = Sprite{};
+void Metasprites::Clear() {
+	for (u32 i = 0; i < MAX_METASPRITE_COUNT; i++) {
+		nameMemory[i * METASPRITE_MAX_NAME_LENGTH] = 0;
 
-			metasprites[i].colliders = &colliderMemory[i * metaspriteMaxColliderCount];
-			colliderMemory[i * metaspriteMaxColliderCount] = Collision::Collider{};
-		}
+		metasprites[i].spritesRelativePos = &spriteMemory[i * METASPRITE_MAX_SPRITE_COUNT];
+		spriteMemory[i * METASPRITE_MAX_SPRITE_COUNT] = Sprite{};
+	}
+}
+
+void Metasprites::Load(const char* fname) {
+	FILE* pFile;
+	fopen_s(&pFile, fname, "rb");
+
+	if (pFile == NULL) {
+		DEBUG_ERROR("Failed to load metasprite file\n");
 	}
 
-	void LoadMetasprites(const char* fname) {
-		FILE* pFile;
-		fopen_s(&pFile, fname, "rb");
+	const char signature[4]{};
+	fread((void*)signature, sizeof(u8), 4, pFile);
 
-		if (pFile == NULL) {
-			DEBUG_ERROR("Failed to load metasprite file\n");
-		}
+	for (u32 i = 0; i < MAX_METASPRITE_COUNT; i++) {
+		fread(&metasprites[i].spriteCount, sizeof(u32), 1, pFile);
 
-		const char signature[4]{};
-		fread((void*)signature, sizeof(u8), 4, pFile);
+		metasprites[i].spritesRelativePos = &spriteMemory[i * METASPRITE_MAX_SPRITE_COUNT];
+	}
+
+	fread(nameMemory, METASPRITE_MAX_NAME_LENGTH, MAX_METASPRITE_COUNT, pFile);
+	fread(spriteMemory, sizeof(Sprite), METASPRITE_MAX_SPRITE_COUNT * MAX_METASPRITE_COUNT, pFile);
+
+	fclose(pFile);
+}
+
+void Metasprites::Save(const char* fname) {
+	FILE* pFile;
+	fopen_s(&pFile, fname, "wb");
+
+	if (pFile == NULL) {
+		DEBUG_ERROR("Failed to write metasprite file\n");
+	}
+
+	const char signature[4] = "SPR";
+	fwrite(signature, sizeof(u8), 4, pFile);
 		
-		for (u32 i = 0; i < maxMetaspriteCount; i++) {
-			fread(&metasprites[i].spriteCount, sizeof(u32), 1, pFile);
-			fread(&metasprites[i].colliderCount, sizeof(u32), 1, pFile);
-		}
-
-		fread(nameMemory, metaspriteMaxNameLength, maxMetaspriteCount, pFile);
-		fread(spriteMemory, metaspriteMaxSpriteCount, maxMetaspriteCount, pFile);
-		fread(colliderMemory, metaspriteMaxColliderCount, maxMetaspriteCount, pFile);
-
-		fclose(pFile);
-
-		// Init references
-		for (u32 i = 0; i < maxMetaspriteCount; i++) {
-			metasprites[i].name = &nameMemory[i * metaspriteMaxNameLength];
-			metasprites[i].spritesRelativePos = &spriteMemory[i * metaspriteMaxSpriteCount];
-			metasprites[i].colliders = &colliderMemory[i * metaspriteMaxColliderCount];
-		}
+	for (u32 i = 0; i < MAX_METASPRITE_COUNT; i++) {
+		fwrite(&metasprites[i].spriteCount, sizeof(u32), 1, pFile);
 	}
 
-	void SaveMetasprites(const char* fname) {
-		FILE* pFile;
-		fopen_s(&pFile, fname, "wb");
+	fwrite(nameMemory, METASPRITE_MAX_NAME_LENGTH, MAX_METASPRITE_COUNT, pFile);
+	fwrite(spriteMemory, sizeof(Sprite), METASPRITE_MAX_SPRITE_COUNT * MAX_METASPRITE_COUNT, pFile);
 
-		if (pFile == NULL) {
-			DEBUG_ERROR("Failed to write metasprite file\n");
-		}
-
-		const char signature[4] = "SPR";
-		fwrite(signature, sizeof(u8), 4, pFile);
-		
-		for (u32 i = 0; i < maxMetaspriteCount; i++) {
-			fwrite(&metasprites[i].spriteCount, sizeof(u32), 1, pFile);
-			fwrite(&metasprites[i].colliderCount, sizeof(u32), 1, pFile);
-		}
-
-		fwrite(nameMemory, metaspriteMaxNameLength, maxMetaspriteCount, pFile);
-		fwrite(spriteMemory, metaspriteMaxSpriteCount, maxMetaspriteCount, pFile);
-		fwrite(colliderMemory, metaspriteMaxColliderCount, maxMetaspriteCount, pFile);
-
-		fclose(pFile);
-	}
+	fclose(pFile);
 }

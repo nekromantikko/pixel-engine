@@ -125,8 +125,8 @@ public:
 		return handles[index];
 	}
 	void Clear() {
-		for (u32 i = 0; i < count; i++) {
-			THandle handle = GetHandle(i);
+		while (count != 0) {
+			THandle handle = GetHandle(0);
 			Remove(handle);
 		}
 	}
