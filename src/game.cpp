@@ -48,10 +48,9 @@ namespace Game {
     GameState state = StateTitleScreen;
 
     struct LevelTransitionState {
-        // Coordinates in metatiles
-        IVec2 origin;
-        IVec2 windowWorldPos;
-        IVec2 windowSize;
+        Vec2 origin;
+        Vec2 windowWorldPos;
+        Vec2 windowSize;
 
         u32 steps;
         u32 currentStep;
@@ -118,7 +117,7 @@ namespace Game {
     };
 
     PlayerState playerState{};
-    r32 gravity = 70;
+    r32 gravity = 35;
 
     struct Arrow {
         Vec2 pos;
@@ -225,8 +224,8 @@ namespace Game {
         viewport.y = 0;
 
         const Scanline state = {
-            (s32)(viewport.x * TILE_DIM_PIXELS),
-            (s32)(viewport.y * TILE_DIM_PIXELS)
+            (s32)(viewport.x * METATILE_DIM_PIXELS),
+            (s32)(viewport.y * METATILE_DIM_PIXELS)
         };
         for (int i = 0; i < SCANLINE_COUNT; i++) {
             pScanlines[i] = state;
@@ -234,8 +233,8 @@ namespace Game {
 
         // Temporarily set player pos to something sensible
 
-        playerState.x = 12;
-        playerState.y = 12;
+        playerState.x = 6;
+        playerState.y = 6;
 
         /*if (enterScreenIndex < 0 || !SpawnAtFirstDoor(enterScreenIndex)) {
             // Loop thru all screens to find any spawnpoint
@@ -369,8 +368,8 @@ namespace Game {
 
     IVec2 WorldPosToScreenPixels(Vec2 pos) {
         return IVec2{
-            (s32)round((pos.x - viewport.x) * TILE_DIM_PIXELS),
-            (s32)round((pos.y - viewport.y) * TILE_DIM_PIXELS)
+            (s32)round((pos.x - viewport.x) * METATILE_DIM_PIXELS),
+            (s32)round((pos.y - viewport.y) * METATILE_DIM_PIXELS)
         };
     }
 
@@ -548,10 +547,10 @@ namespace Game {
         }
     }
 
-    constexpr Vec2 viewportScrollThreshold = { 8.0f, 6.0f };
+    constexpr Vec2 viewportScrollThreshold = { 4.0f, 3.0f };
 
     static void UpdateViewport(bool loadTiles = true) {
-        Vec2 viewportCenter = Vec2{ viewport.x + VIEWPORT_WIDTH_TILES / 2.0f, viewport.y + VIEWPORT_HEIGHT_TILES / 2.0f };
+        Vec2 viewportCenter = Vec2{ viewport.x + VIEWPORT_WIDTH_METATILES / 2.0f, viewport.y + VIEWPORT_HEIGHT_METATILES / 2.0f };
         Vec2 playerOffset = Vec2{ playerState.x - viewportCenter.x, playerState.y - viewportCenter.y };
 
         Vec2 delta = { 0.0f, 0.0f };
@@ -577,15 +576,13 @@ namespace Game {
 
         static constexpr u32 bufferZoneWidth = 1;
 
-        const IVec2 viewportPosInMetatiles = Tiles::WorldToTilemap({ viewport.x, viewport.y });
         // Window a bit larger than viewport to ensure full coverage
-        const IVec2 transitionWindowPos = viewportPosInMetatiles - IVec2{ bufferZoneWidth, bufferZoneWidth };
-        const IVec2 playerPosInMetatiles = Tiles::WorldToTilemap({ playerState.x, playerState.y });
-        const IVec2 center = playerPosInMetatiles - transitionWindowPos;
+        const Vec2 transitionWindowPos = Vec2{ viewport.x - bufferZoneWidth, viewport.y - bufferZoneWidth };
+        const Vec2 center = Vec2{ playerState.x - transitionWindowPos.x, playerState.y - transitionWindowPos.y };
 
         levelTransitionState.origin = center;
         levelTransitionState.windowWorldPos = transitionWindowPos;
-        const IVec2 transitionWindowSize = IVec2{ VIEWPORT_WIDTH_METATILES + bufferZoneWidth * 2, VIEWPORT_HEIGHT_METATILES + bufferZoneWidth * 2 };
+        const Vec2 transitionWindowSize = Vec2{ VIEWPORT_WIDTH_METATILES + bufferZoneWidth * 2, VIEWPORT_HEIGHT_METATILES + bufferZoneWidth * 2 };
         levelTransitionState.windowSize = transitionWindowSize;
 
         const u32 stepsToTopLeft = center.x + center.y;
@@ -621,8 +618,8 @@ namespace Game {
 
                 // Update scroll
                 const Scanline state = {
-                    (s32)(viewport.x * TILE_DIM_PIXELS),
-                    (s32)(viewport.y * TILE_DIM_PIXELS)
+                    (s32)(viewport.x * METATILE_DIM_PIXELS),
+                    (s32)(viewport.y * METATILE_DIM_PIXELS)
                 };
                 for (int i = 0; i < SCANLINE_COUNT; i++) {
                     pScanlines[i] = state;
@@ -688,11 +685,11 @@ namespace Game {
     void PlayerInput(r32 dt) {
         if (Input::ButtonDown(BUTTON_DPAD_LEFT)) {
             playerState.direction = DirLeft;
-            playerState.hSpeed = -12.5f;
+            playerState.hSpeed = -6.25f;
         }
         else if (Input::ButtonDown(BUTTON_DPAD_RIGHT)) {
             playerState.direction = DirRight;
-            playerState.hSpeed = 12.5f;
+            playerState.hSpeed = 6.25f;
         }
         else {
             playerState.hSpeed = 0;
@@ -712,7 +709,7 @@ namespace Game {
         }
 
         if (Input::ButtonPressed(BUTTON_A) && (!playerState.inAir || !playerState.doubleJumped)) {
-            playerState.vSpeed = -31.25f;
+            playerState.vSpeed = -15.625f;
             if (playerState.inAir) {
                 playerState.doubleJumped = true;
             }
@@ -807,9 +804,9 @@ namespace Game {
             PoolHandle<Arrow> handle = arrowPool.Add();
             Arrow* arrow = arrowPool[handle];
             if (arrow != nullptr) {
-                const Vec2 fwdOffset = Vec2{ 0.75f * playerState.direction, -0.5f };
-                const Vec2 upOffset = Vec2{ 0.375f * playerState.direction, -1.0f };
-                const Vec2 downOffset = Vec2{ 0.5f * playerState.direction, -0.25f };
+                const Vec2 fwdOffset = Vec2{ 0.375f * playerState.direction, -0.25f };
+                const Vec2 upOffset = Vec2{ 0.1875f * playerState.direction, -0.5f };
+                const Vec2 downOffset = Vec2{ 0.25f * playerState.direction, -0.125f };
 
                 arrow->pos = Vec2{ playerState.x, playerState.y };
                 arrow->vel = Vec2{};
@@ -818,11 +815,11 @@ namespace Game {
 
                 if (playerState.aMode == AimFwd) {
                     arrow->pos = arrow->pos + fwdOffset;
-                    arrow->vel.x = 80.0f * playerState.direction;
+                    arrow->vel.x = 40.0f * playerState.direction;
                 }
                 else {
-                    arrow->vel.x = 56.56f * playerState.direction;
-                    arrow->vel.y = (playerState.aMode == AimUp) ? -56.56f : 56.56f;
+                    arrow->vel.x = 28.28f * playerState.direction;
+                    arrow->vel.y = (playerState.aMode == AimUp) ? -28.28f : 28.28f;
                     arrow->pos = arrow->pos + ((playerState.aMode == AimUp) ? upOffset : downOffset);
                 }
 
@@ -909,7 +906,7 @@ namespace Game {
             strcpy((char*)dst, text);
 
             // Draw some sprites spinning around
-            static const r32 radius = 8.0f;
+            static const r32 radius = 4.0f;
             static const u32 spriteCount = 8;
             static r32 rot = 0.0f;
 
@@ -918,7 +915,7 @@ namespace Game {
             const r32 angleOffset = pi * 2 / spriteCount;
             for (u32 i = 0; i < spriteCount; i++) {
                 const r32 angle = rot + angleOffset * i;
-                Vec2 pos = { cos(angle) * radius + VIEWPORT_WIDTH_TILES / 2, sin(angle) * radius + VIEWPORT_HEIGHT_TILES / 2 };
+                Vec2 pos = { cos(angle) * radius + VIEWPORT_WIDTH_METATILES / 2, sin(angle) * radius + VIEWPORT_HEIGHT_METATILES / 2 };
                 IVec2 drawPos = WorldPosToScreenPixels(pos);
 
                 Sprite sprite = {
@@ -963,8 +960,8 @@ namespace Game {
 
             // Update scroll (Time to make this a utility soon....)
             const Scanline state = {
-                (s32)(viewport.x * TILE_DIM_PIXELS),
-                (s32)(viewport.y * TILE_DIM_PIXELS)
+                (s32)(viewport.x * METATILE_DIM_PIXELS),
+                (s32)(viewport.y * METATILE_DIM_PIXELS)
             };
             for (int i = 0; i < SCANLINE_COUNT; i++) {
                 pScanlines[i] = state;
@@ -1040,7 +1037,7 @@ namespace Game {
                             continue;
                         }
                         arrow->pos = hit.location;
-                        arrow->vel.y *= -1.0f;
+                         arrow->vel.y *= -1.0f;
                         arrow->bounces--;
                     } else arrow->pos.y += dy;
 
@@ -1176,8 +1173,8 @@ namespace Game {
 
             // Update scroll
             const Scanline state = {
-                (s32)(viewport.x * TILE_DIM_PIXELS),
-                (s32)(viewport.y * TILE_DIM_PIXELS)
+                (s32)(viewport.x * METATILE_DIM_PIXELS),
+                (s32)(viewport.y * METATILE_DIM_PIXELS)
             };
             for (int i = 0; i < SCANLINE_COUNT; i++) {
                 pScanlines[i] = state;

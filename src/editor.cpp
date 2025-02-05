@@ -507,11 +507,11 @@ static void DrawMetaspritePreview(Metasprite::Metasprite& metasprite, ImVector<s
 
 	// Draw collider visualization
 	if (showColliderPreview) {
+		const r32 colliderDrawScale = METATILE_DIM_PIXELS * renderScale;
 		for (u32 i = 0; i < metasprite.colliderCount; i++) {
-
 			Collision::Collider& collider = metasprite.colliders[i];
 
-			ImVec2 colliderPos = ImVec2(origin.x + gridStepPixels * collider.xOffset, origin.y + gridStepPixels * collider.yOffset);
+			ImVec2 colliderPos = ImVec2(origin.x + colliderDrawScale * collider.xOffset, origin.y + colliderDrawScale * collider.yOffset);
 
 			switch (collider.type) {
 			case Collision::ColliderPoint: {
@@ -520,27 +520,27 @@ static void DrawMetaspritePreview(Metasprite::Metasprite& metasprite, ImVector<s
 				break;
 			}
 			case Collision::ColliderCircle: {
-				drawList->AddCircleFilled(colliderPos, collider.width / 2 * gridStepPixels, IM_COL32(0, 255, 0, 80));
+				drawList->AddCircleFilled(colliderPos, collider.width / 2 * colliderDrawScale, IM_COL32(0, 255, 0, 80));
 				break;
 			}
 			case Collision::ColliderBox: {
-				ImVec2 topLeft = ImVec2(colliderPos.x - gridStepPixels * collider.width / 2, colliderPos.y - gridStepPixels * collider.height / 2);
-				ImVec2 btmRight = ImVec2(colliderPos.x + gridStepPixels * collider.width / 2, colliderPos.y + gridStepPixels * collider.height / 2);
+				ImVec2 topLeft = ImVec2(colliderPos.x - colliderDrawScale * collider.width / 2, colliderPos.y - colliderDrawScale * collider.height / 2);
+				ImVec2 btmRight = ImVec2(colliderPos.x + colliderDrawScale * collider.width / 2, colliderPos.y + colliderDrawScale * collider.height / 2);
 
 				drawList->AddRectFilled(topLeft, btmRight, IM_COL32(0, 255, 0, 80));
 				break;
 			}
 			case Collision::ColliderCapsule: {
-				ImVec2 topLeft = ImVec2(colliderPos.x - gridStepPixels * collider.width / 2, colliderPos.y + gridStepPixels * collider.height / 2);
-				ImVec2 btmRight = ImVec2(colliderPos.x + gridStepPixels * collider.width / 2, colliderPos.y - gridStepPixels * collider.height / 2);
+				ImVec2 topLeft = ImVec2(colliderPos.x - colliderDrawScale * collider.width / 2, colliderPos.y + colliderDrawScale * collider.height / 2);
+				ImVec2 btmRight = ImVec2(colliderPos.x + colliderDrawScale * collider.width / 2, colliderPos.y - colliderDrawScale * collider.height / 2);
 				drawList->AddRectFilled(topLeft, btmRight, IM_COL32(0, 255, 0, 80));
 
-				drawList->PushClipRect(ImVec2(topLeft.x, btmRight.y - (collider.width / 2) * gridStepPixels), ImVec2(btmRight.x, btmRight.y));
-				drawList->AddCircleFilled(ImVec2(colliderPos.x, colliderPos.y - collider.height / 2 * gridStepPixels), collider.width / 2 * gridStepPixels, IM_COL32(0, 255, 0, 80));
+				drawList->PushClipRect(ImVec2(topLeft.x, btmRight.y - (collider.width / 2) * colliderDrawScale), ImVec2(btmRight.x, btmRight.y));
+				drawList->AddCircleFilled(ImVec2(colliderPos.x, colliderPos.y - collider.height / 2 * colliderDrawScale), collider.width / 2 * colliderDrawScale, IM_COL32(0, 255, 0, 80));
 				drawList->PopClipRect();
 
-				drawList->PushClipRect(ImVec2(topLeft.x, topLeft.y), ImVec2(btmRight.x, topLeft.y + (collider.width / 2) * gridStepPixels));
-				drawList->AddCircleFilled(ImVec2(colliderPos.x, colliderPos.y + collider.height / 2 * gridStepPixels), collider.width / 2 * gridStepPixels, IM_COL32(0, 255, 0, 80));
+				drawList->PushClipRect(ImVec2(topLeft.x, topLeft.y), ImVec2(btmRight.x, topLeft.y + (collider.width / 2) * colliderDrawScale));
+				drawList->AddCircleFilled(ImVec2(colliderPos.x, colliderPos.y + collider.height / 2 * colliderDrawScale), collider.width / 2 * colliderDrawScale, IM_COL32(0, 255, 0, 80));
 				drawList->PopClipRect();
 
 				break;
@@ -1076,19 +1076,18 @@ static void DrawActor(const ImVec2 contentTopLeft, const ImVec2 contentBtmRight,
 
 static void DrawGameViewOverlay(const Level::Level* pLevel, const Viewport* pViewport, const ImVec2 topLeft, const ImVec2 btmRight, const r32 tileDrawSize, u8 opacity) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	const r32 metatileDrawSize = tileDrawSize * METATILE_DIM_TILES;
 
-	const s32 screenStartX = pViewport->x / VIEWPORT_WIDTH_TILES;
-	const s32 screenStartY = pViewport->y / VIEWPORT_HEIGHT_TILES;
+	const s32 screenStartX = pViewport->x / VIEWPORT_WIDTH_METATILES;
+	const s32 screenStartY = pViewport->y / VIEWPORT_HEIGHT_METATILES;
 
-	const s32 screenEndX = (pViewport->x + VIEWPORT_WIDTH_TILES) / VIEWPORT_WIDTH_TILES;
-	const s32 screenEndY = (pViewport->y + VIEWPORT_HEIGHT_TILES) / VIEWPORT_HEIGHT_TILES;
+	const s32 screenEndX = (pViewport->x + VIEWPORT_WIDTH_METATILES) / VIEWPORT_WIDTH_METATILES;
+	const s32 screenEndY = (pViewport->y + VIEWPORT_HEIGHT_METATILES) / VIEWPORT_HEIGHT_METATILES;
 
 	const Tilemap* pTilemap = &pLevel->tilemap;
 
 	for (s32 y = screenStartY; y <= screenEndY; y++) {
 		for (s32 x = screenStartX; x <= screenEndX; x++) {
-			const Vec2 screenPos = { x * VIEWPORT_WIDTH_TILES, y * VIEWPORT_HEIGHT_TILES };
+			const Vec2 screenPos = { x * VIEWPORT_WIDTH_METATILES, y * VIEWPORT_HEIGHT_METATILES };
 			const Vec2 screenViewportCoords = { (screenPos.x - pViewport->x) * tileDrawSize, (screenPos.y - pViewport->y) * tileDrawSize };
 
 			const s32 i = x + y * pTilemap->width;
@@ -1129,10 +1128,10 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	ImVec2 topLeft = ImGui::GetCursorScreenPos();
-	static const r32 aspectRatio = (r32)VIEWPORT_WIDTH_TILES / VIEWPORT_HEIGHT_TILES;
+	static const r32 aspectRatio = (r32)VIEWPORT_WIDTH_PIXELS / VIEWPORT_HEIGHT_PIXELS;
 	const r32 contentWidth = ImGui::GetContentRegionAvail().x;
 	const r32 contentHeight = contentWidth / aspectRatio;
-	const r32 renderScale = contentWidth / (VIEWPORT_WIDTH_TILES * TILE_DIM_PIXELS);
+	const r32 renderScale = contentWidth / VIEWPORT_WIDTH_PIXELS;
 	ImVec2 btmRight = ImVec2(topLeft.x + contentWidth, topLeft.y + contentHeight);
 
 	// Invisible button to prevent dragging window
@@ -1159,8 +1158,8 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 
 		if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
 			const ImVec2 newDelta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Right);
-			const r32 dx = -(newDelta.x - dragDelta.x) / renderScale / TILE_DIM_PIXELS;
-			const r32 dy = -(newDelta.y - dragDelta.y) / renderScale / TILE_DIM_PIXELS;
+			const r32 dx = -(newDelta.x - dragDelta.x) / renderScale / METATILE_DIM_PIXELS;
+			const r32 dy = -(newDelta.y - dragDelta.y) / renderScale / METATILE_DIM_PIXELS;
 			dragDelta = newDelta;
 
 			MoveViewport(pViewport, pNametables, &pLevel->tilemap, dx, dy);
@@ -1172,14 +1171,14 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 			dragDelta = ImVec2(0, 0);
 		}
 
-		const r32 tileDrawSize = TILE_DIM_PIXELS * renderScale;
+		const r32 tileDrawSize = METATILE_DIM_PIXELS * renderScale;
 		DrawGameViewOverlay(pLevel, pViewport, topLeft, btmRight, tileDrawSize, editMode == EDIT_MODE_ACTORS ? 127 : 15);
 
 		// If mouse over
 		if (hovered) {
 			const ImVec2 mousePosInViewportCoords = ImVec2((io.MousePos.x - topLeft.x) / tileDrawSize, (io.MousePos.y - topLeft.y) / tileDrawSize);
 			const ImVec2 mousePosInWorldCoords = ImVec2(mousePosInViewportCoords.x + pViewport->x, mousePosInViewportCoords.y + pViewport->y);
-			const ImVec2 hoveredMetatileWorldPos = ImVec2(floorf(mousePosInWorldCoords.x / METATILE_DIM_TILES) * METATILE_DIM_TILES, floorf(mousePosInWorldCoords.y / METATILE_DIM_TILES) * METATILE_DIM_TILES);
+			const ImVec2 hoveredTileWorldPos = ImVec2(floorf(mousePosInWorldCoords.x), floorf(mousePosInWorldCoords.y));
 
 			switch (editMode) {
 			case EDIT_MODE_ACTORS:
@@ -1215,15 +1214,15 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 					static ImVec2 selectionBtmRight;
 
 					if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
-						selectionStartPos = hoveredMetatileWorldPos;
-						selectionTopLeft = hoveredMetatileWorldPos;
-						selectionBtmRight = ImVec2(hoveredMetatileWorldPos.x + METATILE_DIM_TILES, hoveredMetatileWorldPos.y + METATILE_DIM_TILES);
+						selectionStartPos = hoveredTileWorldPos;
+						selectionTopLeft = hoveredTileWorldPos;
+						selectionBtmRight = ImVec2(hoveredTileWorldPos.x + 1, hoveredTileWorldPos.y + 1);
 						selecting = true;
 					}
 
 					if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-						selectionTopLeft = ImVec2(std::min(selectionStartPos.x, hoveredMetatileWorldPos.x), std::min(selectionStartPos.y, hoveredMetatileWorldPos.y));
-						selectionBtmRight = ImVec2(std::max(selectionStartPos.x, hoveredMetatileWorldPos.x) + METATILE_DIM_TILES, std::max(selectionStartPos.y, hoveredMetatileWorldPos.y) + METATILE_DIM_TILES);
+						selectionTopLeft = ImVec2(std::min(selectionStartPos.x, hoveredTileWorldPos.x), std::min(selectionStartPos.y, hoveredTileWorldPos.y));
+						selectionBtmRight = ImVec2(std::max(selectionStartPos.x, hoveredTileWorldPos.x) + 1, std::max(selectionStartPos.y, hoveredTileWorldPos.y) + 1);
 
 						const ImVec2 selectionTopLeftInPixelCoords = ImVec2((selectionTopLeft.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionTopLeft.y - pViewport->y) * tileDrawSize + topLeft.y);
 						const ImVec2 selectionBtmRightInPixelCoords = ImVec2((selectionBtmRight.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionBtmRight.y - pViewport->y) * tileDrawSize + topLeft.y);
@@ -1233,20 +1232,18 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 
 					if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
 						selecting = false;
-						u32 selectionWidth = (selectionBtmRight.x - selectionTopLeft.x) / METATILE_DIM_TILES;
-						u32 selectionHeight = (selectionBtmRight.y - selectionTopLeft.y) / METATILE_DIM_TILES;
+						u32 selectionWidth = (selectionBtmRight.x - selectionTopLeft.x);
+						u32 selectionHeight = (selectionBtmRight.y - selectionTopLeft.y);
 
 						clipboard.size = ImVec2((r32)selectionWidth, (r32)selectionHeight);
-						clipboard.offset = ImVec2(selectionTopLeft.x - hoveredMetatileWorldPos.x, selectionTopLeft.y - hoveredMetatileWorldPos.y);
+						clipboard.offset = ImVec2(selectionTopLeft.x - hoveredTileWorldPos.x, selectionTopLeft.y - hoveredTileWorldPos.y);
 
 						for (u32 x = 0; x < selectionWidth; x++) {
 							for (u32 y = 0; y < selectionHeight; y++) {
 								u32 clipboardIndex = y * selectionWidth + x;
 
-								const Vec2 metatileWorldPos = { selectionTopLeft.x + x * METATILE_DIM_TILES, selectionTopLeft.y + y * METATILE_DIM_TILES };
-
-								const IVec2 tilemapPos = Tiles::WorldToTilemap(metatileWorldPos);
-								const s32 tilesetIndex = Tiles::GetTilesetIndex(pTilemap, tilemapPos);
+								const IVec2 metatileWorldPos = { selectionTopLeft.x + x, selectionTopLeft.y + y };
+								const s32 tilesetIndex = Tiles::GetTilesetIndex(pTilemap, metatileWorldPos);
 								clipboard.clipboard[clipboardIndex] = tilesetIndex;
 							}
 						}
@@ -1259,28 +1256,26 @@ static void DrawGameView(const Level::Level* pLevel, bool editing, u32 editMode,
 
 				const u32 clipboardWidth = (u32)clipboard.size.x;
 				const u32 clipboardHeight = (u32)clipboard.size.y;
-				const ImVec2 clipboardTopLeft = ImVec2(hoveredMetatileWorldPos.x + clipboard.offset.x, hoveredMetatileWorldPos.y + clipboard.offset.y);
-				const ImVec2 clipboardBtmRight = ImVec2(clipboardTopLeft.x + clipboardWidth * METATILE_DIM_TILES, clipboardTopLeft.y + clipboardHeight * METATILE_DIM_TILES);
+				const ImVec2 clipboardTopLeft = ImVec2(hoveredTileWorldPos.x + clipboard.offset.x, hoveredTileWorldPos.y + clipboard.offset.y);
+				const ImVec2 clipboardBtmRight = ImVec2(clipboardTopLeft.x + clipboardWidth, clipboardTopLeft.y + clipboardHeight);
 				for (u32 x = 0; x < clipboardWidth; x++) {
 					for (u32 y = 0; y < clipboardHeight; y++) {
 						u32 clipboardIndex = y * clipboardWidth + x;
-						const Vec2 metatileWorldPos = { clipboardTopLeft.x + x * METATILE_DIM_TILES, clipboardTopLeft.y + y * METATILE_DIM_TILES };
+						const IVec2 metatileWorldPos = { clipboardTopLeft.x + x, clipboardTopLeft.y + y };
 						const ImVec2 metatileInViewportCoords = ImVec2(metatileWorldPos.x - pViewport->x, metatileWorldPos.y - pViewport->y);
 						const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
 						const u8 metatileIndex = clipboard.clipboard[clipboardIndex];
 							
-						const r32 metatileDrawSize = tileDrawSize * METATILE_DIM_TILES;
 						const Metatile& metatile = pTilemap->pTileset->tiles[metatileIndex].metatile;
 						const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, metatileIndex);
-						DrawMetatile(metatile, metatileInPixelCoords, metatileDrawSize, palette, IM_COL32(255, 255, 255, 127));
+						DrawMetatile(metatile, metatileInPixelCoords, tileDrawSize, palette, IM_COL32(255, 255, 255, 127));
 
 						// Paint metatiles
 						if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
-							const IVec2 tilemapPos = Tiles::WorldToTilemap(metatileWorldPos);
-							Tiles::SetMapTile(pTilemap, tilemapPos, metatileIndex);
+							Tiles::SetMapTile(pTilemap, metatileWorldPos, metatileIndex);
 
-							const u32 nametableIndex = Tiles::GetNametableIndex(tilemapPos);
-							const IVec2 nametablePos = Tiles::GetNametableOffset(tilemapPos);
+							const u32 nametableIndex = Tiles::GetNametableIndex(metatileWorldPos);
+							const IVec2 nametablePos = Tiles::GetNametableOffset(metatileWorldPos);
 							Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametablePos.x, nametablePos.y, metatile, palette);
 						}
 					}

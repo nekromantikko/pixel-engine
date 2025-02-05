@@ -18,7 +18,7 @@ void MoveViewport(Viewport* pViewport, Nametable* pNametable, const Tilemap *pTi
     pViewport->x += dx;
     pViewport->y += dy;
 
-    r32 xMax = (pTilemap->width - 1) * VIEWPORT_WIDTH_TILES;
+    r32 xMax = (pTilemap->width - 1) * VIEWPORT_WIDTH_METATILES;
 
     if (pViewport->x < 0.0f) {
         pViewport->x = 0.0f;
@@ -27,7 +27,7 @@ void MoveViewport(Viewport* pViewport, Nametable* pNametable, const Tilemap *pTi
         pViewport->x = xMax;
     }
 
-    r32 yMax = (pTilemap->height - 1) * VIEWPORT_HEIGHT_TILES;
+    r32 yMax = (pTilemap->height - 1) * VIEWPORT_HEIGHT_METATILES;
 
     if (pViewport->y < 0.0f) {
         pViewport->y = 0.0f;
@@ -41,11 +41,11 @@ void MoveViewport(Viewport* pViewport, Nametable* pNametable, const Tilemap *pTi
     }
 
     // These are the metatiles the top left corner of the viewport is in, before and after
-    const s32 prevMetatileX = (s32)(prevX / METATILE_DIM_TILES);
-    const s32 prevMetatileY = (s32)(prevY / METATILE_DIM_TILES);
+    const s32 prevMetatileX = (s32)floorf(prevX);
+    const s32 prevMetatileY = (s32)floorf(prevY);
 
-    const s32 currMetatileX = (s32)(pViewport->x / METATILE_DIM_TILES);
-    const s32 currMetatileY = (s32)(pViewport->y / METATILE_DIM_TILES);
+    const s32 currMetatileX = (s32)floorf(pViewport->x);
+    const s32 currMetatileY = (s32)floorf(pViewport->y);
 
     // If no new metatiles need loading, early return
     if (currMetatileX == prevMetatileX && currMetatileY == prevMetatileY) {
@@ -91,14 +91,11 @@ void RefreshViewport(Viewport* pViewport, Nametable* pNametable, const Tilemap* 
         return;
     }
 
-    const s32 xInMetatiles = (s32)(pViewport->x / METATILE_DIM_TILES);
-    const s32 yInMetatiles = (s32)(pViewport->y / METATILE_DIM_TILES);
+    const s32 xStart = pViewport->x - bufferDimMetatiles;
+    const s32 xEnd = VIEWPORT_WIDTH_METATILES + pViewport->x + bufferDimMetatiles;
 
-    const s32 xStart = xInMetatiles - bufferDimMetatiles;
-    const s32 xEnd = VIEWPORT_WIDTH_METATILES + xInMetatiles + bufferDimMetatiles;
-
-    const s32 yStart = yInMetatiles - bufferDimMetatiles;
-    const s32 yEnd = VIEWPORT_HEIGHT_METATILES + yInMetatiles + bufferDimMetatiles;
+    const s32 yStart = pViewport->y - bufferDimMetatiles;
+    const s32 yEnd = VIEWPORT_HEIGHT_METATILES + pViewport->y + bufferDimMetatiles;
 
     for (s32 x = xStart; x < xEnd; x++) {
         for (s32 y = yStart; y < yEnd; y++) {

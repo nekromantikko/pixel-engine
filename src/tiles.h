@@ -48,12 +48,6 @@ namespace Tiles {
 	s32 GetTilesetPalette(const Tileset* tileset, u32 tileIndex);
 	bool SetTilesetPalette(Tileset* tileset, u32 tileIndex, s32 palette);
 
-	// Temporary until world coords are switched to metatiles
-	s32 WorldToTilemap(r32 world);
-	IVec2 WorldToTilemap(Vec2 world);
-	r32 TilemapToWorld(s32 tilemap);
-	Vec2 TilemapToWorld(IVec2 tilemap);
-
 	// New API
 	bool TileInMapBounds(const Tilemap* pTilemap, const IVec2& pos);
 	s32 GetTilesetIndex(const Tilemap* pTilemap, const IVec2& pos);
