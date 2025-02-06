@@ -5,9 +5,7 @@
 
 struct Viewport;
 
-namespace Level {
-	struct Level;
-}
+struct Level;
 
 namespace Game {
 	void Initialize();
@@ -21,7 +19,7 @@ namespace Game {
 	void SetPaused(bool paused);
 
 	Viewport* GetViewport();
-	Level::Level* GetLevel();
+	Level* GetLevel();
 
 	Pool<Actor>* GetActors();
 }
