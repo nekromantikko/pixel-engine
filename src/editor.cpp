@@ -254,36 +254,36 @@ static void SwapMetasprites(Metasprite* pMetasprites, s32 a, s32 b) {
 	memcpy(nameB, tempName, METASPRITE_MAX_NAME_LENGTH);
 }
 
-static void SwapLevels(Level::Level* pLevels, s32 a, s32 b) {
-	Level::Level& levelA = pLevels[a];
+static void SwapLevels(Level* pLevels, s32 a, s32 b) {
+	Level& levelA = pLevels[a];
 	Screen* levelAScreens = levelA.tilemap.pScreens;
 	char* levelAName = levelA.name;
-	Level::Level& levelB = pLevels[b];
+	Level& levelB = pLevels[b];
 	Screen* levelBScreens = levelB.tilemap.pScreens;
 	char* levelBName = levelB.name;
 
 	// Copy A to temp
-	Level::Level temp = levelA;
+	Level temp = levelA;
 
-	Screen tempScreens[Level::levelMaxScreenCount];
-	char tempName[Level::levelMaxNameLength];
+	Screen tempScreens[LEVEL_MAX_SCREEN_COUNT];
+	char tempName[LEVEL_MAX_NAME_LENGTH];
 
-	memcpy(tempScreens, levelAScreens, Level::levelMaxScreenCount * sizeof(Screen));
-	memcpy(tempName, levelAName, Level::levelMaxNameLength);
+	memcpy(tempScreens, levelAScreens, LEVEL_MAX_SCREEN_COUNT * sizeof(Screen));
+	memcpy(tempName, levelAName, LEVEL_MAX_NAME_LENGTH);
 
 	// Copy B to A (But keep pointers pointing in original location)
 	levelA = levelB;
 	levelA.tilemap.pScreens = levelAScreens;
 	levelA.name = levelAName;
-	memcpy(levelAScreens, levelBScreens, Level::levelMaxScreenCount * sizeof(Screen));
-	memcpy(levelAName, levelBName, Level::levelMaxNameLength);
+	memcpy(levelAScreens, levelBScreens, LEVEL_MAX_SCREEN_COUNT * sizeof(Screen));
+	memcpy(levelAName, levelBName, LEVEL_MAX_NAME_LENGTH);
 
 	// Copy Temp to B
 	levelB = temp;
 	levelB.tilemap.pScreens = levelBScreens;
 	levelB.name = levelBName;
-	memcpy(levelBScreens, tempScreens, Level::levelMaxScreenCount * sizeof(Screen));
-	memcpy(levelBName, tempName, Level::levelMaxNameLength);
+	memcpy(levelBScreens, tempScreens, LEVEL_MAX_SCREEN_COUNT * sizeof(Screen));
+	memcpy(levelBName, tempName, LEVEL_MAX_NAME_LENGTH);
 }
 
 template <typename T>
@@ -1039,7 +1039,7 @@ static void DrawActorColliders(const Viewport* pViewport, const ImVec2 topLeft, 
 	}
 }
 
-static void DrawGameViewOverlay(const Level::Level* pLevel, const Viewport* pViewport, const ImVec2 topLeft, const ImVec2 btmRight, const r32 renderScale, bool drawBorders, bool drawCollisionCells, bool drawHitboxes) {
+static void DrawGameViewOverlay(const Level* pLevel, const Viewport* pViewport, const ImVec2 topLeft, const ImVec2 btmRight, const r32 renderScale, bool drawBorders, bool drawCollisionCells, bool drawHitboxes) {
 	const Vec2 viewportPixelPos = { pViewport->x * METATILE_DIM_PIXELS, pViewport->y * METATILE_DIM_PIXELS };
 	const ImVec2 viewportDrawSize = ImVec2(VIEWPORT_WIDTH_PIXELS * renderScale, VIEWPORT_HEIGHT_PIXELS * renderScale);
 
@@ -1074,7 +1074,7 @@ static void DrawGameViewOverlay(const Level::Level* pLevel, const Viewport* pVie
 	}
 }
 
-static void DrawGameView(Level::Level* pLevel, bool editing, u32 editMode, LevelClipboard& clipboard, u32 selectedActorPreset, u32& selectedLevel) {
+static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboard& clipboard, u32 selectedActorPreset, u32& selectedLevel) {
 	Viewport* pViewport = Game::GetViewport();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
 
@@ -1179,9 +1179,9 @@ static void DrawGameView(Level::Level* pLevel, bool editing, u32 editMode, Level
 				// Paint actors
 				if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
 					if (screenIndex < pLevel->width * pLevel->height) {
-						const u32 screenTileIndex = Level::WorldToMetatileIndex({ hoveredMetatileWorldPos.x, hoveredMetatileWorldPos.y });
+						const u32 screenTileIndex = WorldToMetatileIndex({ hoveredMetatileWorldPos.x, hoveredMetatileWorldPos.y });
 
-						pLevel->screens[screenIndex].tiles[screenTileIndex].actorType = (Level::ActorType)selectedActorType;
+						pLevel->screens[screenIndex].tiles[screenTileIndex].actorType = (ActorType)selectedActorType;
 					}
 				}
 				break;*/
@@ -1282,7 +1282,7 @@ static void DrawGameView(Level::Level* pLevel, bool editing, u32 editMode, Level
 	if (ImGui::Button(editing ? "Play mode" : "Edit mode")) {
 		if (!editing) {
 			// This is a little bit cursed
-			u32 loadedLevelIndex = pLevel - Level::GetLevelsPtr();
+			u32 loadedLevelIndex = pLevel - Levels::GetLevelsPtr();
 			selectedLevel = loadedLevelIndex;
 
 			Game::UnloadLevel();
@@ -1312,8 +1312,8 @@ static void DrawGameView(Level::Level* pLevel, bool editing, u32 editMode, Level
 static void DrawLevelTools(u32& selectedLevel, u32& editMode, LevelToolsState& state, LevelClipboard& clipboard, u32& selectedActorPreset) {
 	const ImGuiTabBarFlags tabBarFlags = ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_AutoSelectNewTabs;
 	
-	Level::Level* pLevels = Level::GetLevelsPtr();
-	Level::Level& level = pLevels[selectedLevel];
+	Level* pLevels = Levels::GetLevelsPtr();
+	Level& level = pLevels[selectedLevel];
 
 	if (ImGui::BeginTabBar("Level tool tabs")) {
 		if (state.propertiesOpen && ImGui::BeginTabItem("Properties", &state.propertiesOpen)) {
@@ -1321,29 +1321,11 @@ static void DrawLevelTools(u32& selectedLevel, u32& editMode, LevelToolsState& s
 
 			ImGui::SeparatorText(level.name);
 
-			ImGui::InputText("Name", level.name, Level::levelMaxNameLength);
-
-			if (ImGui::BeginCombo("Type", LEVEL_TYPE_NAMES[(int)level.type])) {
-				for (u32 i = 0; i < LEVEL_TYPE_COUNT; i++) {
-					ImGui::PushID(i);
-
-					const bool selected = level.type == i;
-					if (ImGui::Selectable(LEVEL_TYPE_NAMES[i], selected)) {
-						level.type = (Level::LevelType)i;
-					}
-
-					if (selected) {
-						ImGui::SetItemDefaultFocus();
-					}
-					ImGui::PopID();
-				}
-
-				ImGui::EndCombo();
-			}
+			ImGui::InputText("Name", level.name, LEVEL_MAX_NAME_LENGTH);
 
 			s32 size[2] = { level.tilemap.width, level.tilemap.height };
 			if (ImGui::InputInt2("Size", size)) {
-				if (size[0] >= 1 && size[1] >= 1 && size[0] * size[1] <= Level::levelMaxScreenCount) {
+				if (size[0] >= 1 && size[1] >= 1 && size[0] * size[1] <= LEVEL_MAX_SCREEN_COUNT) {
 					level.tilemap.width = size[0];
 					level.tilemap.height = size[1];
 				}
@@ -1354,14 +1336,14 @@ static void DrawLevelTools(u32& selectedLevel, u32& editMode, LevelToolsState& s
 				// TODO: Lay these out nicer
 				u32 screenCount = level.width * level.height;
 				for (u32 i = 0; i < screenCount; i++) {
-					Level::Screen& screen = level.screens[i];
+					Screen& screen = level.screens[i];
 
 					if (ImGui::TreeNode(&screen, "%#04x", i)) {
 
-						const Level::Level& exitTargetLevel = pLevels[screen.exitTargetLevel];
+						const Level& exitTargetLevel = pLevels[screen.exitTargetLevel];
 
 						if (ImGui::BeginCombo("Exit target level", exitTargetLevel.name)) {
-							for (u32 i = 0; i < Level::maxLevelCount; i++)
+							for (u32 i = 0; i < maxLevelCount; i++)
 							{
 								ImGui::PushID(i);
 								const bool selected = screen.exitTargetLevel == i;
@@ -1379,7 +1361,7 @@ static void DrawLevelTools(u32& selectedLevel, u32& editMode, LevelToolsState& s
 
 						s32 exitScreen = screen.exitTargetScreen;
 						if (ImGui::InputInt("Exit target screen", &exitScreen)) {
-							screen.exitTargetScreen = (u32)std::max(std::min((s32)Level::levelMaxScreenCount - 1, exitScreen), 0);
+							screen.exitTargetScreen = (u32)std::max(std::min((s32)levelMaxScreenCount - 1, exitScreen), 0);
 						}
 
 						ImGui::TreePop();
@@ -1446,7 +1428,7 @@ static void DrawLevelTools(u32& selectedLevel, u32& editMode, LevelToolsState& s
 static void DrawGameWindow() {
 	ImGui::Begin("Level editor", &pContext->gameWindowOpen, ImGuiWindowFlags_MenuBar);
 
-	Level::Level* pCurrentLevel = Game::GetLevel();
+	Level* pCurrentLevel = Game::GetLevel();
 	Viewport* pViewport = Game::GetViewport();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
 
@@ -1460,8 +1442,8 @@ static void DrawGameWindow() {
 	const bool noLevelLoaded = pCurrentLevel == nullptr;
 	bool editing = Game::IsPaused() && !noLevelLoaded;
 
-	Level::Level* pLevels = Level::GetLevelsPtr();
-	Level::Level& editedLevel = pLevels[selectedLevel];
+	Level* pLevels = Levels::GetLevelsPtr();
+	Level& editedLevel = pLevels[selectedLevel];
 
 	const bool editingCurrentLevel = pCurrentLevel == &editedLevel;
 
@@ -1470,10 +1452,10 @@ static void DrawGameWindow() {
 		if (ImGui::BeginMenu("File"))
 		{
 			if (ImGui::MenuItem("Save")) {
-				Level::SaveLevels("assets/levels.lev");
+				Levels::SaveLevels("assets/levels.lev");
 			}
 			if (ImGui::MenuItem("Revert changes")) {
-				Level::LoadLevels("assets/levels.lev");
+				Levels::LoadLevels("assets/levels.lev");
 				RefreshViewport(pViewport, pNametables, &pCurrentLevel->tilemap);
 			}
 			ImGui::EndMenu();
@@ -1497,10 +1479,10 @@ static void DrawGameWindow() {
 
 	ImGui::BeginChild("Level list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 	{
-		static constexpr u32 maxLabelNameLength = Level::levelMaxNameLength + 8;
+		static constexpr u32 maxLabelNameLength = LEVEL_MAX_NAME_LENGTH + 8;
 		char label[maxLabelNameLength];
 
-		for (u32 i = 0; i < Level::maxLevelCount; i++)
+		for (u32 i = 0; i < MAX_LEVEL_COUNT; i++)
 		{
 			ImGui::PushID(i);
 
@@ -1543,10 +1525,10 @@ static void DrawGameWindow() {
 					ImVector<s32> vec;
 					vec.push_back(sourceIndex);
 
-					const bool canMove = CanMoveElements(Level::maxLevelCount, vec, step);
+					const bool canMove = CanMoveElements(MAX_LEVEL_COUNT, vec, step);
 
 					if (canMove) {
-						MoveElements<Level::Level>(pLevels, vec, step, SwapLevels);
+						MoveElements<Level>(pLevels, vec, step, SwapLevels);
 
 						Game::ReloadLevel();
 						selectedLevel = editing ? (pCurrentLevel - pLevels) : vec[0];

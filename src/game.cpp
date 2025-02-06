@@ -31,21 +31,12 @@ namespace Game {
     // Viewport
     Viewport viewport;
 
-    Level::Level* pCurrentLevel = nullptr;
+    Level* pCurrentLevel = nullptr;
     s32 enterScreenIndex = -1;
 
     // This is pretty ugly...
     u32 nextLevel = 0;
     s32 nextLevelScreenIndex = -1;
-
-    enum GameState {
-        StateTitleScreen,
-        StateWorldMap,
-        StatePlaying,
-        StateLevelTransition,
-    };
-
-    GameState state = StateTitleScreen;
 
     struct LevelTransitionState {
         Vec2 origin;
@@ -151,26 +142,12 @@ namespace Game {
     }
 
     void LoadLevel(u32 index, s32 screenIndex, bool refresh) {
-        if (index >= Level::maxLevelCount) {
+        if (index >= MAX_LEVEL_COUNT) {
             DEBUG_ERROR("Level count exceeded!");
         }
 
-        pCurrentLevel = Level::GetLevelsPtr() + index;
+        pCurrentLevel = Levels::GetLevelsPtr() + index;
         enterScreenIndex = screenIndex;
-
-        switch (pCurrentLevel->type) {
-        case Level::LTYPE_SIDESCROLLER:
-            state = StatePlaying;
-            break;
-        case Level::LTYPE_TITLESCREEN:
-            state = StateTitleScreen;
-            break;
-        case Level::LTYPE_WORLDMAP:
-            state = StateWorldMap;
-            break;
-        default:
-            break;
-        }
 
         viewport.x = 0;
         viewport.y = 0;
@@ -186,13 +163,13 @@ namespace Game {
             return false;
         }
 
-        const Level::Screen& screen = pCurrentLevel->screens[screenIndex];
-        for (u32 i = 0; i < Level::VIEWPORT_WIDTH_METATILES * Level::VIEWPORT_HEIGHT_METATILES; i++) {
-            const Level::LevelTile& tile = screen.tiles[i];
+        const Screen& screen = pCurrentLevel->screens[screenIndex];
+        for (u32 i = 0; i < VIEWPORT_WIDTH_METATILES * VIEWPORT_HEIGHT_METATILES; i++) {
+            const LevelTile& tile = screen.tiles[i];
 
-            if (tile.actorType == Level::ACTOR_DOOR) {
-                const Vec2 screenRelativePos = Level::TileIndexToScreenOffset(i);
-                const Vec2 worldPos = Level::ScreenOffsetToWorld(pCurrentLevel, screenRelativePos, screenIndex);
+            if (tile.actorType == ACTOR_DOOR) {
+                const Vec2 screenRelativePos = TileIndexToScreenOffset(i);
+                const Vec2 worldPos = ScreenOffsetToWorld(pCurrentLevel, screenRelativePos, screenIndex);
 
                 playerState.x = worldPos.x + 1.0f;
                 playerState.y = worldPos.y;
@@ -283,7 +260,7 @@ namespace Game {
 
         Tiles::LoadTileset("assets/forest.til");
         Metasprites::Load("assets/meta.spr");
-        Level::LoadLevels("assets/levels.lev");
+        Levels::LoadLevels("assets/levels.lev");
         Actors::LoadPresets("assets/actors.pfb");
 
         // Initialize scanline state
@@ -503,110 +480,6 @@ namespace Game {
         MoveViewport(&viewport, pNametables, &pCurrentLevel->tilemap, delta.x, delta.y, loadTiles);
     }
 
-    static void TriggerLevelTransition(bool direction = true) {
-        /*state = StateLevelTransition;
-
-        static constexpr u32 bufferZoneWidth = 1;
-
-        // Window a bit larger than viewport to ensure full coverage
-        Actor* pPlayer = actors.Get(playerHandle);
-        const Vec2 transitionWindowPos = Vec2{ viewport.x - bufferZoneWidth, viewport.y - bufferZoneWidth };
-        const Vec2 center = pPlayer->position - transitionWindowPos;
-
-        levelTransitionState.origin = center;
-        levelTransitionState.windowWorldPos = transitionWindowPos;
-        const Vec2 transitionWindowSize = Vec2{ VIEWPORT_WIDTH_METATILES + bufferZoneWidth * 2, VIEWPORT_HEIGHT_METATILES + bufferZoneWidth * 2 };
-        levelTransitionState.windowSize = transitionWindowSize;
-
-        const u32 stepsToTopLeft = center.x + center.y;
-        const u32 stepsToTopRight = (transitionWindowSize.x - center.x) + center.y;
-        const u32 stepsToBtmLeft = center.x + (transitionWindowSize.y - center.y);
-        const u32 stepsToBtmRight = (transitionWindowSize.x - center.x) + (transitionWindowSize.y - center.y);
-        const u32 maxSteps = std::max(std::max(std::max(stepsToTopLeft, stepsToTopRight), stepsToBtmLeft), stepsToBtmRight);
-
-        levelTransitionState.steps = maxSteps;
-        levelTransitionState.currentStep = 0;
-
-        static constexpr r32 duration = 0.8f;
-
-        levelTransitionState.stepDuration = duration / maxSteps;
-        levelTransitionState.accumulator = 0.0f;
-
-        levelTransitionState.direction = direction;*/
-    }
-
-    static void UpdateLevelTransition(r64 dt) {
-
-        if (levelTransitionState.currentStep >= levelTransitionState.steps) {
-
-            if (levelTransitionState.direction) {
-                // This could be optimized because it's really stupid but all nametables need to be filled with this tile for the transition to work
-                Rendering::Util::ClearNametable(&pNametables[0], 0xb8);
-                Rendering::Util::ClearNametable(&pNametables[1], 0xb8);
-
-                // Move viewport and sprites before next transition
-                LoadLevel(nextLevel, nextLevelScreenIndex, false);
-                ReloadLevel(false);
-                UpdateViewport(false);
-                UpdateScreenScroll();
-
-                TriggerLevelTransition(false);
-            }
-            else {
-                state = StatePlaying;
-                RefreshViewport(&viewport, pNametables, &pCurrentLevel->tilemap);
-            }
-
-            return;
-        }
-
-        levelTransitionState.accumulator += dt;
-
-        constexpr Metatile CLEAR_METATILE { 0xb8, 0xb8, 0xb8,0xb8 };
-        while (levelTransitionState.accumulator >= levelTransitionState.stepDuration) {
-            levelTransitionState.accumulator -= levelTransitionState.stepDuration;
-
-            for (s32 row = 0; row < levelTransitionState.windowSize.y; row++) {
-
-                const s32 metatileY = row + levelTransitionState.windowWorldPos.y;
-
-                for (s32 col = 0; col < levelTransitionState.windowSize.x; col++) {
-
-                    const s32 metatileX = col + levelTransitionState.windowWorldPos.x;
-
-                    if (!Tiles::TileInMapBounds(&pCurrentLevel->tilemap, { metatileX, metatileY })) {
-                        continue;
-                    }
-
-                    // Calculate the distance from the center
-                    int distance = abs(row - levelTransitionState.origin.y) + abs(col - levelTransitionState.origin.x);
-
-                    // Check if this tile should transition on this step
-                    bool shouldTransition = levelTransitionState.direction ? (levelTransitionState.currentStep == levelTransitionState.steps - distance) : (levelTransitionState.currentStep == distance);
-
-                    if (shouldTransition) {
-                        const s32 tilesetIndex = Tiles::GetTilesetIndex(&pCurrentLevel->tilemap, { metatileX, metatileY });
-                        const MapTile* tile = Tiles::GetMapTile(&pCurrentLevel->tilemap, tilesetIndex);
-                        
-                        const s32 nametableIndex = Tiles::GetNametableIndex({ metatileX, metatileY });
-                        const IVec2 nametableOffset = Tiles::GetNametableOffset({ metatileX, metatileY });
-
-                        if (levelTransitionState.direction) {
-                            Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, CLEAR_METATILE, 0);
-                        }
-                        else {
-                            const Metatile& metatile = tile->metatile;
-                            const s32 palette = Tiles::GetTilesetPalette(pCurrentLevel->tilemap.pTileset, tilesetIndex);
-                            Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
-                        }
-                    }
-                }
-            }
-
-            levelTransitionState.currentStep++;
-        }
-    }
-
     static void DrawDefaultActor(Actor* pActor, Sprite** ppNextSprite) {
         IVec2 drawPos = WorldPosToScreenPixels(pActor->position);
         const Metasprite* pMetasprite = pActor->pPreset->pMetasprite;
@@ -677,7 +550,7 @@ namespace Game {
             const u32 screenInd = Tiles::WorldToScreenIndex(&pCurrentLevel->tilemap, checkPos);
             const u32 tileInd = Tiles::WorldToMetatileIndex(checkPos);
             const Screen& screen = pCurrentLevel->tilemap.pScreens[screenInd];
-            if (screen.tiles[tileInd].actorType == Level::ACTOR_DOOR) {
+            if (screen.tiles[tileInd].actorType == ACTOR_DOOR) {
                 nextLevel = screen.exitTargetLevel;
                 nextLevelScreenIndex = screen.exitTargetScreen;
                 TriggerLevelTransition();
@@ -1035,139 +908,71 @@ namespace Game {
         Rendering::Util::ClearSprites(pSprites, spritesToClear);
         pNextSprite = pSprites;
 
-        if (state == StateTitleScreen) {
-            // Render cool title screen
-            const char* text = "Press Start!";
-            const u32 x = (VIEWPORT_WIDTH_TILES - strlen(text)) / 2;
-            const u32 y = VIEWPORT_HEIGHT_TILES / 2;
-            const u32 tileIndex = x + VIEWPORT_WIDTH_TILES * y;
-            u8* dst = &pNametables[0].tiles[tileIndex];
-            strcpy((char*)dst, text);
-
-            // Draw some sprites spinning around
-            static const r32 radius = 4.0f;
-            static const u32 spriteCount = 8;
-            static r32 rot = 0.0f;
-
-            rot += dt;
-
-            const r32 angleOffset = pi * 2 / spriteCount;
-            for (u32 i = 0; i < spriteCount; i++) {
-                const r32 angle = rot + angleOffset * i;
-                Vec2 pos = { cos(angle) * radius + VIEWPORT_WIDTH_METATILES / 2, sin(angle) * radius + VIEWPORT_HEIGHT_METATILES / 2 };
-                IVec2 drawPos = WorldPosToScreenPixels(pos);
-
-                Sprite sprite = {
-                    drawPos.y,
-                    drawPos.x,
-                    32,
-                    0
-                };
-                *((pNextSprite)++) = sprite;
-            }
-
-            if (Input::ButtonPressed(BUTTON_START)) {
-                state = StatePlaying;
-                // TODO: This should be set in level editor
-                const u32 firstLevel = 0x10;
-                LoadLevel(firstLevel);
-            }
-        }
-        else if (state == StateWorldMap) {
+        if (!paused) {
             gameplaySecondsElapsed += dt;
 
-            Metasprite* metasprite = Metasprites::GetMetasprite(13);
-            bool flippy = (u32)(gameplaySecondsElapsed * 2.0f) % 2;
-            Rendering::Util::CopyMetasprite(metasprite->spritesRelativePos, pNextSprite, metasprite->spriteCount, { 256, 144 }, flippy, false);
-            pNextSprite += metasprite->spriteCount;
+            UpdateActors(&pNextSprite, dt);
 
-            r32 dx = 0, dy = 0;
+            // Update explosions
+            for (int i = 0; i < hitPool.Count(); i++) {
+                PoolHandle<Impact> handle = hitPool.GetHandle(i);
+                Impact* impact = hitPool[handle];
+                impact->accumulator += dt;
 
-            if (Input::ButtonDown(BUTTON_DPAD_RIGHT)) {
-                dx = 8.0f * dt;
+                if (impact->accumulator >= impactAnimLength) {
+                    hitPool.Remove(handle);
+                    continue;
+                }
             }
-            else if (Input::ButtonDown(BUTTON_DPAD_LEFT)) {
-                dx = -8.0f * dt;
-            }
-            else if (Input::ButtonDown(BUTTON_DPAD_DOWN)) {
-                dy = 8.0f * dt;
-            }
-            else if (Input::ButtonDown(BUTTON_DPAD_UP)) {
-                dy = -8.0f * dt;
-            }
-            MoveViewport(&viewport, pNametables, &pCurrentLevel->tilemap, dx, dy);
-            UpdateScreenScroll();
-        }
-        else if (state == StateLevelTransition) {
-            UpdateLevelTransition(dt);
-        }
-        else {
-            if (!paused) {
-                gameplaySecondsElapsed += dt;
 
-                UpdateActors(&pNextSprite, dt);
+            // Update damage numbers
+            r32 dmgNumberVel = -3.0f;
+            for (int i = 0; i < damageNumberPool.Count(); i++) {
+                PoolHandle<DamageNumber> handle = damageNumberPool.GetHandle(i);
+                DamageNumber* dmgNumber = damageNumberPool[handle];
+                dmgNumber->accumulator += dt;
 
-                // Update explosions
-                for (int i = 0; i < hitPool.Count(); i++) {
-                    PoolHandle<Impact> handle = hitPool.GetHandle(i);
-                    Impact* impact = hitPool[handle];
-                    impact->accumulator += dt;
-
-                    if (impact->accumulator >= impactAnimLength) {
-                        hitPool.Remove(handle);
-                        continue;
-                    }
+                if (dmgNumber->accumulator >= damageNumberLifetime) {
+                    damageNumberPool.Remove(handle);
+                    continue;
                 }
 
-                // Update damage numbers
-                r32 dmgNumberVel = -3.0f;
-                for (int i = 0; i < damageNumberPool.Count(); i++) {
-                    PoolHandle<DamageNumber> handle = damageNumberPool.GetHandle(i);
-                    DamageNumber* dmgNumber = damageNumberPool[handle];
-                    dmgNumber->accumulator += dt;
-
-                    if (dmgNumber->accumulator >= damageNumberLifetime) {
-                        damageNumberPool.Remove(handle);
-                        continue;
-                    }
-
-                    dmgNumber->pos.y += dmgNumberVel * dt;
-                }
-
-                UpdateViewport();
+                dmgNumber->pos.y += dmgNumberVel * dt;
             }
 
-            UpdateScreenScroll();
-
-            // Animate color palette brightness
-            /*r32 deltaBrightness = sin(gameplaySecondsElapsed * 1.5f);
-            for (u32 i = 0; i < Rendering::paletteCount * Rendering::paletteColorCount; i++) {
-                u8 baseColor = ((u8*)basePaletteColors)[i];
-
-                s32 brightness = (baseColor & 0b1110000) >> 4;
-                s32 d = (s32)roundf(deltaBrightness * 8);
-
-                s32 newBrightness = brightness + d;
-                newBrightness = (newBrightness < 0) ? 0 : (newBrightness > 7) ? 7 : newBrightness;
-
-                u8 newColor = (baseColor & 0b0001111) | (newBrightness << 4);
-                ((u8*)pPalettes)[i] = newColor;
-            }*/
-
-            // Animate color palette hue
-            /*s32 hueShift = (s32)roundf(gameplaySecondsElapsed * 5.0f);
-            for (u32 i = 0; i < Rendering::paletteCount * Rendering::paletteColorCount; i++) {
-                u8 baseColor = ((u8*)basePaletteColors)[i];
-
-                s32 hue = baseColor & 0b1111;
-
-                s32 newHue = hue + hueShift;
-                newHue &= 0b1111;
-
-                u8 newColor = (baseColor & 0b1110000) | newHue;
-                ((u8*)pPalettes)[i] = newColor;
-            }*/
+            UpdateViewport();
         }
+
+        UpdateScreenScroll();
+
+        // Animate color palette brightness
+        /*r32 deltaBrightness = sin(gameplaySecondsElapsed * 1.5f);
+        for (u32 i = 0; i < Rendering::paletteCount * Rendering::paletteColorCount; i++) {
+            u8 baseColor = ((u8*)basePaletteColors)[i];
+
+            s32 brightness = (baseColor & 0b1110000) >> 4;
+            s32 d = (s32)roundf(deltaBrightness * 8);
+
+            s32 newBrightness = brightness + d;
+            newBrightness = (newBrightness < 0) ? 0 : (newBrightness > 7) ? 7 : newBrightness;
+
+            u8 newColor = (baseColor & 0b0001111) | (newBrightness << 4);
+            ((u8*)pPalettes)[i] = newColor;
+        }*/
+
+        // Animate color palette hue
+        /*s32 hueShift = (s32)roundf(gameplaySecondsElapsed * 5.0f);
+        for (u32 i = 0; i < Rendering::paletteCount * Rendering::paletteColorCount; i++) {
+            u8 baseColor = ((u8*)basePaletteColors)[i];
+
+            s32 hue = baseColor & 0b1111;
+
+            s32 newHue = hue + hueShift;
+            newHue &= 0b1111;
+
+            u8 newColor = (baseColor & 0b1110000) | newHue;
+            ((u8*)pPalettes)[i] = newColor;
+        }*/
 
     }
 
@@ -1181,7 +986,7 @@ namespace Game {
     Viewport* GetViewport() {
         return &viewport;
     }
-    Level::Level* GetLevel() {
+    Level* GetLevel() {
         return pCurrentLevel;
     }
     Pool<Actor>* GetActors() {
