@@ -33,8 +33,12 @@ enum LevelEditMode {
 	EDIT_MODE_ACTORS = 2
 };
 
+struct ChrTextures {
+	ImTextureID textures[PALETTE_COUNT];
+};
+
 struct EditorContext {
-	ImTextureID* chrTextures;
+	ChrTextures chrTextures[CHR_COUNT];
 	ImTextureID paletteTexture;
 	ImTextureID gameViewTexture;
 
@@ -56,15 +60,11 @@ static ImVec2 GetChrTileCoord(u8 index) {
 }
 
 static ImVec2 ChrTileCoordToTexCoord(ImVec2 coord, u8 chrIndex) {
-	return ImVec2(coord.x / (CHR_DIM_TILES * CHR_COUNT) + ((r32)chrIndex / CHR_COUNT), coord.y / CHR_DIM_TILES);
+	return ImVec2(coord.x / CHR_DIM_TILES, coord.y / CHR_DIM_TILES);
 }
 
 static ImVec2 TexCoordToChrTileCoord(ImVec2 normalized) {
-	if (normalized.x >= 0.5) {
-		normalized.x -= 0.5;
-	}
-
-	ImVec2 tileCoord = ImVec2(floor(normalized.x * 32), floor(normalized.y * 16));
+	ImVec2 tileCoord = ImVec2(floor(normalized.x * 16), floor(normalized.y * 16));
 	return tileCoord;
 }
 
@@ -123,7 +123,7 @@ static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, s32 pal
 		ImVec2 uvMin = ChrTileCoordToTexCoord(chrCoord, 0);
 		ImVec2 uvMax = ChrTileCoordToTexCoord(ImVec2(chrCoord.x + 1, chrCoord.y + 1), 0);
 
-		drawList->AddImage(pContext->chrTextures[palette], pMin, pMax, uvMin, uvMax, color);
+		drawList->AddImage(pContext->chrTextures[0].textures[palette], pMin, pMax, uvMin, uvMax, color);
 	}
 }
 
@@ -160,7 +160,7 @@ static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	const ImVec2 gridSize = ImVec2(size, size);
 	const ImVec2 chrPos = DrawTileGrid(gridSize, gridStepPixels, selectedTile);
-	drawList->AddImage(pContext->chrTextures[palette + index * 4], chrPos, ImVec2(chrPos.x + size, chrPos.y + size), ImVec2(0 + 0.5 * index, 0), ImVec2(0.5 + 0.5 * index, 1));
+	drawList->AddImage(pContext->chrTextures[index].textures[palette + index * 4], chrPos, ImVec2(chrPos.x + size, chrPos.y + size), ImVec2(0, 0), ImVec2(1, 1));
 	if (selectedTile != nullptr && *selectedTile >= 0) {
 		DrawTileGridSelection(chrPos, gridSize, gridStepPixels, *selectedTile);
 	}
@@ -202,7 +202,7 @@ static void DrawMetasprite(const Metasprite* pMetasprite, ImVec2 origin, r32 ren
 		bool flipY = sprite.flipVertical;
 		u8 palette = sprite.palette;
 
-		drawList->AddImage(pContext->chrTextures[4 + palette], pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), ImVec2(flipX ? tileEnd.x : tileStart.x, flipY ? tileEnd.y : tileStart.y), ImVec2(!flipX ? tileEnd.x : tileStart.x, !flipY ? tileEnd.y : tileStart.y), color);
+		drawList->AddImage(pContext->chrTextures[1].textures[4 + palette], pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), ImVec2(flipX ? tileEnd.x : tileStart.x, flipY ? tileEnd.y : tileStart.y), ImVec2(!flipX ? tileEnd.x : tileStart.x, !flipY ? tileEnd.y : tileStart.y), color);
 	}
 }
 
@@ -571,7 +571,7 @@ static void DrawMetaspritePreview(Metasprite& metasprite, ImVector<s32>& spriteS
 		// Move sprite if dragged
 		ImVec2 posWithDrag = selected ? ImVec2(pos.x + dragDelta.x, pos.y + dragDelta.y) : pos;
 
-		drawList->AddImage(pContext->chrTextures[4 + palette], posWithDrag, ImVec2(posWithDrag.x + gridStepPixels, posWithDrag.y + gridStepPixels), ImVec2(flipX ? tileEnd.x : tileStart.x, flipY ? tileEnd.y : tileStart.y), ImVec2(!flipX ? tileEnd.x : tileStart.x, !flipY ? tileEnd.y : tileStart.y));
+		drawList->AddImage(pContext->chrTextures[1].textures[4 + palette], posWithDrag, ImVec2(posWithDrag.x + gridStepPixels, posWithDrag.y + gridStepPixels), ImVec2(flipX ? tileEnd.x : tileStart.x, flipY ? tileEnd.y : tileStart.y), ImVec2(!flipX ? tileEnd.x : tileStart.x, !flipY ? tileEnd.y : tileStart.y));
 
 
 		// Commit drag
@@ -797,7 +797,7 @@ static void DrawMetaspriteEditor(Metasprite& metasprite, ImVector<s32>& spriteSe
 		const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
 		const ImVec2 topLeft = ImVec2(ImGui::GetItemRectMin().x + 64, ImGui::GetItemRectMin().y + style.FramePadding.y);
 		const ImVec2 btmRight = ImVec2(topLeft.x + itemHeight, topLeft.y + itemHeight);
-		drawList->AddImage(pContext->chrTextures[sprite.palette + 4], topLeft, btmRight, tileStart, tileEnd);
+		drawList->AddImage(pContext->chrTextures[1].textures[sprite.palette + 4], topLeft, btmRight, tileStart, tileEnd);
 
 		if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
 		{
@@ -1817,18 +1817,17 @@ void Editor::Init(SDL_Window *pWindow) {
 	ImGui::CreateContext();
 	Rendering::InitImGui(pWindow);
 
-	pContext->chrTextures = (ImTextureID*)calloc(PALETTE_COUNT, sizeof(ImTextureID));
-	Rendering::CreateImGuiChrTextures(pContext->chrTextures);
+	Rendering::CreateImGuiChrTextures(0, pContext->chrTextures[0].textures);
+	Rendering::CreateImGuiChrTextures(1, pContext->chrTextures[1].textures);
 	Rendering::CreateImGuiPaletteTexture(&pContext->paletteTexture);
 	Rendering::CreateImGuiGameTexture(&pContext->gameViewTexture);
 }
 
 void Editor::Free() {
-	Rendering::FreeImGuiChrTextures(pContext->chrTextures);
+	Rendering::FreeImGuiChrTextures(0, pContext->chrTextures[0].textures);
+	Rendering::FreeImGuiChrTextures(1, pContext->chrTextures[1].textures);
 	Rendering::FreeImGuiPaletteTexture(&pContext->paletteTexture);
 	Rendering::FreeImGuiGameTexture(&pContext->gameViewTexture);
-
-	free(pContext->chrTextures);
 
 	Rendering::ShutdownImGui();
 	ImGui::DestroyContext();

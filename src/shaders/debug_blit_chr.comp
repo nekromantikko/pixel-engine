@@ -8,12 +8,9 @@ struct ChrTile {
 	uint p1[2];
 	uint p2[2];
 };
-struct ChrSheet {
-	ChrTile tiles[256];
-};
 layout(set = 0, binding = 2) readonly buffer CHR
 {
-    ChrSheet sheet[2];
+    ChrTile tiles[256];
 } chr;
 layout(set = 0, binding = 3) readonly buffer PalTable
 {
@@ -28,7 +25,7 @@ layout(push_constant) uniform PushConstant
 float ToLinear1(float c){return(c<=0.04045)?c/12.92:pow((c+0.055)/1.055,2.4);}
 vec3 ToLinear(vec3 c){return vec3(ToLinear1(c.r),ToLinear1(c.g),ToLinear1(c.b));}
 
-int ReadCHRTile(int chrIndex, int tileIndex, int offset, int flipX, int flipY) {
+int ReadCHRTile(int tileIndex, int offset, int flipX, int flipY) {
 	if (flipX != 0) {
 		offset ^= 7;
 	}
@@ -40,7 +37,7 @@ int ReadCHRTile(int chrIndex, int tileIndex, int offset, int flipX, int flipY) {
 	int halfOffset = offset >= 32 ? offset >> 32 : offset;
 	int whichHalf = offset >= 32 ? 1 : 0;
 
-	ChrTile tile = chr.sheet[chrIndex].tiles[tileIndex];
+	ChrTile tile = chr.tiles[tileIndex];
 
 	uint t0 = tile.p0[whichHalf];
 	uint t1 = tile.p1[whichHalf];
@@ -63,10 +60,9 @@ int ReadPaletteTable(int tableIndex, int colorIndex) {
 }
 
 void main() {
-	uint chrIndex = gl_WorkGroupID.x / 16;
 	uint tileIndex = (gl_WorkGroupID.x % 16) + (gl_WorkGroupID.y * 16);
 	int fine = int(gl_LocalInvocationID.x + gl_LocalInvocationID.y * 8); // Should be 6 bits (yyyxxx)
-	int colorIndex = ReadCHRTile(int(chrIndex), int(tileIndex), fine, 0, 0);
+	int colorIndex = ReadCHRTile(int(tileIndex), fine, 0, 0);
 	int palTableIndex = pushConstant.paletteIndex % 8;
 	int paletteIndex = ReadPaletteTable(palTableIndex, colorIndex);
 	vec3 outColor = imageLoad(palette, paletteIndex).rgb;
