@@ -14,21 +14,19 @@ layout(set = 0, binding = 3) readonly buffer PalTable
 float ToLinear1(float c){return(c<=0.04045)?c/12.92:pow((c+0.055)/1.055,2.4);}
 vec3 ToLinear(vec3 c){return vec3(ToLinear1(c.r),ToLinear1(c.g),ToLinear1(c.b));}
 
-int ReadPaletteTable(int tableIndex, int colorIndex) {
+uint ReadPaletteTable(int tableIndex, int colorIndex) {
 	int coarse = tableIndex * 2 + colorIndex / 4;
 	int fine = colorIndex % 4;
 	uint result = palTable.data[coarse];
-	result &= (0xFF << (8 * fine));
-	result >>= 8 * fine;
-	return int(result);
+	return bitfieldExtract(result, 8 * fine, 8);
 }
 
 void main() {
 	int palTableIndex = int(gl_WorkGroupID.x);
 	int colorIndex = int(gl_LocalInvocationID.x);
 	palTableIndex *= sign(colorIndex % 8); // BG is always color 0
-	int paletteIndex = ReadPaletteTable(palTableIndex, colorIndex);
-	vec3 outColor = imageLoad(palette, paletteIndex).rgb;
+	uint paletteIndex = ReadPaletteTable(palTableIndex, colorIndex);
+	vec3 outColor = imageLoad(palette, int(paletteIndex)).rgb;
 	outColor = ToLinear(outColor);
 	imageStore(outImage, ivec2(gl_GlobalInvocationID.xy), vec4(outColor, 1.0));
 }

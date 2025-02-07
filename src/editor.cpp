@@ -54,6 +54,11 @@ struct EditorContext {
 static EditorContext* pContext;
 
 #pragma region Utils
+// Sign-extend 9-bit unsigned sprite position
+static s32 SignExtendSpritePos(u16 spritePos) {
+	return (spritePos ^ 0x100) - 0x100;
+}
+
 static ImVec2 GetChrTileCoord(u8 index) {
 	ImVec2 coord = ImVec2(index % CHR_DIM_TILES, index / CHR_DIM_TILES);
 	return coord;
@@ -197,7 +202,7 @@ static void DrawMetasprite(const Metasprite* pMetasprite, ImVec2 origin, r32 ren
 		ImVec2 tileCoord = GetChrTileCoord(index);
 		ImVec2 tileStart = ChrTileCoordToTexCoord(tileCoord, 1);
 		ImVec2 tileEnd = ChrTileCoordToTexCoord(ImVec2(tileCoord.x + 1, tileCoord.y + 1), 1);
-		ImVec2 pos = ImVec2(origin.x + renderScale * sprite.x, origin.y + renderScale * sprite.y);
+		ImVec2 pos = ImVec2(origin.x + renderScale * SignExtendSpritePos(sprite.x), origin.y + renderScale * SignExtendSpritePos(sprite.y));
 		bool flipX = sprite.flipHorizontal;
 		bool flipY = sprite.flipVertical;
 		u8 palette = sprite.palette;
@@ -556,7 +561,7 @@ static void DrawMetaspritePreview(Metasprite& metasprite, ImVector<s32>& spriteS
 		ImVec2 tileCoord = GetChrTileCoord(index);
 		ImVec2 tileStart = ChrTileCoordToTexCoord(tileCoord, 1);
 		ImVec2 tileEnd = ChrTileCoordToTexCoord(ImVec2(tileCoord.x + 1, tileCoord.y + 1), 1);
-		ImVec2 pos = ImVec2(origin.x + renderScale * sprite.x, origin.y + renderScale * sprite.y);
+		ImVec2 pos = ImVec2(origin.x + renderScale * SignExtendSpritePos(sprite.x), origin.y + renderScale * SignExtendSpritePos(sprite.y));
 		bool flipX = sprite.flipHorizontal;
 		bool flipY = sprite.flipVertical;
 		u8 palette = sprite.palette;
@@ -650,7 +655,7 @@ static void DrawSpriteEditor(Metasprite& metasprite, ImVector<s32>& spriteSelect
 		}
 		ImGui::EndChild();
 
-		ImGui::Text("Position: (%d, %d)", sprite.x, sprite.y);
+		ImGui::Text("Position: (%d, %d)", SignExtendSpritePos(sprite.x), SignExtendSpritePos(sprite.y));
 
 		if (ImGui::Checkbox("Flip horizontal", &flipX)) {
 			sprite.flipHorizontal = flipX;

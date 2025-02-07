@@ -5,9 +5,7 @@ layout(local_size_x = MAX_SPRITES_PER_SCANLINE, local_size_y = 1, local_size_z =
 
 struct Sprite
 {
-	int y;
-	int x;
-	uint tileId;
+	uint pos;
 	uint attributes;
 };
 layout(set = 0, binding = 5) readonly buffer Sprites
@@ -56,7 +54,8 @@ void main() {
 	for (uint globalSpriteIndex = localSpriteIndex; globalSpriteIndex < spriteCount; globalSpriteIndex += MAX_SPRITES_PER_SCANLINE) {
 		Sprite sprite = sprites.data[globalSpriteIndex];
 
-		if (scanlineIndex >= sprite.y && scanlineIndex < sprite.y + 8) {
+		uint y = bitfieldExtract(sprite.pos, 0, 9);
+		if (scanlineIndex >= y && scanlineIndex < y + 8) {
 			uint scanlineSpriteIndex = atomicAdd(sharedData.spriteCount, 1);
 			if (scanlineSpriteIndex < MAX_SPRITES_PER_SCANLINE) {
 				sharedData.spriteIndices[scanlineSpriteIndex] = globalSpriteIndex;

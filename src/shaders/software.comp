@@ -30,9 +30,7 @@ layout(set = 0, binding = 4) readonly buffer Nametable
 } nametable;
 struct Sprite
 {
-	int y;
-	int x;
-	uint tileId;
+	uint pos;
 	uint attributes;
 };
 layout(set = 0, binding = 5) readonly buffer Sprites
@@ -55,18 +53,15 @@ layout(set = 0, binding = 6) readonly buffer Scanlines
 float ToLinear1(float c){return(c<=0.04045)?c/12.92:pow((c+0.055)/1.055,2.4);}
 vec3 ToLinear(vec3 c){return vec3(ToLinear1(c.r),ToLinear1(c.g),ToLinear1(c.b));}
 
-int ReadNametableByte(int index, int tileOffset) {
+uint ReadNametableByte(int index, int tileOffset) {
 	int coarse = tileOffset / 4; // Offset to 4 byte block
 	int fine = tileOffset % 4; // byte index (2bits)
 	uint nametableOffset = index * (NAMETABLE_SIZE / 4);
 	uint result = nametable.data[nametableOffset + coarse];
-	// Mask
-	result &= (0xFF << (8 * fine));
-	result >>= 8 * fine;
-	return int(result);
+	return bitfieldExtract(result, 8 * fine, 8);
 }
 
-int ReadCHRTile(int chrIndex, int tileIndex, int offset, int flipX, int flipY) {
+uint ReadCHRTile(uint chrIndex, uint tileIndex, uint offset, uint flipX, uint flipY) {
 	if (flipX != 0) {
 		offset ^= 7;
 	}
@@ -75,29 +70,28 @@ int ReadCHRTile(int chrIndex, int tileIndex, int offset, int flipX, int flipY) {
 	}
 
 	// No 64bit ints, so tiles split in half
-	int halfOffset = offset >= 32 ? offset >> 32 : offset;
-	int whichHalf = offset >= 32 ? 1 : 0;
+	uint whichHalf = offset >> 5;  // Divide by 32 (2^5)
+	uint bitOffset = offset & 31;  // Modulo 32 (2^5 - 1)
 
+	// Fetch the tile data (each plane is split into two 32-bit parts)
 	ChrTile tile = chr.sheet[chrIndex].tiles[tileIndex];
-
 	uint t0 = tile.p0[whichHalf];
 	uint t1 = tile.p1[whichHalf];
 	uint t2 = tile.p2[whichHalf];
 
-	uint result = (t0 & (1 << halfOffset)) >> halfOffset;
-	result |= ((t1 & (1 << halfOffset)) >> halfOffset) << 1;
-	result |= ((t2 & (1 << halfOffset)) >> halfOffset) << 2;
+	// Extract the bit from each plane using bitfieldExtract
+	uint result = bitfieldExtract(t0, int(bitOffset), 1);
+	result |= bitfieldExtract(t1, int(bitOffset), 1) << 1;
+	result |= bitfieldExtract(t2, int(bitOffset), 1) << 2;
 
-	return int(result);
+	return result;
 }
 
-int ReadPaletteTable(int tableIndex, int colorIndex) {
-	int coarse = tableIndex * 2 + colorIndex / 4;
-	int fine = colorIndex % 4;
+uint ReadPaletteTable(uint tableIndex, uint colorIndex) {
+	uint coarse = tableIndex * 2 + colorIndex / 4;
+	uint fine = colorIndex % 4;
 	uint result = palTable.data[coarse];
-	result &= (0xFF << (8 * fine));
-	result >>= 8 * fine;
-	return int(result);
+	return bitfieldExtract(result, int(8 * fine), 8);
 }
 
 ivec2 Scroll(ScanlineData scanline, ivec2 screenPos, out int nametableIndex) {
@@ -125,9 +119,9 @@ ivec2 RenderBackground(ivec2 screenPos) {
 	ivec2 fine2d = scrollPos % 8; // position of pixel within tile
 	int fine = fine2d.x + fine2d.y * 8; // Should be 6 bits (yyyxxx)
 
-	int tileIndex = ReadNametableByte(nametableIndex, coarse);
+	uint tileIndex = ReadNametableByte(nametableIndex, coarse);
 	
-	int colorIndex = ReadCHRTile(0, int(tileIndex), fine, 0, 0);
+	uint colorIndex = ReadCHRTile(0, tileIndex, fine, 0, 0);
 
 	// Don't draw transparent pixels
 	if (colorIndex == 0) {
@@ -142,7 +136,7 @@ ivec2 RenderBackground(ivec2 screenPos) {
 	int attributeBlockTilePos = attributeBlockTilePos2d.x + attributeBlockTilePos2d.y * 4; // This should be 4 bits (yyxx)
 	ivec2 attributeSubBlockPos2d = attributeBlockTilePos2d / 2; // Position of 2x2 block within 4x4 block
 	int attributeSubBlockPos = attributeSubBlockPos2d.x + attributeSubBlockPos2d.y * 2; // This should be 2 bits
-	int palTableIndex = ReadNametableByte(nametableIndex, attributeOffset + attributeBlockPos);
+	uint palTableIndex = ReadNametableByte(nametableIndex, attributeOffset + attributeBlockPos);
 	palTableIndex &= (3 << (2 * attributeSubBlockPos));
 	palTableIndex >>= 2 * attributeSubBlockPos;
 
@@ -172,16 +166,20 @@ ivec2 RenderSprites(ivec2 screenPos, ivec2 result) {
 	for (int i = 0; i < spriteCount; i++) {
 		uint spriteIndex = scanline.spriteIndices[i];
 		Sprite sprite = sprites.data[spriteIndex];
+		uint y = bitfieldExtract(sprite.pos, 0, 9);
+		uint x = bitfieldExtract(sprite.pos, 16, 9);
 		// Is pixel inside sprite?
-		if (screenPos.x >= sprite.x && screenPos.x < sprite.x + 8) {
-			int palTableIndex = int(sprite.attributes & 3) + 4;
-			int priority = int((sprite.attributes >> 5) & 1);
-			int flipX = int((sprite.attributes >> 6) & 1);
-			int flipY = int((sprite.attributes >> 7) & 1);
+		if (screenPos.x >= x && screenPos.x < x + 8) {
 
-			ivec2 fine2d = screenPos - ivec2(sprite.x, sprite.y);
+			uint tileId = bitfieldExtract(sprite.attributes, 0, 8);
+			uint palTableIndex = bitfieldExtract(sprite.attributes, 8, 2) + 4;
+			uint priority = bitfieldExtract(sprite.attributes, 13, 1);
+			uint flipX = bitfieldExtract(sprite.attributes, 14, 1);
+			uint flipY = bitfieldExtract(sprite.attributes, 15, 1);
+
+			ivec2 fine2d = screenPos - ivec2(x, y);
 			int fine = fine2d.x + fine2d.y * 8;
-			int colorIndex = ReadCHRTile(1, int(sprite.tileId), fine, flipX, flipY);
+			uint colorIndex = ReadCHRTile(1, tileId, fine, flipX, flipY);
 
 			// Don't draw transparent pixels
 			if (colorIndex == 0) {
@@ -214,8 +212,8 @@ void main() {
 
 	int colorIndex = result.x;
 	int palTableIndex = result.y;
-	int paletteIndex = ReadPaletteTable(palTableIndex, colorIndex);
-	vec3 outColor = imageLoad(palette, paletteIndex).rgb;
+	uint paletteIndex = ReadPaletteTable(palTableIndex, colorIndex);
+	vec3 outColor = imageLoad(palette, int(paletteIndex)).rgb;
 	// outColor = RenderDebugGrid(screenPos, outColor);
 	outColor = ToLinear(outColor);
 	imageStore(outImage, screenPos, vec4(outColor, 1.0));

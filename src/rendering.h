@@ -65,20 +65,20 @@ constexpr u32 SCANLINE_COUNT = VIEWPORT_HEIGHT_PIXELS;
 
 static_assert(NAMETABLE_WIDTH_TILES == (1 << NAMETABLE_WIDTH_TILES_LOG2));
 
-struct Sprite {
+struct alignas(4) Sprite {
 	// y is first so we can easily set it offscreen when clearing
-	s32 y;
-	s32 x;
-	u32 tileId;
+	u16 y : 9;
+	u16 x : 9;
+	u8 tileId;
 	union {
-		struct alignas(4) {
+		struct alignas(1) {
 			u8 palette : 2;
 			u8 unused : 3;
 			u8 priority : 1;
 			bool flipHorizontal : 1;
 			bool flipVertical : 1;
 		};
-		u32 attributes;
+		u8 attributes;
 	};
 };
 

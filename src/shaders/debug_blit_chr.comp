@@ -25,7 +25,7 @@ layout(push_constant) uniform PushConstant
 float ToLinear1(float c){return(c<=0.04045)?c/12.92:pow((c+0.055)/1.055,2.4);}
 vec3 ToLinear(vec3 c){return vec3(ToLinear1(c.r),ToLinear1(c.g),ToLinear1(c.b));}
 
-int ReadCHRTile(int tileIndex, int offset, int flipX, int flipY) {
+uint ReadCHRTile(uint tileIndex, uint offset, uint flipX, uint flipY) {
 	if (flipX != 0) {
 		offset ^= 7;
 	}
@@ -34,38 +34,37 @@ int ReadCHRTile(int tileIndex, int offset, int flipX, int flipY) {
 	}
 
 	// No 64bit ints, so tiles split in half
-	int halfOffset = offset >= 32 ? offset >> 32 : offset;
-	int whichHalf = offset >= 32 ? 1 : 0;
+	uint whichHalf = offset >> 5;  // Divide by 32 (2^5)
+	uint bitOffset = offset & 31;  // Modulo 32 (2^5 - 1)
 
+	// Fetch the tile data (each plane is split into two 32-bit parts)
 	ChrTile tile = chr.tiles[tileIndex];
-
 	uint t0 = tile.p0[whichHalf];
 	uint t1 = tile.p1[whichHalf];
 	uint t2 = tile.p2[whichHalf];
 
-	uint result = (t0 & (1 << halfOffset)) >> halfOffset;
-	result |= ((t1 & (1 << halfOffset)) >> halfOffset) << 1;
-	result |= ((t2 & (1 << halfOffset)) >> halfOffset) << 2;
+	// Extract the bit from each plane using bitfieldExtract
+	uint result = bitfieldExtract(t0, int(bitOffset), 1);
+	result |= bitfieldExtract(t1, int(bitOffset), 1) << 1;
+	result |= bitfieldExtract(t2, int(bitOffset), 1) << 2;
 
-	return int(result);
+	return result;
 }
 
-int ReadPaletteTable(int tableIndex, int colorIndex) {
-	int coarse = tableIndex * 2 + colorIndex / 4;
-	int fine = colorIndex % 4;
+uint ReadPaletteTable(uint tableIndex, uint colorIndex) {
+	uint coarse = tableIndex * 2 + colorIndex / 4;
+	uint fine = colorIndex % 4;
 	uint result = palTable.data[coarse];
-	result &= (0xFF << (8 * fine));
-	result >>= 8 * fine;
-	return int(result);
+	return bitfieldExtract(result, int(8 * fine), 8);
 }
 
 void main() {
 	uint tileIndex = (gl_WorkGroupID.x % 16) + (gl_WorkGroupID.y * 16);
 	int fine = int(gl_LocalInvocationID.x + gl_LocalInvocationID.y * 8); // Should be 6 bits (yyyxxx)
-	int colorIndex = ReadCHRTile(int(tileIndex), fine, 0, 0);
-	int palTableIndex = pushConstant.paletteIndex % 8;
-	int paletteIndex = ReadPaletteTable(palTableIndex, colorIndex);
-	vec3 outColor = imageLoad(palette, paletteIndex).rgb;
+	uint colorIndex = ReadCHRTile(tileIndex, fine, 0, 0);
+	uint palTableIndex = pushConstant.paletteIndex % 8;
+	uint paletteIndex = ReadPaletteTable(palTableIndex, colorIndex);
+	vec3 outColor = imageLoad(palette, int(paletteIndex)).rgb;
 	outColor = ToLinear(outColor);
 	float a = colorIndex == 0 ? 0.0 : 1.0;
 	imageStore(outImage, ivec2(gl_GlobalInvocationID.xy), vec4(outColor, a));
