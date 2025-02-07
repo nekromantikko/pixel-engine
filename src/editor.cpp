@@ -12,6 +12,7 @@
 #include "level.h"
 #include "viewport.h"
 #include "actors.h"
+#include "chr_stream.h"
 
 constexpr u32 CLIPBOARD_DIM_TILES = (VIEWPORT_WIDTH_TILES / 2) + 1;
 
@@ -39,6 +40,8 @@ struct ChrTextures {
 
 struct EditorContext {
 	ChrTextures chrTextures[CHR_COUNT];
+	u64 bankRenderDataHandles[MAX_CHR_BANK_COUNT];
+	ChrTextures bankTextures[MAX_CHR_BANK_COUNT];
 	ImTextureID paletteTexture;
 	ImTextureID gameViewTexture;
 
@@ -151,7 +154,7 @@ static bool DrawPaletteButton(u8 palette) {
 	return ImGui::ImageButton("", pContext->paletteTexture, ImVec2(80, 10), ImVec2(0.125 * palette, 0), ImVec2(0.125 * (palette + 1), 1));
 }
 
-static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
+static void DrawCHRSheet(r32 size, ImTextureID texture, s32* selectedTile) {
 	constexpr s32 gridSizeTiles = CHR_DIM_TILES;
 
 	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
@@ -160,10 +163,15 @@ static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	const ImVec2 gridSize = ImVec2(size, size);
 	const ImVec2 chrPos = DrawTileGrid(gridSize, gridStepPixels, selectedTile);
-	drawList->AddImage(pContext->chrTextures[index].textures[palette + index * 4], chrPos, ImVec2(chrPos.x + size, chrPos.y + size), ImVec2(0, 0), ImVec2(1, 1));
+	drawList->AddImage(texture, chrPos, ImVec2(chrPos.x + size, chrPos.y + size), ImVec2(0, 0), ImVec2(1, 1));
 	if (selectedTile != nullptr && *selectedTile >= 0) {
 		DrawTileGridSelection(chrPos, gridSize, gridStepPixels, *selectedTile);
 	}
+}
+
+static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
+	const ImTextureID texture = pContext->chrTextures[index].textures[palette + index * 4];
+	DrawCHRSheet(size, texture, selectedTile);
 }
 
 static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile) {
@@ -453,6 +461,56 @@ static void DrawDebugWindow() {
 				ImGui::SameLine();
 			}
 			
+			ImGui::EndTabItem();
+		}
+		if (ImGui::BeginTabItem("Pattern banks")) {
+			static s32 selectedBank;
+			static s32 selectedPalette;
+
+			ImGui::BeginChild("Bank list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
+
+			for (u32 i = 0; i < GetChrBankCount(); i++) {
+
+				char labelStr[6];
+				snprintf(labelStr, 6, "0x%03x", i);
+
+				bool selected = i == selectedBank;
+
+				ImGui::PushID(i);
+				ImGui::SetNextItemAllowOverlap();
+				if (ImGui::Selectable(labelStr, selected)) {
+					selectedBank = i;
+				}
+
+				if (selected) {
+					ImGui::SetItemDefaultFocus();
+				}
+				ImGui::PopID();
+			}
+
+			ImGui::EndChild();
+
+			ImGui::SameLine();
+
+			constexpr s32 renderScale = 3;
+			const r32 chrWidth = CHR_DIM_PIXELS * renderScale;
+
+			ImTextureID texture = pContext->bankTextures[selectedBank].textures[selectedPalette];
+			DrawCHRSheet(chrWidth, texture, nullptr);
+
+			ImGui::SameLine();
+			ImGui::BeginChild("sprite palette", ImVec2(0, chrWidth));
+			{
+				for (int i = 0; i < PALETTE_COUNT; i++) {
+					ImGui::PushID(i);
+					if (DrawPaletteButton(i)) {
+						selectedPalette = i;
+					}
+					ImGui::PopID();
+				}
+			}
+			ImGui::EndChild();
+
 			ImGui::EndTabItem();
 		}
 		if (ImGui::BeginTabItem("Palette")) {
@@ -1829,6 +1887,12 @@ void Editor::Free() {
 	Rendering::FreeImGuiPaletteTexture(&pContext->paletteTexture);
 	Rendering::FreeImGuiGameTexture(&pContext->gameViewTexture);
 
+	for (u32 i = 0; i < GetChrBankCount(); i++) {
+		const u64 handle = pContext->bankRenderDataHandles[i];
+		ImTextureID* pTextures = pContext->bankTextures[i].textures;
+		Rendering::FreeImGuiChrBankTextures(handle, pTextures);
+	}
+
 	Rendering::ShutdownImGui();
 	ImGui::DestroyContext();
 }
@@ -1873,5 +1937,10 @@ void Editor::Render() {
 	}
 
 	ImGui::Render();
+}
+
+void Editor::SetupChrBankRendering(u32 index, ChrSheet* pBank) {
+	ImTextureID* pTextures = pContext->bankTextures[index].textures;
+	Rendering::CreateImGuiChrBankTextures(pBank, pTextures);
 }
 #pragma endregion

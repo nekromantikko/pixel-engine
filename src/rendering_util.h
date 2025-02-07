@@ -13,7 +13,7 @@ namespace Rendering
 		void SetNametableMetatile(Nametable* pNametable, u32 x, u32 y, const Metatile& metatile, const s32 palette);
 		void ClearNametable(Nametable* pNametable, u8 tile = 0, s32 palette = 0);
 
-		void CreateChrSheet(const char* fname, ChrSheet* outSheet);
+		void CreateChrSheet(const char* pixels, ChrSheet* outSheet);
 		void LoadPaletteColorsFromFile(const char* fname, u8* outColors);
 		void GeneratePaletteColors(u32* data);
 		void SavePaletteToFile(const char* fname);

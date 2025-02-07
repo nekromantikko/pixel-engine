@@ -788,7 +788,7 @@ static void FreeImage(Image image) {
 	vkFreeMemory(pContext->device, image.memory, nullptr);
 }
 
-static VkImageMemoryBarrier GetImageBarrier(Image* pImage, VkImageLayout oldLayout, VkImageLayout newLayout) {
+static VkImageMemoryBarrier GetImageBarrier(const Image* pImage, VkImageLayout oldLayout, VkImageLayout newLayout) {
 	VkImageMemoryBarrier barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	barrier.oldLayout = oldLayout;
@@ -988,19 +988,15 @@ static void TransferComputeBufferData() {
 }
 
 #ifdef EDITOR
-static void GetChrImageBarriers(u32 index, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageMemoryBarrier* outBarriers) {
-	ChrSheetRenderData& renderData = pContext->chrData[index];
-	
+static void GetChrImageBarriers(const ChrSheetRenderData* pRenderData, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageMemoryBarrier* outBarriers) {
 	for (u32 i = 0; i < PALETTE_COUNT; i++) {
-		outBarriers[i] = GetImageBarrier(&renderData.images[i], oldLayout, newLayout);
+		outBarriers[i] = GetImageBarrier(&pRenderData->images[i], oldLayout, newLayout);
 	}
 }
 
-static void RenderChrImage(u32 index, VkCommandBuffer cmd) {
-	const ChrSheetRenderData& renderData = pContext->chrData[index];
-
+static void RenderChrImage(const ChrSheetRenderData* pRenderData, VkCommandBuffer cmd) {
 	VkImageMemoryBarrier barriers[PALETTE_COUNT]{};
-	GetChrImageBarriers(index, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, barriers);
+	GetChrImageBarriers(pRenderData, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, barriers);
 	vkCmdPipelineBarrier(
 		cmd,
 		VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
@@ -1012,13 +1008,13 @@ static void RenderChrImage(u32 index, VkCommandBuffer cmd) {
 	);
 
 	for (u32 i = 0; i < PALETTE_COUNT; i++) {
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipelineLayout, 0, 1, &renderData.descriptorSets[i], 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipelineLayout, 0, 1, &pRenderData->descriptorSets[i], 0, nullptr);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipeline);
 		vkCmdPushConstants(cmd, pContext->chrPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(u32), &i);
 		vkCmdDispatch(cmd, 16, 16, 1);
 	}
 
-	GetChrImageBarriers(index, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, barriers);
+	GetChrImageBarriers(pRenderData, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, barriers);
 	vkCmdPipelineBarrier(
 		cmd,
 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -1033,8 +1029,14 @@ static void RenderChrImage(u32 index, VkCommandBuffer cmd) {
 static void RenderChrImages() {
 	VkCommandBuffer commandBuffer = pContext->primaryCommandBuffers[pContext->currentCbIndex];
 
-	RenderChrImage(0, commandBuffer);
-	RenderChrImage(1, commandBuffer);
+	RenderChrImage(&pContext->chrData[0], commandBuffer);
+	RenderChrImage(&pContext->chrData[1], commandBuffer);
+
+	for (u32 i = 0; i < pContext->bankData.Count(); i++) {
+		PoolHandle<ChrSheetRenderData> handle = pContext->bankData.GetHandle(i);
+		ChrSheetRenderData* pData = pContext->bankData.Get(handle);
+		RenderChrImage(pData, commandBuffer);
+	}
 }
 
 static void RenderPaletteImage() {
@@ -1954,7 +1956,7 @@ static void CreateChrSheetSubBuffer(u32 index, Buffer& outBuffer) {
 	outBuffer.memory = VK_NULL_HANDLE;
 }
 
-static void InitializeChrDescriptorSet(ChrSheetRenderData& renderData) {
+static void InitializeChrDescriptorSet(ChrSheetRenderData* pRenderData) {
 	VkDescriptorSetLayout layouts[PALETTE_COUNT]{};
 	for (u32 i = 0; i < PALETTE_COUNT; i++) {
 		layouts[i] = pContext->debugDescriptorSetLayout;
@@ -1966,7 +1968,7 @@ static void InitializeChrDescriptorSet(ChrSheetRenderData& renderData) {
 	chrDescriptorSetAllocInfo.descriptorSetCount = PALETTE_COUNT;
 	chrDescriptorSetAllocInfo.pSetLayouts = layouts;
 
-	VkResult res = vkAllocateDescriptorSets(pContext->device, &chrDescriptorSetAllocInfo, renderData.descriptorSets);
+	VkResult res = vkAllocateDescriptorSets(pContext->device, &chrDescriptorSetAllocInfo, pRenderData->descriptorSets);
 	if (res != VK_SUCCESS) {
 		DEBUG_ERROR("Whoopsie poopsie :c %d\n", res);
 	}
@@ -1974,7 +1976,7 @@ static void InitializeChrDescriptorSet(ChrSheetRenderData& renderData) {
 	for (u32 i = 0; i < PALETTE_COUNT; i++) {
 		VkDescriptorImageInfo outBufferInfo{};
 		outBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		outBufferInfo.imageView = renderData.images[i].view;
+		outBufferInfo.imageView = pRenderData->images[i].view;
 		outBufferInfo.sampler = pContext->defaultSampler;
 
 		VkDescriptorImageInfo paletteBufferInfo{};
@@ -1983,7 +1985,7 @@ static void InitializeChrDescriptorSet(ChrSheetRenderData& renderData) {
 		paletteBufferInfo.sampler = pContext->defaultSampler;
 
 		VkDescriptorBufferInfo chrBufferInfo{};
-		chrBufferInfo.buffer = renderData.sheetBuffer.buffer;
+		chrBufferInfo.buffer = pRenderData->sheetBuffer.buffer;
 		chrBufferInfo.offset = 0;
 		chrBufferInfo.range = sizeof(ChrSheet);
 
@@ -1994,7 +1996,7 @@ static void InitializeChrDescriptorSet(ChrSheetRenderData& renderData) {
 
 		VkWriteDescriptorSet descriptorWrite[4]{};
 		descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[0].dstSet = renderData.descriptorSets[i];
+		descriptorWrite[0].dstSet = pRenderData->descriptorSets[i];
 		descriptorWrite[0].dstBinding = 0;
 		descriptorWrite[0].dstArrayElement = 0;
 		descriptorWrite[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
@@ -2002,7 +2004,7 @@ static void InitializeChrDescriptorSet(ChrSheetRenderData& renderData) {
 		descriptorWrite[0].pImageInfo = &outBufferInfo;
 
 		descriptorWrite[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[1].dstSet = renderData.descriptorSets[i];
+		descriptorWrite[1].dstSet = pRenderData->descriptorSets[i];
 		descriptorWrite[1].dstBinding = 1;
 		descriptorWrite[1].dstArrayElement = 0;
 		descriptorWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
@@ -2010,7 +2012,7 @@ static void InitializeChrDescriptorSet(ChrSheetRenderData& renderData) {
 		descriptorWrite[1].pImageInfo = &paletteBufferInfo;
 
 		descriptorWrite[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[2].dstSet = renderData.descriptorSets[i];
+		descriptorWrite[2].dstSet = pRenderData->descriptorSets[i];
 		descriptorWrite[2].dstBinding = 2;
 		descriptorWrite[2].dstArrayElement = 0;
 		descriptorWrite[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -2018,7 +2020,7 @@ static void InitializeChrDescriptorSet(ChrSheetRenderData& renderData) {
 		descriptorWrite[2].pBufferInfo = &chrBufferInfo;
 
 		descriptorWrite[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[3].dstSet = renderData.descriptorSets[i];
+		descriptorWrite[3].dstSet = pRenderData->descriptorSets[i];
 		descriptorWrite[3].dstBinding = 3;
 		descriptorWrite[3].dstArrayElement = 0;
 		descriptorWrite[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -2039,7 +2041,7 @@ void Rendering::CreateImGuiChrTextures(u32 index, ImTextureID* pTextures) {
 		pTextures[i] = (ImTextureID)ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, renderData.images[i].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	}
 
-	InitializeChrDescriptorSet(renderData);
+	InitializeChrDescriptorSet(&renderData);
 }
 
 static void FreeImGuiChrTextures(ChrSheetRenderData* pRenderData, ImTextureID* pTextures) {
@@ -2062,13 +2064,26 @@ u64 Rendering::CreateImGuiChrBankTextures(const ChrSheet* pBank, ImTextureID* pT
 	ChrSheetRenderData* pRenderData = pContext->bankData.Get(handle);
 
 	Buffer stagingBuffer{};
-	AllocateBuffer(sizeof(ChrSheet), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer);
+	AllocateBuffer(sizeof(ChrSheet), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer);
 
-	AllocateBuffer(sizeof(ChrSheet), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pRenderData->sheetBuffer);
+	void* data;
+	vkMapMemory(pContext->device, stagingBuffer.memory, 0, sizeof(ChrSheet), 0, &data);
+	memcpy(data, pBank, sizeof(ChrSheet));
+	vkUnmapMemory(pContext->device, stagingBuffer.memory);
+
+	AllocateBuffer(sizeof(ChrSheet), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pRenderData->sheetBuffer);
 
 	CopyBuffer(stagingBuffer.buffer, pRenderData->sheetBuffer.buffer, sizeof(ChrSheet));
 
 	FreeBuffer(stagingBuffer);
+
+	for (u32 i = 0; i < PALETTE_COUNT; i++) {
+		CreateImage(CHR_DIM_PIXELS, CHR_DIM_PIXELS, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, pRenderData->images[i]);
+
+		pTextures[i] = (ImTextureID)ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, pRenderData->images[i].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	}
+
+	InitializeChrDescriptorSet(pRenderData);
 
 	return handle.Raw();
 }

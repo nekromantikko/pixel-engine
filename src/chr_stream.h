@@ -1,2 +1,6 @@
 #pragma once
-#include "typedef.h"
+#include "rendering.h"
+
+void LoadChrBank(const char* fname);
+
+u32 GetChrBankCount();

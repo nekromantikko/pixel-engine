@@ -13,6 +13,7 @@
 #include <imgui.h>
 #include "math.h"
 #include <vector>
+#include "chr_stream.h"
 
 namespace Game {
     r64 secondsElapsed = 0.0f;
@@ -236,15 +237,10 @@ namespace Game {
         pNametables = Rendering::GetNametablePtr(0);
         pScanlines = Rendering::GetScanlinePtr(0);
 
-        // Init chr memory
-        // TODO: Pre-process these instead of loading from bitmap at runtime!
-        ChrSheet temp;
-        Rendering::Util::CreateChrSheet("assets/chr000.bmp", &temp);
-        Rendering::Util::CopyChrTiles(temp.tiles, pChr[0].tiles, CHR_SIZE_TILES);
-        Rendering::Util::CreateChrSheet("assets/chr001.bmp", &temp);
-        Rendering::Util::CopyChrTiles(temp.tiles, pChr[1].tiles, CHR_SIZE_TILES);
-
-        Rendering::Util::CreateChrSheet("assets/player.bmp", &playerBank);
+        // Load chr banks
+        LoadChrBank("assets/chr000.bmp");
+        LoadChrBank("assets/chr001.bmp");
+        LoadChrBank("assets/player.bmp");
 
         //u8 paletteColors[8 * 8];
         Rendering::Util::LoadPaletteColorsFromFile("assets/palette.dat", basePaletteColors);
