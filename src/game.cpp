@@ -79,7 +79,7 @@ namespace Game {
     };
     Pool<DamageNumber> damageNumberPool;
 
-    ChrSheet playerBank;
+    //ChrSheet playerBank;
 
     bool paused = false;
 
@@ -102,6 +102,11 @@ namespace Game {
         }
         default:
             break;
+        }
+
+        for (u32 i = 0; i < pActor->pPreset->pMetasprite->spriteCount; i++) {
+            const Sprite& sprite = pActor->pPreset->pMetasprite->spritesRelativePos[i];
+            AddBankTileToChrSheet(1, 1, sprite.tileId);
         }
     }
 
@@ -239,6 +244,7 @@ namespace Game {
 
         // Load chr banks
         LoadChrBank("assets/chr000.bmp");
+        CopyBankToChrSheet(0, 0);
         LoadChrBank("assets/chr001.bmp");
         LoadChrBank("assets/player.bmp");
 
@@ -344,7 +350,7 @@ namespace Game {
         }
         weaponOffset.x *= playerState.direction;
 
-        Rendering::Util::CopyChrTiles(playerBank.tiles + weaponFrameBankOffset, pChr[1].tiles + playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
+        //Rendering::Util::CopyChrTiles(playerBank.tiles + weaponFrameBankOffset, pChr[1].tiles + playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
 
         const Metasprite* bowMetasprite = Metasprites::GetMetasprite(weaponMetaspriteIndex);
         Rendering::Util::CopyMetasprite(bowMetasprite->spritesRelativePos, *ppNextSprite, bowMetasprite->spriteCount, drawPos + weaponOffset, playerState.direction == DirLeft, false);
@@ -352,7 +358,7 @@ namespace Game {
 
         // Animate chr sheet using player bank
         // TODO: Maybe do this on the GPU?
-        Rendering::Util::CopyChrTiles(
+        /*Rendering::Util::CopyChrTiles(
             playerBank.tiles + playerHandFrameBankOffsets[playerState.aMode],
             pChr[1].tiles + playerHandFrameChrOffset,
             playerHandFrameTileCount
@@ -371,7 +377,7 @@ namespace Game {
             playerBank.tiles + playerWingFrameBankOffsets[playerState.wingFrame],
             pChr[1].tiles + playerWingFrameChrOffset,
             playerWingFrameTileCount
-        );
+        );*/
 
         // Draw player
         //Metasprite* characterMetasprite = Metasprites::GetMetasprite(playerState.aMode);
@@ -691,7 +697,7 @@ namespace Game {
         }
 
         // Animate chr sheet using player bank
-        Rendering::Util::CopyChrTiles(
+        /*Rendering::Util::CopyChrTiles(
             playerBank.tiles + playerHandFrameBankOffsets[playerState.aMode],
             pChr[1].tiles + playerHandFrameChrOffset,
             playerHandFrameTileCount
@@ -710,7 +716,7 @@ namespace Game {
             playerBank.tiles + playerWingFrameBankOffsets[playerState.wingFrame],
             pChr[1].tiles + playerWingFrameChrOffset,
             playerWingFrameTileCount
-        );
+        );*/
     }
 
     static void UpdateActors(Sprite** ppNextSprite, r64 dt) {

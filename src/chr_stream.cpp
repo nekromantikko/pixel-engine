@@ -7,12 +7,19 @@
 #include "editor.h"
 #endif
 
-struct ChrBankData {
-	ChrSheet bank;
-	u32 refCounts[CHR_SIZE_TILES];
+struct ChrTileMetadata {
+	u32 refCount = 0;
+	s32 srcBankIndex = -1;
+	u8 srcBankOffset = 0;
 };
 
-static ChrBankData banks[MAX_CHR_BANK_COUNT];
+struct ChrSheetMetadata {
+	ChrTileMetadata tiles[CHR_SIZE_TILES];
+};
+
+static ChrSheetMetadata metadata[CHR_COUNT];
+
+static ChrSheet banks[MAX_CHR_BANK_COUNT];
 static u32 bankCount;
 
 #pragma pack(push, 1)
@@ -63,17 +70,72 @@ void LoadChrBank(const char* fname) {
 		DEBUG_ERROR("Invalid chr image format!\n");
 	}
 
-	ChrBankData bankData{};
-	Rendering::Util::CreateChrSheet(imgData, &bankData.bank);
+	u32 index = bankCount++;
+	ChrSheet* pBank = &banks[index];
+	Rendering::Util::CreateChrSheet(imgData, pBank);
 	free(imgData);
 
-	u32 index = bankCount++;
-	banks[index] = bankData;
 #ifdef EDITOR
-	Editor::SetupChrBankRendering(index, &bankData.bank);
+	Editor::SetupChrBankRendering(index, pBank);
 #endif
 }
 
 u32 GetChrBankCount() {
 	return bankCount;
+}
+
+void CopyBankToChrSheet(s32 bankIndex, s32 sheetIndex) {
+	ChrSheet* src = &banks[bankIndex];
+	ChrSheet* dst = Rendering::GetChrPtr(sheetIndex);
+	Rendering::Util::CopyChrTiles(src->tiles, dst->tiles, CHR_SIZE_TILES);
+
+
+}
+
+bool GetSheetTile(s32 sheetIndex, s32 bankIndex, u8 bankOffset, u8* outTile) {
+	for (u32 i = 0; i < CHR_SIZE_TILES; i++) {
+		const ChrTileMetadata& tile = metadata[sheetIndex].tiles[i];
+
+		if (tile.srcBankIndex == bankIndex && tile.srcBankOffset == bankOffset) {
+			*outTile = i;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool AddBankTileToChrSheet(s32 sheetIndex, s32 bankIndex, u8 bankOffset) {
+	u8 existingIndex;
+	if (GetSheetTile(sheetIndex, bankIndex, bankOffset, &existingIndex)) {
+		metadata[sheetIndex].tiles[existingIndex].refCount++;
+		return true;
+	}
+
+	// Find first free slot
+	for (u32 i = 0; i < CHR_SIZE_TILES; i++) {
+		ChrTileMetadata& tile = metadata[sheetIndex].tiles[i];
+
+		if (tile.refCount == 0) {
+			tile.srcBankIndex = bankIndex;
+			tile.srcBankOffset = bankOffset;
+			tile.refCount++;
+
+			ChrSheet* src = &banks[bankIndex];
+			ChrSheet* dst = Rendering::GetChrPtr(sheetIndex);
+			Rendering::Util::CopyChrTiles(src->tiles + bankOffset, dst->tiles + i, 1);
+
+			return true;
+		}
+	}
+	return false;
+}
+
+bool RemoveBankTileFromChrSheet(s32 sheetIndex, s32 bankIndex, u8 bankOffset) {
+	u8 existingIndex;
+	if (GetSheetTile(sheetIndex, bankIndex, bankOffset, &existingIndex)) {
+		metadata[sheetIndex].tiles[existingIndex].refCount--;
+		return true;
+	}
+
+	return false;
 }
