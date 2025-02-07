@@ -27,6 +27,8 @@ constexpr u32 CHR_SIZE_BYTES = CHR_SIZE_TILES * TILE_BYTES;
 constexpr u32 CHR_COUNT = 2;
 constexpr u32 CHR_MEMORY_SIZE = CHR_SIZE_BYTES * CHR_COUNT;
 
+constexpr u32 MAX_CHR_BANK_COUNT = 256;
+
 constexpr u32 NAMETABLE_COUNT = 2;
 constexpr u32 NAMETABLE_WIDTH_TILES = 64;
 constexpr u32 NAMETABLE_WIDTH_TILES_LOG2 = 6;
@@ -148,6 +150,8 @@ namespace Rendering
 
 	void CreateImGuiChrTextures(u32 index, ImTextureID* pTextures);
 	void FreeImGuiChrTextures(u32 index, ImTextureID* pTextures);
+	u64 CreateImGuiChrBankTextures(const ChrSheet* pBank, ImTextureID* pTextures);
+	void FreeImGuiChrBankTextures(u64 handle, ImTextureID* pTextures);
 	void CreateImGuiPaletteTexture(ImTextureID* pTexture);
 	void FreeImGuiPaletteTexture(ImTextureID* pTexture);
 	void CreateImGuiGameTexture(ImTextureID* pTexture);

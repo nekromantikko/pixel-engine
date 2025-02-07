@@ -35,7 +35,8 @@ set(SOURCES
 		src/system.cpp
 		src/viewport.cpp
 		src/tiles.cpp
-		src/actors.cpp)
+		src/actors.cpp
+		src/chr_stream.cpp)
 
 set(EDITOR_SOURCES
 		src/editor.cpp)
@@ -55,7 +56,8 @@ set(HEADERS
 		src/viewport.h
 		src/collision.h
 		src/tiles.h
-		src/actors.h)
+		src/actors.h
+		src/chr_stream.h)
 
 set(EDITOR_HEADERS
 		src/editor.h)

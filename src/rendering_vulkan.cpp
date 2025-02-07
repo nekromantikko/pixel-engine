@@ -11,6 +11,7 @@
 #include <SDL_vulkan.h>
 #include <cassert>
 #include <vector>
+#include "memory_pool.h"
 
 #ifdef EDITOR
 #include <imgui_impl_sdl2.h>
@@ -131,6 +132,7 @@ struct RenderContext {
 	VkDescriptorSetLayout debugDescriptorSetLayout;
 
 	ChrSheetRenderData chrData[CHR_COUNT];
+	Pool<ChrSheetRenderData> bankData;
 	VkPipelineLayout chrPipelineLayout;
 	VkPipeline chrPipeline;
 	VkShaderModule chrShaderModule;
@@ -1916,6 +1918,8 @@ void Rendering::InitImGui(SDL_Window* pWindow) {
 	CreateChrPipeline();
 	CreatePalettePipeline();
 
+	pContext->bankData.Init(MAX_CHR_BANK_COUNT);
+
 	ImGui_ImplSDL2_InitForVulkan(pWindow);
 	ImGui_ImplVulkan_Init(&vulkanInitInfo, pContext->renderImagePass);
 	ImGui_ImplVulkan_CreateFontsTexture();
@@ -2051,6 +2055,28 @@ void Rendering::FreeImGuiChrTextures(u32 index, ImTextureID* pTextures) {
 	ChrSheetRenderData& renderData = pContext->chrData[index];
 
 	FreeImGuiChrTextures(&renderData, pTextures);
+}
+
+u64 Rendering::CreateImGuiChrBankTextures(const ChrSheet* pBank, ImTextureID* pTextures) {
+	PoolHandle<ChrSheetRenderData> handle = pContext->bankData.Add();
+	ChrSheetRenderData* pRenderData = pContext->bankData.Get(handle);
+
+	Buffer stagingBuffer{};
+	AllocateBuffer(sizeof(ChrSheet), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer);
+
+	AllocateBuffer(sizeof(ChrSheet), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pRenderData->sheetBuffer);
+
+	CopyBuffer(stagingBuffer.buffer, pRenderData->sheetBuffer.buffer, sizeof(ChrSheet));
+
+	FreeBuffer(stagingBuffer);
+
+	return handle.Raw();
+}
+void Rendering::FreeImGuiChrBankTextures(u64 raw, ImTextureID* pTextures) {
+	PoolHandle<ChrSheetRenderData> handle(raw);
+	ChrSheetRenderData* pRenderData = pContext->bankData.Get(handle);
+
+	FreeImGuiChrTextures(pRenderData, pTextures);
 }
 
 void Rendering::CreateImGuiPaletteTexture(ImTextureID* pTexture) {
