@@ -116,7 +116,11 @@ struct ActorPreset {
 struct Actor {
 	Vec2 position;
 
-	u8 state[ACTOR_STATE_SIZE];
+	union {
+		PlayerState playerState;
+		GrenadeState grenadeState;
+		EnemyState enemyState;
+	};
 
 	const ActorPreset* pPreset;
 };

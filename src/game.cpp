@@ -88,15 +88,13 @@ namespace Game {
     static void InitializeActor(Actor* pActor) {
         switch (pActor->pPreset->behaviour) {
         case ACTOR_BEHAVIOUR_PLAYER: {
-            PlayerState& state = *(PlayerState*)pActor->state;
-            state.direction = DirRight;
-            state.weapon = WpnLauncher;
+            pActor->playerState.direction = DirRight;
+            pActor->playerState.weapon = WpnLauncher;
             break;
         }
         case ACTOR_BEHAVIOUR_ENEMY_SKULL: {
-            EnemyState& state = *(EnemyState*)pActor->state;
-            state.baseHeight = pActor->position.y;
-            state.health = 10;
+            pActor->enemyState.baseHeight = pActor->position.y;
+            pActor->enemyState.health = 10;
             break;
         }
         default:
@@ -322,7 +320,7 @@ namespace Game {
     }
 
     static void DrawPlayer(Actor* pPlayer, Sprite** ppNextSprite, r64 dt) {
-        PlayerState& playerState = *(PlayerState*)pPlayer->state;
+        PlayerState& playerState = pPlayer->playerState;
         IVec2 drawPos = WorldPosToScreenPixels(pPlayer->position);
         drawPos.y += playerState.vOffset;
 
@@ -488,7 +486,7 @@ namespace Game {
     }
 
     static void PlayerInput(Actor* pPlayer, r64 dt) {
-        PlayerState& playerState = *(PlayerState*)pPlayer->state;
+        PlayerState& playerState = pPlayer->playerState;
         if (Input::ButtonDown(BUTTON_DPAD_LEFT)) {
             playerState.direction = DirLeft;
             playerState.velocity.x = -6.25f;
@@ -559,7 +557,7 @@ namespace Game {
     }
 
     static void PlayerBgCollision(Actor* pPlayer, r64 dt) {
-        PlayerState& playerState = *(PlayerState*)pPlayer->state;
+        PlayerState& playerState = pPlayer->playerState;
         const Hitbox& hitbox = pPlayer->pPreset->hitbox;
         if (playerState.slowFall) {
             playerState.velocity.y += (gravity / 4) * dt;
@@ -598,7 +596,7 @@ namespace Game {
     static void PlayerShoot(Actor* pPlayer, r64 dt) {
         constexpr r32 shootDelay = 0.16f;
 
-        PlayerState& playerState = *(PlayerState*)pPlayer->state;
+        PlayerState& playerState = pPlayer->playerState;
         if (playerState.shootTimer > dt) {
             playerState.shootTimer -= dt;
         }
@@ -610,7 +608,7 @@ namespace Game {
             constexpr s32 grenadePresetIndex = 1;
             Actor* arrow = SpawnActor(grenadePresetIndex);
             if (arrow != nullptr) {
-                GrenadeState& grenadeState = *(GrenadeState*)arrow->state;
+                GrenadeState& grenadeState = arrow->grenadeState;
                 const Vec2 fwdOffset = Vec2{ 0.375f * playerState.direction, -0.25f };
                 const Vec2 upOffset = Vec2{ 0.1875f * playerState.direction, -0.5f };
                 const Vec2 downOffset = Vec2{ 0.25f * playerState.direction, -0.125f };
@@ -639,7 +637,7 @@ namespace Game {
     }
 
     static void PlayerAnimate(Actor* pPlayer, r64 dt) {
-        PlayerState& playerState = *(PlayerState*)pPlayer->state;
+        PlayerState& playerState = pPlayer->playerState;
         // Legs mode
         if (playerState.velocity.y < 0) {
             playerState.lMode = LegsJump;
@@ -734,7 +732,7 @@ namespace Game {
 
             switch (pActor->pPreset->behaviour) {
             case ACTOR_BEHAVIOUR_PLAYER: {
-                PlayerState& state = *(PlayerState*)pActor->state;
+                PlayerState& state = pActor->playerState;
                 PlayerInput(pActor, dt);
                 PlayerBgCollision(pActor, dt);
                 PlayerShoot(pActor, dt);
@@ -750,7 +748,7 @@ namespace Game {
                 break;
             }
             case ACTOR_BEHAVIOUR_GRENADE: {
-                GrenadeState& state = *(GrenadeState*)pActor->state;
+                GrenadeState& state = pActor->grenadeState;
                 const Hitbox& hitbox = pActor->pPreset->hitbox;
 
                 r32 dx = state.velocity.x * dt;
@@ -804,7 +802,7 @@ namespace Game {
                 break;
             }
             case ACTOR_BEHAVIOUR_ENEMY_SKULL: {
-                EnemyState& state = *(EnemyState*)pActor->state;
+                EnemyState& state = pActor->enemyState;
                 if (state.health <= 0) {
                     removeList.push_back(handle);
                     continue;
