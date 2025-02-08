@@ -221,16 +221,19 @@ namespace Rendering
 			fclose(pFile);
 		}
 
-		void CopyMetasprite(const Sprite* src, Sprite* dst, u32 count, IVec2 pos, bool hFlip, bool vFlip) {
+		void CopyMetasprite(const Sprite* src, Sprite* dst, u32 count, IVec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
 			for (int i = 0; i < count; i++) {
 				Sprite sprite = src[i];
 				if (hFlip) {
-					FlipSpritesHorizontal(&sprite, 1);
+					sprite.flipHorizontal = !sprite.flipHorizontal;
 					sprite.x = sprite.x * -1 - TILE_DIM_PIXELS;
 				}
 				if (vFlip) {
-					FlipSpritesVertical(&sprite, 1);
+					sprite.flipVertical = !sprite.flipVertical;
 					sprite.y = sprite.y * -1 - TILE_DIM_PIXELS;
+				}
+				if (paletteOverride != -1) {
+					sprite.palette = paletteOverride;
 				}
 				sprite.y += pos.y;
 				sprite.x += pos.x;
@@ -238,24 +241,6 @@ namespace Rendering
 			}
 		}
 
-		void FlipSpritesHorizontal(Sprite* spr, u32 count) {
-			for (int i = 0; i < count; i++) {
-				Sprite& sprite = spr[i];
-				sprite.flipHorizontal = !sprite.flipHorizontal;
-			}
-		}
-		void FlipSpritesVertical(Sprite* spr, u32 count) {
-			for (int i = 0; i < count; i++) {
-				Sprite& sprite = spr[i];
-				sprite.flipVertical = !sprite.flipVertical;
-			}
-		}
-		void SetSpritesPalette(Sprite* spr, u32 count, u8 palette) {
-			for (int i = 0; i < count; i++) {
-				Sprite& sprite = spr[i];
-				sprite.palette = palette;
-			}
-		}
 		void ClearSprites(Sprite* spr, u32 count) {
 			for (int i = 0; i < count; i++) {
 				Sprite& sprite = spr[i];

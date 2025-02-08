@@ -10,6 +10,11 @@ Metasprite* Metasprites::GetMetasprite(s32 index) {
 	return &metasprites[index];
 }
 
+// Access sprite memory directly, bypassing metasprites
+Sprite* Metasprites::GetRawSprite(s32 index) {
+	return &spriteMemory[index];
+}
+
 char* Metasprites::GetName(s32 index) {
 	return &nameMemory[index * METASPRITE_MAX_NAME_LENGTH];
 }
@@ -21,6 +26,22 @@ s32 Metasprites::GetIndex(const Metasprite* pMetasprite) {
 	}
 
 	return index;
+}
+
+// Get the index of a sprite in spriteMemory
+s32 Metasprites::GetSpriteIndex(const Sprite* pSprite) {
+	s32 index = pSprite - spriteMemory;
+	if (index < 0 || index >= MAX_METASPRITE_COUNT * METASPRITE_MAX_SPRITE_COUNT) {
+		return -1;
+	}
+
+	return index;
+}
+
+void Metasprites::Copy(s32 srcIndex, s32 dstIndex) {
+	memcpy(&nameMemory[dstIndex * METASPRITE_MAX_NAME_LENGTH], &nameMemory[srcIndex * METASPRITE_MAX_NAME_LENGTH], METASPRITE_MAX_NAME_LENGTH);
+	memcpy(&spriteMemory[dstIndex * METASPRITE_MAX_SPRITE_COUNT], &spriteMemory[srcIndex * METASPRITE_MAX_SPRITE_COUNT], METASPRITE_MAX_SPRITE_COUNT*sizeof(Sprite));
+	GetMetasprite(dstIndex)->spriteCount = GetMetasprite(srcIndex)->spriteCount;
 }
 
 void Metasprites::Clear() {

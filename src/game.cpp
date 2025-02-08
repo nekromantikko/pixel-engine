@@ -312,11 +312,61 @@ namespace Game {
     constexpr u32 playerLauncherDiagMetaspriteIndex = 11;
     constexpr u32 playerLauncherGrenadeMetaspriteIndex = 12;
 
+    constexpr Vec2 viewportScrollThreshold = { 4.0f, 3.0f };
+
+    static void UpdateViewport(bool loadTiles = true) {
+        if (pViewportTarget == nullptr) {
+            return;
+        }
+
+        Vec2 viewportCenter = Vec2{ viewport.x + VIEWPORT_WIDTH_METATILES / 2.0f, viewport.y + VIEWPORT_HEIGHT_METATILES / 2.0f };
+        Vec2 targetOffset = pViewportTarget->position - viewportCenter;
+
+        Vec2 delta = { 0.0f, 0.0f };
+        if (targetOffset.x > viewportScrollThreshold.x) {
+            delta.x = targetOffset.x - viewportScrollThreshold.x;
+        }
+        else if (targetOffset.x < -viewportScrollThreshold.x) {
+            delta.x = targetOffset.x + viewportScrollThreshold.x;
+        }
+
+        if (targetOffset.y > viewportScrollThreshold.y) {
+            delta.y = targetOffset.y - viewportScrollThreshold.y;
+        }
+        else if (targetOffset.y < -viewportScrollThreshold.y) {
+            delta.y = targetOffset.y + viewportScrollThreshold.y;
+        }
+
+        MoveViewport(&viewport, pNametables, &pCurrentLevel->tilemap, delta.x, delta.y, loadTiles);
+    }
+
     static IVec2 WorldPosToScreenPixels(Vec2 pos) {
         return IVec2{
             (s32)round((pos.x - viewport.x) * METATILE_DIM_PIXELS),
             (s32)round((pos.y - viewport.y) * METATILE_DIM_PIXELS)
         };
+    }
+
+    static void DrawActorFrame(const Actor* pActor, Sprite** ppNextSprite, const s32 frameIndex, const IVec2& pixelOffset = { 0,0 }, const bool flipH = false, const bool flipV = false, const s32 paletteOverride = -1) {
+        IVec2 drawPos = WorldPosToScreenPixels(pActor->position) + pixelOffset;
+        const ActorAnimFrame& frame = pActor->pPreset->pFrames[frameIndex];
+
+        switch (pActor->pPreset->animMode) {
+        case ACTOR_ANIM_MODE_SPRITES: {
+            const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
+            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos + frame.spriteIndex, *ppNextSprite, 1, drawPos, flipH, flipV, paletteOverride);
+            (*ppNextSprite)++;
+            break;
+        }
+        case ACTOR_ANIM_MODE_METASPRITES: {
+            const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
+            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, *ppNextSprite, pMetasprite->spriteCount, drawPos, flipH, flipV, paletteOverride);
+            *ppNextSprite += pMetasprite->spriteCount;
+            break;
+        }
+        default:
+            break;
+        }
     }
 
     static void DrawPlayer(Actor* pPlayer, Sprite** ppNextSprite, r64 dt) {
@@ -376,14 +426,8 @@ namespace Game {
         );
 
         // Draw player
-        //Metasprite* characterMetasprite = Metasprites::GetMetasprite(playerState.aMode);
-        const Metasprite* pMetasprite = pPlayer->pPreset->pMetasprite;
-        Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, *ppNextSprite, pMetasprite->spriteCount, drawPos, playerState.direction == DirLeft, false);
-        if (playerState.damageTimer > 0) {
-            u8 damagePalette = (u8)(gameplaySecondsElapsed * 20) % 4;
-            Rendering::Util::SetSpritesPalette(*ppNextSprite, pMetasprite->spriteCount, damagePalette);
-        }
-        *ppNextSprite += pMetasprite->spriteCount;
+        s32 damagePalette = (playerState.damageTimer > 0) ? (s32)(gameplaySecondsElapsed * 20) % 4 : -1;
+        DrawActorFrame(pPlayer, ppNextSprite, playerState.aMode, {0, playerState.vOffset }, playerState.direction == DirLeft, false, damagePalette);
     }
 
     void DrawDamageNumbers(Sprite** ppNextSprite) {
@@ -449,41 +493,6 @@ namespace Game {
             *ppNextSprite += shieldMetasprite->spriteCount;
         }
     }*/
-
-    constexpr Vec2 viewportScrollThreshold = { 4.0f, 3.0f };
-
-    static void UpdateViewport(bool loadTiles = true) {
-        if (pViewportTarget == nullptr) {
-            return;
-        }
-
-        Vec2 viewportCenter = Vec2{ viewport.x + VIEWPORT_WIDTH_METATILES / 2.0f, viewport.y + VIEWPORT_HEIGHT_METATILES / 2.0f };
-        Vec2 targetOffset = pViewportTarget->position - viewportCenter;
-
-        Vec2 delta = { 0.0f, 0.0f };
-        if (targetOffset.x > viewportScrollThreshold.x) {
-            delta.x = targetOffset.x - viewportScrollThreshold.x;
-        }
-        else if (targetOffset.x < -viewportScrollThreshold.x) {
-            delta.x = targetOffset.x + viewportScrollThreshold.x;
-        }
-
-        if (targetOffset.y > viewportScrollThreshold.y) {
-            delta.y = targetOffset.y - viewportScrollThreshold.y;
-        }
-        else if (targetOffset.y < -viewportScrollThreshold.y) {
-            delta.y = targetOffset.y + viewportScrollThreshold.y;
-        }
-
-        MoveViewport(&viewport, pNametables, &pCurrentLevel->tilemap, delta.x, delta.y, loadTiles);
-    }
-
-    static void DrawDefaultActor(Actor* pActor, Sprite** ppNextSprite) {
-        IVec2 drawPos = WorldPosToScreenPixels(pActor->position);
-        const Metasprite* pMetasprite = pActor->pPreset->pMetasprite;
-        Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, *ppNextSprite, pMetasprite->spriteCount, drawPos, false, false);
-        *ppNextSprite += pMetasprite->spriteCount;
-    }
 
     static void PlayerInput(Actor* pPlayer, r64 dt) {
         PlayerState& playerState = pPlayer->playerState;
@@ -797,7 +806,10 @@ namespace Game {
                     removeList.push_back(handle);
                 }
 
-                DrawDefaultActor(pActor, ppNextSprite);
+                const Vec2 dir = state.velocity.Normalize();
+                const r32 angle = atan2f(dir.y, dir.x);
+                const s32 frameIndex = (s32)roundf(((angle + pi) / (pi * 2)) * 7);
+                DrawActorFrame(pActor, ppNextSprite, frameIndex);
 
                 break;
             }
@@ -874,19 +886,13 @@ namespace Game {
                 }
                 else state.damageTimer = 0.0f;
 
-                IVec2 drawPos = WorldPosToScreenPixels(pActor->position);
-                const Metasprite* pMetasprite = pActor->pPreset->pMetasprite;
-                Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, *ppNextSprite, pMetasprite->spriteCount, drawPos, false, false);
-                if (state.damageTimer > 0) {
-                    u8 damagePalette = (u8)(gameplaySecondsElapsed * 20) % 4;
-                    Rendering::Util::SetSpritesPalette(*ppNextSprite, pMetasprite->spriteCount, damagePalette);
-                }
-                *ppNextSprite += pMetasprite->spriteCount;
+                s32 damagePalette = (state.damageTimer > 0) ? (s32)(gameplaySecondsElapsed * 20) % 4 : -1;
+                DrawActorFrame(pActor, ppNextSprite, 0, {0, 0}, false, false, damagePalette);
 
                 break;
             }
             default: {
-                DrawDefaultActor(pActor, ppNextSprite);
+                DrawActorFrame(pActor, ppNextSprite, 0);
                 break;
             }
             }
