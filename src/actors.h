@@ -6,7 +6,7 @@
 
 static constexpr u32 MAX_ACTOR_PRESET_COUNT = 256;
 static constexpr u32 ACTOR_MAX_NAME_LENGTH = 256;
-static constexpr u32 ACTOR_STATE_SIZE = 256;
+static constexpr u32 ACTOR_MAX_FRAME_COUNT = 64;
 
 // Determines how other actors will react
 enum ActorType {
@@ -21,19 +21,36 @@ enum ActorType {
 };
 
 // Determines how the actor gets updated
+// TODO: Split into "components"
 enum ActorBehaviour {
 	ACTOR_BEHAVIOUR_NONE = 0,
 	ACTOR_BEHAVIOUR_PLAYER,
 	ACTOR_BEHAVIOUR_ENEMY_SKULL,
 	ACTOR_BEHAVIOUR_GRENADE,
 	ACTOR_BEHAVIOUR_BULLET,
+
 	ACTOR_BEHAVIOUR_COUNT
+};
+
+// Determines how to interpret anim frames
+enum ActorAnimMode {
+	ACTOR_ANIM_MODE_NONE = 0,
+	ACTOR_ANIM_MODE_SPRITES,
+	ACTOR_ANIM_MODE_METASPRITES,
+
+	ACTOR_ANIM_MODE_COUNT
 };
 
 #ifdef EDITOR
 constexpr const char* ACTOR_TYPE_NAMES[ACTOR_TYPE_COUNT] = { "None", "Player", "Projectile (friendly)", "Projectile (hostile)", "Enemy", "Pickup" };
 constexpr const char* ACTOR_BEHAVIOUR_NAMES[ACTOR_BEHAVIOUR_COUNT] = { "None", "Player", "Skull Enemy", "Bouncy Grenade", "Bullet" };
+constexpr const char* ACTOR_ANIM_MODE_NAMES[ACTOR_ANIM_MODE_COUNT] = { "None", "Sprites", "Metasprites" };
 #endif
+
+struct ActorAnimFrame {
+	s32 spriteIndex;
+	s32 metaspriteIndex;
+};
 
 #pragma region Actor types
 
@@ -106,11 +123,13 @@ struct EnemyState {
 struct ActorPreset {
 	u32 type;
 	u32 behaviour;
+	u32 animMode;
 
 	Hitbox hitbox;
 
-	// TODO: Animation of some kind?
-	Metasprite* pMetasprite;
+	// Different actor types can use this data how they see fit
+	u32 frameCount;
+	ActorAnimFrame* pFrames;
 };
 
 struct Actor {

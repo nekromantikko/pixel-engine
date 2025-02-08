@@ -13,8 +13,11 @@ struct Metasprite {
 
 namespace Metasprites {
 	Metasprite* GetMetasprite(s32 index);
+	Sprite* GetRawSprite(s32 index);
 	char* GetName(s32 index);
 	s32 GetIndex(const Metasprite* pMetasprite);
+	s32 GetSpriteIndex(const Sprite* pSprite);
+	void Copy(s32 srcIndex, s32 dstIndex);
 
 	// Generates empty data
 	void Clear();

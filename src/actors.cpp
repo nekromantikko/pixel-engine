@@ -4,6 +4,7 @@
 
 static ActorPreset actorPresets[MAX_ACTOR_PRESET_COUNT];
 static char nameMemory[MAX_ACTOR_PRESET_COUNT * ACTOR_MAX_NAME_LENGTH];
+static ActorAnimFrame frameMemory[MAX_ACTOR_PRESET_COUNT * ACTOR_MAX_FRAME_COUNT];
 
 #pragma region Presets
 ActorPreset* Actors::GetPreset(s32 index) {
@@ -17,7 +18,9 @@ char* Actors::GetPresetName(s32 index) {
 void Actors::ClearPresets() {
 	for (u32 i = 0; i < MAX_ACTOR_PRESET_COUNT; i++) {
 		nameMemory[i * ACTOR_MAX_NAME_LENGTH] = 0;
-		actorPresets[i].pMetasprite = Metasprites::GetMetasprite(0);
+		actorPresets[i].frameCount = 1;
+		actorPresets[i].pFrames = &frameMemory[i * ACTOR_MAX_FRAME_COUNT];
+		frameMemory[i * ACTOR_MAX_FRAME_COUNT] = { 0,0 };
 	}
 }
 
@@ -35,15 +38,17 @@ void Actors::LoadPresets(const char* fname) {
 	for (u32 i = 0; i < MAX_ACTOR_PRESET_COUNT; i++) {
 		fread(&actorPresets[i].type, sizeof(u32), 1, pFile);
 		fread(&actorPresets[i].behaviour, sizeof(u32), 1, pFile);
+		fread(&actorPresets[i].animMode, sizeof(u32), 1, pFile);
 
 		fread(&actorPresets[i].hitbox, sizeof(Hitbox), 1, pFile);
 
-		s32 metaspriteIndex;
-		fread(&metaspriteIndex, sizeof(s32), 1, pFile);
-		actorPresets[i].pMetasprite = Metasprites::GetMetasprite(metaspriteIndex);
+		fread(&actorPresets[i].frameCount, sizeof(u32), 1, pFile);
+		ActorAnimFrame* const firstFrame = frameMemory + i * ACTOR_MAX_FRAME_COUNT;
+		actorPresets[i].pFrames = firstFrame;
 	}
 
 	fread(nameMemory, ACTOR_MAX_NAME_LENGTH, MAX_ACTOR_PRESET_COUNT, pFile);
+	fread(frameMemory, sizeof(ActorAnimFrame), MAX_ACTOR_PRESET_COUNT * ACTOR_MAX_FRAME_COUNT, pFile);
 
 	fclose(pFile);
 }
@@ -62,14 +67,15 @@ void Actors::SavePresets(const char* fname) {
 	for (u32 i = 0; i < MAX_ACTOR_PRESET_COUNT; i++) {
 		fwrite(&actorPresets[i].type, sizeof(u32), 1, pFile);
 		fwrite(&actorPresets[i].behaviour, sizeof(u32), 1, pFile);
+		fwrite(&actorPresets[i].animMode, sizeof(u32), 1, pFile);
 
 		fwrite(&actorPresets[i].hitbox, sizeof(Hitbox), 1, pFile);
 
-		s32 metaspriteIndex = Metasprites::GetIndex(actorPresets[i].pMetasprite);
-		fwrite(&metaspriteIndex, sizeof(s32), 1, pFile);
+		fwrite(&actorPresets[i].frameCount, sizeof(u32), 1, pFile);
 	}
 
 	fwrite(nameMemory, ACTOR_MAX_NAME_LENGTH, MAX_ACTOR_PRESET_COUNT, pFile);
+	fwrite(frameMemory, sizeof(ActorAnimFrame), MAX_ACTOR_PRESET_COUNT * ACTOR_MAX_FRAME_COUNT, pFile);
 
 	fclose(pFile);
 }
