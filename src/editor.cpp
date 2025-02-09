@@ -239,16 +239,14 @@ static void DrawActor(const ActorPrototype* pPrototype, const ImVec2& origin, r3
 	}
 }
 
-static void DrawHitbox(const Hitbox* pHitbox, const ImVec2 origin, const r32 renderScale, ImU32 color = IM_COL32(0, 255, 0, 80)) {
+static void DrawHitbox(const AABB* pHitbox, const ImVec2 origin, const r32 renderScale, ImU32 color = IM_COL32(0, 255, 0, 80)) {
 	const r32 colliderDrawScale = METATILE_DIM_PIXELS * renderScale;
 
-	ImVec2 colliderPos = ImVec2(origin.x + colliderDrawScale * pHitbox->offset.x, origin.y + colliderDrawScale * pHitbox->offset.y);
-
-	ImVec2 topLeft = ImVec2(colliderPos.x - colliderDrawScale * pHitbox->dimensions.x / 2, colliderPos.y - colliderDrawScale * pHitbox->dimensions.y / 2);
-	ImVec2 btmRight = ImVec2(colliderPos.x + colliderDrawScale * pHitbox->dimensions.x / 2, colliderPos.y + colliderDrawScale * pHitbox->dimensions.y / 2);
+	const ImVec2 pMin = ImVec2(origin.x + colliderDrawScale * pHitbox->x1, origin.y + colliderDrawScale * pHitbox->y1);
+	const ImVec2 pMax = ImVec2(origin.x + colliderDrawScale * pHitbox->x2, origin.y + colliderDrawScale * pHitbox->y2);
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	drawList->AddRectFilled(topLeft, btmRight, color);
+	drawList->AddRectFilled(pMin, pMax, color);
 }
 
 static void SwapMetasprites(Metasprite* pMetasprites, s32 a, s32 b) {
@@ -1719,7 +1717,7 @@ static void DrawActorWindow() {
 		ImVec2 metaspriteGridPos = DrawActorPreview(pPrototype, currentFrame, previewSize);
 
 		if (showHitboxPreview) {
-			Hitbox& hitbox = pPrototype->hitbox;
+			AABB& hitbox = pPrototype->hitbox;
 
 			const r32 gridSizeTiles = 8;
 			const r32 renderScale = previewSize / (gridSizeTiles * TILE_DIM_PIXELS);
@@ -1872,17 +1870,30 @@ static void DrawActorWindow() {
 				{
 					ImGui::SeparatorText("Hitbox editor");
 
-					Hitbox& hitbox = pPrototype->hitbox;
-					ImGui::InputFloat2("Offset", (r32*)&hitbox.offset);
+					AABB& hitbox = pPrototype->hitbox;
+					Vec2 hitboxDim = (hitbox.max - hitbox.min);
+					const Vec2 hitboxCenter = hitbox.min + hitboxDim / 2;
+					Vec2 newCenter = hitboxCenter;
+					if (ImGui::InputFloat2("Offset", (r32*)&newCenter)) {
+						hitboxDim.x = std::max(0.0f, hitboxDim.x);
+						hitbox.x1 = newCenter.x - hitboxDim.x / 2.0f;
+						hitbox.x2 = newCenter.x + hitboxDim.x / 2.0f;
 
-					r32 width = hitbox.dimensions.x;
-					if (ImGui::InputFloat("Width", &width, 0.125f, 0.0625f)) {
-						hitbox.dimensions.x = std::max(0.0f, width);
+						hitboxDim.y = std::max(0.0f, hitboxDim.y);
+						hitbox.y1 = newCenter.y - hitboxDim.y / 2.0f;
+						hitbox.y2 = newCenter.y + hitboxDim.y / 2.0f;
 					}
 
-					r32 height = hitbox.dimensions.y;
-					if (ImGui::InputFloat("Height", &height, 0.125f, 0.0625f)) {
-						hitbox.dimensions.y = std::max(0.0f, height);
+					if (ImGui::InputFloat("Width", &hitboxDim.x, 0.125f, 0.0625f)) {
+						hitboxDim.x = std::max(0.0f, hitboxDim.x);
+						hitbox.x1 = newCenter.x - hitboxDim.x / 2.0f;
+						hitbox.x2 = newCenter.x + hitboxDim.x / 2.0f;
+					}
+
+					if (ImGui::InputFloat("Height", &hitboxDim.y, 0.125f, 0.0625f)) {
+						hitboxDim.y = std::max(0.0f, hitboxDim.y);
+						hitbox.y1 = newCenter.y - hitboxDim.y / 2.0f;
+						hitbox.y2 = newCenter.y + hitboxDim.y / 2.0f;
 					}
 
 				}
