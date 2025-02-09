@@ -4,7 +4,7 @@
 #include "vector.h"
 #include "metasprite.h"
 
-static constexpr u32 MAX_ACTOR_PRESET_COUNT = 256;
+static constexpr u32 MAX_ACTOR_PROTOTYPE_COUNT = 256;
 static constexpr u32 ACTOR_MAX_NAME_LENGTH = 256;
 static constexpr u32 ACTOR_MAX_FRAME_COUNT = 64;
 
@@ -99,7 +99,6 @@ struct PlayerState {
 	AimMode aMode;
 	r32 wingCounter;
 	u32 wingFrame;
-	s32 vOffset;
 	bool slowFall;
 	bool inAir;
 	bool doubleJumped;
@@ -120,7 +119,7 @@ struct EnemyState {
 
 #pragma endregion
 
-struct ActorPreset {
+struct ActorPrototype {
 	u32 type;
 	u32 behaviour;
 	u32 animMode;
@@ -132,25 +131,33 @@ struct ActorPreset {
 	ActorAnimFrame* pFrames;
 };
 
+struct ActorDrawData {
+	bool hFlip = false;
+	bool vFlip = false;
+	s32 paletteOverride = -1;
+	IVec2 pixelOffset = { 0,0 };
+};
+
 struct Actor {
 	Vec2 position;
 
-	union {
-		PlayerState playerState;
-		GrenadeState grenadeState;
-		EnemyState enemyState;
-	};
+	ActorDrawData drawData;
 
-	const ActorPreset* pPreset;
+	// TODO: Split into "components"
+	PlayerState playerState;
+	GrenadeState grenadeState;
+	EnemyState enemyState;
+
+	const ActorPrototype* pPrototype;
 };
 
 namespace Actors {
 
-	// Presets
-	ActorPreset* GetPreset(s32 index);
-	char* GetPresetName(s32 index);
+	// Prototypes
+	ActorPrototype* GetPrototype(s32 index);
+	char* GetPrototypeName(s32 index);
 
-	void ClearPresets();
-	void LoadPresets(const char* fname);
-	void SavePresets(const char* fname);
+	void ClearPrototypes();
+	void LoadPrototypes(const char* fname);
+	void SavePrototypes(const char* fname);
 }
