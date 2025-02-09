@@ -40,7 +40,7 @@ void Actors::LoadPrototypes(const char* fname) {
 		fread(&prototypes[i].behaviour, sizeof(u32), 1, pFile);
 		fread(&prototypes[i].animMode, sizeof(u32), 1, pFile);
 
-		fread(&prototypes[i].hitbox, sizeof(Hitbox), 1, pFile);
+		fread(&prototypes[i].hitbox, sizeof(AABB), 1, pFile);
 
 		fread(&prototypes[i].frameCount, sizeof(u32), 1, pFile);
 		ActorAnimFrame* const firstFrame = frameMemory + i * ACTOR_MAX_FRAME_COUNT;
@@ -69,7 +69,7 @@ void Actors::SavePrototypes(const char* fname) {
 		fwrite(&prototypes[i].behaviour, sizeof(u32), 1, pFile);
 		fwrite(&prototypes[i].animMode, sizeof(u32), 1, pFile);
 
-		fwrite(&prototypes[i].hitbox, sizeof(Hitbox), 1, pFile);
+		fwrite(&prototypes[i].hitbox, sizeof(AABB), 1, pFile);
 
 		fwrite(&prototypes[i].frameCount, sizeof(u32), 1, pFile);
 	}

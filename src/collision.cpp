@@ -6,7 +6,7 @@
 #include "level.h"
 
 namespace Collision {
-	void SweepBoxHorizontal(const Tilemap* pTilemap, Vec2 pos, Vec2 dimensions, r32 dx, HitResult& outHit) {
+	void SweepBoxHorizontal(const Tilemap* pTilemap, const AABB& hitbox, const Vec2& pos, r32 dx, HitResult& outHit) {
 		outHit.blockingHit = false;
 		outHit.distance = abs(dx);
 		outHit.location = Vec2{ pos.x + dx, pos.y };
@@ -19,14 +19,13 @@ namespace Collision {
 			return;
 		}
 
-		r32 yTop = pos.y - dimensions.y / 2.0f;
-		r32 yBottom = pos.y + dimensions.y / 2.0f;
-		r32 xSide = dx < 0.0f ? pos.x - dimensions.x / 2.0f : pos.x + dimensions.x / 2.0f;
+		const AABB hitboxAbs(hitbox.min + pos, hitbox.max + pos);
+		r32 xSide = dx < 0.0f ? hitboxAbs.x1 : hitboxAbs.x2;
 
-		s32 yTopTile = (s32)floorf(yTop);
-		s32 yBottomTile = (s32)floorf(yBottom);
+		s32 yTopTile = (s32)floorf(hitboxAbs.y1);
+		s32 yBottomTile = (s32)floorf(hitboxAbs.y2);
 		// Right at the seam, should look at one tile above
-		if (IsNearlyZero(yBottom - (r32)yBottomTile))
+		if (IsNearlyZero(hitboxAbs.y2 - (r32)yBottomTile))
 			yBottomTile--;
 		s32 yTileDelta = yBottomTile - yTopTile;
 		s32 xTile = (s32)floorf(xSide);
@@ -45,7 +44,7 @@ namespace Collision {
 					outHit.startPenetrating = IsNearlyZero(dist);
 					outHit.distance = dist;
 					outHit.impactNormal = Vec2{ -Sign(dx), 0 };
-					outHit.impactPoint = Vec2{ pos.x + Sign(dx) * (dist + (dimensions.x / 2.0f)), pos.y };
+					outHit.impactPoint = Vec2{ xSide + Sign(dx) * dist, pos.y };
 					outHit.location = Vec2{ pos.x + Sign(dx) * dist, pos.y };
 					outHit.normal = Vec2{ Sign(dx), 0 };
 					outHit.tileType = tile ? tile->type: TILE_SOLID;
@@ -61,7 +60,7 @@ namespace Collision {
 		}
 	}
 
-	void SweepBoxVertical(const Tilemap *pTilemap, Vec2 pos, Vec2 dimensions, r32 dy, HitResult& outHit) {
+	void SweepBoxVertical(const Tilemap *pTilemap, const AABB& hitbox, const Vec2& pos, r32 dy, HitResult& outHit) {
 		outHit.blockingHit = false;
 		outHit.distance = abs(dy);
 		outHit.location = Vec2{ pos.x, pos.y + dy };
@@ -74,14 +73,13 @@ namespace Collision {
 			return;
 		}
 
-		r32 xLeft = pos.x - dimensions.x / 2.0f;
-		r32 xRight = pos.x + dimensions.x / 2.0f;
-		r32 ySide = dy < 0.0f ? pos.y - dimensions.y / 2.0f : pos.y + dimensions.y / 2.0f;
+		const AABB hitboxAbs(hitbox.min + pos, hitbox.max + pos);
+		r32 ySide = dy < 0.0f ? hitboxAbs.y1 : hitboxAbs.y2;
 
-		s32 xLeftTile = (s32)floorf(xLeft);
-		s32 xRightTile = (s32)floorf(xRight);
+		s32 xLeftTile = (s32)floorf(hitboxAbs.x1);
+		s32 xRightTile = (s32)floorf(hitboxAbs.x2);
 		// Right at the seam, should look at one tile left
-		if (IsNearlyZero(xRight - (r32)xRightTile))
+		if (IsNearlyZero(hitboxAbs.x2 - (r32)xRightTile))
 			xRightTile--;
 		s32 xTileDelta = xRightTile - xLeftTile;
 		s32 yTile = (s32)floorf(ySide);
@@ -100,7 +98,7 @@ namespace Collision {
 					outHit.startPenetrating = IsNearlyZero(dist);
 					outHit.distance = dist;
 					outHit.impactNormal = Vec2{ 0, -Sign(dy) };
-					outHit.impactPoint = Vec2{ pos.x, pos.y + Sign(dy) * (dist + (dimensions.y / 2.0f)) };
+					outHit.impactPoint = Vec2{ pos.x, yTile + Sign(dy) * dist };
 					outHit.location = Vec2{ pos.x, pos.y + Sign(dy) * dist };
 					outHit.normal = Vec2{ 0, Sign(dy) };
 					outHit.tileType = tile ? tile->type : TILE_SOLID;
@@ -116,15 +114,13 @@ namespace Collision {
 		}
 	}
 
-	bool BoxesOverlap(const Hitbox& a, const Hitbox& b, const Vec2& aPos, const Vec2& bPos) {
-		const Vec2 aTopLeft = aPos + a.offset - a.dimensions / 2.0f;
-		const Vec2 aBtmRight = aPos + a.offset + a.dimensions / 2.0f;
-		const Vec2 bTopLeft = bPos + b.offset - b.dimensions / 2.0f;
-		const Vec2 bBtmRight = bPos + b.offset + b.dimensions / 2.0f;
+	bool BoxesOverlap(const AABB& a, const Vec2& aPos, const AABB& b, const Vec2& bPos) {
+		const AABB aAbs = AABB(a.min + aPos, a.max + aPos);
+		const AABB bAbs = AABB(b.min + bPos, b.max + bPos);
 
-		return (aTopLeft.x < bBtmRight.x &&
-			aBtmRight.x > bTopLeft.x &&
-			aTopLeft.y < bBtmRight.y &&
-			aBtmRight.y > bTopLeft.y);
+		return (aAbs.x1 < bAbs.x2 &&
+			aAbs.x2 > bAbs.x1 &&
+			aAbs.y1 < bAbs.y2 &&
+			aAbs.y2 > bAbs.y1);
 	}
 }

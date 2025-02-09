@@ -591,7 +591,7 @@ namespace Game {
 
     static void PlayerBgCollision(Actor* pPlayer, r64 dt) {
         PlayerState& playerState = pPlayer->playerState;
-        const Hitbox& hitbox = pPlayer->pPrototype->hitbox;
+        const AABB& hitbox = pPlayer->pPrototype->hitbox;
         if (playerState.slowFall) {
             playerState.velocity.y += (gravity / 4) * dt;
         }
@@ -602,14 +602,14 @@ namespace Game {
         r32 dx = playerState.velocity.x * dt;
 
         HitResult hit{};
-        Collision::SweepBoxHorizontal(&pCurrentLevel->tilemap, pPlayer->position + hitbox.offset, hitbox.dimensions, dx, hit);
+        Collision::SweepBoxHorizontal(&pCurrentLevel->tilemap, hitbox, pPlayer->position, dx, hit);
         pPlayer->position.x = hit.location.x;
         if (hit.blockingHit) {
             playerState.velocity.x = 0;
         }
 
         r32 dy = playerState.velocity.y * dt;
-        Collision::SweepBoxVertical(&pCurrentLevel->tilemap, pPlayer->position + hitbox.offset, hitbox.dimensions, dy, hit);
+        Collision::SweepBoxVertical(&pCurrentLevel->tilemap, hitbox, pPlayer->position, dy, hit);
         pPlayer->position.y = hit.location.y;
         if (hit.blockingHit) {
             // If ground
@@ -753,12 +753,12 @@ namespace Game {
             }
             case ACTOR_BEHAVIOUR_GRENADE: {
                 GrenadeState& state = pActor->grenadeState;
-                const Hitbox& hitbox = pActor->pPrototype->hitbox;
+                const AABB& hitbox = pActor->pPrototype->hitbox;
 
                 r32 dx = state.velocity.x * dt;
 
                 HitResult hit{};
-                Collision::SweepBoxHorizontal(&pCurrentLevel->tilemap, pActor->position + hitbox.offset, hitbox.dimensions, dx, hit);
+                Collision::SweepBoxHorizontal(&pCurrentLevel->tilemap, hitbox, pActor->position, dx, hit);
                 if (hit.blockingHit) {
                     //if (arrow->type == WpnBow || arrow->bounces == 0) {
                     if (state.bounces == 0) {
@@ -780,7 +780,7 @@ namespace Game {
                 //}
                 r32 dy = state.velocity.y * dt;
 
-                Collision::SweepBoxVertical(&pCurrentLevel->tilemap, pActor->position + hitbox.offset, hitbox.dimensions, dy, hit);
+                Collision::SweepBoxVertical(&pCurrentLevel->tilemap, hitbox, pActor->position, dy, hit);
                 if (hit.blockingHit) {
                     //if (arrow->type == WpnBow || arrow->bounces == 0) {
                     if (state.bounces == 0) {
@@ -827,7 +827,7 @@ namespace Game {
                         continue;
                     }
 
-                    if (Collision::BoxesOverlap(pActor->pPrototype->hitbox, pOther->pPrototype->hitbox, pActor->position, pOther->position)) {
+                    if (Collision::BoxesOverlap(pActor->pPrototype->hitbox, pActor->position, pOther->pPrototype->hitbox, pOther->position)) {
                         removeList.push_back(otherHandle);
 
                         /*PoolHandle<Impact> hitHandle = hitPool.Add();

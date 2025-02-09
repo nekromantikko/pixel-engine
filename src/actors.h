@@ -124,7 +124,7 @@ struct ActorPrototype {
 	u32 behaviour;
 	u32 animMode;
 
-	Hitbox hitbox;
+	AABB hitbox;
 
 	// Different actor types can use this data how they see fit
 	u32 frameCount;
