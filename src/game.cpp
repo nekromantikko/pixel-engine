@@ -86,7 +86,7 @@ namespace Game {
 
 #pragma region Actors
     static void InitializeActor(Actor* pActor) {
-        switch (pActor->pPreset->behaviour) {
+        switch (pActor->pPrototype->behaviour) {
         case ACTOR_BEHAVIOUR_PLAYER: {
             pActor->playerState.direction = DirRight;
             pActor->playerState.weapon = WpnLauncher;
@@ -100,6 +100,8 @@ namespace Game {
         default:
             break;
         }
+
+        pActor->drawData = ActorDrawData{};
     }
 
     static Actor* SpawnActor(const Actor* pTemplate) {
@@ -123,7 +125,7 @@ namespace Game {
             return nullptr;
         }
 
-        pActor->pPreset = Actors::GetPreset(presetIndex);
+        pActor->pPrototype = Actors::GetPrototype(presetIndex);
         InitializeActor(pActor);
         return pActor;
     }
@@ -211,7 +213,7 @@ namespace Game {
 
             Actor* pSpawned = SpawnActor(pActor);
 
-            if (pSpawned->pPreset->behaviour == ACTOR_BEHAVIOUR_PLAYER) {
+            if (pSpawned->pPrototype->behaviour == ACTOR_BEHAVIOUR_PLAYER) {
                 pViewportTarget = pSpawned;
             }
         }
@@ -259,7 +261,7 @@ namespace Game {
         Tiles::LoadTileset("assets/forest.til");
         Metasprites::Load("assets/meta.spr");
         Levels::LoadLevels("assets/levels.lev");
-        Actors::LoadPresets("assets/actors.pfb");
+        Actors::LoadPrototypes("assets/actors.pfb");
 
         // Initialize scanline state
         for (int i = 0; i < SCANLINE_COUNT; i++) {
@@ -340,6 +342,13 @@ namespace Game {
         MoveViewport(&viewport, pNametables, &pCurrentLevel->tilemap, delta.x, delta.y, loadTiles);
     }
 
+    static bool PositionInViewportBounds(Vec2 pos) {
+        return pos.x >= viewport.x &&
+            pos.x < viewport.x + VIEWPORT_WIDTH_METATILES &&
+            pos.y >= viewport.y &&
+            pos.y < viewport.y + VIEWPORT_HEIGHT_METATILES;
+    }
+
     static IVec2 WorldPosToScreenPixels(Vec2 pos) {
         return IVec2{
             (s32)round((pos.x - viewport.x) * METATILE_DIM_PIXELS),
@@ -347,20 +356,26 @@ namespace Game {
         };
     }
 
-    static void DrawActorFrame(const Actor* pActor, Sprite** ppNextSprite, const s32 frameIndex, const IVec2& pixelOffset = { 0,0 }, const bool flipH = false, const bool flipV = false, const s32 paletteOverride = -1) {
-        IVec2 drawPos = WorldPosToScreenPixels(pActor->position) + pixelOffset;
-        const ActorAnimFrame& frame = pActor->pPreset->pFrames[frameIndex];
+    static void DrawActorFrame(const Actor* pActor, const s32 frameIndex, Sprite** ppNextSprite) {
+        // Culling
+        if (!PositionInViewportBounds(pActor->position)) {
+            return;
+        }
 
-        switch (pActor->pPreset->animMode) {
+        const ActorDrawData& drawData = pActor->drawData;
+        IVec2 drawPos = WorldPosToScreenPixels(pActor->position) + drawData.pixelOffset;
+        const ActorAnimFrame& frame = pActor->pPrototype->pFrames[frameIndex];
+
+        switch (pActor->pPrototype->animMode) {
         case ACTOR_ANIM_MODE_SPRITES: {
             const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
-            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos + frame.spriteIndex, *ppNextSprite, 1, drawPos, flipH, flipV, paletteOverride);
+            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos + frame.spriteIndex, *ppNextSprite, 1, drawPos, drawData.hFlip, drawData.vFlip, drawData.paletteOverride);
             (*ppNextSprite)++;
             break;
         }
         case ACTOR_ANIM_MODE_METASPRITES: {
             const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
-            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, *ppNextSprite, pMetasprite->spriteCount, drawPos, flipH, flipV, paletteOverride);
+            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, *ppNextSprite, pMetasprite->spriteCount, drawPos, drawData.hFlip, drawData.vFlip, drawData.paletteOverride);
             *ppNextSprite += pMetasprite->spriteCount;
             break;
         }
@@ -371,8 +386,19 @@ namespace Game {
 
     static void DrawPlayer(Actor* pPlayer, Sprite** ppNextSprite, r64 dt) {
         PlayerState& playerState = pPlayer->playerState;
+
+        ActorDrawData& drawData = pPlayer->drawData;
+        drawData.hFlip = playerState.direction == DirLeft;
+        drawData.paletteOverride = (playerState.damageTimer > 0) ? (s32)(gameplaySecondsElapsed * 20) % 4 : -1;
+        if (playerState.velocity.y == 0) {
+            drawData.pixelOffset.y = playerState.wingFrame > 1 ? -1 : 0;
+        }
+        else {
+            drawData.pixelOffset.y = 0;
+        }
+
         IVec2 drawPos = WorldPosToScreenPixels(pPlayer->position);
-        drawPos.y += playerState.vOffset;
+        drawPos = drawPos + drawData.pixelOffset;
 
         // Draw weapon first
         IVec2 weaponOffset;
@@ -399,7 +425,7 @@ namespace Game {
         Rendering::Util::CopyChrTiles(playerBank.tiles + weaponFrameBankOffset, pChr[1].tiles + playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
 
         const Metasprite* bowMetasprite = Metasprites::GetMetasprite(weaponMetaspriteIndex);
-        Rendering::Util::CopyMetasprite(bowMetasprite->spritesRelativePos, *ppNextSprite, bowMetasprite->spriteCount, drawPos + weaponOffset, playerState.direction == DirLeft, false);
+        Rendering::Util::CopyMetasprite(bowMetasprite->spritesRelativePos, *ppNextSprite, bowMetasprite->spriteCount, drawPos + weaponOffset, drawData.hFlip, drawData.vFlip);
         *ppNextSprite += bowMetasprite->spriteCount;
 
         // Animate chr sheet using player bank
@@ -425,9 +451,7 @@ namespace Game {
             playerWingFrameTileCount
         );
 
-        // Draw player
-        s32 damagePalette = (playerState.damageTimer > 0) ? (s32)(gameplaySecondsElapsed * 20) % 4 : -1;
-        DrawActorFrame(pPlayer, ppNextSprite, playerState.aMode, {0, playerState.vOffset }, playerState.direction == DirLeft, false, damagePalette);
+        DrawActorFrame(pPlayer, playerState.aMode, ppNextSprite);
     }
 
     void DrawDamageNumbers(Sprite** ppNextSprite) {
@@ -567,7 +591,7 @@ namespace Game {
 
     static void PlayerBgCollision(Actor* pPlayer, r64 dt) {
         PlayerState& playerState = pPlayer->playerState;
-        const Hitbox& hitbox = pPlayer->pPreset->hitbox;
+        const Hitbox& hitbox = pPlayer->pPrototype->hitbox;
         if (playerState.slowFall) {
             playerState.velocity.y += (gravity / 4) * dt;
         }
@@ -693,35 +717,6 @@ namespace Game {
             playerState.wingCounter -= 1.0f;
         }
         playerState.wingFrame %= 4;
-
-        if (playerState.velocity.y == 0) {
-            playerState.vOffset = playerState.wingFrame > 1 ? -1 : 0;
-        }
-        else {
-            playerState.vOffset = 0;
-        }
-
-        // Animate chr sheet using player bank
-        Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerHandFrameBankOffsets[playerState.aMode],
-            pChr[1].tiles + playerHandFrameChrOffset,
-            playerHandFrameTileCount
-        );
-        Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerHeadFrameBankOffsets[playerState.aMode * 3 + playerState.hMode],
-            pChr[1].tiles + playerHeadFrameChrOffset,
-            playerHeadFrameTileCount
-        );
-        Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerLegsFrameBankOffsets[playerState.lMode],
-            pChr[1].tiles + playerLegsFrameChrOffset,
-            playerLegsFrameTileCount
-        );
-        Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerWingFrameBankOffsets[playerState.wingFrame],
-            pChr[1].tiles + playerWingFrameChrOffset,
-            playerWingFrameTileCount
-        );
     }
 
     static void UpdateActors(Sprite** ppNextSprite, r64 dt) {
@@ -739,7 +734,7 @@ namespace Game {
                 continue;
             }
 
-            switch (pActor->pPreset->behaviour) {
+            switch (pActor->pPrototype->behaviour) {
             case ACTOR_BEHAVIOUR_PLAYER: {
                 PlayerState& state = pActor->playerState;
                 PlayerInput(pActor, dt);
@@ -758,7 +753,7 @@ namespace Game {
             }
             case ACTOR_BEHAVIOUR_GRENADE: {
                 GrenadeState& state = pActor->grenadeState;
-                const Hitbox& hitbox = pActor->pPreset->hitbox;
+                const Hitbox& hitbox = pActor->pPrototype->hitbox;
 
                 r32 dx = state.velocity.x * dt;
 
@@ -809,7 +804,7 @@ namespace Game {
                 const Vec2 dir = state.velocity.Normalize();
                 const r32 angle = atan2f(dir.y, dir.x);
                 const s32 frameIndex = (s32)roundf(((angle + pi) / (pi * 2)) * 7);
-                DrawActorFrame(pActor, ppNextSprite, frameIndex);
+                DrawActorFrame(pActor, frameIndex, ppNextSprite);
 
                 break;
             }
@@ -828,11 +823,11 @@ namespace Game {
                 for (int e = 0; e < actors.Count(); e++) {
                     PoolHandle<Actor> otherHandle = actors.GetHandle(e);
                     Actor* pOther = actors.Get(otherHandle);
-                    if (pOther == nullptr || pOther->pPreset->type != ACTOR_TYPE_PROJECTILE_FRIENDLY) {
+                    if (pOther == nullptr || pOther->pPrototype->type != ACTOR_TYPE_PROJECTILE_FRIENDLY) {
                         continue;
                     }
 
-                    if (Collision::BoxesOverlap(pActor->pPreset->hitbox, pOther->pPreset->hitbox, pActor->position, pOther->position)) {
+                    if (Collision::BoxesOverlap(pActor->pPrototype->hitbox, pOther->pPrototype->hitbox, pActor->position, pOther->position)) {
                         removeList.push_back(otherHandle);
 
                         /*PoolHandle<Impact> hitHandle = hitPool.Add();
@@ -886,13 +881,13 @@ namespace Game {
                 }
                 else state.damageTimer = 0.0f;
 
-                s32 damagePalette = (state.damageTimer > 0) ? (s32)(gameplaySecondsElapsed * 20) % 4 : -1;
-                DrawActorFrame(pActor, ppNextSprite, 0, {0, 0}, false, false, damagePalette);
+                pActor->drawData.paletteOverride = (state.damageTimer > 0) ? (s32)(gameplaySecondsElapsed * 20) % 4 : -1;
+                DrawActorFrame(pActor, 0, ppNextSprite);
 
                 break;
             }
             default: {
-                DrawActorFrame(pActor, ppNextSprite, 0);
+                DrawActorFrame(pActor, 0, ppNextSprite);
                 break;
             }
             }
