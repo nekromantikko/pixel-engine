@@ -7,6 +7,12 @@ static Level levels[MAX_LEVEL_COUNT];
 static char nameMemory[MAX_LEVEL_COUNT * LEVEL_MAX_NAME_LENGTH];
 static Screen screenMemory[MAX_LEVEL_COUNT * LEVEL_MAX_SCREEN_COUNT];
 
+void Levels::Init() {
+    for (u32 i = 0; i < MAX_LEVEL_COUNT; i++) {
+        Level& level = levels[i];
+        level.actors.Init(LEVEL_MAX_ACTOR_COUNT);
+    }
+}
 
 Level* Levels::GetLevelsPtr() {
     return levels;
@@ -59,7 +65,7 @@ void Levels::LoadLevels(const char* fname) {
         level.tilemap.pTileset = Tiles::GetTileset();
         level.tilemap.pScreens = &screenMemory[i * LEVEL_MAX_SCREEN_COUNT];
 
-        level.actors.Init(LEVEL_MAX_ACTOR_COUNT);
+        level.actors.Clear();
     }
 }
 

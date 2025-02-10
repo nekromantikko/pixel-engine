@@ -55,20 +55,22 @@ public:
 		Init(s);
 	}
 	void Free() {
-		free(objs);
-		free(handles);
-		free(erase);
+		delete[] objs;
+		delete[] handles;
+		delete[] erase;
 	}
 	~Pool() {
 		Free();
 	}
 	void Init(u32 s) {
+		Free();
+
 		size = s;
 		count = 0;
 
-		objs = (T*)calloc(size, sizeof(T));
-		handles = (THandle*)calloc(size, sizeof(THandle));
-		erase = (u32*)calloc(size, sizeof(u32));
+		objs = new T[size]{};
+		handles = new THandle[size]{};
+		erase = new u32[size]{};
 
 		for (u32 i = 0; i < size; i++)
 		{
@@ -90,6 +92,10 @@ public:
 
 		const u32 arrayIndex = handle.Index();
 		const u32 handleIndex = erase[arrayIndex];
+		if (handleIndex >= count) {
+			return nullptr;
+		}
+
 		const THandle h = handles[handleIndex];
 		if (h != handle) {
 			return nullptr;

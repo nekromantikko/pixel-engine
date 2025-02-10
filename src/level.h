@@ -20,7 +20,7 @@ struct Level {
 };
 
 namespace Levels {
-
+    void Init();
     Level* GetLevelsPtr();
 
     // Generates empty data

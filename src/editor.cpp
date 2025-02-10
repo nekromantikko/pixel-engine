@@ -1,6 +1,7 @@
 #include "editor.h"
 #include <cassert>
 #include <algorithm>
+#include <limits>
 #include <SDL.h>
 #include <imgui.h>
 #include <imgui_impl_sdl2.h>
@@ -219,8 +220,52 @@ static void DrawMetasprite(const Metasprite* pMetasprite, const ImVec2& origin, 
 	}
 }
 
+static AABB GetActorBoundingBox(const Actor* pActor) {
+	AABB result{};
+	if (pActor == nullptr) {
+		return result;
+	}
+
+	constexpr r32 tileWorldDim = 1.0f / METATILE_DIM_TILES;
+	
+	// TODO: What if animation changes bounds?
+	const ActorAnimFrame& frame = pActor->pPrototype->frames[0];
+	switch (pActor->pPrototype->animMode) {
+	case ACTOR_ANIM_MODE_SPRITES: {
+		const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
+		Sprite& sprite = pMetasprite->spritesRelativePos[frame.spriteIndex];
+		result.min = { (r32)SignExtendSpritePos(sprite.x) / METATILE_DIM_PIXELS, (r32)SignExtendSpritePos(sprite.y) / METATILE_DIM_PIXELS };
+		result.max = { result.min.x + tileWorldDim, result.min.y + tileWorldDim };
+		break;
+	}
+	case ACTOR_ANIM_MODE_METASPRITES: {
+		const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
+
+		result.x1 = std::numeric_limits<r32>::max();
+		result.x2 = std::numeric_limits<r32>::min();
+		result.y1 = std::numeric_limits<r32>::max();
+		result.y2 = std::numeric_limits<r32>::min();
+
+		for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
+			Sprite& sprite = pMetasprite->spritesRelativePos[i];
+			const Vec2 spriteMin = { (r32)SignExtendSpritePos(sprite.x) / METATILE_DIM_PIXELS, (r32)SignExtendSpritePos(sprite.y) / METATILE_DIM_PIXELS };
+			const Vec2 spriteMax = { spriteMin.x + tileWorldDim, spriteMin.y + tileWorldDim };
+			result.x1 = std::min(result.x1, spriteMin.x);
+			result.x2 = std::max(result.x2, spriteMax.x);
+			result.y1 = std::min(result.y1, spriteMin.y);
+			result.y2 = std::max(result.y2, spriteMax.y);
+		}
+		break;
+	}
+	default:
+		break;
+	}
+
+	return result;
+}
+
 static void DrawActor(const ActorPrototype* pPrototype, const ImVec2& origin, r32 renderScale, s32 frameIndex = 0, ImU32 color = IM_COL32(255, 255, 255, 255)) {
-	ActorAnimFrame& frame = pPrototype->pFrames[frameIndex];
+	const ActorAnimFrame& frame = pPrototype->frames[frameIndex];
 	switch (pPrototype->animMode) {
 	case ACTOR_ANIM_MODE_SPRITES: {
 		const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
@@ -1094,7 +1139,7 @@ static void DrawGameViewOverlay(const Level* pLevel, const Viewport* pViewport, 
 	}
 }
 
-static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboard& clipboard, u32 selectedActorPrototype, u32& selectedLevel) {
+static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboard& clipboard, u32& selectedLevel, PoolHandle<Actor>& selectedActorHandle) {
 	Viewport* pViewport = Game::GetViewport();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
 
@@ -1120,10 +1165,10 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 		{
 			if (ImGui::Selectable("Add actor")) {
 				PoolHandle<Actor> handle = pLevel->actors.Add();
-				Actor* pActor = pLevel->actors.Get(handle);
-				pActor->pPrototype = Actors::GetPrototype(selectedActorPrototype);
-
-				pActor->position = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
+				Actor* pNewActor = pLevel->actors.Get(handle);
+				pNewActor->pPrototype = Actors::GetPrototype(0);
+				snprintf(pNewActor->name, ACTOR_MAX_NAME_LENGTH, "New actor");
+				pNewActor->position = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
 			}
 			ImGui::EndPopup();
 		}
@@ -1153,7 +1198,8 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 			const Vec2 pixelOffset = actorPixelPos - viewportPixelPos;
 			const ImVec2 drawPos = ImVec2(topLeft.x + pixelOffset.x * renderScale, topLeft.y + pixelOffset.y * renderScale);
 
-			DrawActor(pActor->pPrototype, drawPos, renderScale, 0, IM_COL32(255, 255, 255, 80));
+			const u8 opacity = editMode == EDIT_MODE_ACTORS ? 255 : 80;
+			DrawActor(pActor->pPrototype, drawPos, renderScale, 0, IM_COL32(255, 255, 255, opacity));
 		}
 
 		// View scrolling
@@ -1163,6 +1209,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 
 		if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
 			dragStartPos = io.MousePos;
+			selectedActorHandle = PoolHandle<Actor>::Null();
 		}
 
 		if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
@@ -1180,120 +1227,140 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 			dragDelta = ImVec2(0, 0);
 		}
 
-		// If mouse over
-		if (hovered) {
-			const ImVec2 hoveredTileWorldPos = ImVec2(floorf(mousePosInWorldCoords.x), floorf(mousePosInWorldCoords.y));
+		const ImVec2 hoveredTileWorldPos = ImVec2(floorf(mousePosInWorldCoords.x), floorf(mousePosInWorldCoords.y));
 
-			switch (editMode) {
-			case EDIT_MODE_ACTORS:
-			{
-				/*const ImVec2 metatileInViewportCoords = ImVec2(hoveredMetatileWorldPos.x - pViewport->x, hoveredMetatileWorldPos.y - pViewport->y);
-				const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
-				const r32 metatileDrawSize = tileDrawSize * METATILE_DIM_TILES;
+		switch (editMode) {
+		case EDIT_MODE_ACTORS:
+		{
+			Actor* pActor = pLevel->actors.Get(selectedActorHandle);
+			const AABB actorBounds = GetActorBoundingBox(pActor);
 
-				const u32 screenIndex = WorldToScreenIndex(pLevel, { hoveredMetatileWorldPos.x, hoveredMetatileWorldPos.y });
+			// Selection
+			if (!scrolling) {
+				static Vec2 selectionStartPos{};
 
-				DrawActor(topLeft, btmRight, metatileInPixelCoords, metatileDrawSize, selectedActorType, 63);
-				drawList->AddRect(metatileInPixelCoords, ImVec2(metatileInPixelCoords.x + metatileDrawSize, metatileInPixelCoords.y + metatileDrawSize), IM_COL32(255, 255, 255, 255));
+				if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+					selectedActorHandle = PoolHandle<Actor>::Null();
+					// TODO: Some quadtree action needed desperately
+					for (u32 i = 0; i < pLevel->actors.Count(); i++) {
+						PoolHandle<Actor> handle = pLevel->actors.GetHandle(i);
+						const Actor* pActor = pLevel->actors.Get(handle);
 
-				// Paint actors
-				if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-					if (screenIndex < pLevel->width * pLevel->height) {
-						const u32 screenTileIndex = WorldToMetatileIndex({ hoveredMetatileWorldPos.x, hoveredMetatileWorldPos.y });
-
-						pLevel->screens[screenIndex].tiles[screenTileIndex].actorType = (ActorType)selectedActorType;
-					}
-				}
-				break;*/
-				break;
-			}
-			case EDIT_MODE_TILES:
-			{
-				const Tilemap* pTilemap = &pLevel->tilemap;
-				static bool selecting = false;
-
-				// Selection
-				if (!scrolling) {
-					static ImVec2 selectionStartPos = ImVec2(0, 0);
-					static ImVec2 selectionTopLeft;
-					static ImVec2 selectionBtmRight;
-
-					if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-						selectionStartPos = hoveredTileWorldPos;
-						selectionTopLeft = hoveredTileWorldPos;
-						selectionBtmRight = ImVec2(hoveredTileWorldPos.x + 1, hoveredTileWorldPos.y + 1);
-						selecting = true;
-					}
-
-					if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
-						selectionTopLeft = ImVec2(std::min(selectionStartPos.x, hoveredTileWorldPos.x), std::min(selectionStartPos.y, hoveredTileWorldPos.y));
-						selectionBtmRight = ImVec2(std::max(selectionStartPos.x, hoveredTileWorldPos.x) + 1, std::max(selectionStartPos.y, hoveredTileWorldPos.y) + 1);
-
-						const ImVec2 selectionTopLeftInPixelCoords = ImVec2((selectionTopLeft.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionTopLeft.y - pViewport->y) * tileDrawSize + topLeft.y);
-						const ImVec2 selectionBtmRightInPixelCoords = ImVec2((selectionBtmRight.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionBtmRight.y - pViewport->y) * tileDrawSize + topLeft.y);
-
-						drawList->AddRectFilled(selectionTopLeftInPixelCoords, selectionBtmRightInPixelCoords, IM_COL32(255, 255, 255, 63));
-					}
-
-					if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
-						selecting = false;
-						u32 selectionWidth = (selectionBtmRight.x - selectionTopLeft.x);
-						u32 selectionHeight = (selectionBtmRight.y - selectionTopLeft.y);
-
-						clipboard.size = ImVec2((r32)selectionWidth, (r32)selectionHeight);
-						clipboard.offset = ImVec2(selectionTopLeft.x - hoveredTileWorldPos.x, selectionTopLeft.y - hoveredTileWorldPos.y);
-
-						for (u32 x = 0; x < selectionWidth; x++) {
-							for (u32 y = 0; y < selectionHeight; y++) {
-								u32 clipboardIndex = y * selectionWidth + x;
-
-								const IVec2 metatileWorldPos = { selectionTopLeft.x + x, selectionTopLeft.y + y };
-								const s32 tilesetIndex = Tiles::GetTilesetIndex(pTilemap, metatileWorldPos);
-								clipboard.clipboard[clipboardIndex] = tilesetIndex;
-							}
+						const AABB bounds = GetActorBoundingBox(pActor);
+						if (Collision::PointInsideBox({ mousePosInWorldCoords.x, mousePosInWorldCoords.y }, bounds, pActor->position)) {
+							selectedActorHandle = handle;
+							selectionStartPos = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
+							break;
 						}
 					}
 				}
 
-				if (selecting) {
-					break;
+				if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Left) && pActor != nullptr) {
+					const ImVec2 dragDelta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
+					const Vec2 deltaInWorldCoords = { dragDelta.x / tileDrawSize, dragDelta.y / tileDrawSize };
+
+					pActor->position = selectionStartPos + deltaInWorldCoords;
+				}
+			}
+
+			if (pActor != nullptr) {
+				const AABB boundsAbs(actorBounds.min + pActor->position, actorBounds.max + pActor->position);
+				const ImVec2 pMin = ImVec2((boundsAbs.min.x - pViewport->x) * tileDrawSize + topLeft.x, (boundsAbs.min.y - pViewport->y) * tileDrawSize + topLeft.y);
+				const ImVec2 pMax = ImVec2((boundsAbs.max.x - pViewport->x) * tileDrawSize + topLeft.x, (boundsAbs.max.y - pViewport->y) * tileDrawSize + topLeft.y);
+
+				drawList->AddRect(pMin, pMax, IM_COL32(255, 255, 255, 255));
+				const ImVec2 namePos = ImVec2(pMin.x, pMax.y + tileDrawSize / 4);
+				drawList->AddText(namePos, IM_COL32(255, 255, 255, 255), pActor->name);
+			}
+
+			break;
+		}
+		case EDIT_MODE_TILES:
+		{
+			const Tilemap* pTilemap = &pLevel->tilemap;
+			static bool selecting = false;
+
+			// Selection
+			if (!scrolling) {
+				static ImVec2 selectionStartPos = ImVec2(0, 0);
+				static ImVec2 selectionTopLeft;
+				static ImVec2 selectionBtmRight;
+
+				if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+					selectionStartPos = hoveredTileWorldPos;
+					selectionTopLeft = hoveredTileWorldPos;
+					selectionBtmRight = ImVec2(hoveredTileWorldPos.x + 1, hoveredTileWorldPos.y + 1);
+					selecting = true;
 				}
 
-				const u32 clipboardWidth = (u32)clipboard.size.x;
-				const u32 clipboardHeight = (u32)clipboard.size.y;
-				const ImVec2 clipboardTopLeft = ImVec2(hoveredTileWorldPos.x + clipboard.offset.x, hoveredTileWorldPos.y + clipboard.offset.y);
-				const ImVec2 clipboardBtmRight = ImVec2(clipboardTopLeft.x + clipboardWidth, clipboardTopLeft.y + clipboardHeight);
-				for (u32 x = 0; x < clipboardWidth; x++) {
-					for (u32 y = 0; y < clipboardHeight; y++) {
-						u32 clipboardIndex = y * clipboardWidth + x;
-						const IVec2 metatileWorldPos = { clipboardTopLeft.x + x, clipboardTopLeft.y + y };
-						const ImVec2 metatileInViewportCoords = ImVec2(metatileWorldPos.x - pViewport->x, metatileWorldPos.y - pViewport->y);
-						const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
-						const u8 metatileIndex = clipboard.clipboard[clipboardIndex];
+				if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+					selectionTopLeft = ImVec2(std::min(selectionStartPos.x, hoveredTileWorldPos.x), std::min(selectionStartPos.y, hoveredTileWorldPos.y));
+					selectionBtmRight = ImVec2(std::max(selectionStartPos.x, hoveredTileWorldPos.x) + 1, std::max(selectionStartPos.y, hoveredTileWorldPos.y) + 1);
+
+					const ImVec2 selectionTopLeftInPixelCoords = ImVec2((selectionTopLeft.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionTopLeft.y - pViewport->y) * tileDrawSize + topLeft.y);
+					const ImVec2 selectionBtmRightInPixelCoords = ImVec2((selectionBtmRight.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionBtmRight.y - pViewport->y) * tileDrawSize + topLeft.y);
+
+					drawList->AddRectFilled(selectionTopLeftInPixelCoords, selectionBtmRightInPixelCoords, IM_COL32(255, 255, 255, 63));
+				}
+
+				if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
+					selecting = false;
+					u32 selectionWidth = (selectionBtmRight.x - selectionTopLeft.x);
+					u32 selectionHeight = (selectionBtmRight.y - selectionTopLeft.y);
+
+					clipboard.size = ImVec2((r32)selectionWidth, (r32)selectionHeight);
+					clipboard.offset = ImVec2(selectionTopLeft.x - hoveredTileWorldPos.x, selectionTopLeft.y - hoveredTileWorldPos.y);
+
+					for (u32 x = 0; x < selectionWidth; x++) {
+						for (u32 y = 0; y < selectionHeight; y++) {
+							u32 clipboardIndex = y * selectionWidth + x;
+
+							const IVec2 metatileWorldPos = { selectionTopLeft.x + x, selectionTopLeft.y + y };
+							const s32 tilesetIndex = Tiles::GetTilesetIndex(pTilemap, metatileWorldPos);
+							clipboard.clipboard[clipboardIndex] = tilesetIndex;
+						}
+					}
+				}
+			}
+
+			if (selecting) {
+				break;
+			}
+
+			const u32 clipboardWidth = (u32)clipboard.size.x;
+			const u32 clipboardHeight = (u32)clipboard.size.y;
+			const ImVec2 clipboardTopLeft = ImVec2(hoveredTileWorldPos.x + clipboard.offset.x, hoveredTileWorldPos.y + clipboard.offset.y);
+			const ImVec2 clipboardBtmRight = ImVec2(clipboardTopLeft.x + clipboardWidth, clipboardTopLeft.y + clipboardHeight);
+			for (u32 x = 0; x < clipboardWidth; x++) {
+				for (u32 y = 0; y < clipboardHeight; y++) {
+					u32 clipboardIndex = y * clipboardWidth + x;
+					const IVec2 metatileWorldPos = { clipboardTopLeft.x + x, clipboardTopLeft.y + y };
+					const ImVec2 metatileInViewportCoords = ImVec2(metatileWorldPos.x - pViewport->x, metatileWorldPos.y - pViewport->y);
+					const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
+					const u8 metatileIndex = clipboard.clipboard[clipboardIndex];
 							
-						const Metatile& metatile = pTilemap->pTileset->tiles[metatileIndex].metatile;
-						const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, metatileIndex);
-						DrawMetatile(metatile, metatileInPixelCoords, tileDrawSize, palette, IM_COL32(255, 255, 255, 127));
+					const Metatile& metatile = pTilemap->pTileset->tiles[metatileIndex].metatile;
+					const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, metatileIndex);
+					DrawMetatile(metatile, metatileInPixelCoords, tileDrawSize, palette, IM_COL32(255, 255, 255, 127));
 
-						// Paint metatiles
-						if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
-							Tiles::SetMapTile(pTilemap, metatileWorldPos, metatileIndex);
+					// Paint metatiles
+					if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
+						Tiles::SetMapTile(pTilemap, metatileWorldPos, metatileIndex);
 
-							const u32 nametableIndex = Tiles::GetNametableIndex(metatileWorldPos);
-							const IVec2 nametablePos = Tiles::GetNametableOffset(metatileWorldPos);
-							Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametablePos.x, nametablePos.y, metatile, palette);
-						}
+						const u32 nametableIndex = Tiles::GetNametableIndex(metatileWorldPos);
+						const IVec2 nametablePos = Tiles::GetNametableOffset(metatileWorldPos);
+						Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametablePos.x, nametablePos.y, metatile, palette);
 					}
 				}
+			}
 
-				const ImVec2 clipboardTopLeftInPixelCoords = ImVec2((clipboardTopLeft.x - pViewport->x) * tileDrawSize + topLeft.x, (clipboardTopLeft.y - pViewport->y) * tileDrawSize + topLeft.y);
-				const ImVec2 clipboardBtmRightInPixelCoords = ImVec2((clipboardBtmRight.x - pViewport->x) * tileDrawSize + topLeft.x, (clipboardBtmRight.y - pViewport->y) * tileDrawSize + topLeft.y);
-				drawList->AddRect(clipboardTopLeftInPixelCoords, clipboardBtmRightInPixelCoords, IM_COL32(255, 255, 255, 255));
-				break;
-			}
-			default:
-				break;
-			}
+			const ImVec2 clipboardTopLeftInPixelCoords = ImVec2((clipboardTopLeft.x - pViewport->x) * tileDrawSize + topLeft.x, (clipboardTopLeft.y - pViewport->y) * tileDrawSize + topLeft.y);
+			const ImVec2 clipboardBtmRightInPixelCoords = ImVec2((clipboardBtmRight.x - pViewport->x) * tileDrawSize + topLeft.x, (clipboardBtmRight.y - pViewport->y) * tileDrawSize + topLeft.y);
+			drawList->AddRect(clipboardTopLeftInPixelCoords, clipboardBtmRightInPixelCoords, IM_COL32(255, 255, 255, 255));
+			break;
+		}
+		default:
+			break;
 		}
 	}
 	drawList->PopClipRect();
@@ -1329,7 +1396,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 	ImGui::Checkbox("Draw actor hitboxes", &drawHitboxes);
 }
 
-static void DrawLevelTools(u32& selectedLevel, u32& editMode, LevelToolsState& state, LevelClipboard& clipboard, u32& selectedActorPrototype) {
+static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, LevelToolsState& state, LevelClipboard& clipboard, PoolHandle<Actor>& selectedActorHandle) {
 	const ImGuiTabBarFlags tabBarFlags = ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_AutoSelectNewTabs;
 	
 	Level* pLevels = Levels::GetLevelsPtr();
@@ -1419,24 +1486,82 @@ static void DrawLevelTools(u32& selectedLevel, u32& editMode, LevelToolsState& s
 
 		if (state.actorsOpen && ImGui::BeginTabItem("Actors", &state.actorsOpen)) {
 			editMode = EDIT_MODE_ACTORS;
-			if (ImGui::BeginCombo("Prototype", Actors::GetPrototypeName(selectedActorPrototype))) {
-				for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++) {
-					ImGui::PushID(i);
 
-					const bool selected = selectedActorPrototype == i;
+			Actor* pActor = level.actors.Get(selectedActorHandle);
+			if (pActor == nullptr) {
+				ImGui::Text("No actor selected");
+			}
+			else {
+				ImGui::PushID(selectedActorHandle.Raw());
+				ImGui::BeginDisabled(!editing);
 
-					const char* prototypeName = Actors::GetPrototypeName(i);
-					if (ImGui::Selectable(prototypeName, selectedActorPrototype == i)) {
-						selectedActorPrototype = i;
+				ImGui::SeparatorText(pActor->name);
+				ImGui::InputText("Name", pActor->name, ACTOR_MAX_NAME_LENGTH);
+
+				if (ImGui::BeginCombo("Prototype", pActor->pPrototype->name)) {
+					for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++) {
+						ImGui::PushID(i);
+
+						const ActorPrototype* pPrototype = Actors::GetPrototype(i);
+						const bool selected = pActor->pPrototype == pPrototype;
+
+						if (ImGui::Selectable(pPrototype->name, selected)) {
+							pActor->pPrototype = pPrototype;
+						}
+
+						if (selected) {
+							ImGui::SetItemDefaultFocus();
+						}
+						ImGui::PopID();
 					}
 
-					if (selected) {
-						ImGui::SetItemDefaultFocus();
-					}
-					ImGui::PopID();
+					ImGui::EndCombo();
 				}
 
-				ImGui::EndCombo();
+				ImGui::Separator();
+
+				ImGui::InputFloat2("Position", (r32*)&pActor->position);
+
+				/*if (ImGui::TreeNode("Screens")) {
+					// TODO: Lay these out nicer
+					u32 screenCount = level.width * level.height;
+					for (u32 i = 0; i < screenCount; i++) {
+						Screen& screen = level.screens[i];
+
+						if (ImGui::TreeNode(&screen, "%#04x", i)) {
+
+							const Level& exitTargetLevel = pLevels[screen.exitTargetLevel];
+
+							if (ImGui::BeginCombo("Exit target level", exitTargetLevel.name)) {
+								for (u32 i = 0; i < maxLevelCount; i++)
+								{
+									ImGui::PushID(i);
+									const bool selected = screen.exitTargetLevel == i;
+									if (ImGui::Selectable(pLevels[i].name, selected)) {
+										screen.exitTargetLevel = i;
+									}
+
+									if (selected) {
+										ImGui::SetItemDefaultFocus();
+									}
+									ImGui::PopID();
+								}
+								ImGui::EndCombo();
+							}
+
+							s32 exitScreen = screen.exitTargetScreen;
+							if (ImGui::InputInt("Exit target screen", &exitScreen)) {
+								screen.exitTargetScreen = (u32)std::max(std::min((s32)levelMaxScreenCount - 1, exitScreen), 0);
+							}
+
+							ImGui::TreePop();
+						}
+					}
+
+					ImGui::TreePop();
+				}*/
+				ImGui::EndDisabled();
+				ImGui::PopID();
 			}
 
 			ImGui::EndTabItem();
@@ -1452,8 +1577,8 @@ static void DrawGameWindow() {
 	Viewport* pViewport = Game::GetViewport();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
 
-	static u32 selectedActorPrototype = 0;
 	static u32 selectedLevel = 0;
+	static PoolHandle<Actor> selectedActorHandle = PoolHandle<Actor>::Null();
 
 	static u32 editMode = EDIT_MODE_NONE;
 	static LevelClipboard clipboard{};
@@ -1563,6 +1688,8 @@ static void DrawGameWindow() {
 			{
 				if (ImGui::Selectable("Load level")) {
 					Game::LoadLevel(i);
+					Game::SetPaused(true);
+					selectedActorHandle = PoolHandle<Actor>::Null();
 				}
 				ImGui::EndPopup();
 			}
@@ -1579,7 +1706,7 @@ static void DrawGameWindow() {
 
 	ImGui::BeginChild("Game view", ImVec2(gameViewWidth, 0));
 	ImGui::NewLine();
-	DrawGameView(pCurrentLevel, editing, editMode, clipboard, selectedActorPrototype, selectedLevel);
+	DrawGameView(pCurrentLevel, editing, editMode, clipboard, selectedLevel, selectedActorHandle);
 	ImGui::EndChild();
 
 	ImGui::SameLine();
@@ -1588,7 +1715,7 @@ static void DrawGameWindow() {
 	editMode = EDIT_MODE_NONE;
 	if (showToolsWindow) {
 		ImGui::BeginChild("Level tools", ImVec2(toolWindowWidth,0));
-		DrawLevelTools(selectedLevel, editMode, toolsState, clipboard, selectedActorPrototype);
+		DrawLevelTools(selectedLevel, editing, editMode, toolsState, clipboard, selectedActorHandle);
 		ImGui::EndChild();
 	}
 
@@ -1615,16 +1742,15 @@ static ImVec2 DrawActorPreview(const ActorPrototype* pPrototype, s32 frameIndex,
 }
 
 static void DrawActorPrototypeList(s32& selection) {
-	static constexpr u32 maxLabelNameLength = ACTOR_MAX_NAME_LENGTH + 8;
+	static constexpr u32 maxLabelNameLength = ACTOR_PROTOTYPE_MAX_NAME_LENGTH + 8;
 	char label[maxLabelNameLength];
 
 	ActorPrototype* pPrototypes = Actors::GetPrototype(0);
 	for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++)
 	{
-		const char* name = Actors::GetPrototypeName(i);
 		ImGui::PushID(i);
 
-		snprintf(label, maxLabelNameLength, "0x%02x: %s", i, name);
+		snprintf(label, maxLabelNameLength, "0x%02x: %s", i, pPrototypes[i].name);
 
 		const bool selected = selection == i;
 		if (ImGui::Selectable(label, selected)) {
@@ -1677,10 +1803,10 @@ static void DrawActorWindow() {
 		if (ImGui::BeginMenu("File"))
 		{
 			if (ImGui::MenuItem("Save")) {
-				Actors::SavePrototypes("assets/actors.pfb");
+				Actors::SavePrototypes("assets/actors.prt");
 			}
 			if (ImGui::MenuItem("Revert changes")) {
-				Actors::LoadPrototypes("assets/actors.pfb");
+				Actors::LoadPrototypes("assets/actors.prt");
 			}
 			ImGui::EndMenu();
 		}
@@ -1704,10 +1830,9 @@ static void DrawActorWindow() {
 	ImGui::BeginChild("Prototype editor");
 	{
 		ActorPrototype* pPrototype = Actors::GetPrototype(selection);
-		char* name = Actors::GetPrototypeName(selection);
-		ImGui::SeparatorText(name);
+		ImGui::SeparatorText(pPrototype->name);
 
-		ImGui::InputText("Name", name, ACTOR_MAX_NAME_LENGTH);
+		ImGui::InputText("Name", pPrototype->name, ACTOR_PROTOTYPE_MAX_NAME_LENGTH);
 
 		ImGui::Separator();
 
@@ -1730,39 +1855,29 @@ static void DrawActorWindow() {
 
 		if (ImGui::BeginTabBar("Actor editor tabs")) {
 			if (ImGui::BeginTabItem("Common")) {
-				if (ImGui::BeginCombo("Type", ACTOR_TYPE_NAMES[(int)pPrototype->type])) {
-					for (u32 i = 0; i < ACTOR_TYPE_COUNT; i++) {
-						ImGui::PushID(i);
 
-						const bool selected = pPrototype->type == i;
-						if (ImGui::Selectable(ACTOR_TYPE_NAMES[i], selected)) {
-							pPrototype->type = i;
-						}
-
-						if (selected) {
-							ImGui::SetItemDefaultFocus();
-						}
-						ImGui::PopID();
-					}
-					ImGui::EndCombo();
-				}
-
-				if (ImGui::BeginCombo("Behaviour", ACTOR_BEHAVIOUR_NAMES[(int)pPrototype->behaviour])) {
+				if (ImGui::BeginListBox("Behaviour flags")) {
 					for (u32 i = 0; i < ACTOR_BEHAVIOUR_COUNT; i++) {
 						ImGui::PushID(i);
 
-						const bool selected = pPrototype->behaviour == i;
-						if (ImGui::Selectable(ACTOR_BEHAVIOUR_NAMES[i], selected)) {
-							pPrototype->behaviour = i;
+						const u32 flagBit = (1 << i);
+						bool checked = pPrototype->behaviour & flagBit;
+						if (ImGui::Checkbox(ACTOR_BEHAVIOUR_NAMES[i], &checked)) {
+							pPrototype->behaviour &= ~flagBit;
+							if (checked) {
+								pPrototype->behaviour |= flagBit;
+							}
 						}
 
-						if (selected) {
-							ImGui::SetItemDefaultFocus();
-						}
 						ImGui::PopID();
 					}
-					ImGui::EndCombo();
+					ImGui::EndListBox();
 				}
+
+				ImGui::EndTabItem();
+			}
+
+			if (ImGui::BeginTabItem("Frames")) {
 
 				if (ImGui::BeginCombo("Animation mode", ACTOR_ANIM_MODE_NAMES[(int)pPrototype->animMode])) {
 					for (u32 i = 0; i < ACTOR_ANIM_MODE_COUNT; i++) {
@@ -1780,24 +1895,21 @@ static void DrawActorWindow() {
 					}
 					ImGui::EndCombo();
 				}
-				ImGui::EndTabItem();
-			}
 
-			if (ImGui::BeginTabItem("Frames")) {
-				ImGui::BeginDisabled(pPrototype->frameCount == ACTOR_MAX_FRAME_COUNT);
+				ImGui::BeginDisabled(pPrototype->frameCount == ACTOR_PROTOTYPE_MAX_FRAME_COUNT);
 				if (ImGui::Button("+")) {
-					PushElement<ActorAnimFrame>(pPrototype->pFrames, pPrototype->frameCount);
+					PushElement<ActorAnimFrame>(pPrototype->frames, pPrototype->frameCount);
 				}
 				ImGui::EndDisabled();
 				ImGui::SameLine();
 				ImGui::BeginDisabled(pPrototype->frameCount == 1);
 				if (ImGui::Button("-")) {
-					PopElement<ActorAnimFrame>(pPrototype->pFrames, pPrototype->frameCount);
+					PopElement<ActorAnimFrame>(pPrototype->frames, pPrototype->frameCount);
 				}
 				ImGui::EndDisabled();
 
 				ImGui::BeginChild("Frame list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-				DrawGenericEditableList<ActorAnimFrame>(pPrototype->pFrames, pPrototype->frameCount, ACTOR_MAX_FRAME_COUNT, selectedFrames, "Frame");
+				DrawGenericEditableList<ActorAnimFrame>(pPrototype->frames, pPrototype->frameCount, ACTOR_PROTOTYPE_MAX_FRAME_COUNT, selectedFrames, "Frame");
 
 				ImGui::EndChild();
 
@@ -1814,7 +1926,7 @@ static void DrawActorWindow() {
 					}
 					else {
 						currentFrame = selectedFrames[0];
-						ActorAnimFrame& frame = pPrototype->pFrames[currentFrame];
+						ActorAnimFrame& frame = pPrototype->frames[currentFrame];
 						ImGui::BeginDisabled(pPrototype->animMode != ACTOR_ANIM_MODE_SPRITES && pPrototype->animMode != ACTOR_ANIM_MODE_METASPRITES);
 						if (ImGui::BeginCombo("Metasprite", Metasprites::GetName(frame.metaspriteIndex))) {
 							for (u32 i = 0; i < MAX_METASPRITE_COUNT; i++) {
@@ -1864,6 +1976,23 @@ static void DrawActorWindow() {
 			}
 
 			if (ImGui::BeginTabItem("Collision")) {
+				if (ImGui::BeginCombo("Collision layer", ACTOR_COLLISION_LAYER_NAMES[(int)pPrototype->collisionLayer])) {
+					for (u32 i = 0; i < ACTOR_COLLISION_LAYER_COUNT; i++) {
+						ImGui::PushID(i);
+
+						const bool selected = pPrototype->collisionLayer == i;
+						if (ImGui::Selectable(ACTOR_COLLISION_LAYER_NAMES[i], selected)) {
+							pPrototype->collisionLayer = i;
+						}
+
+						if (selected) {
+							ImGui::SetItemDefaultFocus();
+						}
+						ImGui::PopID();
+					}
+					ImGui::EndCombo();
+				}
+
 				ImGui::Checkbox("Show hitbox preview", &showHitboxPreview);
 
 				ImGui::BeginChild("Collider editor");

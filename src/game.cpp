@@ -56,8 +56,6 @@ namespace Game {
     Pool<Actor> actors;
     Actor* pViewportTarget = nullptr;
 
-    r32 gravity = 35;
-
     constexpr u32 impactFrameCount = 4;
     constexpr r32 impactAnimLength = 0.16f;
 
@@ -66,8 +64,6 @@ namespace Game {
         r32 accumulator;
     };
     Pool<Impact> hitPool;
-
-    Vec2 enemyPos = Vec2{ 48.0f, 27.0f };
 
     constexpr r32 damageNumberLifetime = 1.0f;
 
@@ -86,20 +82,16 @@ namespace Game {
 
 #pragma region Actors
     static void InitializeActor(Actor* pActor) {
-        switch (pActor->pPrototype->behaviour) {
-        case ACTOR_BEHAVIOUR_PLAYER: {
-            pActor->playerState.direction = DirRight;
-            pActor->playerState.weapon = WpnLauncher;
-            break;
+        const u32 flags = pActor->pPrototype->behaviour;
+
+        if (flags & ACTOR_BEHAVIOUR_PLAYER_SIDESCROLLER) {
+            pViewportTarget = pActor;
         }
-        case ACTOR_BEHAVIOUR_ENEMY_SKULL: {
-            pActor->enemyState.baseHeight = pActor->position.y;
-            pActor->enemyState.health = 10;
-            break;
-        }
-        default:
-            break;
-        }
+
+        pActor->initialPosition = pActor->position;
+
+        pActor->damageCounter = 0;
+        pActor->lifetimeCounter = pActor->lifetime;
 
         pActor->drawData = ActorDrawData{};
     }
@@ -113,7 +105,6 @@ namespace Game {
         }
 
         *pActor = *pTemplate;
-        InitializeActor(pActor);
         return pActor;
     }
 
@@ -126,7 +117,6 @@ namespace Game {
         }
 
         pActor->pPrototype = Actors::GetPrototype(presetIndex);
-        InitializeActor(pActor);
         return pActor;
     }
 #pragma endregion
@@ -156,29 +146,6 @@ namespace Game {
         if (refresh) {
             RefreshViewport(&viewport, pNametables, &pCurrentLevel->tilemap);
         }
-    }
-
-    static bool SpawnAtFirstDoor(u32 screenIndex) {
-        /*if (screenIndex >= pCurrentLevel->width * pCurrentLevel->height) {
-            return false;
-        }
-
-        const Screen& screen = pCurrentLevel->screens[screenIndex];
-        for (u32 i = 0; i < VIEWPORT_WIDTH_METATILES * VIEWPORT_HEIGHT_METATILES; i++) {
-            const LevelTile& tile = screen.tiles[i];
-
-            if (tile.actorType == ACTOR_DOOR) {
-                const Vec2 screenRelativePos = TileIndexToScreenOffset(i);
-                const Vec2 worldPos = ScreenOffsetToWorld(pCurrentLevel, screenRelativePos, screenIndex);
-
-                playerState.x = worldPos.x + 1.0f;
-                playerState.y = worldPos.y;
-
-                return true;
-            }
-        }*/
-
-        return false;
     }
 
     void UnloadLevel(bool refresh) {
@@ -212,10 +179,7 @@ namespace Game {
             const Actor* pActor = pCurrentLevel->actors.Get(handle);
 
             Actor* pSpawned = SpawnActor(pActor);
-
-            if (pSpawned->pPrototype->behaviour == ACTOR_BEHAVIOUR_PLAYER) {
-                pViewportTarget = pSpawned;
-            }
+            InitializeActor(pSpawned);
         }
 
         gameplaySecondsElapsed = 0.0f;
@@ -260,8 +224,9 @@ namespace Game {
 
         Tiles::LoadTileset("assets/forest.til");
         Metasprites::Load("assets/meta.spr");
+        Levels::Init();
         Levels::LoadLevels("assets/levels.lev");
-        Actors::LoadPrototypes("assets/actors.pfb");
+        Actors::LoadPrototypes("assets/actors.prt");
 
         // Initialize scanline state
         for (int i = 0; i < SCANLINE_COUNT; i++) {
@@ -281,21 +246,23 @@ namespace Game {
         
     }
 
-    constexpr u8 bgChrSheetIndex = 0;
-    constexpr u8 spriteChrSheetIndex = 1;
+
+    // TODO: Try to eliminate as much of this as possible
+    constexpr s32 playerGrenadePrototypeIndex = 1;
+    constexpr s32 playerArrowPrototypeIndex = 4;
+    constexpr s32 dmgNumberPrototypeIndex = 5;
+    constexpr s32 hitPrototypeIndex = 6;
 
     constexpr u8 playerWingFrameBankOffsets[4] = { 0x00, 0x08, 0x10, 0x18 };
     constexpr u8 playerHeadFrameBankOffsets[9] = { 0x20, 0x24, 0x28, 0x30, 0x34, 0x38, 0x40, 0x44, 0x48 };
     constexpr u8 playerLegsFrameBankOffsets[4] = { 0x50, 0x54, 0x58, 0x5C };
-    constexpr u8 playerHandFrameBankOffsets[3] = { 0x60, 0x62, 0x64 };
-    constexpr u8 playerBowFrameBankOffsets[3] = { 0x68, 0x70, 0x78 };
+    constexpr u8 playerBowFrameBankOffsets[3] = { 0x60, 0x68, 0x70 };
     constexpr u8 playerLauncherFrameBankOffsets[3] = { 0x80, 0x88, 0x90 };
 
     constexpr u8 playerWingFrameChrOffset = 0x00;
     constexpr u8 playerHeadFrameChrOffset = 0x08;
     constexpr u8 playerLegsFrameChrOffset = 0x0C;
-    constexpr u8 playerHandFrameChrOffset = 0x10;
-    constexpr u8 playerWeaponFrameChrOffset = 0x12;
+    constexpr u8 playerWeaponFrameChrOffset = 0x18;
 
     constexpr u8 playerWingFrameTileCount = 8;
     constexpr u8 playerHeadFrameTileCount = 4;
@@ -356,7 +323,7 @@ namespace Game {
         };
     }
 
-    static void DrawActorFrame(const Actor* pActor, const s32 frameIndex, Sprite** ppNextSprite) {
+    static void DrawActor(const Actor* pActor, Sprite** ppNextSprite) {
         // Culling
         if (!PositionInViewportBounds(pActor->position)) {
             return;
@@ -364,7 +331,7 @@ namespace Game {
 
         const ActorDrawData& drawData = pActor->drawData;
         IVec2 drawPos = WorldPosToScreenPixels(pActor->position) + drawData.pixelOffset;
-        const ActorAnimFrame& frame = pActor->pPrototype->pFrames[frameIndex];
+        const ActorAnimFrame& frame = pActor->pPrototype->frames[drawData.frameIndex];
 
         switch (pActor->pPrototype->animMode) {
         case ACTOR_ANIM_MODE_SPRITES: {
@@ -381,119 +348,6 @@ namespace Game {
         }
         default:
             break;
-        }
-    }
-
-    static void DrawPlayer(Actor* pPlayer, Sprite** ppNextSprite, r64 dt) {
-        PlayerState& playerState = pPlayer->playerState;
-
-        ActorDrawData& drawData = pPlayer->drawData;
-        drawData.hFlip = playerState.direction == DirLeft;
-        drawData.paletteOverride = (playerState.damageTimer > 0) ? (s32)(gameplaySecondsElapsed * 20) % 4 : -1;
-        if (playerState.velocity.y == 0) {
-            drawData.pixelOffset.y = playerState.wingFrame > 1 ? -1 : 0;
-        }
-        else {
-            drawData.pixelOffset.y = 0;
-        }
-
-        IVec2 drawPos = WorldPosToScreenPixels(pPlayer->position);
-        drawPos = drawPos + drawData.pixelOffset;
-
-        // Draw weapon first
-        IVec2 weaponOffset;
-        u8 weaponFrameBankOffset;
-        u32 weaponMetaspriteIndex;
-        switch (playerState.weapon) {
-        case WpnBow: {
-            weaponOffset = playerBowOffsets[playerState.aMode];
-            weaponFrameBankOffset = playerBowFrameBankOffsets[playerState.aMode];
-            weaponMetaspriteIndex = playerState.aMode == AimFwd ? playerBowFwdMetaspriteIndex : playerBowDiagMetaspriteIndex;
-            break;
-        }
-        case WpnLauncher: {
-            weaponOffset = playerLauncherOffsets[playerState.aMode];
-            weaponFrameBankOffset = playerLauncherFrameBankOffsets[playerState.aMode];
-            weaponMetaspriteIndex = playerState.aMode == AimFwd ? playerLauncherFwdMetaspriteIndex : playerLauncherDiagMetaspriteIndex;
-            break;
-        }
-        default:
-            break;
-        }
-        weaponOffset.x *= playerState.direction;
-
-        Rendering::Util::CopyChrTiles(playerBank.tiles + weaponFrameBankOffset, pChr[1].tiles + playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
-
-        const Metasprite* bowMetasprite = Metasprites::GetMetasprite(weaponMetaspriteIndex);
-        Rendering::Util::CopyMetasprite(bowMetasprite->spritesRelativePos, *ppNextSprite, bowMetasprite->spriteCount, drawPos + weaponOffset, drawData.hFlip, drawData.vFlip);
-        *ppNextSprite += bowMetasprite->spriteCount;
-
-        // Animate chr sheet using player bank
-        // TODO: Maybe do this on the GPU?
-        Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerHandFrameBankOffsets[playerState.aMode],
-            pChr[1].tiles + playerHandFrameChrOffset,
-            playerHandFrameTileCount
-        );
-        Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerHeadFrameBankOffsets[playerState.aMode * 3 + playerState.hMode],
-            pChr[1].tiles + playerHeadFrameChrOffset,
-            playerHeadFrameTileCount
-        );
-        Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerLegsFrameBankOffsets[playerState.lMode],
-            pChr[1].tiles + playerLegsFrameChrOffset,
-            playerLegsFrameTileCount
-        );
-        Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerWingFrameBankOffsets[playerState.wingFrame],
-            pChr[1].tiles + playerWingFrameChrOffset,
-            playerWingFrameTileCount
-        );
-
-        DrawActorFrame(pPlayer, playerState.aMode, ppNextSprite);
-    }
-
-    void DrawDamageNumbers(Sprite** ppNextSprite) {
-        char dmgStr[8]{};
-
-        for (int i = 0; i < damageNumberPool.Count(); i++) {
-            PoolHandle<DamageNumber> handle = damageNumberPool.GetHandle(i);
-            DamageNumber* dmg = damageNumberPool[handle];
-
-            _itoa_s(dmg->damage, dmgStr, 10);
-
-            // Ascii character '0' = 0x30
-            s32 chrOffset = 0x70 - 0x30;
-
-            for (int i = 0; i < strlen(dmgStr); i++) {
-                IVec2 pixelPos = WorldPosToScreenPixels(dmg->pos);
-                const Sprite sprite = {
-                    pixelPos.y,
-                    pixelPos.x + i * 5,
-                    dmgStr[i] + chrOffset,
-                    1
-                };
-                *((*ppNextSprite)++) = sprite;
-            }
-        }
-    }
-
-    void DrawHits(Sprite** ppNextSprite) {
-        for (int i = 0; i < hitPool.Count(); i++) {
-            PoolHandle<Impact> handle = hitPool.GetHandle(i);
-            Impact* impact = hitPool.Get(handle);
-
-            u32 frame = (u32)((impact->accumulator / impactAnimLength) * impactFrameCount);
-            IVec2 pixelPos = WorldPosToScreenPixels(impact->pos);
-
-            Sprite debugSprite = {
-                pixelPos.y - (TILE_DIM_PIXELS / 2),
-                pixelPos.x - (TILE_DIM_PIXELS / 2),
-                0x20 + frame,
-                1
-            };
-            *((*ppNextSprite)++) = debugSprite;
         }
     }
 
@@ -522,31 +376,31 @@ namespace Game {
         PlayerState& playerState = pPlayer->playerState;
         if (Input::ButtonDown(BUTTON_DPAD_LEFT)) {
             playerState.direction = DirLeft;
-            playerState.velocity.x = -6.25f;
+            pPlayer->velocity.x = -6.25f;
         }
         else if (Input::ButtonDown(BUTTON_DPAD_RIGHT)) {
             playerState.direction = DirRight;
-            playerState.velocity.x = 6.25f;
+            pPlayer->velocity.x = 6.25f;
         }
         else {
-            playerState.velocity.x = 0;
+            pPlayer->velocity.x = 0;
         }
 
         // Aim mode
         if (Input::ButtonDown(BUTTON_DPAD_UP)) {
-            playerState.aMode = AimUp;
+            playerState.aimMode = PLAYER_AIM_UP;
         }
         else if (Input::ButtonDown(BUTTON_DPAD_DOWN)) {
-            playerState.aMode = AimDown;
+            playerState.aimMode = PLAYER_AIM_DOWN;
         }
-        else playerState.aMode = AimFwd;
+        else playerState.aimMode = PLAYER_AIM_FWD;
 
         if (Input::ButtonPressed(BUTTON_START)) {
             pRenderSettings->useCRTFilter = !pRenderSettings->useCRTFilter;
         }
 
         if (Input::ButtonPressed(BUTTON_A) && (!playerState.inAir || !playerState.doubleJumped)) {
-            playerState.velocity.y = -15.625f;
+            pPlayer->velocity.y = -15.625f;
             if (playerState.inAir) {
                 playerState.doubleJumped = true;
             }
@@ -555,17 +409,17 @@ namespace Game {
             playerState.wingFrame++;
         }
 
-        if (playerState.velocity.y < 0 && Input::ButtonReleased(BUTTON_A)) {
-            playerState.velocity.y /= 2;
+        if (pPlayer->velocity.y < 0 && Input::ButtonReleased(BUTTON_A)) {
+            pPlayer->velocity.y /= 2;
         }
 
         playerState.slowFall = true;
-        if (Input::ButtonUp(BUTTON_A) || playerState.velocity.y < 0) {
+        if (Input::ButtonUp(BUTTON_A) || pPlayer->velocity.y < 0) {
             playerState.slowFall = false;
         }
 
         if (Input::ButtonReleased(BUTTON_B)) {
-            playerState.shootTimer = 0.0f;
+            playerState.shootCounter = 0.0f;
         }
 
         if (Input::ButtonPressed(BUTTON_SELECT)) {
@@ -574,149 +428,178 @@ namespace Game {
             }
             else playerState.weapon = WpnLauncher;
         }
-
-        // Enter door
-        /*if (Input::ButtonPressed(BUTTON_DPAD_UP) && !playerState.inAir) {
-            const Vec2 checkPos = { playerState.x, playerState.y + 1.0f };
-            const u32 screenInd = Tiles::WorldToScreenIndex(&pCurrentLevel->tilemap, checkPos);
-            const u32 tileInd = Tiles::WorldToMetatileIndex(checkPos);
-            const Screen& screen = pCurrentLevel->tilemap.pScreens[screenInd];
-            if (screen.tiles[tileInd].actorType == ACTOR_DOOR) {
-                nextLevel = screen.exitTargetLevel;
-                nextLevelScreenIndex = screen.exitTargetScreen;
-                TriggerLevelTransition();
-            }
-        }*/
-    }
-
-    static void PlayerBgCollision(Actor* pPlayer, r64 dt) {
-        PlayerState& playerState = pPlayer->playerState;
-        const AABB& hitbox = pPlayer->pPrototype->hitbox;
-        if (playerState.slowFall) {
-            playerState.velocity.y += (gravity / 4) * dt;
-        }
-        else {
-            playerState.velocity.y += gravity * dt;
-        }
-
-        r32 dx = playerState.velocity.x * dt;
-
-        HitResult hit{};
-        Collision::SweepBoxHorizontal(&pCurrentLevel->tilemap, hitbox, pPlayer->position, dx, hit);
-        pPlayer->position.x = hit.location.x;
-        if (hit.blockingHit) {
-            playerState.velocity.x = 0;
-        }
-
-        r32 dy = playerState.velocity.y * dt;
-        Collision::SweepBoxVertical(&pCurrentLevel->tilemap, hitbox, pPlayer->position, dy, hit);
-        pPlayer->position.y = hit.location.y;
-        if (hit.blockingHit) {
-            // If ground
-            if (playerState.velocity.y > 0) {
-                playerState.inAir = false;
-                playerState.doubleJumped = false;
-            }
-
-            playerState.velocity.y = 0;
-        }
-        else {
-            // TODO: Add coyote time
-            playerState.inAir = true;
-        }
     }
 
     static void PlayerShoot(Actor* pPlayer, r64 dt) {
         constexpr r32 shootDelay = 0.16f;
 
         PlayerState& playerState = pPlayer->playerState;
-        if (playerState.shootTimer > dt) {
-            playerState.shootTimer -= dt;
+        if (playerState.shootCounter > dt) {
+            playerState.shootCounter -= dt;
         }
-        else playerState.shootTimer = 0.0f;
+        else playerState.shootCounter = 0.0f;
 
-        if (Input::ButtonDown(BUTTON_B) && playerState.shootTimer <= 0.0f) {
-            playerState.shootTimer += shootDelay;
+        if (Input::ButtonDown(BUTTON_B) && playerState.shootCounter <= 0.0f) {
+            playerState.shootCounter += shootDelay;
 
-            constexpr s32 grenadePresetIndex = 1;
-            Actor* arrow = SpawnActor(grenadePresetIndex);
-            if (arrow != nullptr) {
-                GrenadeState& grenadeState = arrow->grenadeState;
+            const s32 prototypeIndex = playerState.weapon == WpnLauncher ? playerGrenadePrototypeIndex : playerArrowPrototypeIndex;
+            Actor* pBullet = SpawnActor(prototypeIndex);
+            if (pBullet != nullptr) {
                 const Vec2 fwdOffset = Vec2{ 0.375f * playerState.direction, -0.25f };
                 const Vec2 upOffset = Vec2{ 0.1875f * playerState.direction, -0.5f };
                 const Vec2 downOffset = Vec2{ 0.25f * playerState.direction, -0.125f };
 
-                arrow->position = pPlayer->position;
-                grenadeState.velocity = Vec2{};
-                //arrow->type = playerState.weapon;
-                grenadeState.bounces = 10;
+                pBullet->position = pPlayer->position;
+                pBullet->velocity = Vec2{};
+                pBullet->gravity = 140;
+                pBullet->lifetime = 3.0f;
 
-                if (playerState.aMode == AimFwd) {
-                    arrow->position = arrow->position + fwdOffset;
-                    grenadeState.velocity.x = 40.0f * playerState.direction;
+                if (playerState.aimMode == PLAYER_AIM_FWD) {
+                    pBullet->position = pBullet->position + fwdOffset;
+                    pBullet->velocity.x = 40.0f * playerState.direction;
                 }
                 else {
-                    grenadeState.velocity.x = 28.28f * playerState.direction;
-                    grenadeState.velocity.y = (playerState.aMode == AimUp) ? -28.28f : 28.28f;
-                    arrow->position = arrow->position + ((playerState.aMode == AimUp) ? upOffset : downOffset);
+                    pBullet->velocity.x = 28.28f * playerState.direction;
+                    pBullet->velocity.y = (playerState.aimMode == PLAYER_AIM_UP) ? -28.28f : 28.28f;
+                    pBullet->position = pBullet->position + ((playerState.aimMode == PLAYER_AIM_UP) ? upOffset : downOffset);
                 }
 
-                //if (playerState.weapon == WpnLauncher) {
-                grenadeState.velocity = grenadeState.velocity * 0.75f;
-                //}
-                grenadeState.velocity = grenadeState.velocity + playerState.velocity * dt;
+                if (playerState.weapon == WpnLauncher) {
+                pBullet->velocity = pBullet->velocity * 0.75f;
+                }
+                pBullet->velocity = pBullet->velocity + pPlayer->velocity * dt;
+
+                InitializeActor(pBullet);
             }
         }
     }
 
     static void PlayerAnimate(Actor* pPlayer, r64 dt) {
         PlayerState& playerState = pPlayer->playerState;
-        // Legs mode
-        if (playerState.velocity.y < 0) {
-            playerState.lMode = LegsJump;
-        }
-        else if (playerState.velocity.y > 0) {
-            playerState.lMode = LegsFall;
-        }
-        else if (abs(playerState.velocity.x) > 0) {
-            playerState.lMode = LegsFwd;
-        }
-        else {
-            playerState.lMode = LegsIdle;
-        }
 
-        // Head mode
-        if (playerState.velocity.y > 0 && !playerState.slowFall) {
-            playerState.hMode = HeadFall;
-        }
-        else if (abs(playerState.velocity.x) > 0) {
-            playerState.hMode = HeadFwd;
-        }
-        else {
-            playerState.hMode = HeadIdle;
-        }
+        // Animate chr sheet using player bank
+        const bool jumping = pPlayer->velocity.y < 0;
+        const bool descending = !jumping && pPlayer->velocity.y > 0;
+        const bool falling = descending && !playerState.slowFall;
+        const bool moving = abs(pPlayer->velocity.x) > 0;
 
-        // Wing mode
-        if (playerState.velocity.y < 0) {
-            playerState.wMode = WingJump;
+        s32 headFrameIndex = PLAYER_HEAD_IDLE;
+        if (falling) {
+            headFrameIndex = PLAYER_HEAD_FALL;
         }
-        else if (playerState.velocity.y > 0 && !playerState.slowFall) {
-            playerState.wMode = WingFall;
+        else if (moving) {
+            headFrameIndex = PLAYER_HEAD_FWD;
         }
-        else {
-            playerState.wMode = WingFlap;
-        }
+        Rendering::Util::CopyChrTiles(
+            playerBank.tiles + playerHeadFrameBankOffsets[playerState.aimMode * 3 + headFrameIndex],
+            pChr[1].tiles + playerHeadFrameChrOffset,
+            playerHeadFrameTileCount
+        );
 
-        // Wing flapping
-        const r32 wingAnimFrameLength = playerState.wMode == WingFlap ? 0.18f : 0.09f;
+        s32 legsFrameIndex = PLAYER_LEGS_IDLE;
+        if (jumping) {
+            legsFrameIndex = PLAYER_LEGS_JUMP;
+        }
+        else if (descending) {
+            legsFrameIndex = PLAYER_LEGS_FALL;
+        }
+        else if (moving) {
+            legsFrameIndex = PLAYER_LEGS_FWD;
+        }
+        Rendering::Util::CopyChrTiles(
+            playerBank.tiles + playerLegsFrameBankOffsets[legsFrameIndex],
+            pChr[1].tiles + playerLegsFrameChrOffset,
+            playerLegsFrameTileCount
+        );
+
+        // When jumping or falling, wings get into proper position and stay there for the duration of the jump/fall
+        const bool wingsInPosition = (jumping && playerState.wingFrame == PLAYER_WINGS_ASCEND) || (falling && playerState.wingFrame == PLAYER_WINGS_DESCEND);
+
+        // Wings flap faster to get into proper position
+        const r32 wingAnimFrameLength = (jumping || falling) ? 0.09f : 0.18f;
         playerState.wingCounter += dt / wingAnimFrameLength;
         while (playerState.wingCounter > 1.0f) {
-            if (!(playerState.wMode == WingJump && playerState.wingFrame == 2) && !((playerState.wMode == WingFall && playerState.wingFrame == 0))) {
+            // If wings not in position, keep flapping
+            if (!wingsInPosition) {
                 playerState.wingFrame++;
             }
             playerState.wingCounter -= 1.0f;
         }
         playerState.wingFrame %= 4;
+
+        Rendering::Util::CopyChrTiles(
+            playerBank.tiles + playerWingFrameBankOffsets[playerState.wingFrame],
+            pChr[1].tiles + playerWingFrameChrOffset,
+            playerWingFrameTileCount
+        );
+
+        // Setup draw data
+        if (pPlayer->velocity.y == 0) {
+            pPlayer->drawData.pixelOffset.y = playerState.wingFrame > PLAYER_WINGS_FLAP_START ? -1 : 0;
+        }
+        else {
+            pPlayer->drawData.pixelOffset.y = 0;
+        }
+        pPlayer->drawData.hFlip = playerState.direction == DirLeft;
+        pPlayer->drawData.frameIndex = playerState.aimMode;
+    }
+
+    static void DrawPlayerGun(Actor* pPlayer, Sprite** ppNextSprite) {
+        ActorDrawData& drawData = pPlayer->drawData;
+
+        IVec2 drawPos = WorldPosToScreenPixels(pPlayer->position);
+        drawPos = drawPos + drawData.pixelOffset;
+
+        // Draw weapon first
+        IVec2 weaponOffset;
+        u8 weaponFrameBankOffset;
+        u32 weaponMetaspriteIndex;
+        switch (pPlayer->playerState.weapon) {
+        case WpnBow: {
+            weaponOffset = playerBowOffsets[pPlayer->playerState.aimMode];
+            weaponFrameBankOffset = playerBowFrameBankOffsets[pPlayer->playerState.aimMode];
+            weaponMetaspriteIndex = pPlayer->playerState.aimMode == PLAYER_AIM_FWD ? playerBowFwdMetaspriteIndex : playerBowDiagMetaspriteIndex;
+            break;
+        }
+        case WpnLauncher: {
+            weaponOffset = playerLauncherOffsets[pPlayer->playerState.aimMode];
+            weaponFrameBankOffset = playerLauncherFrameBankOffsets[pPlayer->playerState.aimMode];
+            weaponMetaspriteIndex = pPlayer->playerState.aimMode == PLAYER_AIM_FWD ? playerLauncherFwdMetaspriteIndex : playerLauncherDiagMetaspriteIndex;
+            break;
+        }
+        default:
+            break;
+        }
+        weaponOffset.x *= pPlayer->playerState.direction;
+
+        Rendering::Util::CopyChrTiles(playerBank.tiles + weaponFrameBankOffset, pChr[1].tiles + playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
+
+        const Metasprite* bowMetasprite = Metasprites::GetMetasprite(weaponMetaspriteIndex);
+        Rendering::Util::CopyMetasprite(bowMetasprite->spritesRelativePos, *ppNextSprite, bowMetasprite->spriteCount, drawPos + weaponOffset, drawData.hFlip, drawData.vFlip);
+        *ppNextSprite += bowMetasprite->spriteCount;
+
+    }
+
+    static void ActorDie(const PoolHandle<Actor>& handle, std::vector<PoolHandle<Actor>>& removeList) {
+        Actor* pActor = actors.Get(handle);
+        const u32 flags = pActor->pPrototype->behaviour;
+
+        if (pActor == nullptr) {
+            return;
+        }
+
+        if (flags & ACTOR_BEHAVIOUR_EXPLODE) {
+            // TODO: Make the prototype a struct member
+            Actor* pHit = SpawnActor(hitPrototypeIndex);
+            if (pHit != nullptr) {
+                pHit->position = pActor->position;
+                pHit->lifetime = 0.16f;
+                pHit->velocity = Vec2{};
+                InitializeActor(pHit);
+            }
+        }
+
+        removeList.push_back(handle);
     }
 
     static void UpdateActors(Sprite** ppNextSprite, r64 dt) {
@@ -728,173 +611,230 @@ namespace Game {
         {
             PoolHandle<Actor> handle = actors.GetHandle(i);
             Actor* pActor = actors.Get(handle);
+            const u32 flags = pActor->pPrototype->behaviour;
 
             // Can this ever bet true?
             if (pActor == nullptr) {
                 continue;
             }
 
-            switch (pActor->pPrototype->behaviour) {
-            case ACTOR_BEHAVIOUR_PLAYER: {
-                PlayerState& state = pActor->playerState;
+            // Advance counters:
+            if (flags & ACTOR_BEHAVIOUR_HEALTH) {
+                if (pActor->damageCounter > dt) {
+                    pActor->damageCounter -= dt;
+                }
+                else pActor->damageCounter = 0.0f;
+            }
+            if (flags & ACTOR_BEHAVIOUR_LIFETIME) {
+                if (pActor->lifetimeCounter > dt) {
+                    pActor->lifetimeCounter -= dt;
+                }
+                else ActorDie(handle, removeList);
+            }
+
+            if (flags & ACTOR_BEHAVIOUR_GRAVITY) {
+                r32 acc = pActor->gravity;
+                if (pActor->playerState.slowFall) {
+                    acc /= 4;
+                }
+
+                pActor->velocity.y += acc * dt;
+            }
+
+            if (flags & ACTOR_BEHAVIOUR_PLAYER_SIDESCROLLER) {
                 PlayerInput(pActor, dt);
-                PlayerBgCollision(pActor, dt);
                 PlayerShoot(pActor, dt);
-                PlayerAnimate(pActor, dt);
-
-                if (state.damageTimer > dt) {
-                    state.damageTimer -= dt;
-                }
-                else state.damageTimer = 0.0f;
-
-                DrawPlayer(pActor, ppNextSprite, dt);
-
-                break;
             }
-            case ACTOR_BEHAVIOUR_GRENADE: {
-                GrenadeState& state = pActor->grenadeState;
-                const AABB& hitbox = pActor->pPrototype->hitbox;
 
-                r32 dx = state.velocity.x * dt;
+            // TODO: If ignore tile collision?
+            const AABB& hitbox = pActor->pPrototype->hitbox;
 
-                HitResult hit{};
-                Collision::SweepBoxHorizontal(&pCurrentLevel->tilemap, hitbox, pActor->position, dx, hit);
-                if (hit.blockingHit) {
-                    //if (arrow->type == WpnBow || arrow->bounces == 0) {
-                    if (state.bounces == 0) {
-                        removeList.push_back(handle);
-                        //PoolHandle<Impact> hitHandle = hitPool.Add();
-                        //Impact* impact = hitPool[hitHandle];
-                        //impact->pos = hit.impactPoint;
-                        //impact->accumulator = 0.0f;
-                        continue;
-                    }
-                    pActor->position.x = hit.location.x;
-                    state.velocity.x *= -1.0f;
-                    state.bounces--;
+            const r32 dx = pActor->velocity.x * dt;
+            const r32 dy = pActor->velocity.y * dt;
+
+            // TODO: Lots of copypasta here, how to reduce?
+            HitResult hit{};
+            Collision::SweepBoxHorizontal(&pCurrentLevel->tilemap, hitbox, pActor->position, dx, hit);
+            pActor->position.x = hit.location.x;
+            if (hit.blockingHit) {
+                if (flags & ACTOR_BEHAVIOUR_BOUNCY) {
+                    pActor->velocity = pActor->velocity - 2 * DotProduct(pActor->velocity, hit.impactNormal) * hit.impactNormal;
                 }
-                else pActor->position.x += dx;
-
-                //if (arrow->type == WpnLauncher) {
-                state.velocity.y += dt * gravity * 4.0f;
-                //}
-                r32 dy = state.velocity.y * dt;
-
-                Collision::SweepBoxVertical(&pCurrentLevel->tilemap, hitbox, pActor->position, dy, hit);
-                if (hit.blockingHit) {
-                    //if (arrow->type == WpnBow || arrow->bounces == 0) {
-                    if (state.bounces == 0) {
-                        removeList.push_back(handle);
-                        //PoolHandle<Impact> hitHandle = hitPool.Add();
-                        //Impact* impact = hitPool[hitHandle];
-                        //impact->pos = hit.impactPoint;
-                        //impact->accumulator = 0.0f;
-                        continue;
-                    }
-                    pActor->position.y = hit.location.y;
-                    state.velocity.y *= -1.0f;
-                    //arrow->bounces--;
+                else if (flags & ACTOR_BEHAVIOUR_FRAGILE) {
+                    ActorDie(handle, removeList);
                 }
-                else pActor->position.y += dy;
-
-                if (pActor->position.x < viewport.x || pActor->position.x > viewport.x + VIEWPORT_WIDTH_METATILES || pActor->position.y < viewport.y || pActor->position.y > viewport.y + VIEWPORT_HEIGHT_METATILES) {
-                    removeList.push_back(handle);
+                else {
+                    pActor->velocity.x = 0;
                 }
-
-                const Vec2 dir = state.velocity.Normalize();
-                const r32 angle = atan2f(dir.y, dir.x);
-                const s32 frameIndex = (s32)roundf(((angle + pi) / (pi * 2)) * 7);
-                DrawActorFrame(pActor, frameIndex, ppNextSprite);
-
-                break;
             }
-            case ACTOR_BEHAVIOUR_ENEMY_SKULL: {
-                EnemyState& state = pActor->enemyState;
-                if (state.health <= 0) {
-                    removeList.push_back(handle);
+
+            Collision::SweepBoxVertical(&pCurrentLevel->tilemap, hitbox, pActor->position, dy, hit);
+            pActor->position.y = hit.location.y;
+            if (hit.blockingHit) {
+                // Hit ground
+                if (DotProduct(hit.impactNormal, { 0, -1 }) > 0.0f) {
+                    pActor->playerState.inAir = false;
+                    pActor->playerState.doubleJumped = false;
+                }
+
+                if (flags & ACTOR_BEHAVIOUR_BOUNCY) {
+                    pActor->velocity = pActor->velocity - 2 * DotProduct(pActor->velocity, hit.impactNormal) * hit.impactNormal;
+                }
+                else if (flags & ACTOR_BEHAVIOUR_FRAGILE) {
+                    ActorDie(handle, removeList);
+                }
+                else {
+                    pActor->velocity.y = 0;
+                }
+            }
+            else {
+                // TODO: Add coyote time
+                pActor->playerState.inAir = true;
+            }
+        }
+
+        // Naive collision detection
+        // TODO: Some kind of spatial partition like a quadtree
+        for (u32 i = 0; i < actors.Count(); i++)
+        {
+            PoolHandle<Actor> handle = actors.GetHandle(i);
+            Actor* pActor = actors.Get(handle);
+            const u32 flags = pActor->pPrototype->behaviour;
+
+            for (int e = 0; e < actors.Count(); e++) {
+                PoolHandle<Actor> otherHandle = actors.GetHandle(e);
+                Actor* pOther = actors.Get(otherHandle);
+                if (pOther == nullptr) {
                     continue;
                 }
 
-                static const r32 amplitude = 2.5f;
-                r32 sineTime = sin(gameplaySecondsElapsed);
-                pActor->position.y = state.baseHeight + sineTime * amplitude;
-
-                // Stupid collision with bullets
-                for (int e = 0; e < actors.Count(); e++) {
-                    PoolHandle<Actor> otherHandle = actors.GetHandle(e);
-                    Actor* pOther = actors.Get(otherHandle);
-                    if (pOther == nullptr || pOther->pPrototype->type != ACTOR_TYPE_PROJECTILE_FRIENDLY) {
-                        continue;
-                    }
-
-                    if (Collision::BoxesOverlap(pActor->pPrototype->hitbox, pActor->position, pOther->pPrototype->hitbox, pOther->position)) {
-                        removeList.push_back(otherHandle);
-
-                        /*PoolHandle<Impact> hitHandle = hitPool.Add();
-                        Impact* impact = hitPool[hitHandle];
-                        impact->pos = arrow->pos;
-                        impact->accumulator = 0.0f;*/
-
-                        s32 damage = (rand() % 2) + 1;
-                        state.health -= damage;
-                        state.damageTimer = damageDelay;
-
-                        // Add damage numbers
-                        // Random point inside enemy hitbox
-                        /*Vec2 dmgPos = Vec2{(r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.x) + enemyHitboxPos.x - enemyHitboxDimensions.x / 2.0f, (r32)rand() / (r32)(RAND_MAX / enemyHitboxDimensions.y) + enemyHitboxPos.y - enemyHitboxDimensions.y / 2.0f};
-
-                        PoolHandle<DamageNumber> dmgHandle = damageNumberPool.Add();
-                        DamageNumber* dmgNumber = damageNumberPool[dmgHandle];
-                        dmgNumber->damage = damage;
-                        dmgNumber->pos = dmgPos;
-                        dmgNumber->accumulator = 0.0f;*/
-                    }
+                // Don't collide with self
+                if (pOther == pActor) {
+                    continue;
                 }
 
-                // Player take damage
-                /*if (playerState.damageTimer == 0) {
-                    static const Metasprite enemyMetasprite = Metasprite::GetMetaspritesPtr()[5];
-                    static const Collision::Collider enemyHitbox = enemyMetasprite.colliders[0];
+                const u32 thisLayer = pActor->pPrototype->collisionLayer;
+                const u32 otherLayer = pOther->pPrototype->collisionLayer;
 
-                    const Vec2 hitboxPos = Vec2{ enemy->pos.x + enemyHitbox.xOffset, enemy->pos.y + enemyHitbox.yOffset };
-                    const Vec2 hitboxDimensions = Vec2{ enemyHitbox.width, enemyHitbox.height };
-
-                    const Metasprite characterMetasprite = Metasprite::GetMetaspritesPtr()[0];
-                    const Collision::Collider playerHitbox = characterMetasprite.colliders[0];
-
-                    const Vec2 playerHitboxPos = Vec2{ playerState.x + playerHitbox.xOffset, playerState.y + playerHitbox.yOffset };
-                    const Vec2 playerHitboxDimensions = Vec2{ playerHitbox.width, playerHitbox.height };
-
-                    if (hitboxPos.x - hitboxDimensions.x / 2.0f < playerHitboxPos.x + playerHitboxDimensions.x / 2.0f &&
-                        hitboxPos.x + hitboxDimensions.x / 2.0f > playerHitboxPos.x - playerHitboxDimensions.x / 2.0f &&
-                        hitboxPos.y - hitboxDimensions.y / 2.0f < playerHitboxPos.y + playerHitboxDimensions.y / 2.0f &&
-                        hitboxPos.y + hitboxDimensions.y / 2.0f > playerHitboxPos.y - playerHitboxDimensions.y / 2.0f) {
-
-                        playerState.damageTimer = damageDelay;
-                        // playerState.hSpeed = -8.0f * playerState.direction;
-                        // playerState.vSpeed = -16.0f;
-                    }
-                }*/
-
-                if (state.damageTimer > dt) {
-                    state.damageTimer -= dt;
+                // TODO: Do I want to allow actors on the same layer to collide at some point?
+                if (thisLayer == otherLayer) {
+                    continue;
                 }
-                else state.damageTimer = 0.0f;
 
-                pActor->drawData.paletteOverride = (state.damageTimer > 0) ? (s32)(gameplaySecondsElapsed * 20) % 4 : -1;
-                DrawActorFrame(pActor, 0, ppNextSprite);
+                if (thisLayer == ACTOR_COLLISION_LAYER_NONE || otherLayer == ACTOR_COLLISION_LAYER_NONE) {
+                    continue;
+                }
 
-                break;
+                // TODO: Figure out a better way to do this
+                if ((thisLayer == ACTOR_COLLISION_LAYER_PLAYER && otherLayer == ACTOR_COLLISION_LAYER_PROJECTILE_FRIENDLY) || 
+                    (thisLayer == ACTOR_COLLISION_LAYER_PROJECTILE_FRIENDLY && otherLayer == ACTOR_COLLISION_LAYER_PLAYER)) {
+                    continue;
+                }
+                if ((thisLayer == ACTOR_COLLISION_LAYER_ENEMY && otherLayer == ACTOR_COLLISION_LAYER_PROJECTILE_HOSTILE) ||
+                    (thisLayer == ACTOR_COLLISION_LAYER_PROJECTILE_HOSTILE && otherLayer == ACTOR_COLLISION_LAYER_ENEMY)) {
+                    continue;
+                }
+
+                if (thisLayer == ACTOR_COLLISION_LAYER_ENEMY && otherLayer == ACTOR_COLLISION_LAYER_PLAYER) {
+                    continue;
+                }
+
+                const AABB& hitbox = pActor->pPrototype->hitbox;
+                const AABB& hitboxOther = pOther->pPrototype->hitbox;
+                if (Collision::BoxesOverlap(hitbox, pActor->position, hitboxOther, pOther->position)) {
+                    if (flags & ACTOR_BEHAVIOUR_FRAGILE) {
+                        ActorDie(handle, removeList);
+                    }
+                    // Take damage
+                    else if (flags & ACTOR_BEHAVIOUR_HEALTH) {
+                        // TODO: Implement iframes
+                        const u32 damage = (rand() % 2) + 1;
+                        pActor->health -= damage;
+                        pActor->damageCounter = damageDelay;
+
+                        // Spawn damage numbers
+                        Actor* pDmg = SpawnActor(dmgNumberPrototypeIndex);
+                        if (pDmg != nullptr) {
+                            pDmg->drawNumber = damage;
+
+                            // Random point inside hitbox
+                            const Vec2 randomPointInsideHitbox = {
+                                ((r32)rand() / RAND_MAX) * (hitbox.x2 - hitbox.x1) + hitbox.x1,
+                                ((r32)rand() / RAND_MAX)* (hitbox.y2 - hitbox.y1) + hitbox.y1
+                            };
+                            pDmg->position = pActor->position + randomPointInsideHitbox;
+
+                            pDmg->lifetime = 1.0f;
+                            pDmg->velocity = { 0, -1.5f };
+
+                            InitializeActor(pDmg);
+                        }
+
+                        if (pActor->health <= 0) {
+                            ActorDie(handle, removeList);
+                        }
+                    }
+                }
             }
-            default: {
-                DrawActorFrame(pActor, 0, ppNextSprite);
-                break;
-            }
+        }
+
+        for (u32 i = 0; i < actors.Count(); i++)
+        {
+            PoolHandle<Actor> handle = actors.GetHandle(i);
+            Actor* pActor = actors.Get(handle);
+            const u32 flags = pActor->pPrototype->behaviour;
+            ActorDrawData& drawData = pActor->drawData;
+            const u32 frameCount = pActor->pPrototype->frameCount;
+
+            // Numbers drawn separately from the actor itself, so it can be invisible
+            if (flags & ACTOR_BEHAVIOUR_NUMBERS) {
+                static char numberStr[16]{};
+
+                _itoa_s(pActor->drawNumber, numberStr, 10);
+                const u32 strLength = strlen(numberStr);
+
+                // Ascii character '0' = 0x30
+                constexpr u8 chrOffset = 0x30;
+
+                for (u32 c = 0; c < strLength; c++) {
+                    // TODO: What about metasprite frames? Handle this more rigorously!
+                    const s32 frameIndex = (numberStr[c] - chrOffset) % frameCount;
+                    const ActorAnimFrame& frame = pActor->pPrototype->frames[frameIndex];
+                    const u8 tileId = Metasprites::GetMetasprite(frame.metaspriteIndex)->spritesRelativePos[frame.spriteIndex].tileId;
+
+                    const IVec2 pixelPos = WorldPosToScreenPixels(pActor->position);
+                    const Sprite sprite = {
+                        pixelPos.y,
+                        pixelPos.x + c * 5,
+                        tileId,
+                        1
+                    };
+                    *((*ppNextSprite)++) = sprite;
+                }
             }
 
-            for (auto& handle : removeList) {
-                actors.Remove(handle);
+            if (flags & ACTOR_BEHAVIOUR_RENDERABLE) {
+                if (flags & ACTOR_BEHAVIOUR_PLAYER_SIDESCROLLER) {
+                    PlayerAnimate(pActor, dt);
+                    DrawPlayerGun(pActor, ppNextSprite);
+                } 
+                else if (flags & ACTOR_BEHAVIOUR_ANIM_LIFE) {
+                    drawData.frameIndex = std::min((u32)roundf((pActor->lifetimeCounter / pActor->lifetime) * frameCount), frameCount - 1);
+                }
+                else if (flags & ACTOR_BEHAVIOUR_ANIM_DIR) {
+                    const Vec2 dir = pActor->velocity.Normalize();
+                    const r32 angle = atan2f(dir.y, dir.x);
+                    drawData.frameIndex = (s32)roundf(((angle + pi) / (pi * 2)) * frameCount) % frameCount;
+                }
+
+                ActorDrawData& drawData = pActor->drawData;
+                drawData.paletteOverride = (pActor->damageCounter > 0) ? (s32)(gameplaySecondsElapsed * 20) % 4 : -1;
+                DrawActor(pActor, ppNextSprite);
             }
+        }
+
+        for (auto& handle : removeList) {
+            actors.Remove(handle);
         }
     }
 
