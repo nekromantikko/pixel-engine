@@ -32,47 +32,9 @@ namespace Game {
     Viewport viewport;
 
     Level* pCurrentLevel = nullptr;
-    s32 enterScreenIndex = -1;
-
-    // This is pretty ugly...
-    u32 nextLevel = 0;
-    s32 nextLevelScreenIndex = -1;
-
-    struct LevelTransitionState {
-        Vec2 origin;
-        Vec2 windowWorldPos;
-        Vec2 windowSize;
-
-        u32 steps;
-        u32 currentStep;
-        r32 stepDuration;
-
-        r32 accumulator;
-        bool direction;
-    };
-
-    LevelTransitionState levelTransitionState;
 
     Pool<Actor> actors;
     Actor* pViewportTarget = nullptr;
-
-    constexpr u32 impactFrameCount = 4;
-    constexpr r32 impactAnimLength = 0.16f;
-
-    struct Impact {
-        Vec2 pos;
-        r32 accumulator;
-    };
-    Pool<Impact> hitPool;
-
-    constexpr r32 damageNumberLifetime = 1.0f;
-
-    struct DamageNumber {
-        Vec2 pos;
-        s32 damage;
-        r32 accumulator;
-    };
-    Pool<DamageNumber> damageNumberPool;
 
     ChrSheet playerBank;
 
@@ -137,7 +99,6 @@ namespace Game {
         }
 
         pCurrentLevel = Levels::GetLevelsPtr() + index;
-        enterScreenIndex = screenIndex;
 
         viewport.x = 0;
         viewport.y = 0;
@@ -218,9 +179,6 @@ namespace Game {
         }
 
         Rendering::Util::ClearSprites(pSprites, MAX_SPRITE_COUNT);
-
-        hitPool.Init(512);
-        damageNumberPool.Init(512);
 
         Tiles::LoadTileset("assets/forest.til");
         Metasprites::Load("assets/meta.spr");
@@ -851,33 +809,6 @@ namespace Game {
             gameplaySecondsElapsed += dt;
 
             UpdateActors(&pNextSprite, dt);
-
-            // Update explosions
-            for (int i = 0; i < hitPool.Count(); i++) {
-                PoolHandle<Impact> handle = hitPool.GetHandle(i);
-                Impact* impact = hitPool[handle];
-                impact->accumulator += dt;
-
-                if (impact->accumulator >= impactAnimLength) {
-                    hitPool.Remove(handle);
-                    continue;
-                }
-            }
-
-            // Update damage numbers
-            r32 dmgNumberVel = -3.0f;
-            for (int i = 0; i < damageNumberPool.Count(); i++) {
-                PoolHandle<DamageNumber> handle = damageNumberPool.GetHandle(i);
-                DamageNumber* dmgNumber = damageNumberPool[handle];
-                dmgNumber->accumulator += dt;
-
-                if (dmgNumber->accumulator >= damageNumberLifetime) {
-                    damageNumberPool.Remove(handle);
-                    continue;
-                }
-
-                dmgNumber->pos.y += dmgNumberVel * dt;
-            }
 
             UpdateViewport();
         }
