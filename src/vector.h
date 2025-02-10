@@ -5,23 +5,23 @@
 struct Vec2 {
 	r32 x, y;
 
-    inline Vec2 operator+(Vec2 a) const {
+    inline Vec2 operator+(const Vec2& a) const {
         return Vec2{ x + a.x, y + a.y };
     }
-    inline Vec2 operator-(Vec2 a) const {
+    inline Vec2 operator-(const Vec2& a) const {
         return Vec2{ x - a.x, y - a.y };
     }
-    inline Vec2 operator*(Vec2 a) const {
+    inline Vec2 operator*(const Vec2& a) const {
         return Vec2{ x * a.x, y * a.y };
     }
-    inline Vec2 operator/(Vec2 a) const {
+    inline Vec2 operator/(const Vec2& a) const {
         return Vec2{ x / a.x, y / a.y };
     }
 
-    inline Vec2 operator*(r32 s) const {
+    inline Vec2 operator*(const r32 s) const {
         return Vec2{ x * s, y * s };
     }
-    inline Vec2 operator/(r32 s) const {
+    inline Vec2 operator/(const r32 s) const {
         return Vec2{ x / s, y / s };
     }
 
@@ -33,7 +33,7 @@ struct Vec2 {
     }
 };
 
-inline r32 DotProduct(Vec2 a, Vec2 b) {
+inline r32 DotProduct(const Vec2& a, const Vec2& b) {
     return a.x * b.x + a.y * b.y;
 }
 
@@ -44,23 +44,23 @@ inline Vec2 operator*(const r32& s, const Vec2& vec) {
 struct IVec2 {
     s32 x, y;
 
-    inline IVec2 operator+(IVec2 a) const {
+    inline IVec2 operator+(const IVec2& a) const {
         return IVec2{ x + a.x, y + a.y };
     }
-    inline IVec2 operator-(IVec2 a) const {
+    inline IVec2 operator-(const IVec2& a) const {
         return IVec2{ x - a.x, y - a.y };
     }
-    inline IVec2 operator*(IVec2 a) const {
+    inline IVec2 operator*(const IVec2& a) const {
         return IVec2{ x * a.x, y * a.y };
     }
-    inline IVec2 operator/(IVec2 a) const {
+    inline IVec2 operator/(const IVec2& a) const {
         return IVec2{ x / a.x, y / a.y };
     }
 
-    inline IVec2 operator*(s32 s) const {
+    inline IVec2 operator*(const s32 s) const {
         return IVec2{ x * s, y * s };
     }
-    inline IVec2 operator/(s32 s) const {
+    inline IVec2 operator/(const s32 s) const {
         return IVec2{ x / s, y / s };
     }
 

@@ -119,8 +119,17 @@ namespace Collision {
 		const AABB bAbs = AABB(b.min + bPos, b.max + bPos);
 
 		return (aAbs.x1 < bAbs.x2 &&
-			aAbs.x2 > bAbs.x1 &&
+			aAbs.x2 >= bAbs.x1 &&
 			aAbs.y1 < bAbs.y2 &&
-			aAbs.y2 > bAbs.y1);
+			aAbs.y2 >= bAbs.y1);
+	}
+
+	bool PointInsideBox(const Vec2& point, const AABB& hitbox, const Vec2& boxPos) {
+		const AABB hitboxAbs = AABB(hitbox.min + boxPos, hitbox.max + boxPos);
+
+		return (point.x >= hitboxAbs.x1 &&
+			point.x < hitboxAbs.x2 &&
+			point.y >= hitboxAbs.y1 &&
+			point.y < hitboxAbs.y2);
 	}
 }

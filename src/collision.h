@@ -35,5 +35,5 @@ namespace Collision {
     void SweepBoxHorizontal(const Tilemap* pTilemap, const AABB& box, const Vec2& pos, r32 dx, HitResult& outHit);
     void SweepBoxVertical(const Tilemap* pTilemap, const AABB& box, const Vec2& pos, r32 dy, HitResult& outHit);
     bool BoxesOverlap(const AABB& a, const Vec2& aPos, const AABB& b, const Vec2& bPos);
-    //bool PointInBounds(const Vec2& p, const Hitbox& b, const Vec2& boxPos);
+    bool PointInsideBox(const Vec2& point, const AABB& bounds, const Vec2& boxPos);
 }
