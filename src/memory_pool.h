@@ -78,13 +78,6 @@ public:
 			erase[i] = i;
 		}
 	}
-	THandle Add() {
-		if (count >= size) {
-			return THandle::Null();
-		}
-		THandle handle = handles[count++];
-		return handle;
-	}
 	T* Get(const THandle handle) const {
 		if (handle == THandle::Null()) {
 			return nullptr;
@@ -104,6 +97,20 @@ public:
 	}
 	T* operator[](THandle handle) {
 		return Get(handle);
+	}
+	THandle Add() {
+		if (count >= size) {
+			return THandle::Null();
+		}
+		THandle handle = handles[count++];
+		return handle;
+	}
+	THandle Add(const T& proto) {
+		THandle handle = Add();
+		if (handle != THandle::Null()) {
+			*(*this)[handle] = proto;
+		}
+		return handle;
 	}
 	bool Remove(const THandle handle) {
 		const u32 arrayIndex = handle.Index();

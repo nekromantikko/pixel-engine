@@ -22,44 +22,24 @@ enum ActorCollisionLayer {
 	ACTOR_COLLISION_LAYER_COUNT
 };
 
-// TODO: This fills up quickly, maybe split into multiple sets of flags?
-enum ActorBehaviourFlags {
-	ACTOR_BEHAVIOUR_NONE = 0,
-	ACTOR_BEHAVIOUR_RENDERABLE = 1 << 0,
-	ACTOR_BEHAVIOUR_ANIM_DIR = 1 << 1,
-	ACTOR_BEHAVIOUR_ANIM_LIFE = 1 << 2,
-	ACTOR_BEHAVIOUR_FLAG_3 = 1 << 3,
-	ACTOR_BEHAVIOUR_FLAG_4 = 1 << 4,
-	ACTOR_BEHAVIOUR_FLAG_5 = 1 << 5,
-	ACTOR_BEHAVIOUR_FLAG_6 = 1 << 6,
-	ACTOR_BEHAVIOUR_FLAG_7 = 1 << 7,
-	ACTOR_BEHAVIOUR_HEALTH = 1 << 8,
-	ACTOR_BEHAVIOUR_LIFETIME = 1 << 9,
-	ACTOR_BEHAVIOUR_FLAG_10 = 1 << 10,
-	ACTOR_BEHAVIOUR_FLAG_11 = 1 << 11,
-	ACTOR_BEHAVIOUR_FLAG_12 = 1 << 12,
-	ACTOR_BEHAVIOUR_FLAG_13 = 1 << 13,
-	ACTOR_BEHAVIOUR_FLAG_14 = 1 << 14,
-	ACTOR_BEHAVIOUR_FLAG_15 = 1 << 15,
-	ACTOR_BEHAVIOUR_GRAVITY = 1 << 16,
-	ACTOR_BEHAVIOUR_BOUNCY = 1 << 17,
-	ACTOR_BEHAVIOUR_FRAGILE = 1 << 18,
-	ACTOR_BEHAVIOUR_EXPLODE = 1 << 19,
-	ACTOR_BEHAVIOUR_FLAG_20 = 1 << 20,
-	ACTOR_BEHAVIOUR_FLAG_21 = 1 << 21,
-	ACTOR_BEHAVIOUR_FLAG_22 = 1 << 22,
-	ACTOR_BEHAVIOUR_FLAG_23 = 1 << 23,
-	ACTOR_BEHAVIOUR_NUMBERS = 1 << 24,
-	ACTOR_BEHAVIOUR_FLAG_25 = 1 << 25,
-	ACTOR_BEHAVIOUR_FLAG_26 = 1 << 26,
-	ACTOR_BEHAVIOUR_FLAG_27 = 1 << 27,
-	ACTOR_BEHAVIOUR_FLAG_28 = 1 << 28,
-	ACTOR_BEHAVIOUR_FLAG_29 = 1 << 29,
-	ACTOR_BEHAVIOUR_PLAYER_SIDESCROLLER = 1 << 30,
-	ACTOR_BEHAVIOUR_PLAYER_MAP = 1 << 31,
-};
+enum ActorBehaviour {
+	ACTOR_BEHAVIOUR_NONE,
+	ACTOR_BEHAVIOUR_PLAYER_SIDESCROLLER,
+	ACTOR_BEHAVIOUR_PLAYER_MAP,
 
-constexpr u32 ACTOR_BEHAVIOUR_COUNT = 32;
+	ACTOR_BEHAVIOUR_BULLET = 64,
+	ACTOR_BEHAVIOUR_BULLET_BOUNCY,
+
+	ACTOR_BEHAVIOUR_FIREBALL = 96,
+
+	ACTOR_BEHAVIOUR_ENEMY_SLIME = 128,
+	ACTOR_BEHAVIOUR_ENEMY_SKULL,
+
+	ACTOR_BEHAVIOUR_FX_NUMBERS = 192,
+	ACTOR_BEHAVIOUR_FX_EXPLOSION,
+
+	ACTOR_BEHAVIOUR_COUNT
+};
 
 // Determines how to interpret anim frames
 enum ActorAnimMode {
@@ -72,10 +52,11 @@ enum ActorAnimMode {
 
 #ifdef EDITOR
 constexpr const char* ACTOR_COLLISION_LAYER_NAMES[ACTOR_COLLISION_LAYER_COUNT] = { "None", "Player", "Projectile (friendly)", "Projectile (hostile)", "Enemy", "Pickup" };
-constexpr const char* ACTOR_BEHAVIOUR_NAMES[ACTOR_BEHAVIOUR_COUNT] = { "Renderable", "Animate Direction", "Animate Lifetime", "Flag 3", "Flag 4", "Flag 5", "Flag 6", "Flag 7", "Has Health", "Has Lifetime",
-																		"Flag 10", "Flag 11", "Flag 12", "Flag 13", "Flag 14", "Flag 15", "Has Gravity", "Bouncy", "Fragile", "Explode",
-																		"Flag 20", "Flag 21", "Flag 22", "Flag 23", "Draw Numbers", "Flag 25", "Flag 26", "Flag 27", "Flag 28", "Flag 29",
-																		"Player (Sidescroller)", "Player (Map)" };
+constexpr const char* ACTOR_BEHAVIOUR_NAMES[ACTOR_BEHAVIOUR_COUNT] = { "None", "Player (Sidescroller)", "Player (Map)", "","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",
+																		"Bullet", "Bullet (Bouncy)", "","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",
+																		"Fireball","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",
+																		"Enemy Slime", "Enemy Skull","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","","",
+																		"Fx Number", "Fx Explosion"};
 constexpr const char* ACTOR_ANIM_MODE_NAMES[ACTOR_ANIM_MODE_COUNT] = { "None", "Sprites", "Metasprites" };
 #endif
 
@@ -86,10 +67,16 @@ struct ActorAnimFrame {
 
 #pragma region Actor types
 
+enum ActorFacingDir : s8 {
+	ACTOR_FACING_LEFT = -1, // 0b11
+	ACTOR_FACING_RIGHT = 1 // 0b01
+};
+
 enum PlayerHeadFrame {
 	PLAYER_HEAD_IDLE,
 	PLAYER_HEAD_FWD,
-	PLAYER_HEAD_FALL
+	PLAYER_HEAD_FALL,
+	PLAYER_HEAD_DMG
 };
 
 enum PlayerLegsFrame {
@@ -112,24 +99,17 @@ enum PlayerAimFrame {
 	PLAYER_AIM_DOWN
 };
 
-enum Direction {
-	DirLeft = -1,
-	DirRight = 1
-};
-
-enum WeaponType {
-	WpnBow,
-	WpnLauncher
+enum PlayerWeaponType {
+	PLAYER_WEAPON_BOW,
+	PLAYER_WEAPON_LAUNCHER
 };
 
 struct PlayerState {
-	Direction direction = DirRight;
-	WeaponType weapon;
+	PlayerWeaponType weapon;
 	u32 aimMode;
 	r32 wingCounter;
 	u32 wingFrame;
 	bool slowFall;
-	bool inAir;
 	bool doubleJumped;
 	r32 shootCounter;
 };
@@ -142,6 +122,9 @@ struct ActorPrototype {
 	u32 behaviour;
 	u32 animMode;
 
+	u32 deathEffect;
+	u32 unused0, unused1, unused2;
+
 	AABB hitbox;
 
 	// Different actor types can use this data how they see fit
@@ -149,16 +132,17 @@ struct ActorPrototype {
 	ActorAnimFrame frames[ACTOR_PROTOTYPE_MAX_FRAME_COUNT];
 };
 
-struct ActorDrawData {
-	bool hFlip = false;
-	bool vFlip = false;
-	s32 paletteOverride = -1;
-	IVec2 pixelOffset = { 0,0 };
-	s32 frameIndex;
+struct ActorFlags {
+	s8 facingDir : 2;
+	bool inAir : 1;
+	bool active : 1;
+	bool pendingRemoval : 1;
 };
 
 struct Actor {
 	char name[ACTOR_MAX_NAME_LENGTH];
+
+	ActorFlags flags;
 
 	Vec2 initialPosition;
 	Vec2 position;
@@ -173,7 +157,7 @@ struct Actor {
 	r32 lifetimeCounter;
 
 	u32 drawNumber;
-	ActorDrawData drawData;
+	r32 animLength = 0.25f;
 
 	PlayerState playerState;
 
