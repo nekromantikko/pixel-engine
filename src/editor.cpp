@@ -488,7 +488,7 @@ static void DrawGenericEditableList(T* elements, u32& count, u32 maxCount, ImVec
 	ImGuiSelectableFlags selectableFlags = ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap;
 	for (u32 i = 0; i < count; i++) {
 		T& element = elements[i];
-		char labelStr[64];
+		static char labelStr[64];
 		snprintf(labelStr, 64, "%s 0x%02x", labelPrefix, i);
 
 		bool selected = selection.contains(i);
@@ -1863,22 +1863,49 @@ static void DrawActorWindow() {
 		if (ImGui::BeginTabBar("Actor editor tabs")) {
 			if (ImGui::BeginTabItem("Common")) {
 
-				if (ImGui::BeginListBox("Behaviour flags")) {
+				static char labelStr[64];
+				if (ImGui::BeginListBox("Behaviour")) {
 					for (u32 i = 0; i < ACTOR_BEHAVIOUR_COUNT; i++) {
-						ImGui::PushID(i);
-
-						const u32 flagBit = (1 << i);
-						bool checked = pPrototype->behaviour & flagBit;
-						if (ImGui::Checkbox(ACTOR_BEHAVIOUR_NAMES[i], &checked)) {
-							pPrototype->behaviour &= ~flagBit;
-							if (checked) {
-								pPrototype->behaviour |= flagBit;
-							}
+						const char* name = ACTOR_BEHAVIOUR_NAMES[i];
+						if (strlen(name) == 0) {
+							continue;
 						}
 
+						ImGui::PushID(i);
+
+						snprintf(labelStr, 64, "0x%02x: %s", i, name);
+						const bool selected = pPrototype->behaviour == i;
+						if (ImGui::Selectable(labelStr, selected)) {
+							pPrototype->behaviour = i;
+						}
+
+						if (selected) {
+							ImGui::SetItemDefaultFocus();
+						}
 						ImGui::PopID();
 					}
 					ImGui::EndListBox();
+				}
+
+				ActorPrototype* pCurrentEffect = Actors::GetPrototype(pPrototype->deathEffect);
+				if (ImGui::BeginCombo("Death effect", pCurrentEffect->name)) {
+					for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++) {
+						ImGui::PushID(i);
+
+						const ActorPrototype* pEffect = Actors::GetPrototype(i);
+						const bool selected = pEffect == pCurrentEffect;
+
+						if (ImGui::Selectable(pEffect->name, selected)) {
+							pPrototype->deathEffect = i;
+						}
+
+						if (selected) {
+							ImGui::SetItemDefaultFocus();
+						}
+						ImGui::PopID();
+					}
+
+					ImGui::EndCombo();
 				}
 
 				ImGui::EndTabItem();
@@ -1953,7 +1980,7 @@ static void DrawActorWindow() {
 						}
 						ImGui::EndDisabled();
 
-						char labelStr[8];
+						static char labelStr[8];
 						snprintf(labelStr, 8, "0x%02x", frame.spriteIndex);
 						const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
 						ImGui::BeginDisabled(pPrototype->animMode != ACTOR_ANIM_MODE_SPRITES);
