@@ -67,8 +67,6 @@ int WinMain(int argc, char** args) {
 
     Audio::CreateContext();
     Audio::Init();
-    //Sound bgm = Audio::LoadSound("assets/music.nsf");
-    //bool musicPlaying = false;
 
 #ifdef EDITOR
     Editor::CreateContext();
@@ -88,8 +86,6 @@ int WinMain(int argc, char** args) {
         s64 deltaTime = newTime - currentTime;
         r64 deltaTimeSeconds = (r64)deltaTime / perfFreq;
         currentTime = newTime;
-
-        Input::Update();
 
         while (SDL_PollEvent(&event))
         {
@@ -111,17 +107,7 @@ int WinMain(int argc, char** args) {
 #endif
         }
         
-        Game::Step(deltaTimeSeconds);
-
-        /*if (Input::ButtonPressed(BUTTON_START)) {
-            if (!musicPlaying) {
-                Audio::PlayMusic(&bgm, true);
-            }
-            else {
-                Audio::StopMusic();
-            }
-            musicPlaying = !musicPlaying;
-        }*/
+        Game::Update(deltaTimeSeconds);
 
         if (!minimized) {
             r64 averageFramerate = GetAverageFramerate(deltaTimeSeconds);
@@ -143,8 +129,6 @@ int WinMain(int argc, char** args) {
     Rendering::Free();
     Rendering::DestroyContext();
 
-    Audio::StopMusic();
-    //Audio::FreeSound(&bgm);
     Audio::Free();
     Audio::DestroyContext();
 

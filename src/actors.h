@@ -90,7 +90,9 @@ enum PlayerWingsFrame {
 	PLAYER_WINGS_DESCEND,
 	PLAYER_WINGS_FLAP_START,
 	PLAYER_WINGS_ASCEND,
-	PLAYER_WINGS_FLAP_END
+	PLAYER_WINGS_FLAP_END,
+
+	PLAYER_WING_FRAME_COUNT
 };
 
 enum PlayerAimFrame {
@@ -107,11 +109,10 @@ enum PlayerWeaponType {
 struct PlayerState {
 	PlayerWeaponType weapon;
 	u32 aimMode;
-	r32 wingCounter;
-	u32 wingFrame;
+	s32 wingCounter;
 	bool slowFall;
 	bool doubleJumped;
-	r32 shootCounter;
+	s32 shootCounter;
 };
 
 #pragma endregion
@@ -148,16 +149,21 @@ struct Actor {
 	Vec2 position;
 
 	Vec2 velocity;
-	r32 gravity = 35;
+	r32 gravity = 0.01f;
 
 	s32 health = 10;
-	r32 damageCounter;
+	s32 damageCounter;
 
-	r32 lifetime = 3;
-	r32 lifetimeCounter;
+	s32 lifetime = 180;
+	s32 lifetimeCounter;
 
+	// TODO: Very specific, get rid of
 	u32 drawNumber;
-	r32 animLength = 0.25f;
+
+	// TODO: Define this in prototype!
+	s32 animFrameLength = 6;
+	s32 frameIndex = 0;
+	s32 animCounter = 0;
 
 	PlayerState playerState;
 

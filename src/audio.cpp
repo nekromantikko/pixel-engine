@@ -3,10 +3,9 @@
 #include <vector>
 #include "system.h"
 #include <cassert>
+#include "nes_timing.h"
 
 static constexpr u32 DEBUG_BUFFER_SIZE = 1024;
-static constexpr r64 NES_CPU_FREQ = 1789773.f;
-static constexpr r64 CLOCK_FREQ = NES_CPU_FREQ / 2.0f;
 
 static constexpr u8 PULSE_SEQ[4] = {
         0b00000001,
@@ -576,24 +575,23 @@ static u8 ClockNoise(NoiseChannel& noise, bool quarterFrame, bool halfFrame) {
 
 static bool Clock(u8& outSample) {
     const r64 sampleTime = 1.0f / 44100.f;
-    const r64 clockTime = 1.0f / CLOCK_FREQ;
     bool result = false;
 
     pContext->clockCounter++;
     bool quarterFrame = false;
     bool halfFrame = false;
 
-    if (pContext->clockCounter == 3729) {
+    if (pContext->clockCounter == QUARTER_FRAME_CLOCK) {
         quarterFrame = true;
     }
-    else if (pContext->clockCounter == 7457) {
+    else if (pContext->clockCounter == HALF_FRAME_CLOCK) {
         quarterFrame = true;
         halfFrame = true;
     }
-    else if (pContext->clockCounter == 11186) {
+    else if (pContext->clockCounter == THREEQUARTERS_FRAME_CLOCK) {
         quarterFrame = true;
     }
-    else if (pContext->clockCounter == 14915) {
+    else if (pContext->clockCounter == FRAME_CLOCK) {
         quarterFrame = true;
         halfFrame = true;
         pContext->clockCounter = 0;
@@ -619,7 +617,7 @@ static bool Clock(u8& outSample) {
 
     u8 sample = (u8)((pulseOut + tndOut) * 255);
 
-    pContext->accumulator += clockTime;
+    pContext->accumulator += CLOCK_PERIOD;
     if (pContext->accumulator >= sampleTime) {
         pContext->accumulator -= sampleTime;
         outSample = sample;
