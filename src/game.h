@@ -13,7 +13,7 @@ namespace Game {
 	void LoadLevel(u32 index, s32 screenIndex = -1, bool refresh = true);
 	void UnloadLevel(bool refresh = true);
 	void ReloadLevel(bool refresh = true);
-	void Step(r64 dt);
+	void Update(r64 dt);
 
 	bool IsPaused();
 	void SetPaused(bool paused);

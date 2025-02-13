@@ -16,11 +16,13 @@ enum ControllerButtonFlags : u8 {
 union SDL_Event;
 
 namespace Input {
-    void Update();
     void ProcessEvent(const SDL_Event* event);
 
-    bool ButtonDown(u8 flags);
-    bool ButtonUp(u8 flags);
-    bool ButtonPressed(u8 flags);
-    bool ButtonReleased(u8 flags);
+    u8 GetControllerState();
+
+    // Utis
+    bool ButtonDown(u8 flags, u8 state);
+    bool ButtonUp(u8 flags, u8 state);
+    bool ButtonPressed(u8 flags, u8 currentState, u8 previousState);
+    bool ButtonReleased(u8 flags, u8 currentState, u8 previousState);
 }

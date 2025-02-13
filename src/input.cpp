@@ -7,8 +7,7 @@
 static SDL_GameController* gameController = nullptr;
 static SDL_Haptic* haptic = nullptr;
 
-static u8 currentState = BUTTON_NONE;
-static u8 previousState = BUTTON_NONE;
+static u8 controllerState = BUTTON_NONE;
 
 #pragma region Internal functions
 static void InitController() {
@@ -130,27 +129,23 @@ static void HandleKeyboardEvent(const SDL_KeyboardEvent& event, u8& outState) {
 #pragma endregion
 
 #pragma region Public API
-void Input::Update() {
-    previousState = currentState;
-}
-
 void Input::ProcessEvent(const SDL_Event* event) {
     switch (event->type)
     {
     case SDL_CONTROLLERBUTTONDOWN:
     case SDL_CONTROLLERBUTTONUP:
         if (gameController != nullptr) {
-            HandleControllerButtonEvent(event->cbutton, currentState);
+            HandleControllerButtonEvent(event->cbutton, controllerState);
         }
         break;
     case SDL_CONTROLLERAXISMOTION:
         if (gameController != nullptr) {
-            HandleControllerAxisEvent(event->caxis, currentState);
+            HandleControllerAxisEvent(event->caxis, controllerState);
         }
         break;
     case SDL_KEYDOWN:
     case SDL_KEYUP:
-        HandleKeyboardEvent(event->key, currentState);
+        HandleKeyboardEvent(event->key, controllerState);
         break;
     case SDL_CONTROLLERDEVICEADDED:
     case SDL_CONTROLLERDEVICEREMOVED:
@@ -162,19 +157,23 @@ void Input::ProcessEvent(const SDL_Event* event) {
     }
 }
 
-bool Input::ButtonDown(u8 flags) {
-    return (flags & currentState) == flags;
+u8 Input::GetControllerState() {
+    return controllerState;
 }
 
-bool Input::ButtonUp(u8 flags) {
-    return (flags & ~currentState) == flags;
+bool Input::ButtonDown(u8 flags, u8 state) {
+    return (flags & state) == flags;
 }
 
-bool Input::ButtonPressed(u8 flags) {
+bool Input::ButtonUp(u8 flags, u8 state) {
+    return (flags & ~state) == flags;
+}
+
+bool Input::ButtonPressed(u8 flags, u8 currentState, u8 previousState) {
     return ((currentState & ~previousState) & flags) == flags;
 }
 
-bool Input::ButtonReleased(u8 flags) {
+bool Input::ButtonReleased(u8 flags, u8 currentState, u8 previousState) {
     return ((~currentState & previousState) & flags) == flags;
 }
 #pragma endregion

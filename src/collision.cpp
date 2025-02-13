@@ -44,7 +44,7 @@ namespace Collision {
 					outHit.startPenetrating = IsNearlyZero(dist);
 					outHit.distance = dist;
 					outHit.impactNormal = Vec2{ -Sign(dx), 0 };
-					outHit.impactPoint = Vec2{ xSide + Sign(dx) * dist, pos.y };
+					outHit.impactPoint = Vec2{ xSide, pos.y };
 					outHit.location = Vec2{ pos.x + Sign(dx) * dist, pos.y };
 					outHit.normal = Vec2{ Sign(dx), 0 };
 					outHit.tileType = tile ? tile->type: TILE_SOLID;
@@ -98,7 +98,7 @@ namespace Collision {
 					outHit.startPenetrating = IsNearlyZero(dist);
 					outHit.distance = dist;
 					outHit.impactNormal = Vec2{ 0, -Sign(dy) };
-					outHit.impactPoint = Vec2{ pos.x, yTile + Sign(dy) * dist };
+					outHit.impactPoint = Vec2{ pos.x, ySide };
 					outHit.location = Vec2{ pos.x, pos.y + Sign(dy) * dist };
 					outHit.normal = Vec2{ 0, Sign(dy) };
 					outHit.tileType = tile ? tile->type : TILE_SOLID;
