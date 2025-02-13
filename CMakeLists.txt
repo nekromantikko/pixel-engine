@@ -101,7 +101,18 @@ foreach(FILE ${GLSL_SHADERS})
 endforeach()
 
 # Copy assets to build directory
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/assets DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+set(ASSETS_DST_DIR "${CMAKE_CURRENT_BINARY_DIR}/assets")
+
+# Ensure the assets directory exists in the build folder
+file(MAKE_DIRECTORY ${ASSETS_DST_DIR})
+
+# Custom target that copies assets on every build
+add_custom_target(copy_assets ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${ASSETS_SRC_DIR} ${ASSETS_DST_DIR}
+    COMMENT "Copying assets to build directory"
+)
+add_dependencies(${PROJECT_NAME} copy_assets)
 
 IF(WIN32)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC PLATFORM_WINDOWS)
