@@ -1908,6 +1908,7 @@ void Rendering::InitImGui(SDL_Window* pWindow) {
 	vulkanInitInfo.QueueFamily = pContext->primaryQueueFamilyIndex;
 	vulkanInitInfo.Queue = pContext->primaryQueue;
 	vulkanInitInfo.DescriptorPool = pContext->imGuiDescriptorPool;
+	vulkanInitInfo.RenderPass = pContext->renderImagePass;
 	vulkanInitInfo.MinImageCount = SWAPCHAIN_IMAGE_COUNT;
 	vulkanInitInfo.ImageCount = SWAPCHAIN_IMAGE_COUNT;
 	vulkanInitInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
@@ -1917,7 +1918,7 @@ void Rendering::InitImGui(SDL_Window* pWindow) {
 	CreatePalettePipeline();
 
 	ImGui_ImplSDL2_InitForVulkan(pWindow);
-	ImGui_ImplVulkan_Init(&vulkanInitInfo, pContext->renderImagePass);
+	ImGui_ImplVulkan_Init(&vulkanInitInfo);
 	ImGui_ImplVulkan_CreateFontsTexture();
 }
 void Rendering::BeginImGuiFrame() {

@@ -12,22 +12,29 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glm)
 
-set(IMGUI_PATH $ENV{IMGUI_PATH})
+FetchContent_Declare(
+        imgui
+	GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG v1.91.8
+)
+FetchContent_MakeAvailable(imgui)
+
+
 set(IMGUI_SOURCES 
-		${IMGUI_PATH}/imgui.h
-		${IMGUI_PATH}/imgui.cpp
-		${IMGUI_PATH}/imconfig.h
-		${IMGUI_PATH}/imgui_demo.cpp
-		${IMGUI_PATH}/imgui_draw.cpp
-		${IMGUI_PATH}/imgui_internal.h
-		${IMGUI_PATH}/imstb_rectpack.h
-		${IMGUI_PATH}/imstb_textedit.h
-		${IMGUI_PATH}/imstb_truetype.h
-		${IMGUI_PATH}/imgui_tables.cpp
-		${IMGUI_PATH}/imgui_widgets.cpp
-		${IMGUI_PATH}/backends/imgui_impl_sdl2.cpp
-		${IMGUI_PATH}/backends/imgui_impl_win32.cpp
-		${IMGUI_PATH}/backends/imgui_impl_vulkan.cpp)
+		${imgui_SOURCE_DIR}/imgui.h
+		${imgui_SOURCE_DIR}/imgui.cpp
+		${imgui_SOURCE_DIR}/imconfig.h
+		${imgui_SOURCE_DIR}/imgui_demo.cpp
+		${imgui_SOURCE_DIR}/imgui_draw.cpp
+		${imgui_SOURCE_DIR}/imgui_internal.h
+		${imgui_SOURCE_DIR}/imstb_rectpack.h
+		${imgui_SOURCE_DIR}/imstb_textedit.h
+		${imgui_SOURCE_DIR}/imstb_truetype.h
+		${imgui_SOURCE_DIR}/imgui_tables.cpp
+		${imgui_SOURCE_DIR}/imgui_widgets.cpp
+		${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
+		${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+		${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp)
 
 find_package(Vulkan REQUIRED)
 find_package(SDL2 REQUIRED)
@@ -69,7 +76,7 @@ set(EDITOR_HEADERS
 		src/editor.h)
 
 add_executable(${PROJECT_NAME} WIN32 ${HEADERS} ${SOURCES} ${IMGUI_SOURCES} ${EDITOR_HEADERS} ${EDITOR_SOURCES})
-target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_PATH} ${IMGUI_PATH}/backends ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2)
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 
