@@ -1,7 +1,6 @@
 #pragma once
 #include "typedef.h"
 #include "collision.h"
-#include "vector.h"
 #include "metasprite.h"
 
 static constexpr u32 MAX_ACTOR_PROTOTYPE_COUNT = 256;
@@ -145,10 +144,10 @@ struct Actor {
 
 	ActorFlags flags;
 
-	Vec2 initialPosition;
-	Vec2 position;
+	glm::vec2 initialPosition;
+	glm::vec2 position;
 
-	Vec2 velocity;
+	glm::vec2 velocity;
 	r32 gravity = 0.01f;
 
 	s32 health = 10;

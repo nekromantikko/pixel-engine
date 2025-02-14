@@ -1,7 +1,6 @@
 #pragma once
 #include "typedef.h"
 #include "rendering.h"
-#include "vector.h"
 
 struct Tilemap;
 

@@ -1,8 +1,9 @@
 #pragma once
+#define GLM_FORCE_RADIANS
+#include <glm.hpp>
 #include <cassert>
 #include "typedef.h"
 #include "rendering.h"
-#include "vector.h"
 
 constexpr u32 TILESET_DIM = 16;
 constexpr u32 TILESET_DIM_LOG2 = 4;
@@ -49,15 +50,15 @@ namespace Tiles {
 	bool SetTilesetPalette(Tileset* tileset, u32 tileIndex, s32 palette);
 
 	// New API
-	bool TileInMapBounds(const Tilemap* pTilemap, const IVec2& pos);
-	s32 GetTilesetIndex(const Tilemap* pTilemap, const IVec2& pos);
+	bool TileInMapBounds(const Tilemap* pTilemap, const glm::ivec2& pos);
+	s32 GetTilesetIndex(const Tilemap* pTilemap, const glm::ivec2& pos);
 	const MapTile* GetMapTile(const Tilemap* pTilemap, const s32& tilesetIndex);
-	const MapTile* GetMapTile(const Tilemap* pTilemap, const IVec2& pos);
+	const MapTile* GetMapTile(const Tilemap* pTilemap, const glm::ivec2& pos);
 	bool SetMapTile(const Tilemap* pTilemap, s32 screenIndex, s32 tileIndex, const s32& tilesetIndex);
-	bool SetMapTile(const Tilemap* pTilemap, const IVec2& pos, const s32& tilesetIndex);
+	bool SetMapTile(const Tilemap* pTilemap, const glm::ivec2& pos, const s32& tilesetIndex);
 
-	s32 GetNametableIndex(const IVec2& pos);
-	IVec2 GetNametableOffset(const IVec2& pos);
+	s32 GetNametableIndex(const glm::ivec2& pos);
+	glm::ivec2 GetNametableOffset(const glm::ivec2& pos);
 
 	// Temp until we have an asset manager
 	void LoadTileset(const char* fname);

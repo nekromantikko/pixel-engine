@@ -1,7 +1,6 @@
 #include "game.h"
 #include "system.h"
 #include "input.h"
-#include <algorithm>
 #include <cstring>
 #include <cstdio>
 #include "rendering_util.h"
@@ -11,10 +10,10 @@
 #include "metasprite.h"
 #include "tiles.h"
 #include <imgui.h>
-#include "math.h"
 #include <vector>
 #include "audio.h"
 #include "nes_timing.h"
+#include <gtc/constants.hpp>
 
 namespace Game {
     r64 secondsElapsed = 0.0f;
@@ -80,18 +79,18 @@ namespace Game {
     constexpr u8 playerHandFrameTileCount = 2;
     constexpr u8 playerWeaponFrameTileCount = 8;
 
-    constexpr IVec2 playerBowOffsets[3] = { { 10, -4 }, { 9, -14 }, { 10, 4 } };
+    constexpr glm::ivec2 playerBowOffsets[3] = { { 10, -4 }, { 9, -14 }, { 10, 4 } };
     constexpr u32 playerBowFwdMetaspriteIndex = 8;
     constexpr u32 playerBowDiagMetaspriteIndex = 9;
     constexpr u32 playerBowArrowFwdMetaspriteIndex = 3;
     constexpr u32 playerBowArrowDiagMetaspriteIndex = 4;
 
-    constexpr IVec2 playerLauncherOffsets[3] = { { 5, -5 }, { 7, -12 }, { 8, 1 } };
+    constexpr glm::ivec2 playerLauncherOffsets[3] = { { 5, -5 }, { 7, -12 }, { 8, 1 } };
     constexpr u32 playerLauncherFwdMetaspriteIndex = 10;
     constexpr u32 playerLauncherDiagMetaspriteIndex = 11;
     constexpr u32 playerLauncherGrenadeMetaspriteIndex = 12;
 
-    constexpr Vec2 viewportScrollThreshold = { 4.0f, 3.0f };
+    constexpr glm::vec2 viewportScrollThreshold = { 4.0f, 3.0f };
 
 #pragma region Input
     static bool ButtonDown(u8 flags) {
@@ -115,7 +114,7 @@ namespace Game {
     static void UpdateScreenScroll() {
         // Drugs mode
         /*for (int i = 0; i < 288; i++) {
-            float sine = sin(gameplayFramesElapsed / 60.f + (i / 16.0f));
+            float sine = glm::sin(gameplayFramesElapsed / 60.f + (i / 16.0f));
             const Scanline state = {
                 (s32)((viewport.x + sine / 4) * METATILE_DIM_PIXELS),
                 (s32)(viewport.y * METATILE_DIM_PIXELS)
@@ -138,10 +137,10 @@ namespace Game {
             return;
         }
 
-        Vec2 viewportCenter = Vec2{ viewport.x + VIEWPORT_WIDTH_METATILES / 2.0f, viewport.y + VIEWPORT_HEIGHT_METATILES / 2.0f };
-        Vec2 targetOffset = pPlayer->position - viewportCenter;
+        glm::vec2 viewportCenter = glm::vec2{ viewport.x + VIEWPORT_WIDTH_METATILES / 2.0f, viewport.y + VIEWPORT_HEIGHT_METATILES / 2.0f };
+        glm::vec2 targetOffset = pPlayer->position - viewportCenter;
 
-        Vec2 delta = { 0.0f, 0.0f };
+        glm::vec2 delta = { 0.0f, 0.0f };
         if (targetOffset.x > viewportScrollThreshold.x) {
             delta.x = targetOffset.x - viewportScrollThreshold.x;
         }
@@ -159,17 +158,17 @@ namespace Game {
         MoveViewport(&viewport, pNametables, &pCurrentLevel->tilemap, delta.x, delta.y);
     }
 
-    static bool PositionInViewportBounds(Vec2 pos) {
+    static bool PositionInViewportBounds(glm::vec2 pos) {
         return pos.x >= viewport.x &&
             pos.x < viewport.x + VIEWPORT_WIDTH_METATILES &&
             pos.y >= viewport.y &&
             pos.y < viewport.y + VIEWPORT_HEIGHT_METATILES;
     }
 
-    static IVec2 WorldPosToScreenPixels(Vec2 pos) {
-        return IVec2{
-            (s32)round((pos.x - viewport.x) * METATILE_DIM_PIXELS),
-            (s32)round((pos.y - viewport.y) * METATILE_DIM_PIXELS)
+    static glm::ivec2 WorldPosToScreenPixels(glm::vec2 pos) {
+        return glm::ivec2{
+            (s32)glm::roundEven((pos.x - viewport.x) * METATILE_DIM_PIXELS),
+            (s32)glm::roundEven((pos.y - viewport.y) * METATILE_DIM_PIXELS)
         };
     }
 #pragma endregion
@@ -235,13 +234,13 @@ namespace Game {
 #pragma endregion
 
 #pragma region Rendering
-    static void DrawActor(const Actor* pActor, Sprite** ppNextSprite, s32 frameIndex = -1, const IVec2& pixelOffset = {0,0}, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1) {
+    static void DrawActor(const Actor* pActor, Sprite** ppNextSprite, s32 frameIndex = -1, const glm::ivec2& pixelOffset = {0,0}, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1) {
         // Culling
         if (!PositionInViewportBounds(pActor->position)) {
             return;
         }
 
-        IVec2 drawPos = WorldPosToScreenPixels(pActor->position) + pixelOffset;
+        glm::ivec2 drawPos = WorldPosToScreenPixels(pActor->position) + pixelOffset;
         const ActorAnimFrame& frame = pActor->pPrototype->frames[frameIndex == -1 ? pActor->frameIndex : frameIndex];
 
         switch (pActor->pPrototype->animMode) {
@@ -266,9 +265,9 @@ namespace Game {
         return (pActor->damageCounter > 0) ? (gameplayFramesElapsed / 3) % 4 : -1;
     }
 
-    static s32 GetAnimFrameFromDirection(const Vec2& dir, u32 frameCount) {
-        const r32 angle = atan2f(dir.y, dir.x);
-        return (s32)roundf(((angle + pi) / (pi * 2)) * frameCount) % frameCount;
+    static s32 GetAnimFrameFromDirection(const glm::vec2& dir, u32 frameCount) {
+        const r32 angle = glm::atan(dir.y, dir.x);
+        return (s32)glm::roundEven(((angle + glm::pi<r32>()) / (glm::pi<r32>() * 2)) * frameCount) % frameCount;
     }
 
     static void AdvanceAnimation(Actor* pActor, bool loop = true, s32 frameCountOverride = -1, s32 frameLengthOverride = -1) {
@@ -371,7 +370,7 @@ namespace Game {
 #pragma endregion
 
 #pragma region Damage
-    static void SpawnExplosion(const Vec2& position, u32 prototypeIndex) {
+    static void SpawnExplosion(const glm::vec2& position, u32 prototypeIndex) {
         // TODO: Make the prototype a struct member
         Actor* pHit = SpawnActor(prototypeIndex);
         if (pHit == nullptr) {
@@ -382,11 +381,11 @@ namespace Game {
         // TODO: Determine lifetime based on prototype anim frame length
         pHit->lifetime = 12;
         pHit->animFrameLength = pHit->lifetime / pHit->pPrototype->frameCount;
-        pHit->velocity = Vec2{};
+        pHit->velocity = glm::vec2{};
         InitializeActor(pHit);
     }
 
-    static void ActorDie(Actor* pActor, const Vec2& explosionPos) {
+    static void ActorDie(Actor* pActor, const glm::vec2& explosionPos) {
         pActor->flags.pendingRemoval = true;
         SpawnExplosion(explosionPos, pActor->pPrototype->deathEffect);
     }
@@ -404,7 +403,7 @@ namespace Game {
 
             const AABB& hitbox = pActor->pPrototype->hitbox;
             // Random point inside hitbox
-            const Vec2 randomPointInsideHitbox = {
+            const glm::vec2 randomPointInsideHitbox = {
                 ((r32)rand() / RAND_MAX) * (hitbox.x2 - hitbox.x1) + hitbox.x1,
                 ((r32)rand() / RAND_MAX) * (hitbox.y2 - hitbox.y1) + hitbox.y1
             };
@@ -522,12 +521,12 @@ namespace Game {
                 return;
             }
 
-            const Vec2 fwdOffset = Vec2{ 0.375f * pPlayer->flags.facingDir, -0.25f };
-            const Vec2 upOffset = Vec2{ 0.1875f * pPlayer->flags.facingDir, -0.5f };
-            const Vec2 downOffset = Vec2{ 0.25f * pPlayer->flags.facingDir, -0.125f };
+            const glm::vec2 fwdOffset = glm::vec2{ 0.375f * pPlayer->flags.facingDir, -0.25f };
+            const glm::vec2 upOffset = glm::vec2{ 0.1875f * pPlayer->flags.facingDir, -0.5f };
+            const glm::vec2 downOffset = glm::vec2{ 0.25f * pPlayer->flags.facingDir, -0.125f };
 
             pBullet->position = pPlayer->position;
-            pBullet->velocity = Vec2{};
+            pBullet->velocity = glm::vec2{};
             pBullet->gravity = 0.04;
             pBullet->lifetime = 60;
 
@@ -554,11 +553,11 @@ namespace Game {
     }
 
     static void DrawPlayerGun(Actor* pPlayer, r32 vOffset, Sprite** ppNextSprite) {
-        IVec2 drawPos = WorldPosToScreenPixels(pPlayer->position);
+        glm::ivec2 drawPos = WorldPosToScreenPixels(pPlayer->position);
         drawPos.y += vOffset;
 
         // Draw weapon first
-        IVec2 weaponOffset;
+        glm::ivec2 weaponOffset;
         u8 weaponFrameBankOffset;
         u32 weaponMetaspriteIndex;
         switch (pPlayer->playerState.weapon) {
@@ -593,7 +592,7 @@ namespace Game {
         const bool jumping = pPlayer->velocity.y < 0;
         const bool descending = !jumping && pPlayer->velocity.y > 0;
         const bool falling = descending && !playerState.slowFall;
-        const bool moving = abs(pPlayer->velocity.x) > 0;
+        const bool moving = glm::abs(pPlayer->velocity.x) > 0;
         const bool takingDamage = pPlayer->damageCounter > 0;
 
         s32 headFrameIndex = PLAYER_HEAD_IDLE;
@@ -723,13 +722,13 @@ namespace Game {
         ForEachActorCollision(pActor, ACTOR_COLLISION_LAYER_ENEMY, HandleBulletEnemyCollision);
 
         const u32 frameCount = pActor->pPrototype->frameCount;
-        const s32 frameIndex = GetAnimFrameFromDirection(pActor->velocity.Normalize(), frameCount);
+        const s32 frameIndex = GetAnimFrameFromDirection(glm::normalize(pActor->velocity), frameCount);
 
         DrawActor(pActor, ppNextSprite, frameIndex);
     }
 
-    static void BulletRicochet(Vec2& velocity, const Vec2& normal) {
-        velocity = velocity - 2 * DotProduct(velocity, normal) * normal;
+    static void BulletRicochet(glm::vec2& velocity, const glm::vec2& normal) {
+        velocity = glm::reflect(velocity, normal);
         Audio::PlaySFX(&ricochetSfx, CHAN_ID_PULSE1);
     }
 
@@ -752,7 +751,7 @@ namespace Game {
         ForEachActorCollision(pActor, ACTOR_COLLISION_LAYER_ENEMY, HandleBulletEnemyCollision);
 
         const u32 frameCount = pActor->pPrototype->frameCount;
-        const s32 frameIndex = GetAnimFrameFromDirection(pActor->velocity.Normalize(), frameCount);
+        const s32 frameIndex = GetAnimFrameFromDirection(glm::normalize(pActor->velocity), frameCount);
 
         DrawActor(pActor, ppNextSprite, frameIndex);
     }
@@ -837,7 +836,7 @@ namespace Game {
         ActorFacePlayer(pActor);
 
         static const r32 amplitude = 4.0f;
-        const r32 sineTime = sin(gameplayFramesElapsed / 60.f);
+        const r32 sineTime = glm::sin(gameplayFramesElapsed / 60.f);
         pActor->position.y = pActor->initialPosition.y + sineTime * amplitude;
 
         // Shoot fireballs
@@ -853,7 +852,7 @@ namespace Game {
 
                 pBullet->position = pActor->position;
                 pBullet->lifetime = 600;
-                const Vec2 playerDir = (pPlayer->position - pActor->position).Normalize();
+                const glm::vec2 playerDir = glm::normalize(pPlayer->position - pActor->position);
                 pBullet->velocity = playerDir * 0.0625f;
 
                 InitializeActor(pBullet);
@@ -907,7 +906,7 @@ namespace Game {
             const ActorAnimFrame& frame = pActor->pPrototype->frames[frameIndex];
             const u8 tileId = Metasprites::GetMetasprite(frame.metaspriteIndex)->spritesRelativePos[frame.spriteIndex].tileId;
 
-            const IVec2 pixelPos = WorldPosToScreenPixels(pActor->position);
+            const glm::ivec2 pixelPos = WorldPosToScreenPixels(pActor->position);
             const Sprite sprite = {
                 pixelPos.y,
                 pixelPos.x + c * 5,
@@ -1021,12 +1020,12 @@ namespace Game {
         }*/
 
         // Animate color palette brightness
-        /*r32 deltaBrightness = sin(gameplayFramesElapsed / 40.f);
+        /*r32 deltaBrightness = glm::sin(gameplayFramesElapsed / 40.f);
         for (u32 i = 0; i < PALETTE_MEMORY_SIZE; i++) {
             u8 baseColor = ((u8*)basePaletteColors)[i];
 
             s32 brightness = (baseColor & 0b1110000) >> 4;
-            s32 d = (s32)roundf(deltaBrightness * 8);
+            s32 d = (s32)glm::roundEven(deltaBrightness * 8);
 
             s32 newBrightness = brightness + d;
             newBrightness = (newBrightness < 0) ? 0 : (newBrightness > 7) ? 7 : newBrightness;
@@ -1036,7 +1035,7 @@ namespace Game {
         }*/
 
         // Animate color palette hue
-        /*s32 hueShift = (s32)roundf(gameplayFramesElapsed / 12.f);
+        /*s32 hueShift = (s32)glm::roundEven(gameplayFramesElapsed / 12.f);
         for (u32 i = 0; i < PALETTE_MEMORY_SIZE; i++) {
             u8 baseColor = ((u8*)basePaletteColors)[i];
 

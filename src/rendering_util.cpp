@@ -1,8 +1,7 @@
 #include "rendering_util.h"
 #include "system.h"
-#include "math.h"
-#include <algorithm>
 #include <stdio.h>
+#include <gtc/constants.hpp>
 
 #pragma region Nametable
 static inline u32 GetNametableAttributeIndex(u32 x, u32 y) {
@@ -152,11 +151,11 @@ namespace Rendering
 					// No need to have multiple pure blacks and whites
 					y = (r32)(brightness + 1) / 9;
 
-					r32 angle = 2 * pi * (hue - 1) / 15;
-					r32 radius = 0.5f * (1.0f - abs(y - 0.5f) * 2);
+					r32 angle = 2 * glm::pi<r32>() * (hue - 1) / 15;
+					r32 radius = 0.5f * (1.0f - glm::abs(y - 0.5f) * 2);
 
-					u = radius * std::cos(angle);
-					v = radius * std::sin(angle);
+					u = radius * glm::cos(angle);
+					v = radius * glm::sin(angle);
 				}
 
 				// Convert YUV to RGB
@@ -164,9 +163,9 @@ namespace Rendering
 				float g = y - 0.394642 * u - 0.580622 * v;
 				float b = y + u * 2.032062;
 
-				r = std::max(std::min(r, 1.0f), 0.0f);
-				g = std::max(std::min(g, 1.0f), 0.0f);
-				b = std::max(std::min(b, 1.0f), 0.0f);
+				r = glm::clamp(r, 0.0f, 1.0f);
+				g = glm::clamp(g, 0.0f, 1.0f);
+				b = glm::clamp(b, 0.0f, 1.0f);
 
 				u32* pixel = data + i;
 				u8* pixelBytes = (u8*)pixel;
@@ -221,7 +220,7 @@ namespace Rendering
 			fclose(pFile);
 		}
 
-		void CopyMetasprite(const Sprite* src, Sprite* dst, u32 count, IVec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
+		void CopyMetasprite(const Sprite* src, Sprite* dst, u32 count, glm::ivec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
 			for (int i = 0; i < count; i++) {
 				Sprite sprite = src[i];
 				if (hFlip) {

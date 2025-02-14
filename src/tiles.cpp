@@ -44,7 +44,7 @@ bool Tiles::SetTilesetPalette(Tileset* tileset, u32 tileIndex, s32 palette) {
 #pragma endregion
 
 #pragma region New API
-bool Tiles::TileInMapBounds(const Tilemap* pTilemap, const IVec2& pos) {
+bool Tiles::TileInMapBounds(const Tilemap* pTilemap, const glm::ivec2& pos) {
     if (pos.x < 0 || pos.y < 0) {
         return false;
     }
@@ -59,15 +59,15 @@ bool Tiles::TileInMapBounds(const Tilemap* pTilemap, const IVec2& pos) {
     return true;
 }
 
-static s32 GetScreenIndex(const Tilemap* pTilemap, const IVec2& pos) {
+static s32 GetScreenIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
     return (pos.x / VIEWPORT_WIDTH_METATILES) + (pos.y / VIEWPORT_HEIGHT_METATILES) * pTilemap->width;
 }
 
-static s32 GetTileIndex(const Tilemap* pTilemap, const IVec2& pos) {
+static s32 GetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
     return (pos.x % VIEWPORT_WIDTH_METATILES) + (pos.y % VIEWPORT_HEIGHT_METATILES) * VIEWPORT_WIDTH_METATILES;
 }
 
-s32 Tiles::GetTilesetIndex(const Tilemap* pTilemap, const IVec2& pos) {
+s32 Tiles::GetTilesetIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
     if (!TileInMapBounds(pTilemap, pos)) {
         return -1;
     }
@@ -86,7 +86,7 @@ const MapTile* Tiles::GetMapTile(const Tilemap* pTilemap, const s32& tilesetInde
     return &pTilemap->pTileset->tiles[tilesetIndex];
 }
 
-const MapTile* Tiles::GetMapTile(const Tilemap* pTilemap, const IVec2& pos) {
+const MapTile* Tiles::GetMapTile(const Tilemap* pTilemap, const glm::ivec2& pos) {
     s32 index = GetTilesetIndex(pTilemap, pos);
     return GetMapTile(pTilemap, index);
 }
@@ -100,7 +100,7 @@ bool Tiles::SetMapTile(const Tilemap* pTilemap, s32 screenIndex, s32 tileIndex, 
     return true;
 }
 
-bool Tiles::SetMapTile(const Tilemap* pTilemap, const IVec2& pos, const s32& tilesetIndex) {
+bool Tiles::SetMapTile(const Tilemap* pTilemap, const glm::ivec2& pos, const s32& tilesetIndex) {
     if (!TileInMapBounds(pTilemap, pos)) {
         return false;
     }
@@ -111,11 +111,11 @@ bool Tiles::SetMapTile(const Tilemap* pTilemap, const IVec2& pos, const s32& til
     return SetMapTile(pTilemap, screenIndex, i, tilesetIndex);
 }
 
-s32 Tiles::GetNametableIndex(const IVec2& pos) {
+s32 Tiles::GetNametableIndex(const glm::ivec2& pos) {
     return (pos.x / NAMETABLE_WIDTH_METATILES + pos.y / NAMETABLE_HEIGHT_METATILES) % NAMETABLE_COUNT;
 }
 
-IVec2 Tiles::GetNametableOffset(const IVec2& pos) {
+glm::ivec2 Tiles::GetNametableOffset(const glm::ivec2& pos) {
     return { (s32)(pos.x % NAMETABLE_WIDTH_METATILES), (s32)(pos.y % NAMETABLE_HEIGHT_METATILES) };
 }
 #pragma endregion

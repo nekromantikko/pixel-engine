@@ -2,14 +2,20 @@
 #include "rendering.h"
 #include <stdio.h>
 #include "system.h"
-#include "math.h"
 #include "level.h"
+#include <gtc/epsilon.hpp>
+
+static constexpr r32 epsilon = 0.0000001f;
+
+static inline bool IsNearlyZero(r32 value) {
+	return glm::epsilonEqual(value, 0.0f, epsilon);
+}
 
 namespace Collision {
-	void SweepBoxHorizontal(const Tilemap* pTilemap, const AABB& hitbox, const Vec2& pos, r32 dx, HitResult& outHit) {
+	void SweepBoxHorizontal(const Tilemap* pTilemap, const AABB& hitbox, const glm::vec2& pos, r32 dx, HitResult& outHit) {
 		outHit.blockingHit = false;
-		outHit.distance = abs(dx);
-		outHit.location = Vec2{ pos.x + dx, pos.y };
+		outHit.distance = glm::abs(dx);
+		outHit.location = glm::vec2{ pos.x + dx, pos.y };
 
 		if (pTilemap == nullptr) {
 			return;
@@ -22,19 +28,19 @@ namespace Collision {
 		const AABB hitboxAbs(hitbox.min + pos, hitbox.max + pos);
 		r32 xSide = dx < 0.0f ? hitboxAbs.x1 : hitboxAbs.x2;
 
-		s32 yTopTile = (s32)floorf(hitboxAbs.y1);
-		s32 yBottomTile = (s32)floorf(hitboxAbs.y2);
+		s32 yTopTile = (s32)glm::floor(hitboxAbs.y1);
+		s32 yBottomTile = (s32)glm::floor(hitboxAbs.y2);
 		// Right at the seam, should look at one tile above
 		if (IsNearlyZero(hitboxAbs.y2 - (r32)yBottomTile))
 			yBottomTile--;
 		s32 yTileDelta = yBottomTile - yTopTile;
-		s32 xTile = (s32)floorf(xSide);
+		s32 xTile = (s32)glm::floor(xSide);
 
 		r32 dist = 0.0f;
 
-		while (!outHit.blockingHit && dist < fabs(dx)) {
+		while (!outHit.blockingHit && dist < glm::abs(dx)) {
 			for (s32 i = 0; i <= yTileDelta; i++) {
-				IVec2 tileCoord = IVec2{ xTile, yTopTile + i };
+				glm::ivec2 tileCoord = glm::ivec2{ xTile, yTopTile + i };
 
 				const MapTile* tile = Tiles::GetMapTile(pTilemap, tileCoord);
 
@@ -43,10 +49,10 @@ namespace Collision {
 					outHit.blockingHit = true;
 					outHit.startPenetrating = IsNearlyZero(dist);
 					outHit.distance = dist;
-					outHit.impactNormal = Vec2{ -Sign(dx), 0 };
-					outHit.impactPoint = Vec2{ xSide, pos.y };
-					outHit.location = Vec2{ pos.x + Sign(dx) * dist, pos.y };
-					outHit.normal = Vec2{ Sign(dx), 0 };
+					outHit.impactNormal = glm::vec2{ -glm::sign(dx), 0 };
+					outHit.impactPoint = glm::vec2{ xSide, pos.y };
+					outHit.location = glm::vec2{ pos.x + glm::sign(dx) * dist, pos.y };
+					outHit.normal = glm::vec2{ glm::sign(dx), 0 };
 					outHit.tileType = tile ? tile->type: TILE_SOLID;
 
 					break;
@@ -55,15 +61,15 @@ namespace Collision {
 
 			r32 distToNextTile = dx < 0.0f ? xSide - xTile : xTile + 1 - xSide;
 			dist += distToNextTile;
-			xSide += Sign(dx) * distToNextTile;
-			xTile += (s32)Sign(dx);
+			xSide += glm::sign(dx) * distToNextTile;
+			xTile += (s32)glm::sign(dx);
 		}
 	}
 
-	void SweepBoxVertical(const Tilemap *pTilemap, const AABB& hitbox, const Vec2& pos, r32 dy, HitResult& outHit) {
+	void SweepBoxVertical(const Tilemap *pTilemap, const AABB& hitbox, const glm::vec2& pos, r32 dy, HitResult& outHit) {
 		outHit.blockingHit = false;
-		outHit.distance = abs(dy);
-		outHit.location = Vec2{ pos.x, pos.y + dy };
+		outHit.distance = glm::abs(dy);
+		outHit.location = glm::vec2{ pos.x, pos.y + dy };
 
 		if (pTilemap == nullptr) {
 			return;
@@ -76,19 +82,19 @@ namespace Collision {
 		const AABB hitboxAbs(hitbox.min + pos, hitbox.max + pos);
 		r32 ySide = dy < 0.0f ? hitboxAbs.y1 : hitboxAbs.y2;
 
-		s32 xLeftTile = (s32)floorf(hitboxAbs.x1);
-		s32 xRightTile = (s32)floorf(hitboxAbs.x2);
+		s32 xLeftTile = (s32)glm::floor(hitboxAbs.x1);
+		s32 xRightTile = (s32)glm::floor(hitboxAbs.x2);
 		// Right at the seam, should look at one tile left
 		if (IsNearlyZero(hitboxAbs.x2 - (r32)xRightTile))
 			xRightTile--;
 		s32 xTileDelta = xRightTile - xLeftTile;
-		s32 yTile = (s32)floorf(ySide);
+		s32 yTile = (s32)glm::floor(ySide);
 
 		r32 dist = 0.0f;
 
-		while (!outHit.blockingHit && dist < fabs(dy)) {
+		while (!outHit.blockingHit && dist < glm::abs(dy)) {
 			for (s32 i = 0; i <= xTileDelta; i++) {
-				IVec2 metatileCoord = IVec2{ xLeftTile + i, yTile };
+				glm::ivec2 metatileCoord = glm::ivec2{ xLeftTile + i, yTile };
 
 				const MapTile* tile = Tiles::GetMapTile(pTilemap, metatileCoord);
 				
@@ -97,10 +103,10 @@ namespace Collision {
 					outHit.blockingHit = true;
 					outHit.startPenetrating = IsNearlyZero(dist);
 					outHit.distance = dist;
-					outHit.impactNormal = Vec2{ 0, -Sign(dy) };
-					outHit.impactPoint = Vec2{ pos.x, ySide };
-					outHit.location = Vec2{ pos.x, pos.y + Sign(dy) * dist };
-					outHit.normal = Vec2{ 0, Sign(dy) };
+					outHit.impactNormal = glm::vec2{ 0, -glm::sign(dy) };
+					outHit.impactPoint = glm::vec2{ pos.x, ySide };
+					outHit.location = glm::vec2{ pos.x, pos.y + glm::sign(dy) * dist };
+					outHit.normal = glm::vec2{ 0, glm::sign(dy) };
 					outHit.tileType = tile ? tile->type : TILE_SOLID;
 
 					break;
@@ -109,12 +115,12 @@ namespace Collision {
 
 			r32 distToNextTile = dy < 0.0f ? ySide - yTile : yTile + 1 - ySide;
 			dist += distToNextTile;
-			ySide += Sign(dy) * distToNextTile;
-			yTile += (s32)Sign(dy);
+			ySide += glm::sign(dy) * distToNextTile;
+			yTile += (s32)glm::sign(dy);
 		}
 	}
 
-	bool BoxesOverlap(const AABB& a, const Vec2& aPos, const AABB& b, const Vec2& bPos) {
+	bool BoxesOverlap(const AABB& a, const glm::vec2& aPos, const AABB& b, const glm::vec2& bPos) {
 		const AABB aAbs = AABB(a.min + aPos, a.max + aPos);
 		const AABB bAbs = AABB(b.min + bPos, b.max + bPos);
 
@@ -124,7 +130,7 @@ namespace Collision {
 			aAbs.y2 >= bAbs.y1);
 	}
 
-	bool PointInsideBox(const Vec2& point, const AABB& hitbox, const Vec2& boxPos) {
+	bool PointInsideBox(const glm::vec2& point, const AABB& hitbox, const glm::vec2& boxPos) {
 		const AABB hitboxAbs = AABB(hitbox.min + boxPos, hitbox.max + boxPos);
 
 		return (point.x >= hitboxAbs.x1 &&
