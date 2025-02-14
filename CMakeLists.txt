@@ -2,6 +2,16 @@ cmake_minimum_required(VERSION 3.22.1)
 set(PROJECT_NAME pixelengine)
 project(${PROJECT_NAME})
 
+# For FetchContent_Declare() and FetchContent_MakeAvailable()
+include(FetchContent)
+
+FetchContent_Declare(
+        glm
+        URL_HASH MD5=7d235d4813a2e7b1e10cc711b8e25213
+        URL https://github.com/g-truc/glm/releases/download/1.0.1/glm-1.0.1-light.zip
+)
+FetchContent_MakeAvailable(glm)
+
 set(IMGUI_PATH $ENV{IMGUI_PATH})
 set(IMGUI_SOURCES 
 		${IMGUI_PATH}/imgui.h
@@ -28,7 +38,6 @@ set(SOURCES
 		src/game.cpp
 		src/input.cpp
 		src/level.cpp
-		src/math.cpp
 		src/metasprite.cpp
 		src/rendering_util.cpp
 		src/rendering_vulkan.cpp
@@ -46,13 +55,11 @@ set(HEADERS
 		src/game.h
 		src/input.h
 		src/level.h
-		src/math.h
 		src/memory_pool.h
 		src/metasprite.h
 		src/rendering_util.h
 		src/system.h
 		src/typedef.h
-		src/vector.h
 		src/viewport.h
 		src/collision.h
 		src/tiles.h
@@ -62,7 +69,7 @@ set(EDITOR_HEADERS
 		src/editor.h)
 
 add_executable(${PROJECT_NAME} WIN32 ${HEADERS} ${SOURCES} ${IMGUI_SOURCES} ${EDITOR_HEADERS} ${EDITOR_SOURCES})
-target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_PATH} ${IMGUI_PATH}/backends ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS})
+target_include_directories(${PROJECT_NAME} PRIVATE ${IMGUI_PATH} ${IMGUI_PATH}/backends ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2)
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 

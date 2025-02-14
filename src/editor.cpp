@@ -1,6 +1,5 @@
 #include "editor.h"
 #include <cassert>
-#include <algorithm>
 #include <limits>
 #include <SDL.h>
 #include <imgui.h>
@@ -72,7 +71,7 @@ static ImVec2 ChrTileCoordToTexCoord(ImVec2 coord, u8 chrIndex) {
 }
 
 static ImVec2 TexCoordToChrTileCoord(ImVec2 normalized) {
-	ImVec2 tileCoord = ImVec2(floor(normalized.x * 16), floor(normalized.y * 16));
+	ImVec2 tileCoord = ImVec2(glm::floor(normalized.x * 16), glm::floor(normalized.y * 16));
 	return tileCoord;
 }
 
@@ -100,7 +99,7 @@ static ImVec2 DrawTileGrid(ImVec2 size, r32 gridStep, s32* selection = nullptr, 
 		const bool gridClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left) && io.MousePos.x >= topLeft.x && io.MousePos.x < topLeft.x + size.x && io.MousePos.y >= topLeft.y && io.MousePos.y < topLeft.y + size.y;
 		if (gridClicked) {
 			const ImVec2 mousePosRelative = ImVec2(io.MousePos.x - topLeft.x, io.MousePos.y - topLeft.y);
-			const ImVec2 clickedTileCoord = ImVec2(floor(mousePosRelative.x / gridStep), floor(mousePosRelative.y / gridStep));
+			const ImVec2 clickedTileCoord = ImVec2(glm::floor(mousePosRelative.x / gridStep), glm::floor(mousePosRelative.y / gridStep));
 			const s32 xDivisions = size.x / gridStep;
 			const s32 clickedTileIndex = clickedTileCoord.y * xDivisions + clickedTileCoord.x;
 			*selection = clickedTileIndex;
@@ -250,12 +249,12 @@ static AABB GetActorBoundingBox(const Actor* pActor) {
 
 		for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
 			Sprite& sprite = pMetasprite->spritesRelativePos[i];
-			const Vec2 spriteMin = { (r32)SignExtendSpritePos(sprite.x) / METATILE_DIM_PIXELS, (r32)SignExtendSpritePos(sprite.y) / METATILE_DIM_PIXELS };
-			const Vec2 spriteMax = { spriteMin.x + tileWorldDim, spriteMin.y + tileWorldDim };
-			result.x1 = std::min(result.x1, spriteMin.x);
-			result.x2 = std::max(result.x2, spriteMax.x);
-			result.y1 = std::min(result.y1, spriteMin.y);
-			result.y2 = std::max(result.y2, spriteMax.y);
+			const glm::vec2 spriteMin = { (r32)SignExtendSpritePos(sprite.x) / METATILE_DIM_PIXELS, (r32)SignExtendSpritePos(sprite.y) / METATILE_DIM_PIXELS };
+			const glm::vec2 spriteMax = { spriteMin.x + tileWorldDim, spriteMin.y + tileWorldDim };
+			result.x1 = glm::min(result.x1, spriteMin.x);
+			result.x2 = glm::max(result.x2, spriteMax.x);
+			result.y1 = glm::min(result.y1, spriteMin.y);
+			result.y2 = glm::max(result.y2, spriteMax.y);
 		}
 		break;
 	}
@@ -388,7 +387,7 @@ static void MoveElements(T* elements, ImVector<s32>& elementIndices, s32 step, v
 		return;
 	}
 
-	s32 absStep = std::abs(step);
+	s32 absStep = glm::abs(step);
 	s32 dir = step / absStep;
 
 	ImVector<s32> alreadyMoved = {};
@@ -431,8 +430,8 @@ static bool CanMoveElements(u32 totalCount, const ImVector<s32>& elementIndices,
 	s32 maxIndex = 0;
 
 	for (u32 i = 0; i < elementIndices.size(); i++) {
-		minIndex = std::min(minIndex, elementIndices[i]);
-		maxIndex = std::max(maxIndex, elementIndices[i]);
+		minIndex = glm::min(minIndex, elementIndices[i]);
+		maxIndex = glm::max(maxIndex, elementIndices[i]);
 	}
 
 	if (step < 0) {
@@ -745,8 +744,8 @@ static void DrawMetaspritePreview(Metasprite& metasprite, ImVector<s32>& spriteS
 		dragDelta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
 
 		// Pixel snap
-		dragDelta.x = round(dragDelta.x / renderScale) * renderScale;
-		dragDelta.y = round(dragDelta.y / renderScale) * renderScale;
+		dragDelta.x = glm::roundEven(dragDelta.x / renderScale) * renderScale;
+		dragDelta.y = glm::roundEven(dragDelta.y / renderScale) * renderScale;
 	}
 	s32 trySelect = (gridFocused && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) ? -2 : -1; // -2 = deselect all (Clicked outside tiles)
 	ImGuiIO& io = ImGui::GetIO();
@@ -1097,14 +1096,14 @@ static void DrawScreenCollisionCells(ImVec2 pMin, ImVec2 pMax, ImVec2 viewportDr
 static void DrawActorColliders(const Viewport* pViewport, const ImVec2 topLeft, const r32 renderScale) {
 	const Pool<Actor>* actors = Game::GetActors();
 
-	const Vec2 viewportPixelPos = { pViewport->x * METATILE_DIM_PIXELS, pViewport->y * METATILE_DIM_PIXELS };
+	const glm::vec2 viewportPixelPos = { pViewport->x * METATILE_DIM_PIXELS, pViewport->y * METATILE_DIM_PIXELS };
 	for (u32 i = 0; i < actors->Count(); i++)
 	{
 		PoolHandle<Actor> handle = actors->GetHandle(i);
 		const Actor* pActor = actors->Get(handle);
 
-		const Vec2 actorPixelPos = pActor->position * METATILE_DIM_PIXELS;
-		const Vec2 pixelOffset = actorPixelPos - viewportPixelPos;
+		const glm::vec2 actorPixelPos = pActor->position * (r32)METATILE_DIM_PIXELS;
+		const glm::vec2 pixelOffset = actorPixelPos - viewportPixelPos;
 		const ImVec2 drawPos = ImVec2(topLeft.x + pixelOffset.x * renderScale, topLeft.y + pixelOffset.y * renderScale);
 
 		DrawHitbox(&pActor->pPrototype->hitbox, drawPos, renderScale);
@@ -1112,7 +1111,7 @@ static void DrawActorColliders(const Viewport* pViewport, const ImVec2 topLeft, 
 }
 
 static void DrawGameViewOverlay(const Level* pLevel, const Viewport* pViewport, const ImVec2 topLeft, const ImVec2 btmRight, const r32 renderScale, bool drawBorders, bool drawCollisionCells, bool drawHitboxes) {
-	const Vec2 viewportPixelPos = { pViewport->x * METATILE_DIM_PIXELS, pViewport->y * METATILE_DIM_PIXELS };
+	const glm::vec2 viewportPixelPos = { pViewport->x * METATILE_DIM_PIXELS, pViewport->y * METATILE_DIM_PIXELS };
 	const ImVec2 viewportDrawSize = ImVec2(VIEWPORT_WIDTH_PIXELS * renderScale, VIEWPORT_HEIGHT_PIXELS * renderScale);
 
 	const s32 screenStartX = pViewport->x / VIEWPORT_WIDTH_METATILES;
@@ -1125,7 +1124,7 @@ static void DrawGameViewOverlay(const Level* pLevel, const Viewport* pViewport, 
 
 	for (s32 y = screenStartY; y <= screenEndY; y++) {
 		for (s32 x = screenStartX; x <= screenEndX; x++) {
-			const Vec2 screenPixelPos = { x * VIEWPORT_WIDTH_PIXELS, y * VIEWPORT_HEIGHT_PIXELS };
+			const glm::vec2 screenPixelPos = { x * VIEWPORT_WIDTH_PIXELS, y * VIEWPORT_HEIGHT_PIXELS };
 			const ImVec2 pMin = ImVec2((screenPixelPos.x - viewportPixelPos.x) * renderScale + topLeft.x, (screenPixelPos.y - viewportPixelPos.y) * renderScale + topLeft.y);
 			const ImVec2 pMax = ImVec2(pMin.x + viewportDrawSize.x, pMin.y + viewportDrawSize.y);
 
@@ -1195,14 +1194,14 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 
 	if (editing) {
 		// Draw actors
-		const Vec2 viewportPixelPos = { pViewport->x * METATILE_DIM_PIXELS, pViewport->y * METATILE_DIM_PIXELS };
+		const glm::vec2 viewportPixelPos = { pViewport->x * METATILE_DIM_PIXELS, pViewport->y * METATILE_DIM_PIXELS };
 		for (u32 i = 0; i < pLevel->actors.Count(); i++)
 		{
 			PoolHandle<Actor> handle = pLevel->actors.GetHandle(i);
 			const Actor* pActor = pLevel->actors.Get(handle);
 
-			const Vec2 actorPixelPos = pActor->position * METATILE_DIM_PIXELS;
-			const Vec2 pixelOffset = actorPixelPos - viewportPixelPos;
+			const glm::vec2 actorPixelPos = pActor->position * (r32)METATILE_DIM_PIXELS;
+			const glm::vec2 pixelOffset = actorPixelPos - viewportPixelPos;
 			const ImVec2 drawPos = ImVec2(topLeft.x + pixelOffset.x * renderScale, topLeft.y + pixelOffset.y * renderScale);
 
 			const u8 opacity = editMode == EDIT_MODE_ACTORS ? 255 : 80;
@@ -1234,7 +1233,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 			dragDelta = ImVec2(0, 0);
 		}
 
-		const ImVec2 hoveredTileWorldPos = ImVec2(floorf(mousePosInWorldCoords.x), floorf(mousePosInWorldCoords.y));
+		const ImVec2 hoveredTileWorldPos = ImVec2(glm::floor(mousePosInWorldCoords.x), glm::floor(mousePosInWorldCoords.y));
 
 		switch (editMode) {
 		case EDIT_MODE_ACTORS:
@@ -1244,7 +1243,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 
 			// Selection
 			if (!scrolling) {
-				static Vec2 selectionStartPos{};
+				static glm::vec2 selectionStartPos{};
 
 				if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 					selectedActorHandle = PoolHandle<Actor>::Null();
@@ -1264,7 +1263,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 
 				if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Left) && pActor != nullptr) {
 					const ImVec2 dragDelta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
-					const Vec2 deltaInWorldCoords = { dragDelta.x / tileDrawSize, dragDelta.y / tileDrawSize };
+					const glm::vec2 deltaInWorldCoords = { dragDelta.x / tileDrawSize, dragDelta.y / tileDrawSize };
 
 					pActor->position = selectionStartPos + deltaInWorldCoords;
 				}
@@ -1301,8 +1300,8 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 				}
 
 				if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
-					selectionTopLeft = ImVec2(std::min(selectionStartPos.x, hoveredTileWorldPos.x), std::min(selectionStartPos.y, hoveredTileWorldPos.y));
-					selectionBtmRight = ImVec2(std::max(selectionStartPos.x, hoveredTileWorldPos.x) + 1, std::max(selectionStartPos.y, hoveredTileWorldPos.y) + 1);
+					selectionTopLeft = ImVec2(glm::min(selectionStartPos.x, hoveredTileWorldPos.x), glm::min(selectionStartPos.y, hoveredTileWorldPos.y));
+					selectionBtmRight = ImVec2(glm::max(selectionStartPos.x, hoveredTileWorldPos.x) + 1, glm::max(selectionStartPos.y, hoveredTileWorldPos.y) + 1);
 
 					const ImVec2 selectionTopLeftInPixelCoords = ImVec2((selectionTopLeft.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionTopLeft.y - pViewport->y) * tileDrawSize + topLeft.y);
 					const ImVec2 selectionBtmRightInPixelCoords = ImVec2((selectionBtmRight.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionBtmRight.y - pViewport->y) * tileDrawSize + topLeft.y);
@@ -1322,7 +1321,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 						for (u32 y = 0; y < selectionHeight; y++) {
 							u32 clipboardIndex = y * selectionWidth + x;
 
-							const IVec2 metatileWorldPos = { selectionTopLeft.x + x, selectionTopLeft.y + y };
+							const glm::ivec2 metatileWorldPos = { selectionTopLeft.x + x, selectionTopLeft.y + y };
 							const s32 tilesetIndex = Tiles::GetTilesetIndex(pTilemap, metatileWorldPos);
 							clipboard.clipboard[clipboardIndex] = tilesetIndex;
 						}
@@ -1341,7 +1340,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 			for (u32 x = 0; x < clipboardWidth; x++) {
 				for (u32 y = 0; y < clipboardHeight; y++) {
 					u32 clipboardIndex = y * clipboardWidth + x;
-					const IVec2 metatileWorldPos = { clipboardTopLeft.x + x, clipboardTopLeft.y + y };
+					const glm::ivec2 metatileWorldPos = { clipboardTopLeft.x + x, clipboardTopLeft.y + y };
 					const ImVec2 metatileInViewportCoords = ImVec2(metatileWorldPos.x - pViewport->x, metatileWorldPos.y - pViewport->y);
 					const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
 					const u8 metatileIndex = clipboard.clipboard[clipboardIndex];
@@ -1355,7 +1354,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 						Tiles::SetMapTile(pTilemap, metatileWorldPos, metatileIndex);
 
 						const u32 nametableIndex = Tiles::GetNametableIndex(metatileWorldPos);
-						const IVec2 nametablePos = Tiles::GetNametableOffset(metatileWorldPos);
+						const glm::ivec2 nametablePos = Tiles::GetNametableOffset(metatileWorldPos);
 						Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametablePos.x, nametablePos.y, metatile, palette);
 					}
 				}
@@ -1455,7 +1454,7 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 
 						s32 exitScreen = screen.exitTargetScreen;
 						if (ImGui::InputInt("Exit target screen", &exitScreen)) {
-							screen.exitTargetScreen = (u32)std::max(std::min((s32)levelMaxScreenCount - 1, exitScreen), 0);
+							screen.exitTargetScreen = (u32)glm::max(glm::Fmin((s32)levelMaxScreenCount - 1, exitScreen), 0);
 						}
 
 						ImGui::TreePop();
@@ -1558,7 +1557,7 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 
 							s32 exitScreen = screen.exitTargetScreen;
 							if (ImGui::InputInt("Exit target screen", &exitScreen)) {
-								screen.exitTargetScreen = (u32)std::max(std::min((s32)levelMaxScreenCount - 1, exitScreen), 0);
+								screen.exitTargetScreen = (u32)glm::clamp(exitScreen, 0, (s32)levelMaxScreenCount - 1);
 							}
 
 							ImGui::TreePop();
@@ -2034,27 +2033,27 @@ static void DrawActorWindow() {
 					ImGui::SeparatorText("Hitbox editor");
 
 					AABB& hitbox = pPrototype->hitbox;
-					Vec2 hitboxDim = (hitbox.max - hitbox.min);
-					const Vec2 hitboxCenter = hitbox.min + hitboxDim / 2;
-					Vec2 newCenter = hitboxCenter;
+					glm::vec2 hitboxDim = (hitbox.max - hitbox.min);
+					const glm::vec2 hitboxCenter = hitbox.min + hitboxDim / 2.0f;
+					glm::vec2 newCenter = hitboxCenter;
 					if (ImGui::InputFloat2("Offset", (r32*)&newCenter)) {
-						hitboxDim.x = std::max(0.0f, hitboxDim.x);
+						hitboxDim.x = glm::max(0.0f, hitboxDim.x);
 						hitbox.x1 = newCenter.x - hitboxDim.x / 2.0f;
 						hitbox.x2 = newCenter.x + hitboxDim.x / 2.0f;
 
-						hitboxDim.y = std::max(0.0f, hitboxDim.y);
+						hitboxDim.y = glm::max(0.0f, hitboxDim.y);
 						hitbox.y1 = newCenter.y - hitboxDim.y / 2.0f;
 						hitbox.y2 = newCenter.y + hitboxDim.y / 2.0f;
 					}
 
 					if (ImGui::InputFloat("Width", &hitboxDim.x, 0.125f, 0.0625f)) {
-						hitboxDim.x = std::max(0.0f, hitboxDim.x);
+						hitboxDim.x = glm::max(0.0f, hitboxDim.x);
 						hitbox.x1 = newCenter.x - hitboxDim.x / 2.0f;
 						hitbox.x2 = newCenter.x + hitboxDim.x / 2.0f;
 					}
 
 					if (ImGui::InputFloat("Height", &hitboxDim.y, 0.125f, 0.0625f)) {
-						hitboxDim.y = std::max(0.0f, hitboxDim.y);
+						hitboxDim.y = glm::max(0.0f, hitboxDim.y);
 						hitbox.y1 = newCenter.y - hitboxDim.y / 2.0f;
 						hitbox.y2 = newCenter.y + hitboxDim.y / 2.0f;
 					}

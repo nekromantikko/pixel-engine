@@ -1,6 +1,7 @@
 #pragma once
+#define GLM_FORCE_RADIANS
+#include <glm.hpp>
 #include "rendering.h"
-#include "vector.h"
 
 namespace Rendering
 {
@@ -17,7 +18,7 @@ namespace Rendering
 		void LoadPaletteColorsFromFile(const char* fname, u8* outColors);
 		void GeneratePaletteColors(u32* data);
 		void SavePaletteToFile(const char* fname);
-		void CopyMetasprite(const Sprite* src, Sprite* dst, u32 count, IVec2 pos, bool hFlip, bool vFlip, s32 paletteOverride = -1);
+		void CopyMetasprite(const Sprite* src, Sprite* dst, u32 count, glm::ivec2 pos, bool hFlip, bool vFlip, s32 paletteOverride = -1);
 		void ClearSprites(Sprite* spr, u32 count);
 		void CopyChrTiles(const ChrTile* src, ChrTile* dst, u32 count);
 	}

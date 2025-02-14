@@ -53,7 +53,7 @@ static r64 GetAverageFramerate(r64 dt) {
 static void UpdateWindowTitle(SDL_Window* pWindow, r64 averageFramerate, r64 dt) {
     char titleStr[WINDOW_TITLE_MAX_LENGTH];
 
-    snprintf(titleStr, WINDOW_TITLE_MAX_LENGTH, "%s %4d FPS (%.2f ms)", WINDOW_TITLE, (s32)round(averageFramerate), dt * 1000);
+    snprintf(titleStr, WINDOW_TITLE_MAX_LENGTH, "%s %4d FPS (%.2f ms)", WINDOW_TITLE, (s32)glm::roundEven(averageFramerate), dt * 1000);
     SDL_SetWindowTitle(pWindow, titleStr);
 }
 

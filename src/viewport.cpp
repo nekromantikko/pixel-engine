@@ -1,7 +1,6 @@
 #include "viewport.h"
 #include "level.h"
 #include "system.h"
-#include "math.h"
 #include "tiles.h"
 #include "rendering_util.h"
 
@@ -41,11 +40,11 @@ void MoveViewport(Viewport* pViewport, Nametable* pNametable, const Tilemap *pTi
     }
 
     // These are the metatiles the top left corner of the viewport is in, before and after
-    const s32 prevMetatileX = (s32)floorf(prevX);
-    const s32 prevMetatileY = (s32)floorf(prevY);
+    const s32 prevMetatileX = (s32)glm::floor(prevX);
+    const s32 prevMetatileY = (s32)glm::floor(prevY);
 
-    const s32 currMetatileX = (s32)floorf(pViewport->x);
-    const s32 currMetatileY = (s32)floorf(pViewport->y);
+    const s32 currMetatileX = (s32)glm::floor(pViewport->x);
+    const s32 currMetatileY = (s32)glm::floor(pViewport->y);
 
     // If no new metatiles need loading, early return
     if (currMetatileX == prevMetatileX && currMetatileY == prevMetatileY) {
@@ -77,7 +76,7 @@ void MoveViewport(Viewport* pViewport, Nametable* pNametable, const Tilemap *pTi
             }
 
             const s32 nametableIndex = Tiles::GetNametableIndex({ x, y });
-            const IVec2 nametableOffset = Tiles::GetNametableOffset({ x, y });
+            const glm::ivec2 nametableOffset = Tiles::GetNametableOffset({ x, y });
 
             const Metatile& metatile = tile->metatile;
             const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, tilesetIndex);
@@ -107,7 +106,7 @@ void RefreshViewport(Viewport* pViewport, Nametable* pNametable, const Tilemap* 
             }
 
             const s32 nametableIndex = Tiles::GetNametableIndex({ x, y });
-            const IVec2 nametableOffset = Tiles::GetNametableOffset({ x, y });
+            const glm::ivec2 nametableOffset = Tiles::GetNametableOffset({ x, y });
 
             const Metatile& metatile = tile->metatile;
             const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, tilesetIndex);

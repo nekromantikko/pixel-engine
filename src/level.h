@@ -1,6 +1,5 @@
 #pragma once
 #include "rendering.h"
-#include "vector.h"
 #include "tiles.h"
 #include "actors.h"
 #include "memory_pool.h"
