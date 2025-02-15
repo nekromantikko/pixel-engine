@@ -1,6 +1,7 @@
 #include "editor.h"
 #include <cassert>
 #include <limits>
+#include <type_traits>
 #include <SDL.h>
 #include <imgui.h>
 #include <imgui_impl_sdl2.h>
@@ -42,6 +43,9 @@ struct EditorContext {
 	ChrTextures chrTextures[CHR_COUNT];
 	ImTextureID paletteTexture;
 	ImTextureID gameViewTexture;
+
+	// Timing
+	r64 secondsElapsed;
 
 	// Editor state
 	bool demoWindowOpen = false;
@@ -230,17 +234,17 @@ static AABB GetActorBoundingBox(const Actor* pActor) {
 	constexpr r32 tileWorldDim = 1.0f / METATILE_DIM_TILES;
 	
 	// TODO: What if animation changes bounds?
-	const ActorAnimFrame& frame = pActor->pPrototype->frames[0];
-	switch (pActor->pPrototype->animMode) {
-	case ACTOR_ANIM_MODE_SPRITES: {
-		const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
-		Sprite& sprite = pMetasprite->spritesRelativePos[frame.spriteIndex];
+	const Animation& anim = pActor->pPrototype->animations[0];
+	switch (anim.type) {
+	case ANIMATION_TYPE_SPRITES: {
+		const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex);
+		Sprite& sprite = pMetasprite->spritesRelativePos[0];
 		result.min = { (r32)SignExtendSpritePos(sprite.x) / METATILE_DIM_PIXELS, (r32)SignExtendSpritePos(sprite.y) / METATILE_DIM_PIXELS };
 		result.max = { result.min.x + tileWorldDim, result.min.y + tileWorldDim };
 		break;
 	}
-	case ACTOR_ANIM_MODE_METASPRITES: {
-		const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
+	case ANIMATION_TYPE_METASPRITES: {
+		const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex);
 
 		result.x1 = std::numeric_limits<r32>::max();
 		result.x2 = std::numeric_limits<r32>::min();
@@ -265,18 +269,18 @@ static AABB GetActorBoundingBox(const Actor* pActor) {
 	return result;
 }
 
-static void DrawActor(const ActorPrototype* pPrototype, const ImVec2& origin, r32 renderScale, s32 frameIndex = 0, ImU32 color = IM_COL32(255, 255, 255, 255)) {
-	const ActorAnimFrame& frame = pPrototype->frames[frameIndex];
-	switch (pPrototype->animMode) {
-	case ACTOR_ANIM_MODE_SPRITES: {
-		const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
-		Sprite& sprite = pMetasprite->spritesRelativePos[frame.spriteIndex];
+static void DrawActor(const ActorPrototype* pPrototype, const ImVec2& origin, r32 renderScale, s32 animIndex = 0, s32 frameIndex = 0, ImU32 color = IM_COL32(255, 255, 255, 255)) {
+	const Animation& anim = pPrototype->animations[animIndex];
+	switch (anim.type) {
+	case ANIMATION_TYPE_SPRITES: {
+		const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex);
+		Sprite& sprite = pMetasprite->spritesRelativePos[frameIndex];
 		ImVec2 pos = ImVec2(origin.x + renderScale * SignExtendSpritePos(sprite.x), origin.y + renderScale * SignExtendSpritePos(sprite.y));
 		DrawSprite(sprite, pos, renderScale, color);
 		break;
 	}
-	case ACTOR_ANIM_MODE_METASPRITES: {
-		const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
+	case ANIMATION_TYPE_METASPRITES: {
+		const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex + frameIndex);
 		DrawMetasprite(pMetasprite, origin, renderScale, color);
 		break;
 	}
@@ -571,6 +575,30 @@ static void DrawGenericEditableList(T* elements, u32& count, u32 maxCount, ImVec
 		}
 
 		ImGui::PopID();
+	}
+}
+
+template <typename T>
+static void DrawTypeSelectionCombo(const char* label, const char* const* const typeNames, u32 typeCount, T& selection) {
+	static_assert(std::is_integral<T>::value);
+
+	const char* selectedLabel = typeCount > 0 ? typeNames[selection] : "NO ITEMS";
+
+	if (ImGui::BeginCombo(label, selectedLabel)) {
+		for (u32 i = 0; i < typeCount; i++) {
+			ImGui::PushID(i);
+
+			const bool selected = selection == i;
+			if (ImGui::Selectable(typeNames[i], selected)) {
+				selection = i;
+			}
+
+			if (selected) {
+				ImGui::SetItemDefaultFocus();
+			}
+			ImGui::PopID();
+		}
+		ImGui::EndCombo();
 	}
 }
 #pragma endregion
@@ -1205,7 +1233,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 			const ImVec2 drawPos = ImVec2(topLeft.x + pixelOffset.x * renderScale, topLeft.y + pixelOffset.y * renderScale);
 
 			const u8 opacity = editMode == EDIT_MODE_ACTORS ? 255 : 80;
-			DrawActor(pActor->pPrototype, drawPos, renderScale, 0, IM_COL32(255, 255, 255, opacity));
+			DrawActor(pActor->pPrototype, drawPos, renderScale, 0, 0, IM_COL32(255, 255, 255, opacity));
 		}
 
 		// View scrolling
@@ -1504,14 +1532,14 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 				ImGui::SeparatorText(pActor->name);
 				ImGui::InputText("Name", pActor->name, ACTOR_MAX_NAME_LENGTH);
 
-				if (ImGui::BeginCombo("Prototype", pActor->pPrototype->name)) {
+				if (ImGui::BeginCombo("Prototype", Actors::GetPrototypeName(pActor->pPrototype))) {
 					for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++) {
 						ImGui::PushID(i);
 
 						const ActorPrototype* pPrototype = Actors::GetPrototype(i);
 						const bool selected = pActor->pPrototype == pPrototype;
 
-						if (ImGui::Selectable(pPrototype->name, selected)) {
+						if (ImGui::Selectable(Actors::GetPrototypeName(pPrototype), selected)) {
 							pActor->pPrototype = pPrototype;
 						}
 
@@ -1730,7 +1758,7 @@ static void DrawGameWindow() {
 #pragma endregion
 
 #pragma region Actor prototypes
-static ImVec2 DrawActorPreview(const ActorPrototype* pPrototype, s32 frameIndex, r32 size) {
+static ImVec2 DrawActorPreview(const ActorPrototype* pPrototype, s32 animIndex, s32 frameIndex, r32 size) {
 	constexpr s32 gridSizeTiles = 8;
 
 	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
@@ -1742,7 +1770,7 @@ static ImVec2 DrawActorPreview(const ActorPrototype* pPrototype, s32 frameIndex,
 	drawList->AddLine(ImVec2(origin.x - 10, origin.y), ImVec2(origin.x + 10, origin.y), IM_COL32(200, 200, 200, 255));
 	drawList->AddLine(ImVec2(origin.x, origin.y - 10), ImVec2(origin.x, origin.y + 10), IM_COL32(200, 200, 200, 255));
 
-	DrawActor(pPrototype, origin, renderScale, frameIndex);
+	DrawActor(pPrototype, origin, renderScale, animIndex, frameIndex);
 
 	return gridPos;
 }
@@ -1756,7 +1784,7 @@ static void DrawActorPrototypeList(s32& selection) {
 	{
 		ImGui::PushID(i);
 
-		snprintf(label, maxLabelNameLength, "0x%02x: %s", i, pPrototypes[i].name);
+		snprintf(label, maxLabelNameLength, "0x%02x: %s", i, Actors::GetPrototypeName(i));
 
 		const bool selected = selection == i;
 		if (ImGui::Selectable(label, selected)) {
@@ -1801,6 +1829,8 @@ static void DrawActorPrototypeList(s32& selection) {
 static void DrawActorWindow() {
 	ImGui::Begin("Actor prototypes", &pContext->actorWindowOpen, ImGuiWindowFlags_MenuBar);
 
+	const r32 framesElapsed = pContext->secondsElapsed * 60.f;
+
 	static s32 selection;
 	static bool showHitboxPreview = false;
 
@@ -1819,16 +1849,16 @@ static void DrawActorWindow() {
 		ImGui::EndMenuBar();
 	}
 
-	static ImVector<s32> selectedFrames;
-	static s32 currentFrame = 0;
+	static ImVector<s32> selectedAnims;
+	static s32 currentAnim = 0;
 
 	ImGui::BeginChild("Prototype list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 	s32 newSelection = selection;
 	DrawActorPrototypeList(newSelection);
 	if (newSelection != selection) {
 		selection = newSelection;
-		selectedFrames.clear();
-		currentFrame = 0;
+		selectedAnims.clear();
+		currentAnim = 0;
 	}
 	ImGui::EndChild();
 
@@ -1836,16 +1866,22 @@ static void DrawActorWindow() {
 	ImGui::BeginChild("Prototype editor");
 	{
 		ActorPrototype* pPrototype = Actors::GetPrototype(selection);
-		ImGui::SeparatorText(pPrototype->name);
+		char* prototypeName = Actors::GetPrototypeName(selection);
 
-		ImGui::InputText("Name", pPrototype->name, ACTOR_PROTOTYPE_MAX_NAME_LENGTH);
+		ImGui::SeparatorText(prototypeName);
+
+		ImGui::InputText("Name", prototypeName, ACTOR_PROTOTYPE_MAX_NAME_LENGTH);
 
 		ImGui::Separator();
 
 		constexpr r32 previewSize = 256;
 		ImGui::BeginChild("Actor preview", ImVec2(previewSize, previewSize));
 
-		ImVec2 metaspriteGridPos = DrawActorPreview(pPrototype, currentFrame, previewSize);
+		const Animation& anim = pPrototype->animations[currentAnim];
+		const r32 animFramesElapsed = framesElapsed / anim.frameLength;
+		const s32 currentFrame = anim.frameCount == 0 ? 0 : (s32)glm::floor(animFramesElapsed) % anim.frameCount;
+
+		ImVec2 metaspriteGridPos = DrawActorPreview(pPrototype, currentAnim, currentFrame, previewSize);
 
 		if (showHitboxPreview) {
 			AABB& hitbox = pPrototype->hitbox;
@@ -1859,115 +1895,174 @@ static void DrawActorWindow() {
 		}
 		ImGui::EndChild();
 
+		ImGui::SameLine();
+		ImGuiStyle& style = ImGui::GetStyle();
+		const r32 timelineWidth = ImGui::GetContentRegionAvail().x;
+		ImGui::BeginChild("Timeline", ImVec2(timelineWidth - style.WindowPadding.x, previewSize));
+		{
+			ImGui::SeparatorText("Timeline");
+
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			static const ImVec2 timelineSize = ImVec2(timelineWidth, 32);
+			const ImVec2 topLeft = ImGui::GetCursorScreenPos();
+			const ImVec2 btmRight = ImVec2(topLeft.x + timelineSize.x, topLeft.y + timelineSize.y);
+			const r32 yHalf = (topLeft.y + btmRight.y) / 2.0f;
+
+			ImGui::InvisibleButton("##canvas", timelineSize);
+
+			const ImU32 color = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Border]);
+			drawList->AddLine(ImVec2(topLeft.x, btmRight.y), ImVec2(btmRight.x, btmRight.y), color);
+
+			const r32 frameWidth = timelineSize.x / anim.frameCount;
+			for (u32 i = 0; i < anim.frameCount; i++) {
+				const r32 x = i * frameWidth + topLeft.x;
+
+				drawList->AddLine(ImVec2(x, topLeft.y), ImVec2(x, btmRight.y), color, 2.0f);
+
+				for (u32 s = 0; s < anim.frameLength; s++) {
+					const r32 xSmallNormalized = (r32)s / anim.frameLength;
+					const r32 xSmall = xSmallNormalized * frameWidth + x;
+
+					drawList->AddLine(ImVec2(xSmall, yHalf), ImVec2(xSmall, btmRight.y), color, 1.0f);
+				}
+			}
+
+			const u32 totalTicks = anim.frameCount * anim.frameLength;
+			const r32 xCurrentPosNormalized = glm::mod(framesElapsed, (r32)totalTicks) / totalTicks;
+			const r32 xCurrentPos = xCurrentPosNormalized * timelineSize.x + topLeft.x;
+			drawList->AddCircleFilled(ImVec2(xCurrentPos, btmRight.y), 8.0f, IM_COL32(255, 255, 0, 255));
+
+			const r32 xLoopPointNormalized = r32(anim.loopPoint * anim.frameLength) / totalTicks;
+			const r32 xLoopPoint = xLoopPointNormalized * timelineSize.x + topLeft.x;
+			drawList->AddCircleFilled(ImVec2(xLoopPoint, btmRight.y), 8.0f, IM_COL32(128, 0, 255, 255));
+		}
+		ImGui::EndChild();
+
 		if (ImGui::BeginTabBar("Actor editor tabs")) {
-			if (ImGui::BeginTabItem("Common")) {
+			if (ImGui::BeginTabItem("Behaviour")) {
 
-				static char labelStr[64];
-				if (ImGui::BeginListBox("Behaviour")) {
-					for (u32 i = 0; i < ACTOR_BEHAVIOUR_COUNT; i++) {
-						const char* name = ACTOR_BEHAVIOUR_NAMES[i];
-						if (strlen(name) == 0) {
-							continue;
-						}
+				DrawTypeSelectionCombo("Type", ACTOR_TYPE_NAMES, ACTOR_TYPE_COUNT, pPrototype->type);
 
-						ImGui::PushID(i);
-
-						snprintf(labelStr, 64, "0x%02x: %s", i, name);
-						const bool selected = pPrototype->behaviour == i;
-						if (ImGui::Selectable(labelStr, selected)) {
-							pPrototype->behaviour = i;
-						}
-
-						if (selected) {
-							ImGui::SetItemDefaultFocus();
-						}
-						ImGui::PopID();
-					}
-					ImGui::EndListBox();
+				const char* const* subtypeNames = nullptr;
+				u32 subtypeCount = 0;
+				switch (pPrototype->type) {
+				case ACTOR_TYPE_PLAYER: {
+					subtypeNames = PLAYER_SUBTYPE_NAMES;
+					subtypeCount = PLAYER_SUBTYPE_COUNT;
+					break;
+				}
+				case ACTOR_TYPE_NPC: {
+					subtypeNames = NPC_SUBTYPE_NAMES;
+					subtypeCount = NPC_SUBTYPE_COUNT;
+					break;
+				}
+				case ACTOR_TYPE_BULLET: {
+					subtypeNames = BULLET_SUBTYPE_NAMES;
+					subtypeCount = BULLET_SUBTYPE_COUNT;
+					break;
+				}
+				case ACTOR_TYPE_PICKUP: {
+					//subtypeNames = PICKUP_SUBTYPE_NAMES;
+					subtypeCount = PICKUP_SUBTYPE_COUNT;
+					break;
+				}
+				case ACTOR_TYPE_EFFECT: {
+					subtypeNames = EFFECT_SUBTYPE_NAMES;
+					subtypeCount = EFFECT_SUBTYPE_COUNT;
+					break;
+				}
+				default:
+					break;
 				}
 
-				ActorPrototype* pCurrentEffect = Actors::GetPrototype(pPrototype->deathEffect);
-				if (ImGui::BeginCombo("Death effect", pCurrentEffect->name)) {
-					for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++) {
-						ImGui::PushID(i);
+				pPrototype->subtype = glm::clamp(pPrototype->subtype, u16(0), u16(subtypeCount - 1));
+				DrawTypeSelectionCombo("Subtype", subtypeNames, subtypeCount, pPrototype->subtype);
+				DrawTypeSelectionCombo("Alignment", ACTOR_ALIGNMENT_NAMES, ACTOR_ALIGNMENT_COUNT, pPrototype->alignment);
 
-						const ActorPrototype* pEffect = Actors::GetPrototype(i);
-						const bool selected = pEffect == pCurrentEffect;
+				ImGui::SeparatorText("Type data");
 
-						if (ImGui::Selectable(pEffect->name, selected)) {
-							pPrototype->deathEffect = i;
-						}
+				const char* prototypeNames[MAX_ACTOR_PROTOTYPE_COUNT]{};
+				Actors::GetPrototypeNames(prototypeNames);
 
-						if (selected) {
-							ImGui::SetItemDefaultFocus();
-						}
-						ImGui::PopID();
-					}
+				// TODO: Split into many functions?
+				switch (pPrototype->type) {
+				case ACTOR_TYPE_PLAYER: {
+					
+					break;
+				}
+				case ACTOR_TYPE_NPC: {
+					ImGui::InputScalar("Health", ImGuiDataType_U16, &pPrototype->npcData.health);
 
-					ImGui::EndCombo();
+					// TODO: Exp value
+					// TODO: loot type
+					DrawTypeSelectionCombo("Spawn on death", prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, pPrototype->npcData.spawnOnDeath);
+
+					break;
+				}
+				case ACTOR_TYPE_BULLET: {
+					ImGui::InputScalar("Lifetime", ImGuiDataType_U16, &pPrototype->bulletData.lifetime);
+					DrawTypeSelectionCombo("Spawn on death", prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, pPrototype->bulletData.spawnOnDeath);
+					break;
+				}
+				case ACTOR_TYPE_PICKUP: {
+					
+					break;
+				}
+				case ACTOR_TYPE_EFFECT: {
+					ImGui::InputScalar("Lifetime", ImGuiDataType_U16, &pPrototype->effectData.lifetime);
+					break;
+				}
+				default:
+					break;
 				}
 
 				ImGui::EndTabItem();
 			}
 
-			if (ImGui::BeginTabItem("Frames")) {
+			if (ImGui::BeginTabItem("Animations")) {
 
-				if (ImGui::BeginCombo("Animation mode", ACTOR_ANIM_MODE_NAMES[(int)pPrototype->animMode])) {
-					for (u32 i = 0; i < ACTOR_ANIM_MODE_COUNT; i++) {
-						ImGui::PushID(i);
-
-						const bool selected = pPrototype->animMode == i;
-						if (ImGui::Selectable(ACTOR_ANIM_MODE_NAMES[i], selected)) {
-							pPrototype->animMode = i;
-						}
-
-						if (selected) {
-							ImGui::SetItemDefaultFocus();
-						}
-						ImGui::PopID();
-					}
-					ImGui::EndCombo();
-				}
-
-				ImGui::BeginDisabled(pPrototype->frameCount == ACTOR_PROTOTYPE_MAX_FRAME_COUNT);
+				ImGui::BeginDisabled(pPrototype->animCount == ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT);
 				if (ImGui::Button("+")) {
-					PushElement<ActorAnimFrame>(pPrototype->frames, pPrototype->frameCount);
+					PushElement<Animation>(pPrototype->animations, pPrototype->animCount);
 				}
 				ImGui::EndDisabled();
 				ImGui::SameLine();
-				ImGui::BeginDisabled(pPrototype->frameCount == 1);
+				ImGui::BeginDisabled(pPrototype->animCount == 1);
 				if (ImGui::Button("-")) {
-					PopElement<ActorAnimFrame>(pPrototype->frames, pPrototype->frameCount);
+					PopElement<Animation>(pPrototype->animations, pPrototype->animCount);
 				}
 				ImGui::EndDisabled();
 
-				ImGui::BeginChild("Frame list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-				DrawGenericEditableList<ActorAnimFrame>(pPrototype->frames, pPrototype->frameCount, ACTOR_PROTOTYPE_MAX_FRAME_COUNT, selectedFrames, "Frame");
+				ImGui::BeginChild("Anim list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
+				DrawGenericEditableList<Animation>(pPrototype->animations, pPrototype->animCount, ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT, selectedAnims, "Animation");
 
 				ImGui::EndChild();
 
 				ImGui::SameLine();
 
-				ImGui::BeginChild("Frame editor");
+				ImGui::BeginChild("Animation editor");
 				{
-					ImGui::SeparatorText("Frame editor");
-					if (selectedFrames.empty()) {
-						ImGui::TextUnformatted("No frame selected");
+					ImGui::SeparatorText("Animation editor");
+					if (selectedAnims.empty()) {
+						ImGui::TextUnformatted("No animation selected");
 					}
-					else if (selectedFrames.size() > 1) {
-						ImGui::TextUnformatted("Multiple frames selected");
+					else if (selectedAnims.size() > 1) {
+						ImGui::TextUnformatted("Multiple animations selected");
 					}
 					else {
-						currentFrame = selectedFrames[0];
-						ActorAnimFrame& frame = pPrototype->frames[currentFrame];
-						ImGui::BeginDisabled(pPrototype->animMode != ACTOR_ANIM_MODE_SPRITES && pPrototype->animMode != ACTOR_ANIM_MODE_METASPRITES);
-						if (ImGui::BeginCombo("Metasprite", Metasprites::GetName(frame.metaspriteIndex))) {
+						currentAnim = selectedAnims[0];
+						Animation& anim = pPrototype->animations[currentAnim];
+
+						DrawTypeSelectionCombo("Animation type", ANIMATION_TYPE_NAMES, ANIMATION_TYPE_COUNT, anim.type);
+
+						// TODO: Use DrawTypeSelectionCombo
+						if (ImGui::BeginCombo("Metasprite", Metasprites::GetName(anim.metaspriteIndex))) {
 							for (u32 i = 0; i < MAX_METASPRITE_COUNT; i++) {
 								ImGui::PushID(i);
 
-								const bool selected = frame.metaspriteIndex == i;
+								const bool selected = anim.metaspriteIndex == i;
 								if (ImGui::Selectable(Metasprites::GetName(i), selected)) {
-									frame.metaspriteIndex = i;
+									anim.metaspriteIndex = i;
 								}
 
 								if (selected) {
@@ -1977,31 +2072,17 @@ static void DrawActorWindow() {
 							}
 							ImGui::EndCombo();
 						}
-						ImGui::EndDisabled();
 
-						static char labelStr[8];
-						snprintf(labelStr, 8, "0x%02x", frame.spriteIndex);
-						const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
-						ImGui::BeginDisabled(pPrototype->animMode != ACTOR_ANIM_MODE_SPRITES);
-						if (ImGui::BeginCombo("Sprite", labelStr)) {
-							for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
-								ImGui::PushID(i);
+						const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex);
+						static const s16 step = 1;
+						ImGui::InputScalar("Frame count", ImGuiDataType_U16, &anim.frameCount, &step);
+						const u16 maxFrameCount = anim.type == ANIMATION_TYPE_SPRITES ? pMetasprite->spriteCount : MAX_METASPRITE_COUNT - anim.metaspriteIndex;
+						anim.frameCount = glm::clamp(anim.frameCount, u16(0), maxFrameCount);
 
-								const bool selected = frame.spriteIndex == i;
-								snprintf(labelStr, 8, "0x%02x", i);
-								if (ImGui::Selectable(labelStr, selected)) {
-									frame.spriteIndex = i;
-								}
-								DrawSpriteListPreview(pMetasprite->spritesRelativePos[i]);
+						ImGui::InputScalar("Loop point", ImGuiDataType_S16, &anim.loopPoint, &step);
+						anim.loopPoint = glm::clamp(anim.loopPoint, s16(-1), s16(anim.frameCount - 1));
 
-								if (selected) {
-									ImGui::SetItemDefaultFocus();
-								}
-								ImGui::PopID();
-							}
-							ImGui::EndCombo();
-						}
-						ImGui::EndDisabled();
+						ImGui::InputScalar("Frame length", ImGuiDataType_U8, &anim.frameLength, &step);
 					}
 				}
 				ImGui::EndChild();
@@ -2009,23 +2090,6 @@ static void DrawActorWindow() {
 			}
 
 			if (ImGui::BeginTabItem("Collision")) {
-				if (ImGui::BeginCombo("Collision layer", ACTOR_COLLISION_LAYER_NAMES[(int)pPrototype->collisionLayer])) {
-					for (u32 i = 0; i < ACTOR_COLLISION_LAYER_COUNT; i++) {
-						ImGui::PushID(i);
-
-						const bool selected = pPrototype->collisionLayer == i;
-						if (ImGui::Selectable(ACTOR_COLLISION_LAYER_NAMES[i], selected)) {
-							pPrototype->collisionLayer = i;
-						}
-
-						if (selected) {
-							ImGui::SetItemDefaultFocus();
-						}
-						ImGui::PopID();
-					}
-					ImGui::EndCombo();
-				}
-
 				ImGui::Checkbox("Show hitbox preview", &showHitboxPreview);
 
 				ImGui::BeginChild("Collider editor");
@@ -2316,7 +2380,9 @@ void Editor::ProcessEvent(const SDL_Event* event) {
 	ImGui_ImplSDL2_ProcessEvent(event);
 }
 
-void Editor::Render() {
+void Editor::Render(r64 dt) {
+	pContext->secondsElapsed += dt;
+
 	Rendering::BeginImGuiFrame();
 	ImGui::NewFrame();
 

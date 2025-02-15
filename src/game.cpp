@@ -40,8 +40,12 @@ namespace Game {
     Level* pCurrentLevel = nullptr;
 
     Pool<Actor> actors;
-    PoolHandle<Actor> playerHandle;
     Pool<PoolHandle<Actor>> actorRemoveList;
+
+    // Global player stuff
+    PoolHandle<Actor> playerHandle;
+    u16 playerHealth = 10;
+    u8 playerWeapon = PLAYER_WEAPON_LAUNCHER;
 
     ChrSheet playerBank;
 
@@ -175,17 +179,45 @@ namespace Game {
 
 #pragma region Actor initialization
     static void InitializeActor(Actor* pActor) {
+        const ActorPrototype* pPrototype = pActor->pPrototype;
+
         pActor->flags.facingDir = ACTOR_FACING_RIGHT;
         pActor->flags.inAir = true;
         pActor->flags.active = true;
         pActor->flags.pendingRemoval = false;
 
         pActor->initialPosition = pActor->position;
+        pActor->velocity = glm::vec2{};
 
-        pActor->damageCounter = 0;
-        pActor->lifetimeCounter = pActor->lifetime;
         pActor->frameIndex = 0;
-        pActor->animCounter = pActor->animFrameLength;
+        pActor->animCounter = pPrototype->animations[0].frameLength;
+
+        switch (pPrototype->type) {
+        case ACTOR_TYPE_PLAYER: {
+            pActor->playerState.damageCounter = 0;
+            break;
+        }
+        case ACTOR_TYPE_NPC: {
+            pActor->npcState.health = pPrototype->npcData.health;
+            pActor->npcState.damageCounter = 0;
+            break;
+        }
+        case ACTOR_TYPE_BULLET: {
+            pActor->bulletState.lifetime = pPrototype->bulletData.lifetime;
+            pActor->bulletState.lifetimeCounter = pPrototype->bulletData.lifetime;
+            break;
+        }
+        case ACTOR_TYPE_PICKUP: {
+            break;
+        }
+        case ACTOR_TYPE_EFFECT: {
+            pActor->effectState.lifetime = pPrototype->effectData.lifetime;
+            pActor->effectState.lifetimeCounter = pPrototype->effectData.lifetime;
+            break;
+        }
+        default: 
+            break;
+        }
     }
 
     static Actor* SpawnActor(const Actor* pTemplate) {
@@ -195,14 +227,17 @@ namespace Game {
             return nullptr;
         }
 
-        if (pTemplate->pPrototype->behaviour == ACTOR_BEHAVIOUR_PLAYER_SIDESCROLLER) {
+        if (pTemplate->pPrototype->type == ACTOR_TYPE_PLAYER) {
             playerHandle = handle;
         }
 
-        return actors.Get(handle);
+        Actor* pActor = actors.Get(handle);
+        InitializeActor(pActor);
+
+        return pActor;
     }
 
-    static Actor* SpawnActor(u32 presetIndex) {
+    static Actor* SpawnActor(u32 presetIndex, const glm::vec2& position) {
         auto handle = actors.Add();
 
         if (handle == PoolHandle<Actor>::Null()) {
@@ -213,9 +248,12 @@ namespace Game {
 
         const ActorPrototype* pPrototype = Actors::GetPrototype(presetIndex);
         pActor->pPrototype = pPrototype;
-        if (pPrototype->behaviour == ACTOR_BEHAVIOUR_PLAYER_SIDESCROLLER) {
+        if (pPrototype->type == ACTOR_TYPE_PLAYER) {
             playerHandle = handle;
         }
+
+        pActor->position = position;
+        InitializeActor(pActor);
 
         return pActor;
     }
@@ -223,7 +261,7 @@ namespace Game {
 
 #pragma region Actor utils
     // Returns false if counter stops, true if keeps running
-    static bool UpdateCounter(s32& counter) {
+    static bool UpdateCounter(u16& counter) {
         if (counter == 0) {
             return false;
         }
@@ -234,24 +272,26 @@ namespace Game {
 #pragma endregion
 
 #pragma region Rendering
-    static void DrawActor(const Actor* pActor, Sprite** ppNextSprite, s32 frameIndex = -1, const glm::ivec2& pixelOffset = {0,0}, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1) {
+    static void DrawActor(const Actor* pActor, Sprite** ppNextSprite, const glm::ivec2& pixelOffset = {0,0}, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1) {
         // Culling
         if (!PositionInViewportBounds(pActor->position)) {
             return;
         }
 
         glm::ivec2 drawPos = WorldPosToScreenPixels(pActor->position) + pixelOffset;
-        const ActorAnimFrame& frame = pActor->pPrototype->frames[frameIndex == -1 ? pActor->frameIndex : frameIndex];
+        const Animation& currentAnim = pActor->pPrototype->animations[0];
 
-        switch (pActor->pPrototype->animMode) {
-        case ACTOR_ANIM_MODE_SPRITES: {
-            const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
-            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos + frame.spriteIndex, *ppNextSprite, 1, drawPos, hFlip, vFlip, paletteOverride);
+        switch (currentAnim.type) {
+        case ANIMATION_TYPE_SPRITES: {
+            const s32 metaspriteIndex = (s32)currentAnim.metaspriteIndex;
+            const Metasprite* pMetasprite = Metasprites::GetMetasprite(metaspriteIndex);
+            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos + pActor->frameIndex, *ppNextSprite, 1, drawPos, hFlip, vFlip, paletteOverride);
             (*ppNextSprite)++;
             break;
         }
-        case ACTOR_ANIM_MODE_METASPRITES: {
-            const Metasprite* pMetasprite = Metasprites::GetMetasprite(frame.metaspriteIndex);
+        case ANIMATION_TYPE_METASPRITES: {
+            const s32 metaspriteIndex = (s32)currentAnim.metaspriteIndex + pActor->frameIndex;
+            const Metasprite* pMetasprite = Metasprites::GetMetasprite(metaspriteIndex);
             Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, *ppNextSprite, pMetasprite->spriteCount, drawPos, hFlip, vFlip, paletteOverride);
             *ppNextSprite += pMetasprite->spriteCount;
             break;
@@ -261,26 +301,40 @@ namespace Game {
         }
     }
 
-    static s32 GetDamagePaletteOverride(Actor* pActor) {
-        return (pActor->damageCounter > 0) ? (gameplayFramesElapsed / 3) % 4 : -1;
+    static s32 GetDamagePaletteOverride(u8 damageCounter) {
+        return (damageCounter > 0) ? (gameplayFramesElapsed / 3) % 4 : -1;
     }
 
-    static s32 GetAnimFrameFromDirection(const glm::vec2& dir, u32 frameCount) {
+    static void GetAnimFrameFromDirection(Actor* pActor) {
+        const glm::vec2 dir = glm::normalize(pActor->velocity);
         const r32 angle = glm::atan(dir.y, dir.x);
-        return (s32)glm::roundEven(((angle + glm::pi<r32>()) / (glm::pi<r32>() * 2)) * frameCount) % frameCount;
+
+        const Animation& currentAnim = pActor->pPrototype->animations[0];
+        pActor->frameIndex = (s32)glm::roundEven(((angle + glm::pi<r32>()) / (glm::pi<r32>() * 2)) * currentAnim.frameCount) % currentAnim.frameCount;
     }
 
-    static void AdvanceAnimation(Actor* pActor, bool loop = true, s32 frameCountOverride = -1, s32 frameLengthOverride = -1) {
-        const u32 frameLength = frameLengthOverride == -1 ? pActor->animFrameLength : frameLengthOverride;
-        const u32 frameCount = frameCountOverride == -1 ? pActor->pPrototype->frameCount : frameCountOverride;
+    // General function that can be used to advance "fake" animations like pattern bank streaming
+    static void AdvanceAnimation(u16& animCounter, u16& frameIndex, u16 frameCount, u8 frameLength, s16 loopPoint) {
+        const bool loop = loopPoint != -1;
+        if (animCounter == 0) {
+            // End of anim reached
+            if (frameIndex == frameCount - 1) {
+                if (loop) {
+                    frameIndex = loopPoint;
+                }
+                else return;
+            }
+            else frameIndex++;
+            
+            animCounter = frameLength;
+            return;
+        }
+        animCounter--;
+    }
 
-        if (pActor->animCounter == 0) {
-            pActor->frameIndex = ++pActor->frameIndex % frameCount;
-            pActor->animCounter = frameLength;
-        }
-        else if (pActor->frameIndex < frameCount - 1 || loop) {
-            pActor->animCounter--;
-        }
+    static void AdvanceCurrentAnimation(Actor* pActor) {
+        const Animation& currentAnim = pActor->pPrototype->animations[0];
+        AdvanceAnimation(pActor->animCounter, pActor->frameIndex, currentAnim.frameCount, currentAnim.frameLength, currentAnim.loopPoint);
     }
 #pragma endregion
 
@@ -296,7 +350,7 @@ namespace Game {
     }
 
     // TODO: Actor collisions could use HitResult as well...
-    static void ForEachActorCollision(Actor* pActor, u32 layer, void (*callback)(Actor*, Actor*)) {
+    static void ForEachActorCollision(Actor* pActor, u16 type, u8 alignment, void (*callback)(Actor*, Actor*)) {
         for (u32 i = 0; i < actors.Count(); i++)
         {
             if (!pActor->flags.active || pActor->flags.pendingRemoval) {
@@ -306,7 +360,7 @@ namespace Game {
             PoolHandle<Actor> handle = actors.GetHandle(i);
             Actor* pOther = actors.Get(handle);
 
-            if (pOther == nullptr || pOther->pPrototype->collisionLayer != layer || pOther->flags.pendingRemoval || !pOther->flags.active) {
+            if (pOther == nullptr || pOther->pPrototype->type != type || pOther->pPrototype->alignment != alignment || pOther->flags.pendingRemoval || !pOther->flags.active) {
                 continue;
             }
 
@@ -364,58 +418,43 @@ namespace Game {
         return outHit.blockingHit;
     }
 
-    static void ApplyGravity(Actor* pActor, r32 gravity) {
+    static void ApplyGravity(Actor* pActor, r32 gravity = 0.01f) {
         pActor->velocity.y += gravity;
     }
 #pragma endregion
 
 #pragma region Damage
-    static void SpawnExplosion(const glm::vec2& position, u32 prototypeIndex) {
-        // TODO: Make the prototype a struct member
-        Actor* pHit = SpawnActor(prototypeIndex);
-        if (pHit == nullptr) {
-            return;
-        }
-
-        pHit->position = position;
-        // TODO: Determine lifetime based on prototype anim frame length
-        pHit->lifetime = 12;
-        pHit->animFrameLength = pHit->lifetime / pHit->pPrototype->frameCount;
-        pHit->velocity = glm::vec2{};
-        InitializeActor(pHit);
-    }
-
-    static void ActorDie(Actor* pActor, const glm::vec2& explosionPos) {
+    static void NPCDie(Actor* pActor) {
         pActor->flags.pendingRemoval = true;
-        SpawnExplosion(explosionPos, pActor->pPrototype->deathEffect);
+
+        SpawnActor(pActor->pPrototype->npcData.spawnOnDeath, pActor->position);
     }
 
-    static bool ActorTakeDamage(Actor* pActor, u32 damage) {
+    static bool ActorTakeDamage(Actor* pActor, u32 dmgValue, u16& health, u16& damageCounter) {
         constexpr s32 damageDelay = 30;
 
-        pActor->health -= damage;
-        pActor->damageCounter = damageDelay;
+        if (dmgValue > health) {
+            health = 0;
+        }
+        else health -= dmgValue;
+        damageCounter = damageDelay;
 
         // Spawn damage numbers
-        Actor* pDmg = SpawnActor(dmgNumberPrototypeIndex);
+        const AABB& hitbox = pActor->pPrototype->hitbox;
+        // Random point inside hitbox
+        const glm::vec2 randomPointInsideHitbox = {
+            ((r32)rand() / RAND_MAX) * (hitbox.x2 - hitbox.x1) + hitbox.x1,
+            ((r32)rand() / RAND_MAX) * (hitbox.y2 - hitbox.y1) + hitbox.y1
+        };
+        const glm::vec2 spawnPos = pActor->position + randomPointInsideHitbox;
+
+        Actor* pDmg = SpawnActor(dmgNumberPrototypeIndex, spawnPos);
         if (pDmg != nullptr) {
-            pDmg->drawNumber = damage;
-
-            const AABB& hitbox = pActor->pPrototype->hitbox;
-            // Random point inside hitbox
-            const glm::vec2 randomPointInsideHitbox = {
-                ((r32)rand() / RAND_MAX) * (hitbox.x2 - hitbox.x1) + hitbox.x1,
-                ((r32)rand() / RAND_MAX) * (hitbox.y2 - hitbox.y1) + hitbox.y1
-            };
-            pDmg->position = pActor->position + randomPointInsideHitbox;
-
-            pDmg->lifetime = 60;
+            pDmg->effectState.value = dmgValue;
             pDmg->velocity = { 0, -0.03125f };
-
-            InitializeActor(pDmg);
         }
 
-        if (pActor->health <= 0) {
+        if (health <= 0) {
             return false;
         }
 
@@ -426,12 +465,12 @@ namespace Game {
 #pragma region Player logic
     static void HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
         // If invulnerable
-        if (pPlayer->damageCounter != 0) {
+        if (pPlayer->playerState.damageCounter != 0) {
             return;
         }
 
         const u32 damage = (rand() % 2) + 1;
-        if (!ActorTakeDamage(pPlayer, damage)) {
+        if (!ActorTakeDamage(pPlayer, damage, playerHealth, pPlayer->playerState.damageCounter)) {
             // TODO: Player death
         }
 
@@ -463,25 +502,25 @@ namespace Game {
 
         // Aim mode
         if (ButtonDown(BUTTON_DPAD_UP)) {
-            playerState.aimMode = PLAYER_AIM_UP;
+            playerState.flags.aimMode = PLAYER_AIM_UP;
         }
         else if (ButtonDown(BUTTON_DPAD_DOWN)) {
-            playerState.aimMode = PLAYER_AIM_DOWN;
+            playerState.flags.aimMode = PLAYER_AIM_DOWN;
         }
-        else playerState.aimMode = PLAYER_AIM_FWD;
+        else playerState.flags.aimMode = PLAYER_AIM_FWD;
 
         if (ButtonPressed(BUTTON_START)) {
             pRenderSettings->useCRTFilter = !pRenderSettings->useCRTFilter;
         }
 
-        if (ButtonPressed(BUTTON_A) && (!pPlayer->flags.inAir || !playerState.doubleJumped)) {
+        if (ButtonPressed(BUTTON_A) && (!pPlayer->flags.inAir || !playerState.flags.doubleJumped)) {
             pPlayer->velocity.y = -0.25f;
             if (pPlayer->flags.inAir) {
-                playerState.doubleJumped = true;
+                playerState.flags.doubleJumped = true;
             }
 
             // Trigger new flap by taking wings out of falling position by advancing the frame index
-            pPlayer->frameIndex = ++pPlayer->frameIndex % PLAYER_WING_FRAME_COUNT;
+            playerState.wingFrame = ++playerState.wingFrame % PLAYER_WING_FRAME_COUNT;
 
             Audio::PlaySFX(&jumpSfx, CHAN_ID_PULSE0);
         }
@@ -491,7 +530,7 @@ namespace Game {
         }
 
         if (ButtonDown(BUTTON_A) && pPlayer->velocity.y > 0) {
-            playerState.slowFall = true;
+            playerState.flags.slowFall = true;
         }
 
         if (ButtonReleased(BUTTON_B)) {
@@ -499,10 +538,10 @@ namespace Game {
         }
 
         if (ButtonPressed(BUTTON_SELECT)) {
-            if (playerState.weapon == PLAYER_WEAPON_LAUNCHER) {
-                playerState.weapon = PLAYER_WEAPON_BOW;
+            if (playerWeapon == PLAYER_WEAPON_LAUNCHER) {
+                playerWeapon = PLAYER_WEAPON_BOW;
             }
-            else playerState.weapon = PLAYER_WEAPON_LAUNCHER;
+            else playerWeapon = PLAYER_WEAPON_LAUNCHER;
         }
     }
 
@@ -515,8 +554,8 @@ namespace Game {
         if (ButtonDown(BUTTON_B) && playerState.shootCounter == 0) {
             playerState.shootCounter = shootDelay;
 
-            const s32 prototypeIndex = playerState.weapon == PLAYER_WEAPON_LAUNCHER ? playerGrenadePrototypeIndex : playerArrowPrototypeIndex;
-            Actor* pBullet = SpawnActor(prototypeIndex);
+            const s32 prototypeIndex = playerWeapon == PLAYER_WEAPON_LAUNCHER ? playerGrenadePrototypeIndex : playerArrowPrototypeIndex;
+            Actor* pBullet = SpawnActor(prototypeIndex, pPlayer->position);
             if (pBullet == nullptr) {
                 return;
             }
@@ -525,30 +564,24 @@ namespace Game {
             const glm::vec2 upOffset = glm::vec2{ 0.1875f * pPlayer->flags.facingDir, -0.5f };
             const glm::vec2 downOffset = glm::vec2{ 0.25f * pPlayer->flags.facingDir, -0.125f };
 
-            pBullet->position = pPlayer->position;
-            pBullet->velocity = glm::vec2{};
-            pBullet->gravity = 0.04;
-            pBullet->lifetime = 60;
-
             constexpr r32 bulletVel = 0.625f;
             constexpr r32 bulletVelSqrt2 = 0.45f; // vel / sqrt(2)
 
-            if (playerState.aimMode == PLAYER_AIM_FWD) {
+            if (playerState.flags.aimMode == PLAYER_AIM_FWD) {
                 pBullet->position = pBullet->position + fwdOffset;
                 pBullet->velocity.x = bulletVel * pPlayer->flags.facingDir;
             }
             else {
                 pBullet->velocity.x = bulletVelSqrt2 * pPlayer->flags.facingDir;
-                pBullet->velocity.y = (playerState.aimMode == PLAYER_AIM_UP) ? -bulletVelSqrt2 : bulletVelSqrt2;
-                pBullet->position = pBullet->position + ((playerState.aimMode == PLAYER_AIM_UP) ? upOffset : downOffset);
+                pBullet->velocity.y = (playerState.flags.aimMode == PLAYER_AIM_UP) ? -bulletVelSqrt2 : bulletVelSqrt2;
+                pBullet->position = pBullet->position + ((playerState.flags.aimMode == PLAYER_AIM_UP) ? upOffset : downOffset);
             }
 
-            if (playerState.weapon == PLAYER_WEAPON_LAUNCHER) {
+            if (playerWeapon == PLAYER_WEAPON_LAUNCHER) {
                 pBullet->velocity = pBullet->velocity * 0.75f;
                 Audio::PlaySFX(&gunSfx, CHAN_ID_NOISE);
             }
 
-            InitializeActor(pBullet);
         }
     }
 
@@ -560,17 +593,17 @@ namespace Game {
         glm::ivec2 weaponOffset;
         u8 weaponFrameBankOffset;
         u32 weaponMetaspriteIndex;
-        switch (pPlayer->playerState.weapon) {
+        switch (playerWeapon) {
         case PLAYER_WEAPON_BOW: {
-            weaponOffset = playerBowOffsets[pPlayer->playerState.aimMode];
-            weaponFrameBankOffset = playerBowFrameBankOffsets[pPlayer->playerState.aimMode];
-            weaponMetaspriteIndex = pPlayer->playerState.aimMode == PLAYER_AIM_FWD ? playerBowFwdMetaspriteIndex : playerBowDiagMetaspriteIndex;
+            weaponOffset = playerBowOffsets[pPlayer->playerState.flags.aimMode];
+            weaponFrameBankOffset = playerBowFrameBankOffsets[pPlayer->playerState.flags.aimMode];
+            weaponMetaspriteIndex = pPlayer->playerState.flags.aimMode == PLAYER_AIM_FWD ? playerBowFwdMetaspriteIndex : playerBowDiagMetaspriteIndex;
             break;
         }
         case PLAYER_WEAPON_LAUNCHER: {
-            weaponOffset = playerLauncherOffsets[pPlayer->playerState.aimMode];
-            weaponFrameBankOffset = playerLauncherFrameBankOffsets[pPlayer->playerState.aimMode];
-            weaponMetaspriteIndex = pPlayer->playerState.aimMode == PLAYER_AIM_FWD ? playerLauncherFwdMetaspriteIndex : playerLauncherDiagMetaspriteIndex;
+            weaponOffset = playerLauncherOffsets[pPlayer->playerState.flags.aimMode];
+            weaponFrameBankOffset = playerLauncherFrameBankOffsets[pPlayer->playerState.flags.aimMode];
+            weaponMetaspriteIndex = pPlayer->playerState.flags.aimMode == PLAYER_AIM_FWD ? playerLauncherFwdMetaspriteIndex : playerLauncherDiagMetaspriteIndex;
             break;
         }
         default:
@@ -591,9 +624,9 @@ namespace Game {
         // Animate chr sheet using player bank
         const bool jumping = pPlayer->velocity.y < 0;
         const bool descending = !jumping && pPlayer->velocity.y > 0;
-        const bool falling = descending && !playerState.slowFall;
+        const bool falling = descending && !playerState.flags.slowFall;
         const bool moving = glm::abs(pPlayer->velocity.x) > 0;
-        const bool takingDamage = pPlayer->damageCounter > 0;
+        const bool takingDamage = playerState.damageCounter > 0;
 
         s32 headFrameIndex = PLAYER_HEAD_IDLE;
         if (takingDamage) {
@@ -606,7 +639,7 @@ namespace Game {
             headFrameIndex = PLAYER_HEAD_FWD;
         }
         Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerHeadFrameBankOffsets[playerState.aimMode * 4 + headFrameIndex],
+            playerBank.tiles + playerHeadFrameBankOffsets[playerState.flags.aimMode * 4 + headFrameIndex],
             pChr[1].tiles + playerHeadFrameChrOffset,
             playerHeadFrameTileCount
         );
@@ -628,17 +661,17 @@ namespace Game {
         );
 
         // When jumping or falling, wings get into proper position and stay there for the duration of the jump/fall
-        const bool wingsInPosition = (jumping && pPlayer->frameIndex == PLAYER_WINGS_ASCEND) || (falling && pPlayer->frameIndex == PLAYER_WINGS_DESCEND);
+        const bool wingsInPosition = (jumping && playerState.wingFrame == PLAYER_WINGS_ASCEND) || (falling && playerState.wingFrame == PLAYER_WINGS_DESCEND);
 
         // Wings flap faster to get into proper position
-        const r32 wingAnimFrameLength = (jumping || falling) ? pPlayer->animFrameLength : pPlayer->animFrameLength * 2;
+        const u16 wingAnimFrameLength = (jumping || falling) ? 6 : 12;
 
         if (!wingsInPosition) {
-            AdvanceAnimation(pPlayer, true, PLAYER_WING_FRAME_COUNT, wingAnimFrameLength);
+            AdvanceAnimation(playerState.wingCounter, playerState.wingFrame, PLAYER_WING_FRAME_COUNT, wingAnimFrameLength, 0);
         }
 
         Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerWingFrameBankOffsets[pPlayer->frameIndex],
+            playerBank.tiles + playerWingFrameBankOffsets[playerState.wingFrame],
             pChr[1].tiles + playerWingFrameChrOffset,
             playerWingFrameTileCount
         );
@@ -646,21 +679,22 @@ namespace Game {
         // Setup draw data
         s32 vOffset = 0;
         if (pPlayer->velocity.y == 0) {
-            vOffset = pPlayer->frameIndex > PLAYER_WINGS_FLAP_START ? -1 : 0;
+            vOffset = playerState.wingFrame > PLAYER_WINGS_FLAP_START ? -1 : 0;
         }
 
         DrawPlayerGun(pPlayer, vOffset, ppNextSprite);
-        const s32 paletteOverride = GetDamagePaletteOverride(pPlayer);
-        DrawActor(pPlayer, ppNextSprite, playerState.aimMode, { 0, vOffset }, pPlayer->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
+        const s32 paletteOverride = GetDamagePaletteOverride(playerState.damageCounter);
+        pPlayer->frameIndex = playerState.flags.aimMode;
+        DrawActor(pPlayer, ppNextSprite, { 0, vOffset }, pPlayer->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
     }
 
-    static void UpdatePlayer(Actor* pActor, Sprite** ppNextSprite) {
-        UpdateCounter(pActor->damageCounter);
+    static void UpdatePlayerSidescroller(Actor* pActor, Sprite** ppNextSprite) {
+        UpdateCounter(pActor->playerState.damageCounter);
         
         // Reset slow fall
-        pActor->playerState.slowFall = false;
+        pActor->playerState.flags.slowFall = false;
 
-        const bool playerStunned = pActor->damageCounter > 0;
+        const bool playerStunned = pActor->playerState.damageCounter > 0;
         if (!playerStunned) {
             PlayerInput(pActor);
             PlayerShoot(pActor);
@@ -671,7 +705,10 @@ namespace Game {
             pActor->velocity.x = 0.0f;
         }
 
-        const r32 gravity = pActor->playerState.slowFall ? pActor->gravity / 4 : pActor->gravity;
+        constexpr r32 playerGravity = 0.01f;
+        constexpr r32 playerSlowGravity = playerGravity / 4;
+
+        const r32 gravity = pActor->playerState.flags.slowFall ? playerSlowGravity : playerGravity;
         ApplyGravity(pActor, gravity);
 
         // Reset in air flag
@@ -682,49 +719,64 @@ namespace Game {
 
             if (hit.impactNormal.y < 0.0f) {
                 pActor->flags.inAir = false;
-                pActor->playerState.doubleJumped = false;
+                pActor->playerState.flags.doubleJumped = false;
             }
         }
-
-        // TODO: collision with other actors
 
         DrawPlayer(pActor, ppNextSprite);
     }
 #pragma endregion
 
 #pragma Bullets
+    static void BulletDie(Actor* pBullet, const glm::vec2& effectPos) {
+        pBullet->flags.pendingRemoval = true;
+        SpawnActor(pBullet->pPrototype->bulletData.spawnOnDeath, effectPos);
+    }
+
     static void HandleBulletEnemyCollision(Actor* pBullet, Actor* pEnemy) {
-        ActorDie(pBullet, pBullet->position);
+        BulletDie(pBullet, pBullet->position);
 
         const u32 damage = (rand() % 2) + 1;
-        if (!ActorTakeDamage(pEnemy, damage)) {
-            ActorDie(pEnemy, pEnemy->position);
+        if (!ActorTakeDamage(pEnemy, damage, pEnemy->npcState.health, pEnemy->npcState.damageCounter)) {
+            NPCDie(pEnemy);
         }
     }
 
-    static void UpdateBullet(Actor* pActor, Sprite** ppNextSprite) {
-        if (!UpdateCounter(pActor->lifetimeCounter)) {
-            ActorDie(pActor, pActor->position);
+    static void BulletCollision(Actor* pActor) {
+        if (pActor->pPrototype->alignment == ACTOR_ALIGNMENT_FRIENDLY) {
+            ForEachActorCollision(pActor, ACTOR_TYPE_NPC, ACTOR_ALIGNMENT_HOSTILE, HandleBulletEnemyCollision);
+        }
+        else if (pActor->pPrototype->alignment == ACTOR_ALIGNMENT_HOSTILE) {
+            Actor* pPlayer = nullptr;
+            if (ActorCollidesWithPlayer(pActor, &pPlayer)) {
+                HandlePlayerEnemyCollision(pPlayer, pActor);
+                BulletDie(pActor, pActor->position);
+            }
+            // TODO: Collision with friendly NPC:s? Does this happen in the game?
+        }
+    }
+
+    static void UpdateDefaultBullet(Actor* pActor, Sprite** ppNextSprite) {
+        if (!UpdateCounter(pActor->bulletState.lifetimeCounter)) {
+            BulletDie(pActor, pActor->position);
             return;
         }
 
         HitResult hit{};
         if (ActorMoveHorizontal(pActor, hit)) {
-            ActorDie(pActor, hit.impactPoint);
+            BulletDie(pActor, hit.impactPoint);
             return;
         }
 
         if (ActorMoveVertical(pActor, hit)) {
-            ActorDie(pActor, hit.impactPoint);
+            BulletDie(pActor, hit.impactPoint);
             return;
         }
 
-        ForEachActorCollision(pActor, ACTOR_COLLISION_LAYER_ENEMY, HandleBulletEnemyCollision);
+        BulletCollision(pActor);
 
-        const u32 frameCount = pActor->pPrototype->frameCount;
-        const s32 frameIndex = GetAnimFrameFromDirection(glm::normalize(pActor->velocity), frameCount);
-
-        DrawActor(pActor, ppNextSprite, frameIndex);
+        GetAnimFrameFromDirection(pActor);
+        DrawActor(pActor, ppNextSprite);
     }
 
     static void BulletRicochet(glm::vec2& velocity, const glm::vec2& normal) {
@@ -732,12 +784,14 @@ namespace Game {
         Audio::PlaySFX(&ricochetSfx, CHAN_ID_PULSE1);
     }
 
-    static void UpdateBouncyBullet(Actor* pActor, Sprite** ppNextSprite) {
-        if (!UpdateCounter(pActor->lifetimeCounter)) {
-            ActorDie(pActor, pActor->position);
+    static void UpdateGrenade(Actor* pActor, Sprite** ppNextSprite) {
+        if (!UpdateCounter(pActor->bulletState.lifetimeCounter)) {
+            BulletDie(pActor, pActor->position);
+            return;
         }
 
-        ApplyGravity(pActor, pActor->gravity);
+        constexpr r32 grenadeGravity = 0.04f;
+        ApplyGravity(pActor, grenadeGravity);
 
         HitResult hit{};
         if (ActorMoveHorizontal(pActor, hit)) {
@@ -748,47 +802,40 @@ namespace Game {
             BulletRicochet(pActor->velocity, hit.impactNormal);
         }
 
-        ForEachActorCollision(pActor, ACTOR_COLLISION_LAYER_ENEMY, HandleBulletEnemyCollision);
+        BulletCollision(pActor);
 
-        const u32 frameCount = pActor->pPrototype->frameCount;
-        const s32 frameIndex = GetAnimFrameFromDirection(glm::normalize(pActor->velocity), frameCount);
-
-        DrawActor(pActor, ppNextSprite, frameIndex);
+        GetAnimFrameFromDirection(pActor);
+        DrawActor(pActor, ppNextSprite);
     }
-#pragma endregion
 
-#pragma region Enemy bullets
-    static void UpdateEnemyFireball(Actor* pActor, Sprite** ppNextSprite) {
-        if (!UpdateCounter(pActor->lifetimeCounter)) {
-            ActorDie(pActor, pActor->position);
+    static void UpdateFireball(Actor* pActor, Sprite** ppNextSprite) {
+        if (!UpdateCounter(pActor->bulletState.lifetimeCounter)) {
+            BulletDie(pActor, pActor->position);
+            return;
         }
 
         HitResult hit{};
         if (ActorMoveHorizontal(pActor, hit)) {
-            ActorDie(pActor, hit.impactPoint);
+            BulletDie(pActor, hit.impactPoint);
             return;
         }
 
         if (ActorMoveVertical(pActor, hit)) {
-            ActorDie(pActor, hit.impactPoint);
+            BulletDie(pActor, hit.impactPoint);
             return;
         }
 
-        Actor* pPlayer = nullptr;
-        if (ActorCollidesWithPlayer(pActor, &pPlayer)) {
-            HandlePlayerEnemyCollision(pPlayer, pActor);
-            ActorDie(pActor, pActor->position);
-        }
+        BulletCollision(pActor);
 
-        AdvanceAnimation(pActor);
+        AdvanceCurrentAnimation(pActor);
 
-        DrawActor(pActor, ppNextSprite, pActor->frameIndex);
+        DrawActor(pActor, ppNextSprite);
     }
 #pragma endregion
 
-#pragma region Enemies
+#pragma region NPC
     static void UpdateSlimeEnemy(Actor* pActor, Sprite** ppNextSprite) {
-        UpdateCounter(pActor->damageCounter);
+        UpdateCounter(pActor->npcState.damageCounter);
 
         if (!pActor->flags.inAir) {
             const bool shouldJump = (rand() % 128) == 0;
@@ -808,7 +855,7 @@ namespace Game {
             pActor->flags.facingDir = (s8)hit.impactNormal.x;
         }
 
-        ApplyGravity(pActor, pActor->gravity);
+        ApplyGravity(pActor);
 
         // Reset in air flag
         pActor->flags.inAir = true;
@@ -826,12 +873,12 @@ namespace Game {
             HandlePlayerEnemyCollision(pPlayer, pActor);
         }
 
-        const s32 paletteOverride = GetDamagePaletteOverride(pActor);
-        DrawActor(pActor, ppNextSprite, 0, {0,0}, pActor->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
+        const s32 paletteOverride = GetDamagePaletteOverride(pActor->npcState.damageCounter);
+        DrawActor(pActor, ppNextSprite, {0,0}, pActor->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
     }
 
     static void UpdateSkullEnemy(Actor* pActor, Sprite** ppNextSprite) {
-        UpdateCounter(pActor->damageCounter);
+        UpdateCounter(pActor->npcState.damageCounter);
 
         ActorFacePlayer(pActor);
 
@@ -845,17 +892,13 @@ namespace Game {
 
             Actor* pPlayer = actors.Get(playerHandle);
             if (pPlayer != nullptr) {
-                Actor* pBullet = SpawnActor(enemyFireballPrototypeIndex);
+                Actor* pBullet = SpawnActor(enemyFireballPrototypeIndex, pActor->position);
                 if (pBullet == nullptr) {
                     return;
                 }
 
-                pBullet->position = pActor->position;
-                pBullet->lifetime = 600;
                 const glm::vec2 playerDir = glm::normalize(pPlayer->position - pActor->position);
                 pBullet->velocity = playerDir * 0.0625f;
-
-                InitializeActor(pBullet);
             }
         }
 
@@ -864,47 +907,43 @@ namespace Game {
             HandlePlayerEnemyCollision(pPlayer, pActor);
         }
 
-        const s32 paletteOverride = GetDamagePaletteOverride(pActor);
-        DrawActor(pActor, ppNextSprite, 0, { 0,0 }, pActor->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
+        const s32 paletteOverride = GetDamagePaletteOverride(pActor->npcState.damageCounter);
+        DrawActor(pActor, ppNextSprite, { 0,0 }, pActor->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
     }
 #pragma endregion
 
 #pragma region Effects
-    static void UpdateEffect(Actor* pActor) {
-        if (!UpdateCounter(pActor->lifetimeCounter)) {
+    static void UpdateDefaultEffect(Actor* pActor) {
+        if (!UpdateCounter(pActor->effectState.lifetimeCounter)) {
             pActor->flags.pendingRemoval = true;
         }
     }
 
     static void UpdateExplosion(Actor* pActor, Sprite** ppNextSprite) {
-        UpdateEffect(pActor);
+        UpdateDefaultEffect(pActor);
 
-        const u32 frameCount = pActor->pPrototype->frameCount;
-
-        AdvanceAnimation(pActor, false);
-
+        AdvanceCurrentAnimation(pActor);
         DrawActor(pActor, ppNextSprite);
     }
 
     static void UpdateNumbers(Actor* pActor, Sprite** ppNextSprite) {
-        UpdateEffect(pActor);
+        UpdateDefaultEffect(pActor);
 
         pActor->position.y += pActor->velocity.y;
 
         static char numberStr[16]{};
 
-        _itoa_s(pActor->drawNumber, numberStr, 10);
+        _itoa_s(pActor->effectState.value, numberStr, 10);
         const u32 strLength = strlen(numberStr);
 
         // Ascii character '0' = 0x30
         constexpr u8 chrOffset = 0x30;
 
-        const u32 frameCount = pActor->pPrototype->frameCount;
+        const Animation& currentAnim = pActor->pPrototype->animations[0];
         for (u32 c = 0; c < strLength; c++) {
             // TODO: What about metasprite frames? Handle this more rigorously!
-            const s32 frameIndex = (numberStr[c] - chrOffset) % frameCount;
-            const ActorAnimFrame& frame = pActor->pPrototype->frames[frameIndex];
-            const u8 tileId = Metasprites::GetMetasprite(frame.metaspriteIndex)->spritesRelativePos[frame.spriteIndex].tileId;
+            const s32 frameIndex = (numberStr[c] - chrOffset) % currentAnim.frameCount;
+            const u8 tileId = Metasprites::GetMetasprite(currentAnim.metaspriteIndex)->spritesRelativePos[frameIndex].tileId;
 
             const glm::ivec2 pixelPos = WorldPosToScreenPixels(pActor->position);
             const Sprite sprite = {
@@ -917,6 +956,73 @@ namespace Game {
         }
     }
 #pragma endregion
+    static void UpdatePlayer(Actor* pActor, Sprite** ppNextSprite) {
+        switch (pActor->pPrototype->subtype) {
+        case PLAYER_SUBTYPE_SIDESCROLLER: {
+            UpdatePlayerSidescroller(pActor, ppNextSprite);
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    static void UpdateNPC(Actor* pActor, Sprite** ppNextSprite) {
+        switch (pActor->pPrototype->subtype) {
+        // Enemies
+        case NPC_SUBTYPE_ENEMY_SLIME: {
+            UpdateSlimeEnemy(pActor, ppNextSprite);
+            break;
+        }
+        case NPC_SUBTYPE_ENEMY_SKULL: {
+            UpdateSkullEnemy(pActor, ppNextSprite);
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    static void UpdateBullet(Actor* pActor, Sprite** ppNextSprite) {
+        switch (pActor->pPrototype->subtype) {
+        case BULLET_SUBTYPE_DEFAULT: {
+            UpdateDefaultBullet(pActor, ppNextSprite);
+            break;
+        }
+        case BULLET_SUBTYPE_GRENADE: {
+            UpdateGrenade(pActor, ppNextSprite);
+            break;
+        }
+        case BULLET_SUBTYPE_FIREBALL: {
+            UpdateFireball(pActor, ppNextSprite);
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    static void UpdatePickup(Actor* pActor, Sprite** ppNextSprite) {
+        switch (pActor->pPrototype->subtype) {
+        default:
+            break;
+        }
+    }
+
+    static void UpdateEffect(Actor* pActor, Sprite** ppNextSprite) {
+        switch (pActor->pPrototype->subtype) {
+        case EFFECT_SUBTYPE_EXPLOSION: {
+            UpdateExplosion(pActor, ppNextSprite);
+            break;
+        }
+        case EFFECT_SUBTYPE_NUMBERS: {
+            UpdateNumbers(pActor, ppNextSprite);
+            break;
+        }
+        default:
+            break;
+        }
+    }
 
     static void UpdateActors(Sprite** ppNextSprite) {
         
@@ -940,47 +1046,30 @@ namespace Game {
                 continue;
             }
 
-            switch (pActor->pPrototype->behaviour) {
-            case ACTOR_BEHAVIOUR_PLAYER_SIDESCROLLER: {
+            switch (pActor->pPrototype->type) {
+            case ACTOR_TYPE_PLAYER: {
                 UpdatePlayer(pActor, ppNextSprite);
                 break;
             }
-            // Player projectiles
-            case ACTOR_BEHAVIOUR_BULLET: {
+            case ACTOR_TYPE_NPC: {
+                UpdateNPC(pActor, ppNextSprite);
+                break;
+            }
+            case ACTOR_TYPE_BULLET: {
                 UpdateBullet(pActor, ppNextSprite);
                 break;
             }
-            case ACTOR_BEHAVIOUR_BULLET_BOUNCY: {
-                UpdateBouncyBullet(pActor, ppNextSprite);
+            case ACTOR_TYPE_PICKUP: {
+                UpdatePickup(pActor, ppNextSprite);
                 break;
             }
-            // Enemy projectiles
-            case ACTOR_BEHAVIOUR_FIREBALL: {
-                UpdateEnemyFireball(pActor, ppNextSprite);
-                break;
-            }
-            // Enemies
-            case ACTOR_BEHAVIOUR_ENEMY_SLIME: {
-                UpdateSlimeEnemy(pActor, ppNextSprite);
-                break;
-            }
-            case ACTOR_BEHAVIOUR_ENEMY_SKULL: {
-                UpdateSkullEnemy(pActor, ppNextSprite);
-                break;
-            }
-            // Effects
-            case ACTOR_BEHAVIOUR_FX_EXPLOSION: {
-                UpdateExplosion(pActor, ppNextSprite);
-                break;
-            }
-            case ACTOR_BEHAVIOUR_FX_NUMBERS: {
-                UpdateNumbers(pActor, ppNextSprite);
+            case ACTOR_TYPE_EFFECT: {
+                UpdateEffect(pActor, ppNextSprite);
                 break;
             }
             default:
                 break;
             }
-
         }
 
         for (u32 i = 0; i < actorRemoveList.Count(); i++) {
@@ -1096,7 +1185,6 @@ namespace Game {
             const Actor* pActor = pCurrentLevel->actors.Get(handle);
 
             auto spawnedHandle = SpawnActor(pActor);
-            InitializeActor(spawnedHandle);
         }
 
         gameplayFramesElapsed = 0;

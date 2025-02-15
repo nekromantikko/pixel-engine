@@ -114,7 +114,7 @@ int WinMain(int argc, char** args) {
             UpdateWindowTitle(pWindow, averageFramerate, deltaTimeSeconds);
 
 #ifdef EDITOR
-            Editor::Render();
+            Editor::Render(deltaTimeSeconds);
 #endif
             Rendering::Render();
         }
