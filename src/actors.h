@@ -195,7 +195,7 @@ struct EffectData {
 struct EffectState {
 	u16 lifetime;
 	u16 lifetimeCounter;
-	u8 value;
+	s16 value;
 };
 
 #ifdef EDITOR
