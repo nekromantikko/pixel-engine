@@ -138,6 +138,9 @@ namespace Game {
     Sound jumpSfx;
     Sound gunSfx;
     Sound ricochetSfx;
+    Sound damageSfx;
+    Sound expSfx;
+    Sound enemyDieSfx;
 
     //Sound bgm;
     //bool musicPlaying = false;
@@ -578,6 +581,7 @@ namespace Game {
     static void NPCDie(Actor* pActor) {
         pActor->flags.pendingRemoval = true;
 
+        Audio::PlaySFX(&enemyDieSfx, CHAN_ID_NOISE);
         SpawnActor(pActor->pPrototype->npcData.spawnOnDeath, pActor->position);
 
         // Spawn exp halos
@@ -631,6 +635,7 @@ namespace Game {
         }
 
         const u32 damage = GetRandom(1, 2);
+        Audio::PlaySFX(&damageSfx, CHAN_ID_PULSE0);
         if (!ActorTakeDamage(pPlayer, damage, playerHealth, pPlayer->playerState.damageCounter)) {
             // TODO: Player death
         }
@@ -950,7 +955,7 @@ namespace Game {
 
     static void BulletRicochet(glm::vec2& velocity, const glm::vec2& normal) {
         velocity = glm::reflect(velocity, normal);
-        Audio::PlaySFX(&ricochetSfx, CHAN_ID_PULSE1);
+        //Audio::PlaySFX(&ricochetSfx, CHAN_ID_PULSE0);
     }
 
     static void UpdateGrenade(Actor* pActor) {
@@ -1112,6 +1117,7 @@ namespace Game {
         pActor->position += pActor->velocity;
 
         if (ActorCollidesWithPlayer(pActor, pPlayer)) {
+            Audio::PlaySFX(&expSfx, CHAN_ID_PULSE0);
             pActor->flags.pendingRemoval = true;
             return;
         }
@@ -1495,6 +1501,9 @@ namespace Game {
         jumpSfx = Audio::LoadSound("assets/jump.nsf");
         gunSfx = Audio::LoadSound("assets/gun1.nsf");
         ricochetSfx = Audio::LoadSound("assets/ricochet.nsf");
+        damageSfx = Audio::LoadSound("assets/damage.nsf");
+        expSfx = Audio::LoadSound("assets/exp.nsf");
+        enemyDieSfx = Audio::LoadSound("assets/enemydie.nsf");
         //bgm = Audio::LoadSound("assets/music.nsf");
 
         // TODO: Level should load palettes and tileset?
@@ -1507,6 +1516,9 @@ namespace Game {
         Audio::FreeSound(&jumpSfx);
         Audio::FreeSound(&gunSfx);
         Audio::FreeSound(&ricochetSfx);
+        Audio::FreeSound(&damageSfx);
+        Audio::FreeSound(&expSfx);
+        Audio::FreeSound(&enemyDieSfx);
         //Audio::FreeSound(&bgm);
     }
 
