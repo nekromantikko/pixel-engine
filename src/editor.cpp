@@ -1967,7 +1967,7 @@ static void DrawActorWindow() {
 					break;
 				}
 				case ACTOR_TYPE_PICKUP: {
-					//subtypeNames = PICKUP_SUBTYPE_NAMES;
+					subtypeNames = PICKUP_SUBTYPE_NAMES;
 					subtypeCount = PICKUP_SUBTYPE_COUNT;
 					break;
 				}
@@ -1997,8 +1997,7 @@ static void DrawActorWindow() {
 				}
 				case ACTOR_TYPE_NPC: {
 					ImGui::InputScalar("Health", ImGuiDataType_U16, &pPrototype->npcData.health);
-
-					// TODO: Exp value
+					ImGui::InputScalar("Exp value", ImGuiDataType_U16, &pPrototype->npcData.expValue);
 					// TODO: loot type
 					DrawTypeSelectionCombo("Spawn on death", prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, pPrototype->npcData.spawnOnDeath);
 
@@ -2010,7 +2009,7 @@ static void DrawActorWindow() {
 					break;
 				}
 				case ACTOR_TYPE_PICKUP: {
-					
+					ImGui::InputScalar("Value", ImGuiDataType_U16, &pPrototype->pickupData.value);
 					break;
 				}
 				case ACTOR_TYPE_EFFECT: {

@@ -164,20 +164,23 @@ constexpr const char* BULLET_SUBTYPE_NAMES[BULLET_SUBTYPE_COUNT] = { "Default", 
 
 #pragma region Pickups
 enum PickupSubtype : u16 {
+	PICKUP_SUBTYPE_HALO,
+
 	PICKUP_SUBTYPE_COUNT
 };
 
 struct PickupData {
-
+	s16 value;
 };
 
 struct PickupState {
-
+	s16 value;
+	u16 lingerCounter;
 };
 
-// #ifdef EDITOR
-// constexpr const char* PICKUP_SUBTYPE_NAMES[PICKUP_SUBTYPE_COUNT] = { };
-// #endif
+#ifdef EDITOR
+constexpr const char* PICKUP_SUBTYPE_NAMES[PICKUP_SUBTYPE_COUNT] = { "Halo (Exp) "};
+#endif
 #pragma endregion
 
 #pragma region Effects
