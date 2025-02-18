@@ -510,7 +510,7 @@ namespace Game {
 
         Actor* pDmg = SpawnActor(dmgNumberPrototypeIndex, spawnPos);
         if (pDmg != nullptr) {
-            pDmg->effectState.value = dmgValue;
+            pDmg->effectState.value = -dmgValue;
             pDmg->velocity = { 0, -0.03125f };
         }
 
@@ -994,18 +994,29 @@ namespace Game {
         DrawActor(pActor, SPRITE_LAYER_FX);
     }
 
+    // Calls itoa, but adds a plus sign if value is positive
+    static u32 ItoaSigned(s16 value, char* str) {
+        s32 i = 0;
+        if (value > 0) {
+            str[i++] = '+';
+        }
+
+        itoa(value, str + i, 10);
+
+        return strlen(str);
+    }
+
     static void UpdateNumbers(Actor* pActor) {
         UpdateDefaultEffect(pActor);
 
         pActor->position.y += pActor->velocity.y;
 
         static char numberStr[16]{};
+        const u32 strLength = ItoaSigned(pActor->effectState.value, numberStr);
 
-        _itoa_s(pActor->effectState.value, numberStr, 10);
-        const u32 strLength = strlen(numberStr);
-
-        // Ascii character '0' = 0x30
-        constexpr u8 chrOffset = 0x30;
+        // Ascii character '*' = 0x2A
+        // There are a couple extra characters (star, comma, period) that could be used for special symbols
+        constexpr u8 chrOffset = 0x2A;
 
         SpriteLayer& layer = spriteLayers[SPRITE_LAYER_FX];
 
