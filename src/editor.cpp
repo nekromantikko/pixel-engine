@@ -609,6 +609,7 @@ static void DrawDebugWindow() {
 
 	if (ImGui::BeginTabBar("Debug tabs")) {
 		if (ImGui::BeginTabItem("Sprites")) {
+			// TODO: Display layers on different tabs
 			ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_NoBordersInBody;
 			if (ImGui::BeginTable("sprites", 7, flags)) {
 				ImGui::TableSetupColumn("Sprite");

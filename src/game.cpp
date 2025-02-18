@@ -15,6 +15,51 @@
 #include "nes_timing.h"
 #include <gtc/constants.hpp>
 
+// TODO: Move somewhere else?
+enum SpriteLayerType : u8 {
+    SPRITE_LAYER_UI,
+    SPRITE_LAYER_FX,
+    SPRITE_LAYER_FG,
+    SPRITE_LAYER_BG,
+
+    SPRITE_LAYER_COUNT
+};
+
+struct SpriteLayer {
+    Sprite* pNextSprite = nullptr;
+    u32 spriteCount = 0;
+};
+
+constexpr u32 LAYER_SPRITE_COUNT = MAX_SPRITE_COUNT / SPRITE_LAYER_COUNT;
+
+static void ClearSpriteLayers(SpriteLayer* layers, bool fullClear = false) {
+    const Sprite* pSprites = Rendering::GetSpritesPtr(0);
+
+    for (u32 i = 0; i < SPRITE_LAYER_COUNT; i++) {
+        SpriteLayer& layer = layers[i];
+
+        u32 beginIndex = i << 10;
+        Sprite* pBeginSprite = Rendering::GetSpritesPtr(beginIndex);
+
+        const u32 spritesToClear = fullClear ? LAYER_SPRITE_COUNT : layer.spriteCount;
+        Rendering::Util::ClearSprites(pBeginSprite, spritesToClear);
+        layer.pNextSprite = pBeginSprite;
+        layer.spriteCount = 0;
+    }
+}
+
+static Sprite* GetNextFreeSprite(SpriteLayer* pLayer, u32 count = 1) {
+    if (pLayer->spriteCount + count > LAYER_SPRITE_COUNT) {
+        return nullptr;
+    }
+
+    Sprite* result = pLayer->pNextSprite;
+    pLayer->spriteCount += count;
+    pLayer->pNextSprite += count;
+
+    return result;
+}
+
 namespace Game {
     r64 secondsElapsed = 0.0f;
     u32 clockCounter = 0;
@@ -28,11 +73,13 @@ namespace Game {
 
     // Rendering data
     RenderSettings* pRenderSettings;
-    Sprite* pSprites;
     ChrSheet* pChr;
     Nametable* pNametables;
     Scanline* pScanlines;
     Palette* pPalettes;
+
+    // Sprites
+    SpriteLayer spriteLayers[SPRITE_LAYER_COUNT];
 
     // Viewport
     Viewport viewport;
@@ -272,33 +319,46 @@ namespace Game {
 #pragma endregion
 
 #pragma region Rendering
-    static void DrawActor(const Actor* pActor, Sprite** ppNextSprite, const glm::ivec2& pixelOffset = {0,0}, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1) {
+    static bool DrawActor(const Actor* pActor, u8 layerIndex = SPRITE_LAYER_FG, const glm::ivec2& pixelOffset = {0,0}, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1) {
         // Culling
         if (!PositionInViewportBounds(pActor->position)) {
-            return;
+            return false;
         }
+
+        SpriteLayer& layer = spriteLayers[layerIndex];
 
         glm::ivec2 drawPos = WorldPosToScreenPixels(pActor->position) + pixelOffset;
         const Animation& currentAnim = pActor->pPrototype->animations[0];
 
         switch (currentAnim.type) {
         case ANIMATION_TYPE_SPRITES: {
+            Sprite* outSprite = GetNextFreeSprite(&layer);
+            if (outSprite == nullptr) {
+                return false;
+            }
+
             const s32 metaspriteIndex = (s32)currentAnim.metaspriteIndex;
             const Metasprite* pMetasprite = Metasprites::GetMetasprite(metaspriteIndex);
-            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos + pActor->frameIndex, *ppNextSprite, 1, drawPos, hFlip, vFlip, paletteOverride);
-            (*ppNextSprite)++;
+            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos + pActor->frameIndex, outSprite, 1, drawPos, hFlip, vFlip, paletteOverride);
             break;
         }
         case ANIMATION_TYPE_METASPRITES: {
             const s32 metaspriteIndex = (s32)currentAnim.metaspriteIndex + pActor->frameIndex;
             const Metasprite* pMetasprite = Metasprites::GetMetasprite(metaspriteIndex);
-            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, *ppNextSprite, pMetasprite->spriteCount, drawPos, hFlip, vFlip, paletteOverride);
-            *ppNextSprite += pMetasprite->spriteCount;
+
+            Sprite* outSprites = GetNextFreeSprite(&layer, pMetasprite->spriteCount);
+            if (outSprites == nullptr) {
+                return false;
+            }
+
+            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, outSprites, pMetasprite->spriteCount, drawPos, hFlip, vFlip, paletteOverride);
             break;
         }
         default:
             break;
         }
+
+        return true;
     }
 
     static s32 GetDamagePaletteOverride(u8 damageCounter) {
@@ -585,7 +645,7 @@ namespace Game {
         }
     }
 
-    static void DrawPlayerGun(Actor* pPlayer, r32 vOffset, Sprite** ppNextSprite) {
+    static bool DrawPlayerGun(Actor* pPlayer, r32 vOffset) {
         glm::ivec2 drawPos = WorldPosToScreenPixels(pPlayer->position);
         drawPos.y += vOffset;
 
@@ -614,11 +674,19 @@ namespace Game {
         Rendering::Util::CopyChrTiles(playerBank.tiles + weaponFrameBankOffset, pChr[1].tiles + playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
 
         const Metasprite* bowMetasprite = Metasprites::GetMetasprite(weaponMetaspriteIndex);
-        Rendering::Util::CopyMetasprite(bowMetasprite->spritesRelativePos, *ppNextSprite, bowMetasprite->spriteCount, drawPos + weaponOffset, pPlayer->flags.facingDir == ACTOR_FACING_LEFT, false);
-        *ppNextSprite += bowMetasprite->spriteCount;
+
+        SpriteLayer& layer = spriteLayers[SPRITE_LAYER_FG];
+        Sprite* outSprites = GetNextFreeSprite(&layer, bowMetasprite->spriteCount);
+        if (outSprites == nullptr) {
+            return false;
+        }
+
+        Rendering::Util::CopyMetasprite(bowMetasprite->spritesRelativePos, outSprites, bowMetasprite->spriteCount, drawPos + weaponOffset, pPlayer->flags.facingDir == ACTOR_FACING_LEFT, false);
+
+        return true;
     }
 
-    static void DrawPlayer(Actor* pPlayer, Sprite** ppNextSprite) {
+    static void DrawPlayer(Actor* pPlayer) {
         PlayerState& playerState = pPlayer->playerState;
 
         // Animate chr sheet using player bank
@@ -682,13 +750,13 @@ namespace Game {
             vOffset = playerState.wingFrame > PLAYER_WINGS_FLAP_START ? -1 : 0;
         }
 
-        DrawPlayerGun(pPlayer, vOffset, ppNextSprite);
+        DrawPlayerGun(pPlayer, vOffset);
         const s32 paletteOverride = GetDamagePaletteOverride(playerState.damageCounter);
         pPlayer->frameIndex = playerState.flags.aimMode;
-        DrawActor(pPlayer, ppNextSprite, { 0, vOffset }, pPlayer->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
+        DrawActor(pPlayer, SPRITE_LAYER_FG, { 0, vOffset }, pPlayer->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
     }
 
-    static void UpdatePlayerSidescroller(Actor* pActor, Sprite** ppNextSprite) {
+    static void UpdatePlayerSidescroller(Actor* pActor) {
         UpdateCounter(pActor->playerState.damageCounter);
         
         // Reset slow fall
@@ -723,7 +791,7 @@ namespace Game {
             }
         }
 
-        DrawPlayer(pActor, ppNextSprite);
+        DrawPlayer(pActor);
     }
 #pragma endregion
 
@@ -756,7 +824,7 @@ namespace Game {
         }
     }
 
-    static void UpdateDefaultBullet(Actor* pActor, Sprite** ppNextSprite) {
+    static void UpdateDefaultBullet(Actor* pActor) {
         if (!UpdateCounter(pActor->bulletState.lifetimeCounter)) {
             BulletDie(pActor, pActor->position);
             return;
@@ -776,7 +844,7 @@ namespace Game {
         BulletCollision(pActor);
 
         GetAnimFrameFromDirection(pActor);
-        DrawActor(pActor, ppNextSprite);
+        DrawActor(pActor);
     }
 
     static void BulletRicochet(glm::vec2& velocity, const glm::vec2& normal) {
@@ -784,7 +852,7 @@ namespace Game {
         Audio::PlaySFX(&ricochetSfx, CHAN_ID_PULSE1);
     }
 
-    static void UpdateGrenade(Actor* pActor, Sprite** ppNextSprite) {
+    static void UpdateGrenade(Actor* pActor) {
         if (!UpdateCounter(pActor->bulletState.lifetimeCounter)) {
             BulletDie(pActor, pActor->position);
             return;
@@ -805,10 +873,10 @@ namespace Game {
         BulletCollision(pActor);
 
         GetAnimFrameFromDirection(pActor);
-        DrawActor(pActor, ppNextSprite);
+        DrawActor(pActor);
     }
 
-    static void UpdateFireball(Actor* pActor, Sprite** ppNextSprite) {
+    static void UpdateFireball(Actor* pActor) {
         if (!UpdateCounter(pActor->bulletState.lifetimeCounter)) {
             BulletDie(pActor, pActor->position);
             return;
@@ -829,12 +897,12 @@ namespace Game {
 
         AdvanceCurrentAnimation(pActor);
 
-        DrawActor(pActor, ppNextSprite);
+        DrawActor(pActor);
     }
 #pragma endregion
 
 #pragma region NPC
-    static void UpdateSlimeEnemy(Actor* pActor, Sprite** ppNextSprite) {
+    static void UpdateSlimeEnemy(Actor* pActor) {
         UpdateCounter(pActor->npcState.damageCounter);
 
         if (!pActor->flags.inAir) {
@@ -874,10 +942,10 @@ namespace Game {
         }
 
         const s32 paletteOverride = GetDamagePaletteOverride(pActor->npcState.damageCounter);
-        DrawActor(pActor, ppNextSprite, {0,0}, pActor->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
+        DrawActor(pActor, SPRITE_LAYER_FG, {0,0}, pActor->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
     }
 
-    static void UpdateSkullEnemy(Actor* pActor, Sprite** ppNextSprite) {
+    static void UpdateSkullEnemy(Actor* pActor) {
         UpdateCounter(pActor->npcState.damageCounter);
 
         ActorFacePlayer(pActor);
@@ -908,7 +976,7 @@ namespace Game {
         }
 
         const s32 paletteOverride = GetDamagePaletteOverride(pActor->npcState.damageCounter);
-        DrawActor(pActor, ppNextSprite, { 0,0 }, pActor->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
+        DrawActor(pActor, SPRITE_LAYER_FG, { 0,0 }, pActor->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
     }
 #pragma endregion
 
@@ -919,14 +987,14 @@ namespace Game {
         }
     }
 
-    static void UpdateExplosion(Actor* pActor, Sprite** ppNextSprite) {
+    static void UpdateExplosion(Actor* pActor) {
         UpdateDefaultEffect(pActor);
 
         AdvanceCurrentAnimation(pActor);
-        DrawActor(pActor, ppNextSprite);
+        DrawActor(pActor, SPRITE_LAYER_FX);
     }
 
-    static void UpdateNumbers(Actor* pActor, Sprite** ppNextSprite) {
+    static void UpdateNumbers(Actor* pActor) {
         UpdateDefaultEffect(pActor);
 
         pActor->position.y += pActor->velocity.y;
@@ -939,27 +1007,33 @@ namespace Game {
         // Ascii character '0' = 0x30
         constexpr u8 chrOffset = 0x30;
 
+        SpriteLayer& layer = spriteLayers[SPRITE_LAYER_FX];
+
         const Animation& currentAnim = pActor->pPrototype->animations[0];
         for (u32 c = 0; c < strLength; c++) {
             // TODO: What about metasprite frames? Handle this more rigorously!
+            Sprite* outSprite = GetNextFreeSprite(&layer);
+            if (outSprite == nullptr) {
+                break;
+            }
+
             const s32 frameIndex = (numberStr[c] - chrOffset) % currentAnim.frameCount;
             const u8 tileId = Metasprites::GetMetasprite(currentAnim.metaspriteIndex)->spritesRelativePos[frameIndex].tileId;
 
             const glm::ivec2 pixelPos = WorldPosToScreenPixels(pActor->position);
-            const Sprite sprite = {
-                pixelPos.y,
-                pixelPos.x + c * 5,
+            *outSprite = {
+                u16(pixelPos.y),
+                u16(pixelPos.x + c * 5),
                 tileId,
                 1
             };
-            *((*ppNextSprite)++) = sprite;
         }
     }
 #pragma endregion
-    static void UpdatePlayer(Actor* pActor, Sprite** ppNextSprite) {
+    static void UpdatePlayer(Actor* pActor) {
         switch (pActor->pPrototype->subtype) {
         case PLAYER_SUBTYPE_SIDESCROLLER: {
-            UpdatePlayerSidescroller(pActor, ppNextSprite);
+            UpdatePlayerSidescroller(pActor);
             break;
         }
         default:
@@ -967,15 +1041,15 @@ namespace Game {
         }
     }
 
-    static void UpdateNPC(Actor* pActor, Sprite** ppNextSprite) {
+    static void UpdateNPC(Actor* pActor) {
         switch (pActor->pPrototype->subtype) {
         // Enemies
         case NPC_SUBTYPE_ENEMY_SLIME: {
-            UpdateSlimeEnemy(pActor, ppNextSprite);
+            UpdateSlimeEnemy(pActor);
             break;
         }
         case NPC_SUBTYPE_ENEMY_SKULL: {
-            UpdateSkullEnemy(pActor, ppNextSprite);
+            UpdateSkullEnemy(pActor);
             break;
         }
         default:
@@ -983,18 +1057,18 @@ namespace Game {
         }
     }
 
-    static void UpdateBullet(Actor* pActor, Sprite** ppNextSprite) {
+    static void UpdateBullet(Actor* pActor) {
         switch (pActor->pPrototype->subtype) {
         case BULLET_SUBTYPE_DEFAULT: {
-            UpdateDefaultBullet(pActor, ppNextSprite);
+            UpdateDefaultBullet(pActor);
             break;
         }
         case BULLET_SUBTYPE_GRENADE: {
-            UpdateGrenade(pActor, ppNextSprite);
+            UpdateGrenade(pActor);
             break;
         }
         case BULLET_SUBTYPE_FIREBALL: {
-            UpdateFireball(pActor, ppNextSprite);
+            UpdateFireball(pActor);
             break;
         }
         default:
@@ -1002,21 +1076,21 @@ namespace Game {
         }
     }
 
-    static void UpdatePickup(Actor* pActor, Sprite** ppNextSprite) {
+    static void UpdatePickup(Actor* pActor) {
         switch (pActor->pPrototype->subtype) {
         default:
             break;
         }
     }
 
-    static void UpdateEffect(Actor* pActor, Sprite** ppNextSprite) {
+    static void UpdateEffect(Actor* pActor) {
         switch (pActor->pPrototype->subtype) {
         case EFFECT_SUBTYPE_EXPLOSION: {
-            UpdateExplosion(pActor, ppNextSprite);
+            UpdateExplosion(pActor);
             break;
         }
         case EFFECT_SUBTYPE_NUMBERS: {
-            UpdateNumbers(pActor, ppNextSprite);
+            UpdateNumbers(pActor);
             break;
         }
         default:
@@ -1024,7 +1098,7 @@ namespace Game {
         }
     }
 
-    static void UpdateActors(Sprite** ppNextSprite) {
+    static void UpdateActors() {
         
         actorRemoveList.Clear();
 
@@ -1048,23 +1122,23 @@ namespace Game {
 
             switch (pActor->pPrototype->type) {
             case ACTOR_TYPE_PLAYER: {
-                UpdatePlayer(pActor, ppNextSprite);
+                UpdatePlayer(pActor);
                 break;
             }
             case ACTOR_TYPE_NPC: {
-                UpdateNPC(pActor, ppNextSprite);
+                UpdateNPC(pActor);
                 break;
             }
             case ACTOR_TYPE_BULLET: {
-                UpdateBullet(pActor, ppNextSprite);
+                UpdateBullet(pActor);
                 break;
             }
             case ACTOR_TYPE_PICKUP: {
-                UpdatePickup(pActor, ppNextSprite);
+                UpdatePickup(pActor);
                 break;
             }
             case ACTOR_TYPE_EFFECT: {
-                UpdateEffect(pActor, ppNextSprite);
+                UpdateEffect(pActor);
                 break;
             }
             default:
@@ -1082,16 +1156,12 @@ namespace Game {
         previousInput = currentInput;
         currentInput = Input::GetControllerState();
 
-        static Sprite* pNextSprite = pSprites;
-
-        const u32 spritesToClear = pNextSprite - pSprites;
-        Rendering::Util::ClearSprites(pSprites, spritesToClear);
-        pNextSprite = pSprites;
+        ClearSpriteLayers(spriteLayers);
 
         if (!paused) {
             gameplayFramesElapsed++;
 
-            UpdateActors(&pNextSprite);
+            UpdateActors();
 
             UpdateViewport();
         }
@@ -1199,9 +1269,10 @@ namespace Game {
         pRenderSettings = Rendering::GetSettingsPtr();
         pChr = Rendering::GetChrPtr(0);
         pPalettes = Rendering::GetPalettePtr(0);
-        pSprites = Rendering::GetSpritesPtr(0);
         pNametables = Rendering::GetNametablePtr(0);
         pScanlines = Rendering::GetScanlinePtr(0);
+
+        ClearSpriteLayers(spriteLayers, true);
 
         // Init chr memory
         // TODO: Pre-process these instead of loading from bitmap at runtime!
@@ -1219,8 +1290,6 @@ namespace Game {
         for (u32 i = 0; i < PALETTE_MEMORY_SIZE; i++) {
             memcpy(pPalettes, basePaletteColors, PALETTE_MEMORY_SIZE);
         }
-
-        Rendering::Util::ClearSprites(pSprites, MAX_SPRITE_COUNT);
 
         Tiles::LoadTileset("assets/forest.til");
         Metasprites::Load("assets/meta.spr");
