@@ -651,8 +651,10 @@ static void DrawDebugWindow() {
 			const ImVec2 nametableSizePx = ImVec2(NAMETABLE_WIDTH_PIXELS, NAMETABLE_HEIGHT_PIXELS);
 
 			for (u32 i = 0; i < NAMETABLE_COUNT; i++) {
+				ImGui::PushID(i);
 				Nametable* const nametables = Rendering::GetNametablePtr(0);
 				DrawNametable(nametableSizePx, nametables[i]);
+				ImGui::PopID();
 				ImGui::SameLine();
 			}
 			ImGui::EndTabItem();
@@ -677,7 +679,9 @@ static void DrawDebugWindow() {
 			const r32 chrWidth = CHR_DIM_PIXELS * renderScale;
 
 			for (u32 i = 0; i < CHR_COUNT; i++) {
+				ImGui::PushID(i);
 				DrawCHRSheet(chrWidth, i, selectedPalettes[i], nullptr);
+				ImGui::PopID();
 				ImGui::SameLine();
 			}
 			
