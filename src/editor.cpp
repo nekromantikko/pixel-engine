@@ -1070,7 +1070,9 @@ static void DrawTilesetWindow() {
 		s32 tileId = metatile.tiles[selectedTileIndex];
 
 		r32 chrSheetSize = 256;
+		ImGui::PushID(0);
 		DrawCHRSheet(chrSheetSize, 0, palette, &tileId);
+		ImGui::PopID();
 		if (tileId != metatile.tiles[selectedTileIndex]) {
 			metatile.tiles[selectedTileIndex] = tileId;
 		}
@@ -1079,7 +1081,9 @@ static void DrawTilesetWindow() {
 
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		const ImVec2 gridSize = ImVec2(tilePreviewSize, tilePreviewSize);
+		ImGui::PushID(1);
 		const ImVec2 tilePos = DrawTileGrid(gridSize, gridStepPixels, &selectedTileIndex);
+		ImGui::PopID();
 		DrawMetatile(metatile, tilePos, tilePreviewSize, palette);
 		DrawTileGridSelection(tilePos, gridSize, gridStepPixels, selectedTileIndex);
 
