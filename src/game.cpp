@@ -14,6 +14,39 @@
 #include "audio.h"
 #include "nes_timing.h"
 #include <gtc/constants.hpp>
+#include <random>
+
+// TODO: Move somewhere else?
+constexpr u32 MAX_COROUTINE_COUNT = 256;
+constexpr u32 MAX_COROUTINE_STATE_SIZE = 32;
+
+typedef bool (*CoroutineFunc)(void*);
+
+struct Coroutine {
+    CoroutineFunc func;
+    alignas(void*) u8 state[MAX_COROUTINE_STATE_SIZE];
+};
+
+// TODO: Move somewhere else?
+template <typename T>
+static T GetRandom(T min, T max) {
+    static std::random_device rd;
+    static std::mt19937 gen(rd()); // Mersenne Twister RNG
+
+    if constexpr (std::is_integral_v<T>) {
+        std::uniform_int_distribution<T> dist(min, max);
+        return dist(gen);
+    }
+    else if constexpr (std::is_floating_point_v<T>) {
+        std::uniform_real_distribution<T> dist(min, max);
+        return dist(gen);
+    }
+}
+
+static glm::vec2 GetRandomDirection() {
+    float angle = GetRandom(0.0f, glm::two_pi<float>());
+    return glm::vec2(cos(angle), sin(angle)); // Unit vector in random direction
+}
 
 // TODO: Move somewhere else?
 enum SpriteLayerType : u8 {
@@ -67,6 +100,10 @@ namespace Game {
     // 16ms Frames elapsed while not paused
     u32 gameplayFramesElapsed = 0;
 
+    // Coroutines
+    Pool<Coroutine> coroutines;
+    Pool<PoolHandle<Coroutine>> coroutineRemoveList;
+
     // Input
     u8 currentInput = BUTTON_NONE;
     u8 previousInput = BUTTON_NONE;
@@ -112,6 +149,8 @@ namespace Game {
     constexpr s32 playerArrowPrototypeIndex = 4;
     constexpr s32 dmgNumberPrototypeIndex = 5;
     constexpr s32 enemyFireballPrototypeIndex = 8;
+    constexpr s32 haloSmallPrototypeIndex = 0x0a;
+    constexpr s32 haloLargePrototypeIndex = 0x0b;
 
     constexpr u8 playerWingFrameBankOffsets[4] = { 0x00, 0x08, 0x10, 0x18 };
     constexpr u8 playerHeadFrameBankOffsets[12] = { 0x20, 0x24, 0x28, 0x2C, 0x30, 0x34, 0x38, 0x3C, 0x40, 0x44, 0x48, 0x4C };
@@ -142,6 +181,28 @@ namespace Game {
     constexpr u32 playerLauncherGrenadeMetaspriteIndex = 12;
 
     constexpr glm::vec2 viewportScrollThreshold = { 4.0f, 3.0f };
+
+#pragma region Coroutines
+    static bool StepCoroutine(Coroutine* pCoroutine) {
+        return pCoroutine->func(pCoroutine->state);
+    }
+
+    template <typename S>
+    static bool StartCoroutine(CoroutineFunc func, const S& state) {
+        static_assert(sizeof(S) <= MAX_COROUTINE_STATE_SIZE);
+
+        auto handle = coroutines.Add();
+        Coroutine* pCoroutine = coroutines.Get(handle);
+
+        if (pCoroutine == nullptr) {
+            return false;
+        }
+
+        pCoroutine->func = func;
+        memcpy(pCoroutine->state, &state, sizeof(S));
+        return true;
+    }
+#pragma endregion
 
 #pragma region Input
     static bool ButtonDown(u8 flags) {
@@ -432,11 +493,9 @@ namespace Game {
         }
     }
 
-    static bool ActorCollidesWithPlayer(Actor* pActor, Actor** outPlayer) {
-        Actor* pPlayer = actors.Get(playerHandle);
+    static bool ActorCollidesWithPlayer(Actor* pActor, Actor* pPlayer) {
         if (pPlayer != nullptr) {
             if (ActorsColliding(pActor, pPlayer)) {
-                *outPlayer = pPlayer;
                 return true;
             }
         }
@@ -484,10 +543,52 @@ namespace Game {
 #pragma endregion
 
 #pragma region Damage
+    // TODO: Where to get this info properly?
+    constexpr u16 largeExpValue = 500;
+    constexpr u16 smallExpValue = 10;
+
+    struct SpawnExpState {
+        glm::vec2 position;
+        u16 remainingValue;
+    };
+
+    static bool SpawnExpCoroutine(void* s) {
+        SpawnExpState& state = *(SpawnExpState*)s;
+
+        if (state.remainingValue > 0) {
+            u16 spawnedValue = state.remainingValue >= largeExpValue ? largeExpValue : smallExpValue;
+            s32 prototypeIndex = spawnedValue >= largeExpValue ? haloLargePrototypeIndex : haloSmallPrototypeIndex;
+
+            Actor* pSpawned = SpawnActor(prototypeIndex, state.position);
+            const r32 speed = GetRandom(0.1f, 0.3f);
+            pSpawned->velocity = GetRandomDirection() * speed;
+            pSpawned->pickupState.lingerCounter = 30;
+            pSpawned->flags.facingDir = (s8)GetRandom(-1, 1);
+
+            if (state.remainingValue < spawnedValue) {
+                state.remainingValue = 0;
+            }
+            else state.remainingValue -= spawnedValue;
+
+            return true;
+        }
+        return false;
+    }
+
     static void NPCDie(Actor* pActor) {
         pActor->flags.pendingRemoval = true;
 
         SpawnActor(pActor->pPrototype->npcData.spawnOnDeath, pActor->position);
+
+        // Spawn exp halos
+        const u16 totalExpValue = pActor->pPrototype->npcData.expValue;
+        if (totalExpValue > 0) {
+            SpawnExpState coroutineState = {
+                .position = pActor->position,
+                .remainingValue = totalExpValue
+            };
+            StartCoroutine(SpawnExpCoroutine, coroutineState);
+        }
     }
 
     static bool ActorTakeDamage(Actor* pActor, u32 dmgValue, u16& health, u16& damageCounter) {
@@ -503,8 +604,8 @@ namespace Game {
         const AABB& hitbox = pActor->pPrototype->hitbox;
         // Random point inside hitbox
         const glm::vec2 randomPointInsideHitbox = {
-            ((r32)rand() / RAND_MAX) * (hitbox.x2 - hitbox.x1) + hitbox.x1,
-            ((r32)rand() / RAND_MAX) * (hitbox.y2 - hitbox.y1) + hitbox.y1
+            GetRandom(hitbox.x1, hitbox.x2),
+            GetRandom(hitbox.y1, hitbox.y2)
         };
         const glm::vec2 spawnPos = pActor->position + randomPointInsideHitbox;
 
@@ -529,7 +630,7 @@ namespace Game {
             return;
         }
 
-        const u32 damage = (rand() % 2) + 1;
+        const u32 damage = GetRandom(1, 2);
         if (!ActorTakeDamage(pPlayer, damage, playerHealth, pPlayer->playerState.damageCounter)) {
             // TODO: Player death
         }
@@ -795,7 +896,7 @@ namespace Game {
     }
 #pragma endregion
 
-#pragma Bullets
+#pragma region Bullets
     static void BulletDie(Actor* pBullet, const glm::vec2& effectPos) {
         pBullet->flags.pendingRemoval = true;
         SpawnActor(pBullet->pPrototype->bulletData.spawnOnDeath, effectPos);
@@ -804,7 +905,7 @@ namespace Game {
     static void HandleBulletEnemyCollision(Actor* pBullet, Actor* pEnemy) {
         BulletDie(pBullet, pBullet->position);
 
-        const u32 damage = (rand() % 2) + 1;
+        const u32 damage = GetRandom(1, 2);
         if (!ActorTakeDamage(pEnemy, damage, pEnemy->npcState.health, pEnemy->npcState.damageCounter)) {
             NPCDie(pEnemy);
         }
@@ -815,8 +916,8 @@ namespace Game {
             ForEachActorCollision(pActor, ACTOR_TYPE_NPC, ACTOR_ALIGNMENT_HOSTILE, HandleBulletEnemyCollision);
         }
         else if (pActor->pPrototype->alignment == ACTOR_ALIGNMENT_HOSTILE) {
-            Actor* pPlayer = nullptr;
-            if (ActorCollidesWithPlayer(pActor, &pPlayer)) {
+            Actor* pPlayer = actors.Get(playerHandle);
+            if (ActorCollidesWithPlayer(pActor, pPlayer)) {
                 HandlePlayerEnemyCollision(pPlayer, pActor);
                 BulletDie(pActor, pActor->position);
             }
@@ -906,7 +1007,7 @@ namespace Game {
         UpdateCounter(pActor->npcState.damageCounter);
 
         if (!pActor->flags.inAir) {
-            const bool shouldJump = (rand() % 128) == 0;
+            const bool shouldJump = GetRandom(0, 127) == 0;
             if (shouldJump) {
                 pActor->velocity.y = -0.25f;
                 ActorFacePlayer(pActor);
@@ -936,8 +1037,8 @@ namespace Game {
             }
         }
 
-        Actor* pPlayer = nullptr;
-        if (ActorCollidesWithPlayer(pActor, &pPlayer)) {
+        Actor* pPlayer = actors.Get(playerHandle);
+        if (ActorCollidesWithPlayer(pActor, pPlayer)) {
             HandlePlayerEnemyCollision(pPlayer, pActor);
         }
 
@@ -955,7 +1056,7 @@ namespace Game {
         pActor->position.y = pActor->initialPosition.y + sineTime * amplitude;
 
         // Shoot fireballs
-        const bool shouldFire = (rand() % 128) == 0;
+        const bool shouldFire = GetRandom(0, 127) == 0;
         if (shouldFire) {
 
             Actor* pPlayer = actors.Get(playerHandle);
@@ -970,14 +1071,59 @@ namespace Game {
             }
         }
 
-        Actor* pPlayer = nullptr;
-        if (ActorCollidesWithPlayer(pActor, &pPlayer)) {
+        Actor* pPlayer = actors.Get(playerHandle);
+        if (ActorCollidesWithPlayer(pActor, pPlayer)) {
             HandlePlayerEnemyCollision(pPlayer, pActor);
         }
 
         const s32 paletteOverride = GetDamagePaletteOverride(pActor->npcState.damageCounter);
         DrawActor(pActor, SPRITE_LAYER_FG, { 0,0 }, pActor->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
     }
+#pragma endregion
+
+#pragma region Pickups
+    static void UpdateExpHalo(Actor* pActor) {
+        Actor* pPlayer = actors.Get(playerHandle);
+
+        const glm::vec2 playerVec = pPlayer->position - pActor->position;
+        const glm::vec2 playerDir = glm::normalize(playerVec);
+        const r32 playerDist = glm::length(playerVec);
+
+        // Wait for a while before homing towards player
+        if (!UpdateCounter(pActor->pickupState.lingerCounter)) {
+            constexpr r32 trackingFactor = 0.1f; // Adjust to control homing strength
+
+            glm::vec2 desiredVelocity = (playerVec * trackingFactor) + pPlayer->velocity;
+            pActor->velocity = glm::mix(pActor->velocity, desiredVelocity, trackingFactor); // Smooth velocity transition
+
+        }
+        else {
+            // Slow down after initial explosion
+            r32 speed = glm::length(pActor->velocity);
+            if (speed != 0) {
+                const glm::vec2 dir = glm::normalize(pActor->velocity);
+
+                constexpr r32 deceleration = 0.01f;
+                speed = glm::clamp(speed - deceleration, 0.0f, 1.0f); // Is 1.0 a good max value?
+                pActor->velocity = dir * speed;
+            }
+        }
+
+        pActor->position += pActor->velocity;
+
+        if (ActorCollidesWithPlayer(pActor, pPlayer)) {
+            pActor->flags.pendingRemoval = true;
+            return;
+        }
+
+        // Smoothstep animation when inside specified radius from player
+        const Animation& currentAnim = pActor->pPrototype->animations[0];
+        constexpr r32 animRadius = 4.0f;
+        pActor->frameIndex = glm::roundEven((1.0f - glm::smoothstep(0.0f, animRadius, playerDist)) * currentAnim.frameCount);
+
+        DrawActor(pActor, SPRITE_LAYER_FG, {0,0}, pActor->flags.facingDir == ACTOR_FACING_LEFT);
+    }
+
 #pragma endregion
 
 #pragma region Effects
@@ -1089,6 +1235,10 @@ namespace Game {
 
     static void UpdatePickup(Actor* pActor) {
         switch (pActor->pPrototype->subtype) {
+        case PICKUP_SUBTYPE_HALO: {
+            UpdateExpHalo(pActor);
+            break;
+        }
         default:
             break;
         }
@@ -1163,6 +1313,24 @@ namespace Game {
         }
     }
 
+    static void UpdateCoroutines() {
+        coroutineRemoveList.Clear();
+        
+        for (u32 i = 0; i < coroutines.Count(); i++) {
+            PoolHandle<Coroutine> handle = coroutines.GetHandle(i);
+            Coroutine* pCoroutine = coroutines.Get(handle);
+
+            if (!StepCoroutine(pCoroutine)) {
+                coroutineRemoveList.Add(handle);
+            }
+        }
+
+        for (u32 i = 0; i < coroutineRemoveList.Count(); i++) {
+            auto handle = *coroutineRemoveList.Get(coroutineRemoveList.GetHandle(i));
+            coroutines.Remove(handle);
+        }
+    }
+
     static void Step() {
         previousInput = currentInput;
         currentInput = Input::GetControllerState();
@@ -1172,6 +1340,7 @@ namespace Game {
         if (!paused) {
             gameplayFramesElapsed++;
 
+            UpdateCoroutines();
             UpdateActors();
 
             UpdateViewport();
@@ -1276,6 +1445,9 @@ namespace Game {
     }
 
     void Initialize() {
+        coroutines.Init(MAX_COROUTINE_COUNT);
+        coroutineRemoveList.Init(MAX_COROUTINE_COUNT);
+
         // Rendering data
         pRenderSettings = Rendering::GetSettingsPtr();
         pChr = Rendering::GetChrPtr(0);
