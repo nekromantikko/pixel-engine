@@ -615,7 +615,8 @@ static bool Clock(u8& outSample) {
         tndOut = 159.79f / (1 / ((r32)triangle / 8227 + (r32)noise / 12241) + 100);
     }
 
-    u8 sample = (u8)((pulseOut + tndOut) * 255);
+    r32 mix = pulseOut + tndOut;
+    u8 sample = u8(mix * 127.0f + 128.0f);
 
     pContext->accumulator += CLOCK_PERIOD;
     if (pContext->accumulator >= sampleTime) {
@@ -666,6 +667,10 @@ namespace Audio {
         pContext->debugWriteOffset = 0;
         pContext->debugReadOffset = 0;
 
+        ClearRegisters();
+        // Make sure there's silence at startup
+        pContext->noise.reg.constantVolume = true;
+
         SDL_AudioSpec audioSpec{};
         audioSpec.freq = 44100;
         audioSpec.format = AUDIO_U8;
@@ -682,8 +687,6 @@ namespace Audio {
             0);
 
         SDL_PauseAudioDevice(pContext->audioDevice, 0);
-
-        ClearRegisters();
     }
 
     void Audio::Free() {
