@@ -16,6 +16,8 @@
 #include "audio.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <gtx/matrix_transform_2d.hpp>
+#include <vector>
+#include <algorithm>
 
 constexpr u32 CLIPBOARD_DIM_TILES = (VIEWPORT_WIDTH_TILES / 2) + 1;
 
@@ -2410,7 +2412,7 @@ static bool MousePosWithinNodeBounds(const LevelNode& node, const glm::vec3& mou
 		mousePosInCanvas.y < node.position.y + nodeSize.y);
 }
 
-static void DrawLevelNodeGraph() {
+static void DrawLevelNodeGraph(std::vector<LevelNode>& nodes) {
 	// NOTE: ImGui examples -> custom rendering -> canvas
 	ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();
 	ImVec2 canvas_sz = ImGui::GetContentRegionAvail();
@@ -2423,13 +2425,31 @@ static void DrawLevelNodeGraph() {
 	drawList->AddRectFilled(canvas_p0, canvas_p1, IM_COL32(0x18, 0x18, 0x18, 255));
 	drawList->AddRect(canvas_p0, canvas_p1, IM_COL32(255, 255, 255, 255));
 
-	ImGui::InvisibleButton("canvas", canvas_sz, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
-	const bool hovered = ImGui::IsItemHovered();
-	const bool active = ImGui::IsItemActive();
-
 	// Construct transformation matrices
 	static glm::mat3 viewMat = glm::mat3(1.0f);
 	const glm::mat3 canvasMat = glm::translate(glm::mat3(1.0f), glm::vec2(canvas_p0.x, canvas_p0.y));
+
+	ImGui::InvisibleButton("canvas", canvas_sz, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+	if (ImGui::BeginDragDropTarget())
+	{
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dd_levels"))
+		{
+			s32 levelInd = *(const s32*)payload->Data;
+
+			const glm::mat3 canvasToScreen = canvasMat * viewMat;
+			const glm::mat3 screenToCanvas = glm::inverse(canvasToScreen);
+			const glm::vec2 mouseInCanvas = screenToCanvas * glm::vec3(io.MousePos.x, io.MousePos.y, 1.0f);
+
+			nodes.emplace_back(LevelNode{
+				.position = mouseInCanvas,
+				.levelIndex = levelInd,
+				});
+		}
+		ImGui::EndDragDropTarget();
+	}
+
+	const bool hovered = ImGui::IsItemHovered();
+	const bool active = ImGui::IsItemActive();
 
 	// Canvas zooming
 	if (hovered && io.MouseWheel != 0.0f) {
@@ -2481,28 +2501,45 @@ static void DrawLevelNodeGraph() {
 		drawList->AddLine(ImVec2(screenStart.x, screenStart.y), ImVec2(screenEnd.x, screenEnd.y), IM_COL32(200, 200, 200, 40));
 	}
 
-	// Draw nodes
-	static LevelNode node = {
-		.position = glm::vec2(0,0),
-		.levelIndex = 0x10,
-	};
-	DrawLevelNode(node, canvasToScreen);
-
 	const glm::vec3 mousePosInCanvas = screenToCanvas * glm::vec3(io.MousePos.x, io.MousePos.y, 1.0f);
 
-	static bool draggingNode = false;
-	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && MousePosWithinNodeBounds(node, mousePosInCanvas)) {
-		draggingNode = true;
+	// Draw nodes
+	static s32 draggedNode = -1;
+	static s32 contextNode = -1;
+
+	for (u32 i = 0; i < nodes.size(); i++) {
+		LevelNode& node = nodes[i];
+		DrawLevelNode(node, canvasToScreen);
+
+		const bool mouseWithinNodeBounds = MousePosWithinNodeBounds(node, mousePosInCanvas);
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && mouseWithinNodeBounds) {
+			draggedNode = i;
+		}
+
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && mouseWithinNodeBounds) {
+			contextNode = i;
+			ImGui::OpenPopup("NodeContextMenu");
+		}
 	}
 
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && draggingNode) {
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && draggedNode != -1) {
 		glm::vec2 scaledDelta = screenToCanvas * glm::vec3(io.MouseDelta.x, io.MouseDelta.y, 0.0f);
+
+		LevelNode& node = nodes[draggedNode];
 		node.position.x += scaledDelta.x;
 		node.position.y += scaledDelta.y;
 	}
 
 	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-		draggingNode = false;
+		draggedNode = -1;
+	}
+
+	if (ImGui::BeginPopup("NodeContextMenu")) {
+		if (ImGui::MenuItem("Delete Node") && contextNode != -1) {
+			nodes.erase(nodes.begin() + contextNode);
+			contextNode = -1;
+		}
+		ImGui::EndPopup();
 	}
 
 	drawList->PopClipRect();
@@ -2511,9 +2548,61 @@ static void DrawLevelNodeGraph() {
 static void DrawLevelConnectionsWindow() {
 	ImGui::Begin("Level connections", &pContext->levelConnectionsOpen);
 
-	static ImVector<LevelNode> nodes{};
+	static std::vector<LevelNode> nodes{};
 
-	DrawLevelNodeGraph();
+	ImGui::BeginChild("Level list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
+	{
+		const Level* pLevels = Levels::GetLevelsPtr();
+		static s32 selection = 0;
+
+		// Construct available levels list
+		std::vector<s32> availableLevels{};
+		availableLevels.reserve(MAX_LEVEL_COUNT);
+
+		for (u32 i = 0; i < MAX_LEVEL_COUNT; i++) {
+			auto it = std::find_if(nodes.begin(), nodes.end(), [i](const LevelNode& node) {
+				return node.levelIndex == i;
+			});
+
+			if (it == nodes.end()) {
+				availableLevels.push_back(i);
+			}
+		}
+
+		static constexpr u32 maxLabelNameLength = LEVEL_MAX_NAME_LENGTH + 8;
+		char label[maxLabelNameLength];
+
+		for (auto& levelInd : availableLevels) {
+			const Level& level = pLevels[levelInd];
+
+			ImGui::PushID(levelInd);
+
+			snprintf(label, maxLabelNameLength, "%#04x: %s", levelInd, level.name);
+
+			const bool selected = selection == levelInd;
+			if (ImGui::Selectable(label, selected)) {
+				selection = levelInd;
+			}
+
+			if (selected) {
+				ImGui::SetItemDefaultFocus();
+			}
+
+			if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+			{
+				ImGui::SetDragDropPayload("dd_levels", &levelInd, sizeof(s32));
+				ImGui::Text("%s", level.name);
+
+				ImGui::EndDragDropSource();
+			}
+			ImGui::PopID();
+		}
+	}
+	ImGui::EndChild();
+	ImGui::SameLine();
+	ImGui::BeginChild("Node graph");
+	DrawLevelNodeGraph(nodes);
+	ImGui::EndChild();
 
 	ImGui::End();
 }
