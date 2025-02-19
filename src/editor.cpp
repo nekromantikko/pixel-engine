@@ -55,6 +55,7 @@ struct EditorContext {
 	bool gameWindowOpen = false;
 	bool actorWindowOpen = false;
 	bool audioWindowOpen = false;
+	bool levelConnectionsOpen = false;
 };
 
 static EditorContext* pContext;
@@ -2319,6 +2320,153 @@ static void DrawAudioWindow() {
 }
 #pragma endregion
 
+#pragma region Level Connections
+constexpr r32 LEVEL_SCREEN_ASPECT = (r32)VIEWPORT_WIDTH_METATILES / VIEWPORT_HEIGHT_METATILES;
+constexpr r32 LEVEL_NODE_SCREEN_HEIGHT = 100.0f;
+constexpr ImVec2 LEVEL_NODE_SCREEN_SIZE = ImVec2(LEVEL_NODE_SCREEN_HEIGHT * LEVEL_SCREEN_ASPECT, LEVEL_NODE_SCREEN_HEIGHT);
+
+struct LevelNode {
+	ImVec2 position;
+	s32 levelIndex;
+};
+
+static ImVec2 GetLevelNodeSize(const LevelNode& node) {
+	const Level& level = Levels::GetLevelsPtr()[node.levelIndex];
+
+	return ImVec2(LEVEL_NODE_SCREEN_SIZE.x * level.tilemap.width, LEVEL_NODE_SCREEN_SIZE.y * level.tilemap.height);
+}
+
+static void DrawLevelNode(const LevelNode& node, const ImVec2& origin) {
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+	const ImVec2 nodeSize = GetLevelNodeSize(node);
+	const ImVec2 nodeDrawMin = ImVec2(origin.x + node.position.x, origin.y + node.position.y);
+	const ImVec2 nodeDrawMax = ImVec2(nodeDrawMin.x + nodeSize.x, nodeDrawMin.y + nodeSize.y);
+
+	constexpr r32 radius = 8.f;
+	drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(255, 0, 255, 255), radius);
+	drawList->AddRect(nodeDrawMin, nodeDrawMax, IM_COL32(255, 255, 255, 255), radius);
+
+	const Level& level = Levels::GetLevelsPtr()[node.levelIndex];
+
+	drawList->AddText(ImVec2(nodeDrawMin.x + 10, nodeDrawMin.y + 10), IM_COL32(255, 255, 255, 255), level.name);
+
+	const ImVec2 screenHalfSize = ImVec2(LEVEL_NODE_SCREEN_SIZE.x / 2.0f, LEVEL_NODE_SCREEN_SIZE.y / 2.0f);
+
+	// Draw connection pins
+	for (u32 y = 0; y < level.tilemap.height; y++) {
+		const r32 yTop = nodeDrawMin.y + LEVEL_NODE_SCREEN_SIZE.y * y;
+		const r32 yMid = yTop + screenHalfSize.y;
+		const r32 yBtm = yTop + LEVEL_NODE_SCREEN_SIZE.y;
+
+		drawList->AddLine(ImVec2(nodeDrawMin.x, yTop), ImVec2(nodeDrawMax.x, yTop), IM_COL32(200, 200, 200, 40));
+
+		// Left connection pin
+		drawList->AddCircleFilled(ImVec2(nodeDrawMin.x, yMid), radius, IM_COL32(255, 255, 0, 255));
+		drawList->AddCircle(ImVec2(nodeDrawMin.x, yMid), radius, IM_COL32(255, 255, 255, 255));
+		// Right connection pin
+		drawList->AddCircleFilled(ImVec2(nodeDrawMax.x, yMid), radius, IM_COL32(255, 255, 0, 255));
+		drawList->AddCircle(ImVec2(nodeDrawMax.x, yMid), radius, IM_COL32(255, 255, 255, 255));
+
+		for (u32 x = 0; x < level.tilemap.width; x++) {
+			const r32 xLeft = nodeDrawMin.x + LEVEL_NODE_SCREEN_SIZE.x * x;
+			const r32 xMid = xLeft + screenHalfSize.x;
+
+			drawList->AddLine(ImVec2(xLeft, yTop), ImVec2(xLeft, yBtm), IM_COL32(200, 200, 200, 40));
+
+			if (y == 0) {
+				// Top connection pin
+				drawList->AddCircleFilled(ImVec2(xMid, yTop), radius, IM_COL32(255, 255, 0, 255));
+				drawList->AddCircle(ImVec2(xMid, yTop), radius, IM_COL32(255, 255, 255, 255));
+			}
+
+			// Middle connection pin
+			drawList->AddCircleFilled(ImVec2(xMid, yMid), radius, IM_COL32(255, 255, 0, 255));
+			drawList->AddCircle(ImVec2(xMid, yMid), radius, IM_COL32(255, 255, 255, 255));
+
+			if (y == level.tilemap.height - 1) {
+				// Bottom connection pin
+				drawList->AddCircleFilled(ImVec2(xMid, yBtm), radius, IM_COL32(255, 255, 0, 255));
+				drawList->AddCircle(ImVec2(xMid, yBtm), radius, IM_COL32(255, 255, 255, 255));
+			}
+		}
+	}
+}
+
+static bool MousePosWithinNodeBounds(const LevelNode& node, const ImVec2& mousePos, const ImVec2& origin) {
+	const ImVec2 mousePosInCanvas(mousePos.x - origin.x, mousePos.y - origin.y);
+
+	const ImVec2 nodeSize = GetLevelNodeSize(node);
+
+	return (mousePosInCanvas.x >= node.position.x && 
+		mousePosInCanvas.y >= node.position.y &&
+		mousePosInCanvas.x < node.position.x + nodeSize.x &&
+		mousePosInCanvas.y < node.position.y + nodeSize.y);
+}
+
+static void DrawLevelConnectionsWindow() {
+	ImGui::Begin("Level connections", &pContext->levelConnectionsOpen);
+
+	// NOTE: ImGui examples -> custom rendering -> canvas
+	static ImVec2 scrolling(0.0f, 0.0f);
+	ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();
+	ImVec2 canvas_sz = ImGui::GetContentRegionAvail();
+	if (canvas_sz.x < 50.0f) canvas_sz.x = 50.0f;
+	if (canvas_sz.y < 50.0f) canvas_sz.y = 50.0f;
+	ImVec2 canvas_p1 = ImVec2(canvas_p0.x + canvas_sz.x, canvas_p0.y + canvas_sz.y);
+
+	ImGuiIO& io = ImGui::GetIO();
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	drawList->AddRectFilled(canvas_p0, canvas_p1, IM_COL32(0x18, 0x18, 0x18, 255));
+	drawList->AddRect(canvas_p0, canvas_p1, IM_COL32(255, 255, 255, 255));
+
+	ImGui::InvisibleButton("canvas", canvas_sz, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+	const bool hovered = ImGui::IsItemHovered();
+	const bool active = ImGui::IsItemActive();
+	const ImVec2 origin(canvas_p0.x + scrolling.x, canvas_p0.y + scrolling.y);
+
+	if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Right))
+	{
+		scrolling.x += io.MouseDelta.x;
+		scrolling.y += io.MouseDelta.y;
+	}
+
+	drawList->PushClipRect(canvas_p0, canvas_p1, true);
+	const float GRID_STEP = 64.0f;
+	for (float x = fmodf(scrolling.x, GRID_STEP); x < canvas_sz.x; x += GRID_STEP) {
+		drawList->AddLine(ImVec2(canvas_p0.x + x, canvas_p0.y), ImVec2(canvas_p0.x + x, canvas_p1.y), IM_COL32(200, 200, 200, 40));
+	}
+	for (float y = fmodf(scrolling.y, GRID_STEP); y < canvas_sz.y; y += GRID_STEP) {
+		drawList->AddLine(ImVec2(canvas_p0.x, canvas_p0.y + y), ImVec2(canvas_p1.x, canvas_p0.y + y), IM_COL32(200, 200, 200, 40));
+	}
+
+	// Draw nodes
+	static LevelNode node = {
+		.position = ImVec2(0,0),
+		.levelIndex = 0x10,
+	};
+	DrawLevelNode(node, origin);
+
+	static bool draggingNode = false;
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && MousePosWithinNodeBounds(node, io.MousePos, origin)) {
+		draggingNode = true;
+	}
+
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && draggingNode) {
+		node.position.x += io.MouseDelta.x;
+		node.position.y += io.MouseDelta.y;
+	}
+
+	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+		draggingNode = false;
+	}
+
+	drawList->PopClipRect();
+
+	ImGui::End();
+}
+#pragma endregion
+
 #pragma region Main Menu
 static void DrawMainMenu() {
 	if (ImGui::BeginMainMenuBar()) {
@@ -2335,6 +2483,9 @@ static void DrawMainMenu() {
 			}
 			if (ImGui::MenuItem("Level editor")) {
 				pContext->gameWindowOpen = true;
+			}
+			if (ImGui::MenuItem("Level connections editor")) {
+				pContext->levelConnectionsOpen = true;
 			}
 			if (ImGui::MenuItem("Actor prototypes")) {
 				pContext->actorWindowOpen = true;
@@ -2422,6 +2573,10 @@ void Editor::Render(r64 dt) {
 ;
 	if (pContext->audioWindowOpen) {
 		DrawAudioWindow();
+	}
+
+	if (pContext->levelConnectionsOpen) {
+		DrawLevelConnectionsWindow();
 	}
 
 	ImGui::Render();
