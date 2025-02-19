@@ -14,6 +14,8 @@
 #include "viewport.h"
 #include "actors.h"
 #include "audio.h"
+#define GLM_ENABLE_EXPERIMENTAL
+#include <gtx/matrix_transform_2d.hpp>
 
 constexpr u32 CLIPBOARD_DIM_TILES = (VIEWPORT_WIDTH_TILES / 2) + 1;
 
@@ -2323,27 +2325,31 @@ static void DrawAudioWindow() {
 #pragma region Level Connections
 constexpr r32 LEVEL_SCREEN_ASPECT = (r32)VIEWPORT_WIDTH_METATILES / VIEWPORT_HEIGHT_METATILES;
 constexpr r32 LEVEL_NODE_SCREEN_HEIGHT = 100.0f;
-constexpr ImVec2 LEVEL_NODE_SCREEN_SIZE = ImVec2(LEVEL_NODE_SCREEN_HEIGHT * LEVEL_SCREEN_ASPECT, LEVEL_NODE_SCREEN_HEIGHT);
+constexpr glm::vec2 LEVEL_NODE_SCREEN_SIZE = glm::vec2(LEVEL_NODE_SCREEN_HEIGHT * LEVEL_SCREEN_ASPECT, LEVEL_NODE_SCREEN_HEIGHT);
 
 struct LevelNode {
-	ImVec2 position;
+	glm::vec2 position;
 	s32 levelIndex;
 };
 
-static ImVec2 GetLevelNodeSize(const LevelNode& node) {
+static glm::vec2 GetLevelNodeCanvasSize(const LevelNode& node) {
 	const Level& level = Levels::GetLevelsPtr()[node.levelIndex];
 
-	return ImVec2(LEVEL_NODE_SCREEN_SIZE.x * level.tilemap.width, LEVEL_NODE_SCREEN_SIZE.y * level.tilemap.height);
+	return glm::vec2(LEVEL_NODE_SCREEN_SIZE.x * level.tilemap.width, LEVEL_NODE_SCREEN_SIZE.y * level.tilemap.height);
 }
 
-static void DrawLevelNode(const LevelNode& node, const ImVec2& origin) {
+static void DrawLevelNode(const LevelNode& node, const glm::mat3& canvasToScreen) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-	const ImVec2 nodeSize = GetLevelNodeSize(node);
-	const ImVec2 nodeDrawMin = ImVec2(origin.x + node.position.x, origin.y + node.position.y);
-	const ImVec2 nodeDrawMax = ImVec2(nodeDrawMin.x + nodeSize.x, nodeDrawMin.y + nodeSize.y);
+	const glm::vec2 nodeScreenTopLeft = canvasToScreen * glm::vec3(node.position.x, node.position.y, 1.0f);
 
-	constexpr r32 radius = 8.f;
+	const glm::vec2 nodeCanvasSize = GetLevelNodeCanvasSize(node);
+	const glm::vec2 nodeScreenBtmRight = canvasToScreen * glm::vec3(node.position.x + nodeCanvasSize.x, node.position.y + nodeCanvasSize.y, 1.0f);
+
+	const ImVec2 nodeDrawMin = ImVec2(nodeScreenTopLeft.x, nodeScreenTopLeft.y);
+	const ImVec2 nodeDrawMax = ImVec2(nodeScreenBtmRight.x, nodeScreenBtmRight.y);
+
+	constexpr r32 radius = 6.f;
 	drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(255, 0, 255, 255), radius);
 	drawList->AddRect(nodeDrawMin, nodeDrawMax, IM_COL32(255, 255, 255, 255), radius);
 
@@ -2351,13 +2357,15 @@ static void DrawLevelNode(const LevelNode& node, const ImVec2& origin) {
 
 	drawList->AddText(ImVec2(nodeDrawMin.x + 10, nodeDrawMin.y + 10), IM_COL32(255, 255, 255, 255), level.name);
 
-	const ImVec2 screenHalfSize = ImVec2(LEVEL_NODE_SCREEN_SIZE.x / 2.0f, LEVEL_NODE_SCREEN_SIZE.y / 2.0f);
+	// z = 0 for only scaling, no translation
+	const glm::vec2 screenDrawSize = canvasToScreen * glm::vec3(LEVEL_NODE_SCREEN_SIZE.x, LEVEL_NODE_SCREEN_SIZE.y, 0.0f);
+	const glm::vec2 screenDrawSizeHalf = screenDrawSize / 2.0f;
 
 	// Draw connection pins
 	for (u32 y = 0; y < level.tilemap.height; y++) {
-		const r32 yTop = nodeDrawMin.y + LEVEL_NODE_SCREEN_SIZE.y * y;
-		const r32 yMid = yTop + screenHalfSize.y;
-		const r32 yBtm = yTop + LEVEL_NODE_SCREEN_SIZE.y;
+		const r32 yTop = nodeDrawMin.y + screenDrawSize.y * y;
+		const r32 yMid = yTop + screenDrawSizeHalf.y;
+		const r32 yBtm = yTop + screenDrawSize.y;
 
 		drawList->AddLine(ImVec2(nodeDrawMin.x, yTop), ImVec2(nodeDrawMax.x, yTop), IM_COL32(200, 200, 200, 40));
 
@@ -2369,8 +2377,8 @@ static void DrawLevelNode(const LevelNode& node, const ImVec2& origin) {
 		drawList->AddCircle(ImVec2(nodeDrawMax.x, yMid), radius, IM_COL32(255, 255, 255, 255));
 
 		for (u32 x = 0; x < level.tilemap.width; x++) {
-			const r32 xLeft = nodeDrawMin.x + LEVEL_NODE_SCREEN_SIZE.x * x;
-			const r32 xMid = xLeft + screenHalfSize.x;
+			const r32 xLeft = nodeDrawMin.x + screenDrawSize.x * x;
+			const r32 xMid = xLeft + screenDrawSizeHalf.x;
 
 			drawList->AddLine(ImVec2(xLeft, yTop), ImVec2(xLeft, yBtm), IM_COL32(200, 200, 200, 40));
 
@@ -2393,10 +2401,8 @@ static void DrawLevelNode(const LevelNode& node, const ImVec2& origin) {
 	}
 }
 
-static bool MousePosWithinNodeBounds(const LevelNode& node, const ImVec2& mousePos, const ImVec2& origin) {
-	const ImVec2 mousePosInCanvas(mousePos.x - origin.x, mousePos.y - origin.y);
-
-	const ImVec2 nodeSize = GetLevelNodeSize(node);
+static bool MousePosWithinNodeBounds(const LevelNode& node, const glm::vec3& mousePosInCanvas) {
+	const glm::vec2 nodeSize = GetLevelNodeCanvasSize(node);
 
 	return (mousePosInCanvas.x >= node.position.x && 
 		mousePosInCanvas.y >= node.position.y &&
@@ -2404,11 +2410,8 @@ static bool MousePosWithinNodeBounds(const LevelNode& node, const ImVec2& mouseP
 		mousePosInCanvas.y < node.position.y + nodeSize.y);
 }
 
-static void DrawLevelConnectionsWindow() {
-	ImGui::Begin("Level connections", &pContext->levelConnectionsOpen);
-
+static void DrawLevelNodeGraph() {
 	// NOTE: ImGui examples -> custom rendering -> canvas
-	static ImVec2 scrolling(0.0f, 0.0f);
 	ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();
 	ImVec2 canvas_sz = ImGui::GetContentRegionAvail();
 	if (canvas_sz.x < 50.0f) canvas_sz.x = 50.0f;
@@ -2423,38 +2426,79 @@ static void DrawLevelConnectionsWindow() {
 	ImGui::InvisibleButton("canvas", canvas_sz, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
 	const bool hovered = ImGui::IsItemHovered();
 	const bool active = ImGui::IsItemActive();
-	const ImVec2 origin(canvas_p0.x + scrolling.x, canvas_p0.y + scrolling.y);
 
+	// Construct transformation matrices
+	static glm::mat3 viewMat = glm::mat3(1.0f);
+	const glm::mat3 canvasMat = glm::translate(glm::mat3(1.0f), glm::vec2(canvas_p0.x, canvas_p0.y));
+
+	// Canvas zooming
+	if (hovered && io.MouseWheel != 0.0f) {
+		const r32 scale = io.MouseWheel > 0.0f ? 1.1f : 0.9f;
+
+		const glm::mat3 canvasToScreen = canvasMat * viewMat;
+		const glm::mat3 screenToCanvas = glm::inverse(canvasToScreen);
+		const glm::vec2 mouseInCanvas = screenToCanvas * glm::vec3(io.MousePos.x, io.MousePos.y, 1.0f);
+
+		// Move to mouse pos
+		viewMat = glm::translate(viewMat, mouseInCanvas);
+		// Apply scale in mouse pos
+		viewMat = glm::scale(viewMat, glm::vec2(scale, scale));
+		// Move back to origin
+		viewMat = glm::translate(viewMat, -mouseInCanvas);
+	}
+
+	const glm::mat3 canvasToScreen = canvasMat * viewMat;
+	const glm::mat3 screenToCanvas = glm::inverse(canvasToScreen);
+
+	// Canvas scrolling
 	if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Right))
 	{
-		scrolling.x += io.MouseDelta.x;
-		scrolling.y += io.MouseDelta.y;
+		glm::vec2 scaledDelta = screenToCanvas * glm::vec3(io.MouseDelta.x, io.MouseDelta.y, 0.0f);
+		viewMat = glm::translate(viewMat, glm::vec2(scaledDelta.x, scaledDelta.y));
 	}
 
 	drawList->PushClipRect(canvas_p0, canvas_p1, true);
-	const float GRID_STEP = 64.0f;
-	for (float x = fmodf(scrolling.x, GRID_STEP); x < canvas_sz.x; x += GRID_STEP) {
-		drawList->AddLine(ImVec2(canvas_p0.x + x, canvas_p0.y), ImVec2(canvas_p0.x + x, canvas_p1.y), IM_COL32(200, 200, 200, 40));
+
+	// Draw grid
+	const float gridStep = 64.0f;
+
+	const glm::vec2 topLeftCanvas = screenToCanvas * glm::vec3(canvas_p0.x, canvas_p0.y, 1.0f);
+	const glm::vec2 btmRightCanvas = screenToCanvas * glm::vec3(canvas_p1.x, canvas_p1.y, 1.0f);
+
+	const float xStart = glm::floor(topLeftCanvas.x / gridStep) * gridStep;
+	const float yStart = glm::floor(topLeftCanvas.y / gridStep) * gridStep;
+	const float xEnd = glm::ceil(btmRightCanvas.x / gridStep) * gridStep;
+	const float yEnd = glm::ceil(btmRightCanvas.y / gridStep) * gridStep;
+
+	for (float x = xStart; x < xEnd; x += gridStep) {
+		glm::vec2 screenStart = canvasToScreen * glm::vec3(x, topLeftCanvas.y, 1.0f);
+		glm::vec2 screenEnd = canvasToScreen * glm::vec3(x, btmRightCanvas.y, 1.0f);
+		drawList->AddLine(ImVec2(screenStart.x, screenStart.y), ImVec2(screenEnd.x, screenEnd.y), IM_COL32(200, 200, 200, 40));
 	}
-	for (float y = fmodf(scrolling.y, GRID_STEP); y < canvas_sz.y; y += GRID_STEP) {
-		drawList->AddLine(ImVec2(canvas_p0.x, canvas_p0.y + y), ImVec2(canvas_p1.x, canvas_p0.y + y), IM_COL32(200, 200, 200, 40));
+	for (float y = yStart; y < yEnd; y += gridStep) {
+		glm::vec2 screenStart = canvasToScreen * glm::vec3(topLeftCanvas.x, y, 1.0f);
+		glm::vec2 screenEnd = canvasToScreen * glm::vec3(btmRightCanvas.x, y, 1.0f);
+		drawList->AddLine(ImVec2(screenStart.x, screenStart.y), ImVec2(screenEnd.x, screenEnd.y), IM_COL32(200, 200, 200, 40));
 	}
 
 	// Draw nodes
 	static LevelNode node = {
-		.position = ImVec2(0,0),
+		.position = glm::vec2(0,0),
 		.levelIndex = 0x10,
 	};
-	DrawLevelNode(node, origin);
+	DrawLevelNode(node, canvasToScreen);
+
+	const glm::vec3 mousePosInCanvas = screenToCanvas * glm::vec3(io.MousePos.x, io.MousePos.y, 1.0f);
 
 	static bool draggingNode = false;
-	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && MousePosWithinNodeBounds(node, io.MousePos, origin)) {
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && MousePosWithinNodeBounds(node, mousePosInCanvas)) {
 		draggingNode = true;
 	}
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && draggingNode) {
-		node.position.x += io.MouseDelta.x;
-		node.position.y += io.MouseDelta.y;
+		glm::vec2 scaledDelta = screenToCanvas * glm::vec3(io.MouseDelta.x, io.MouseDelta.y, 0.0f);
+		node.position.x += scaledDelta.x;
+		node.position.y += scaledDelta.y;
 	}
 
 	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
@@ -2462,6 +2506,14 @@ static void DrawLevelConnectionsWindow() {
 	}
 
 	drawList->PopClipRect();
+}
+
+static void DrawLevelConnectionsWindow() {
+	ImGui::Begin("Level connections", &pContext->levelConnectionsOpen);
+
+	static ImVector<LevelNode> nodes{};
+
+	DrawLevelNodeGraph();
 
 	ImGui::End();
 }
