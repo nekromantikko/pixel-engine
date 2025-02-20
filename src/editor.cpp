@@ -2543,6 +2543,38 @@ static void ClearNodeConnections(u64 nodeId, std::vector<LevelNodeConnection>& c
 		});
 }
 
+static glm::vec2 GetPinOutDir(const LevelNodePin& pin) {
+	glm::vec2 result{};
+	const u8 exit = pin.exitIndex % SCREEN_EXIT_COUNT;
+
+	switch (exit) {
+	case SCREEN_EXIT_LEFT: {
+		result.x = -1;
+		result.y = 0;
+		break;
+	}
+	case SCREEN_EXIT_RIGHT: {
+		result.x = 1;
+		result.y = 0;
+		break;
+	}
+	case SCREEN_EXIT_TOP: {
+		result.x = 0;
+		result.y = -1;
+		break;
+	}
+	case SCREEN_EXIT_BOTTOM: {
+		result.x = 0;
+		result.y = 1;
+		break;
+	}
+	default:
+		break;
+	}
+
+	return result;
+}
+
 static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 	// NOTE: ImGui examples -> custom rendering -> canvas
 	ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();
@@ -2726,21 +2758,35 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 	}
 
 	// Draw connections
+	constexpr r32 bezierOffset = 64.f;
 	if (pendingConnection.from.Valid()) {
 		const glm::vec2 pCanvas = GetNodePinPosition(nodes[pendingConnection.from.nodeId], pendingConnection.from.exitIndex);
 		const glm::vec2 pScreen = canvasToScreen * glm::vec3(pCanvas.x, pCanvas.y, 1.0f);
+		const glm::vec2 pTangent = GetPinOutDir(pendingConnection.from);
 
-		drawList->AddLine(ImVec2(pScreen.x, pScreen.y), io.MousePos, IM_COL32(255, 255, 255, 255));
+		const ImVec2 p0 = ImVec2(pScreen.x, pScreen.y);
+		const ImVec2 p1 = ImVec2(pScreen.x + pTangent.x * bezierOffset, pScreen.y + pTangent.y * bezierOffset);
+		const ImVec2 p2 = io.MousePos;
+		const ImVec2 p3 = io.MousePos;
+
+		drawList->AddBezierCubic(p0, p1, p2, p3, IM_COL32(255, 255, 255, 255), 1.0f);
 	}
 
 	for (auto& connection : connections) {
 		const glm::vec2 p0Canvas = GetNodePinPosition(nodes[connection.from.nodeId], connection.from.exitIndex);
 		const glm::vec2 p0Screen = canvasToScreen * glm::vec3(p0Canvas.x, p0Canvas.y, 1.0f);
+		const glm::vec2 p0Tangent = GetPinOutDir(connection.from);
 
 		const glm::vec2 p1Canvas = GetNodePinPosition(nodes[connection.to.nodeId], connection.to.exitIndex);
 		const glm::vec2 p1Screen = canvasToScreen * glm::vec3(p1Canvas.x, p1Canvas.y, 1.0f);
+		const glm::vec2 p1Tangent = GetPinOutDir(connection.to);
 
-		drawList->AddLine(ImVec2(p0Screen.x, p0Screen.y), ImVec2(p1Screen.x, p1Screen.y), IM_COL32(255, 255, 255, 255));
+		const ImVec2 p0 = ImVec2(p0Screen.x, p0Screen.y);
+		const ImVec2 p1 = ImVec2(p0Screen.x + p0Tangent.x * bezierOffset, p0Screen.y + p0Tangent.y * bezierOffset);
+		const ImVec2 p2 = ImVec2(p1Screen.x + p1Tangent.x * bezierOffset, p1Screen.y + p1Tangent.y * bezierOffset);
+		const ImVec2 p3 = ImVec2(p1Screen.x, p1Screen.y);
+
+		drawList->AddBezierCubic(p0, p1, p2, p3, IM_COL32(255, 255, 255, 255), 1.0f);
 	}
 
 	drawList->PopClipRect();
