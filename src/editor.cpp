@@ -17,7 +17,9 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <gtx/matrix_transform_2d.hpp>
 #include <vector>
+#include <unordered_map>
 #include <algorithm>
+#include "random.h"
 
 constexpr u32 CLIPBOARD_DIM_TILES = (VIEWPORT_WIDTH_TILES / 2) + 1;
 
@@ -2330,9 +2332,30 @@ constexpr r32 LEVEL_NODE_SCREEN_HEIGHT = 100.0f;
 constexpr glm::vec2 LEVEL_NODE_SCREEN_SIZE = glm::vec2(LEVEL_NODE_SCREEN_HEIGHT * LEVEL_SCREEN_ASPECT, LEVEL_NODE_SCREEN_HEIGHT);
 
 struct LevelNode {
+	u64 id;
 	glm::vec2 position;
 	s32 levelIndex;
 };
+
+struct LevelNodePin {
+	u64 nodeId = UUID_NULL;
+	s32 exitIndex = -1;
+
+	bool Valid() const {
+		return nodeId != UUID_NULL && exitIndex != -1;
+	}
+	bool operator==(const LevelNodePin& a) const {
+		return nodeId == a.nodeId && exitIndex == a.exitIndex;
+	}
+};
+
+typedef std::unordered_map<u64, LevelNode> LevelNodeMap;
+
+struct LevelNodeConnection {
+	LevelNodePin from, to;
+};
+
+
 
 static glm::vec2 GetLevelNodeCanvasSize(const LevelNode& node) {
 	const Level& level = Levels::GetLevelsPtr()[node.levelIndex];
@@ -2340,61 +2363,103 @@ static glm::vec2 GetLevelNodeCanvasSize(const LevelNode& node) {
 	return glm::vec2(LEVEL_NODE_SCREEN_SIZE.x * level.tilemap.width, LEVEL_NODE_SCREEN_SIZE.y * level.tilemap.height);
 }
 
-static void GetNodePins(const LevelNode& node, std::vector<glm::vec2>& outPins) {
+static void GetNodePins(const LevelNode& node, std::vector<LevelNodePin>& outPins) {
 	const Level& level = Levels::GetLevelsPtr()[node.levelIndex];
-	
-	const glm::vec2 nodeSize = GetLevelNodeCanvasSize(node);
-	const glm::vec2 screenHalfSize = LEVEL_NODE_SCREEN_SIZE / 2.0f;
 
 	for (u32 y = 0; y < level.tilemap.height; y++) {
-		const r32 yTop = node.position.y + LEVEL_NODE_SCREEN_SIZE.y * y;
-		const r32 yMid = yTop + screenHalfSize.y;
-		const r32 yBtm = yTop + LEVEL_NODE_SCREEN_SIZE.y;
-
-		// Left connection pin
-		outPins.emplace_back(node.position.x, yMid);
-		// Right connection pin
-		outPins.emplace_back(node.position.x + nodeSize.x, yMid);
-
 		for (u32 x = 0; x < level.tilemap.width; x++) {
-			const r32 xLeft = node.position.x + LEVEL_NODE_SCREEN_SIZE.x * x;
-			const r32 xMid = xLeft + screenHalfSize.x;
+			const u32 screenIndex = x + y * level.tilemap.width;
+			const s32 exitOffset = SCREEN_EXIT_COUNT * screenIndex;
 
+			// Top connection pin
 			if (y == 0) {
-				// Top connection pin
-				outPins.emplace_back(xMid, yTop);
+				outPins.emplace_back(node.id, exitOffset + SCREEN_EXIT_TOP );
 			}
-
+			// Left connection pin
+			if (x == 0) {
+				outPins.emplace_back(node.id, exitOffset + SCREEN_EXIT_LEFT);
+			}
 			// Middle connection pin
-			outPins.emplace_back(xMid, yMid);
-
+			outPins.emplace_back(node.id, exitOffset + SCREEN_EXIT_MID);
+			// Right connection pin
+			if (x == level.tilemap.width - 1) {
+				outPins.emplace_back(node.id, exitOffset + SCREEN_EXIT_RIGHT);
+			}
+			// Bottom connection pin
 			if (y == level.tilemap.height - 1) {
-				// Bottom connection pin
-				outPins.emplace_back(xMid, yBtm);
+				outPins.emplace_back(node.id, exitOffset + SCREEN_EXIT_BOTTOM);
 			}
 		}
 	}
 }
 
-static void DrawLevelNode(const LevelNode& node, const glm::mat3& canvasToScreen, bool& outHovered, s32& outHoveredPin) {
+static glm::vec2 GetNodePinPosition(const LevelNode& node, s32 exitIndex) {
+	const u32 screenIndex = exitIndex / SCREEN_EXIT_COUNT;
+	const u8 exit = exitIndex % SCREEN_EXIT_COUNT;
+
+	const Level& level = Levels::GetLevelsPtr()[node.levelIndex];
+	const u32 xScreen = screenIndex % level.tilemap.width;
+	const u32 yScreen = screenIndex / level.tilemap.width;
+	const glm::vec2 screenTopLeft(xScreen * LEVEL_NODE_SCREEN_SIZE.x, yScreen * LEVEL_NODE_SCREEN_SIZE.y);
+	const glm::vec2 screenBtmRight = screenTopLeft + LEVEL_NODE_SCREEN_SIZE;
+	const glm::vec2 screenMid = screenTopLeft + LEVEL_NODE_SCREEN_SIZE / 2.0f;
+
+	glm::vec2 result{};
+	switch (exit) {
+	case SCREEN_EXIT_LEFT: {
+		result.x = screenTopLeft.x;
+		result.y = screenMid.y;
+		break;
+	}
+	case SCREEN_EXIT_RIGHT: {
+		result.x = screenBtmRight.x;
+		result.y = screenMid.y;
+		break;
+	}
+	case SCREEN_EXIT_TOP: {
+		result.x = screenMid.x;
+		result.y = screenTopLeft.y;
+		break;
+	}
+	case SCREEN_EXIT_BOTTOM: {
+		result.x = screenMid.x;
+		result.y = screenBtmRight.y;
+		break;
+	}
+	case SCREEN_EXIT_MID: {
+		result = screenMid;
+		break;
+	}
+	default: 
+		break;
+	}
+
+	return result + node.position;
+}
+
+static void DrawLevelNode(const LevelNode& node, const glm::mat3& canvasToScreen, bool& outHovered, LevelNodePin& outHoveredPin) {
 	outHovered = false;
-	outHoveredPin = -1;
+	outHoveredPin = LevelNodePin();
 
 	ImGuiIO& io = ImGui::GetIO();
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 	constexpr r32 pinRadius = 6.f;
-	static std::vector<glm::vec2> pins{};
+	static std::vector<LevelNodePin> pins{};
 	pins.clear();
 	GetNodePins(node, pins);
 
+	std::vector<glm::vec2> pinPositions(pins.size());
+
 	// Check mouse hover over pins
 	for (u32 i = 0; i < pins.size(); i++) {
-		glm::vec2& pinPos = pins[i];
+		const LevelNodePin& pin = pins[i];
+		glm::vec2& pinPos = pinPositions[i];
+		pinPos = GetNodePinPosition(node, pin.exitIndex);
 		pinPos = canvasToScreen * glm::vec3(pinPos.x, pinPos.y, 1.0f);
 
 		if (glm::distance(glm::vec2(io.MousePos.x, io.MousePos.y), pinPos) <= pinRadius) {
-			outHoveredPin = i;
+			outHoveredPin = pin;
 		}
 	}
 
@@ -2413,7 +2478,7 @@ static void DrawLevelNode(const LevelNode& node, const glm::mat3& canvasToScreen
 
 	ImU32 nodeDrawColor = nodeColor;
 	// If node hovered
-	if (outHoveredPin == -1 &&
+	if (!outHoveredPin.Valid() &&
 		io.MousePos.x >= nodeDrawMin.x &&
 		io.MousePos.y >= nodeDrawMin.y &&
 		io.MousePos.x < nodeDrawMax.x &&
@@ -2437,9 +2502,10 @@ static void DrawLevelNode(const LevelNode& node, const glm::mat3& canvasToScreen
 		constexpr ImU32 pinColor = IM_COL32(255, 255, 0, 255);
 		constexpr ImU32 pinHoveredColor = IM_COL32(0, 0, 255, 255);
 
-		const glm::vec2& pinPos = pins[i];
+		const LevelNodePin& pin = pins[i];
+		const glm::vec2& pinPos = pinPositions[i];
 		ImU32 pinDrawColor = pinColor;
-		if (outHoveredPin == i) {
+		if (outHoveredPin.exitIndex == pin.exitIndex) {
 			pinDrawColor = pinHoveredColor;
 		}
 
@@ -2457,7 +2523,27 @@ static bool MousePosWithinNodeBounds(const LevelNode& node, const glm::vec3& mou
 		mousePosInCanvas.y < node.position.y + nodeSize.y);
 }
 
-static void DrawLevelNodeGraph(std::vector<LevelNode>& nodes) {
+static bool IsPinConnected(const LevelNodePin& pin, const std::vector<LevelNodeConnection>& connections) {
+	auto it = std::find_if(connections.begin(), connections.end(), [pin](const LevelNodeConnection& connection) {
+		return connection.from == pin || connection.to == pin;
+	});
+
+	return it != connections.end();
+}
+
+static void ClearPinConnections(const LevelNodePin& pin, std::vector<LevelNodeConnection>& connections) {
+	std::erase_if(connections, [pin](const LevelNodeConnection& connection) {
+		return connection.from == pin || connection.to == pin;
+		});
+}
+
+static void ClearNodeConnections(u64 nodeId, std::vector<LevelNodeConnection>& connections) {
+	std::erase_if(connections, [nodeId](const LevelNodeConnection& connection) {
+		return connection.from.nodeId == nodeId || connection.to.nodeId == nodeId;
+		});
+}
+
+static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 	// NOTE: ImGui examples -> custom rendering -> canvas
 	ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();
 	ImVec2 canvas_sz = ImGui::GetContentRegionAvail();
@@ -2485,7 +2571,9 @@ static void DrawLevelNodeGraph(std::vector<LevelNode>& nodes) {
 			const glm::mat3 screenToCanvas = glm::inverse(canvasToScreen);
 			const glm::vec2 mouseInCanvas = screenToCanvas * glm::vec3(io.MousePos.x, io.MousePos.y, 1.0f);
 
-			nodes.emplace_back(LevelNode{
+			const u64 nodeId = Random::GenerateUUID();
+			nodes.emplace(nodeId, LevelNode{
+				.id = nodeId,
 				.position = mouseInCanvas,
 				.levelIndex = levelInd,
 				});
@@ -2549,26 +2637,61 @@ static void DrawLevelNodeGraph(std::vector<LevelNode>& nodes) {
 	const glm::vec3 mousePosInCanvas = screenToCanvas * glm::vec3(io.MousePos.x, io.MousePos.y, 1.0f);
 
 	// Draw nodes
-	static s32 draggedNode = -1;
-	static s32 contextNode = -1;
+	static u64 draggedNode = UUID_NULL;
+	static u64 contextNode = UUID_NULL;
 
-	for (u32 i = 0; i < nodes.size(); i++) {
-		LevelNode& node = nodes[i];
+	static LevelNodePin contextPin{};
+
+	static std::vector<LevelNodeConnection> connections{};
+	static LevelNodeConnection pendingConnection = {
+		.from = LevelNodePin(),
+		.to = LevelNodePin()
+	};
+
+	for (const auto& [id, node] : nodes) {
 		bool nodeHovered = false;
-		s32 hoveredPin = -1;
-		DrawLevelNode(node, canvasToScreen, nodeHovered, hoveredPin);
+		LevelNodePin pin{};
+		DrawLevelNode(node, canvasToScreen, nodeHovered, pin);
 
-		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && nodeHovered) {
-			draggedNode = i;
+		const bool pinHovered = pin.Valid();
+		const bool hoveredExitConnected = pinHovered && IsPinConnected(pin, connections);
+		// If hovering over an exit
+		if (pinHovered) {
+			// Try to set hovered exit as connection target
+			if (pendingConnection.from.Valid() && // There is a pending connection from some node
+				!hoveredExitConnected && // The hovered exit is not already connected to something
+				pendingConnection.from != pin // We're not trying to connect an exit to itself
+			) {
+				pendingConnection.to = pin;
+			}
+		}
+		else if (pendingConnection.to == pin)
+		{
+			pendingConnection.to = LevelNodePin();
 		}
 
-		if (ImGui::IsMouseClicked(ImGuiMouseButton_Right) && nodeHovered) {
-			contextNode = i;
-			ImGui::OpenPopup("NodeContextMenu");
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+			if (nodeHovered) {
+				draggedNode = id;
+			}
+			else if (pinHovered && !hoveredExitConnected) {
+				pendingConnection.from = pin;
+			}
+		}
+
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+			if (nodeHovered) {
+				contextNode = id;
+				ImGui::OpenPopup("NodeContextMenu");
+			}
+			else if (pinHovered) {
+				contextPin = pin;
+				ImGui::OpenPopup("ExitContextMenu");
+			}
 		}
 	}
 
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && draggedNode != -1) {
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && draggedNode != UUID_NULL) {
 		glm::vec2 scaledDelta = screenToCanvas * glm::vec3(io.MouseDelta.x, io.MouseDelta.y, 0.0f);
 
 		LevelNode& node = nodes[draggedNode];
@@ -2577,15 +2700,47 @@ static void DrawLevelNodeGraph(std::vector<LevelNode>& nodes) {
 	}
 
 	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-		draggedNode = -1;
+		draggedNode = UUID_NULL;
+
+		if (pendingConnection.from.Valid() && pendingConnection.to.Valid()) {
+			connections.push_back(pendingConnection);
+		}
+		pendingConnection = { UUID_NULL,-1,UUID_NULL,-1 };
 	}
 
 	if (ImGui::BeginPopup("NodeContextMenu")) {
-		if (ImGui::MenuItem("Delete Node") && contextNode != -1) {
-			nodes.erase(nodes.begin() + contextNode);
-			contextNode = -1;
+		if (ImGui::MenuItem("Delete Node") && contextNode != UUID_NULL) {
+			ClearNodeConnections(contextNode, connections);
+			nodes.erase(contextNode);
+			contextNode = UUID_NULL;
 		}
 		ImGui::EndPopup();
+	}
+
+	if (ImGui::BeginPopup("ExitContextMenu")) {
+		if (ImGui::MenuItem("Sever connection") && contextPin.Valid()) {
+			ClearPinConnections(contextPin, connections);
+			contextPin = LevelNodePin();
+		}
+		ImGui::EndPopup();
+	}
+
+	// Draw connections
+	if (pendingConnection.from.Valid()) {
+		const glm::vec2 pCanvas = GetNodePinPosition(nodes[pendingConnection.from.nodeId], pendingConnection.from.exitIndex);
+		const glm::vec2 pScreen = canvasToScreen * glm::vec3(pCanvas.x, pCanvas.y, 1.0f);
+
+		drawList->AddLine(ImVec2(pScreen.x, pScreen.y), io.MousePos, IM_COL32(255, 255, 255, 255));
+	}
+
+	for (auto& connection : connections) {
+		const glm::vec2 p0Canvas = GetNodePinPosition(nodes[connection.from.nodeId], connection.from.exitIndex);
+		const glm::vec2 p0Screen = canvasToScreen * glm::vec3(p0Canvas.x, p0Canvas.y, 1.0f);
+
+		const glm::vec2 p1Canvas = GetNodePinPosition(nodes[connection.to.nodeId], connection.to.exitIndex);
+		const glm::vec2 p1Screen = canvasToScreen * glm::vec3(p1Canvas.x, p1Canvas.y, 1.0f);
+
+		drawList->AddLine(ImVec2(p0Screen.x, p0Screen.y), ImVec2(p1Screen.x, p1Screen.y), IM_COL32(255, 255, 255, 255));
 	}
 
 	drawList->PopClipRect();
@@ -2594,7 +2749,7 @@ static void DrawLevelNodeGraph(std::vector<LevelNode>& nodes) {
 static void DrawLevelConnectionsWindow() {
 	ImGui::Begin("Level connections", &pContext->levelConnectionsOpen);
 
-	static std::vector<LevelNode> nodes{};
+	static LevelNodeMap nodes{};
 
 	ImGui::BeginChild("Level list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 	{
@@ -2606,8 +2761,8 @@ static void DrawLevelConnectionsWindow() {
 		availableLevels.reserve(MAX_LEVEL_COUNT);
 
 		for (u32 i = 0; i < MAX_LEVEL_COUNT; i++) {
-			auto it = std::find_if(nodes.begin(), nodes.end(), [i](const LevelNode& node) {
-				return node.levelIndex == i;
+			auto it = std::find_if(nodes.begin(), nodes.end(), [i](const auto& kvp) {
+				return kvp.second.levelIndex == i;
 			});
 
 			if (it == nodes.end()) {

@@ -14,7 +14,7 @@
 #include "audio.h"
 #include "nes_timing.h"
 #include <gtc/constants.hpp>
-#include <random>
+#include "random.h"
 
 // TODO: Move somewhere else?
 constexpr u32 MAX_COROUTINE_COUNT = 256;
@@ -26,27 +26,6 @@ struct Coroutine {
     CoroutineFunc func;
     alignas(void*) u8 state[MAX_COROUTINE_STATE_SIZE];
 };
-
-// TODO: Move somewhere else?
-template <typename T>
-static T GetRandom(T min, T max) {
-    static std::random_device rd;
-    static std::mt19937 gen(rd()); // Mersenne Twister RNG
-
-    if constexpr (std::is_integral_v<T>) {
-        std::uniform_int_distribution<T> dist(min, max);
-        return dist(gen);
-    }
-    else if constexpr (std::is_floating_point_v<T>) {
-        std::uniform_real_distribution<T> dist(min, max);
-        return dist(gen);
-    }
-}
-
-static glm::vec2 GetRandomDirection() {
-    float angle = GetRandom(0.0f, glm::two_pi<float>());
-    return glm::vec2(cos(angle), sin(angle)); // Unit vector in random direction
-}
 
 // TODO: Move somewhere else?
 enum SpriteLayerType : u8 {
@@ -563,10 +542,10 @@ namespace Game {
             s32 prototypeIndex = spawnedValue >= largeExpValue ? haloLargePrototypeIndex : haloSmallPrototypeIndex;
 
             Actor* pSpawned = SpawnActor(prototypeIndex, state.position);
-            const r32 speed = GetRandom(0.1f, 0.3f);
-            pSpawned->velocity = GetRandomDirection() * speed;
+            const r32 speed = Random::GenerateReal(0.1f, 0.3f);
+            pSpawned->velocity = Random::GenerateDirection() * speed;
             pSpawned->pickupState.lingerCounter = 30;
-            pSpawned->flags.facingDir = (s8)GetRandom(-1, 1);
+            pSpawned->flags.facingDir = (s8)Random::GenerateInt(-1, 1);
 
             if (state.remainingValue < spawnedValue) {
                 state.remainingValue = 0;
@@ -608,8 +587,8 @@ namespace Game {
         const AABB& hitbox = pActor->pPrototype->hitbox;
         // Random point inside hitbox
         const glm::vec2 randomPointInsideHitbox = {
-            GetRandom(hitbox.x1, hitbox.x2),
-            GetRandom(hitbox.y1, hitbox.y2)
+            Random::GenerateReal(hitbox.x1, hitbox.x2),
+            Random::GenerateReal(hitbox.y1, hitbox.y2)
         };
         const glm::vec2 spawnPos = pActor->position + randomPointInsideHitbox;
 
@@ -634,7 +613,7 @@ namespace Game {
             return;
         }
 
-        const u32 damage = GetRandom(1, 2);
+        const u32 damage = Random::GenerateInt(1, 2);
         Audio::PlaySFX(&damageSfx, CHAN_ID_PULSE0);
         if (!ActorTakeDamage(pPlayer, damage, playerHealth, pPlayer->playerState.damageCounter)) {
             // TODO: Player death
@@ -910,7 +889,7 @@ namespace Game {
     static void HandleBulletEnemyCollision(Actor* pBullet, Actor* pEnemy) {
         BulletDie(pBullet, pBullet->position);
 
-        const u32 damage = GetRandom(1, 2);
+        const u32 damage = Random::GenerateInt(1, 2);
         if (!ActorTakeDamage(pEnemy, damage, pEnemy->npcState.health, pEnemy->npcState.damageCounter)) {
             NPCDie(pEnemy);
         }
@@ -1012,7 +991,7 @@ namespace Game {
         UpdateCounter(pActor->npcState.damageCounter);
 
         if (!pActor->flags.inAir) {
-            const bool shouldJump = GetRandom(0, 127) == 0;
+            const bool shouldJump = Random::GenerateInt(0, 127) == 0;
             if (shouldJump) {
                 pActor->velocity.y = -0.25f;
                 ActorFacePlayer(pActor);
@@ -1061,7 +1040,7 @@ namespace Game {
         pActor->position.y = pActor->initialPosition.y + sineTime * amplitude;
 
         // Shoot fireballs
-        const bool shouldFire = GetRandom(0, 127) == 0;
+        const bool shouldFire = Random::GenerateInt(0, 127) == 0;
         if (shouldFire) {
 
             Actor* pPlayer = actors.Get(playerHandle);

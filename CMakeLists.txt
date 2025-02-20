@@ -52,7 +52,8 @@ set(SOURCES
 		src/viewport.cpp
 		src/tiles.cpp
 		src/actors.cpp
-		src/audio.cpp)
+		src/audio.cpp
+		src/random.cpp)
 
 set(EDITOR_SOURCES
 		src/editor.cpp)
