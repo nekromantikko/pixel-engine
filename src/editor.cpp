@@ -127,21 +127,87 @@ static void DrawTileGridSelection(ImVec2 gridPos, ImVec2 gridSize, r32 gridStep,
 	drawList->AddRect(selectedTilePos, ImVec2(selectedTilePos.x + gridStep, selectedTilePos.y + gridStep), IM_COL32(255, 255, 255, 255));
 }
 
-static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, s32 palette, ImU32 color = IM_COL32(255, 255, 255, 255)) {
-	const r32 tileSize = size / METATILE_DIM_TILES;
-
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
+static void GetMetatileVertices(const Metatile& metatile, s32 palette, ImVec2* outVertices, ImVec2* outUV) {
+	const r32 tileSize = 1.0f / METATILE_DIM_TILES;
 
 	for (u32 i = 0; i < METATILE_TILE_COUNT; i++) {
-		ImVec2 pMin = ImVec2(pos.x + (i & 1) * tileSize, pos.y + (i >> 1) * tileSize);
+		ImVec2 pMin = ImVec2((i & 1) * tileSize, (i >> 1) * tileSize);
 		ImVec2 pMax = ImVec2(pMin.x + tileSize, pMin.y + tileSize);
+
+		outVertices[i * 4] = pMin;
+		outVertices[i * 4 + 1] = ImVec2(pMax.x, pMin.y);
+		outVertices[i * 4 + 2] = pMax;
+		outVertices[i * 4 + 3] = ImVec2(pMin.x, pMax.y);
 
 		const glm::ivec2 chrCoord = GetChrTileCoord(metatile.tiles[i]);
 		const glm::vec2 uvMin = ChrTileCoordToTexCoord(chrCoord, 0, palette);
 		const glm::vec2 uvMax = ChrTileCoordToTexCoord(glm::ivec2(chrCoord.x + 1, chrCoord.y + 1), 0, palette);
 
-		drawList->AddImage(pContext->chrTexture, pMin, pMax, ImVec2(uvMin.x, uvMin.y), ImVec2(uvMax.x, uvMax.y), color);
+		outUV[i * 4] = ImVec2(uvMin.x, uvMin.y);
+		outUV[i * 4 + 1] = ImVec2(uvMax.x, uvMin.y);
+		outUV[i * 4 + 2] = ImVec2(uvMax.x, uvMax.y);
+		outUV[i * 4 + 3] = ImVec2(uvMin.x, uvMax.y);
 	}
+}
+
+static void TransformMetatileVerts(ImVec2* verts, const ImVec2& pos, r32 scale) {
+	for (u32 i = 0; i < METATILE_TILE_COUNT; i++) {
+		ImVec2 p0 = verts[i * 4];
+		ImVec2 p1 = verts[i * 4 + 1];
+		ImVec2 p2 = verts[i * 4 + 2];
+		ImVec2 p3 = verts[i * 4 + 3];
+
+		// Transform vertices
+		p0 = ImVec2(p0.x * scale + pos.x, p0.y * scale + pos.y);
+		p1 = ImVec2(p1.x * scale + pos.x, p1.y * scale + pos.y);
+		p2 = ImVec2(p2.x * scale + pos.x, p2.y * scale + pos.y);
+		p3 = ImVec2(p3.x * scale + pos.x, p3.y * scale + pos.y);
+
+		verts[i * 4] = p0;
+		verts[i * 4 + 1] = p1;
+		verts[i * 4 + 2] = p2;
+		verts[i * 4 + 3] = p3;
+	}
+}
+
+static void WriteMetatile(const ImVec2* verts, const ImVec2* uv, ImU32 color = IM_COL32(255, 255, 255, 255)) {
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+	for (u32 i = 0; i < METATILE_TILE_COUNT; i++) {
+		const ImVec2 p0 = verts[i * 4];
+		const ImVec2 p1 = verts[i * 4 + 1];
+		const ImVec2 p2 = verts[i * 4 + 2];
+		const ImVec2 p3 = verts[i * 4 + 3];
+
+		drawList->PrimWriteIdx(drawList->_VtxCurrentIdx);
+		drawList->PrimWriteIdx(drawList->_VtxCurrentIdx + 1);
+		drawList->PrimWriteIdx(drawList->_VtxCurrentIdx + 2);
+		drawList->PrimWriteIdx(drawList->_VtxCurrentIdx);
+		drawList->PrimWriteIdx(drawList->_VtxCurrentIdx + 2);
+		drawList->PrimWriteIdx(drawList->_VtxCurrentIdx + 3);
+
+		drawList->PrimWriteVtx(p0, uv[i * 4], color);
+		drawList->PrimWriteVtx(p1, uv[i * 4 + 1], color);
+		drawList->PrimWriteVtx(p2, uv[i * 4 + 2], color);
+		drawList->PrimWriteVtx(p3, uv[i * 4 + 3], color);
+	}
+}
+
+static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, s32 palette, ImU32 color = IM_COL32(255, 255, 255, 255)) {
+	const r32 tileSize = size / METATILE_DIM_TILES;
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	drawList->PushTextureID(pContext->chrTexture);
+	drawList->PrimReserve(METATILE_TILE_COUNT * 6, METATILE_TILE_COUNT * 4);
+
+	ImVec2 verts[METATILE_TILE_COUNT * 4];
+	ImVec2 uv[METATILE_TILE_COUNT * 4];
+
+	GetMetatileVertices(metatile, palette, verts, uv);
+	TransformMetatileVerts(verts, pos, size);
+	WriteMetatile(verts, uv, color);
+
+	drawList->PopTextureID();
 }
 
 static void DrawNametable(ImVec2 size, const Nametable& nametable) {
@@ -195,14 +261,27 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 	const ImVec2 gridSize = ImVec2(size, size);
 	const ImVec2 chrPos = DrawTileGrid(gridSize, gridStepPixels, selectedMetatile);
 
+	const u32 tilesetTileDim = TILESET_DIM * METATILE_DIM_TILES;
+	const u32 tilesetTileCount = tilesetTileDim * tilesetTileDim;
+
+	drawList->PushTextureID(pContext->chrTexture);
+	drawList->PrimReserve(tilesetTileCount * 6, tilesetTileCount * 4);
+
+	ImVec2 verts[METATILE_TILE_COUNT * 4];
+	ImVec2 uv[METATILE_TILE_COUNT * 4];
+
 	for (s32 i = 0; i < TILESET_SIZE; i++) {
 		ImVec2 metatileCoord = ImVec2(i % TILESET_DIM, i / TILESET_DIM);
 		ImVec2 metatileOffset = ImVec2(chrPos.x + metatileCoord.x * gridStepPixels, chrPos.y + metatileCoord.y * gridStepPixels);
 
 		const Metatile& metatile = pTileset->tiles[i].metatile;
 		const s32 palette = Tiles::GetTilesetPalette(pTileset, i);
-		DrawMetatile(metatile, metatileOffset, renderScale * TILESET_DIM, palette);
+		GetMetatileVertices(metatile, palette, verts, uv);
+		TransformMetatileVerts(verts, metatileOffset, renderScale * TILESET_DIM);
+		WriteMetatile(verts, uv);
 	}
+	drawList->PopTextureID();
+
 	if (selectedMetatile != nullptr && *selectedMetatile >= 0) {
 		DrawTileGridSelection(chrPos, gridSize, gridStepPixels, *selectedMetatile);
 	}
