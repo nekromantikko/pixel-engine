@@ -16,10 +16,6 @@ layout(set = 0, binding = 3) readonly buffer PalTable
 {
     uint data[]; // Again, groups of 4 colors
 } palTable;
-layout(push_constant) uniform PushConstant
-{
-	int paletteIndex;
-} pushConstant;
 
 // sRGB to Linear.
 float ToLinear1(float c){return(c<=0.04045)?c/12.92:pow((c+0.055)/1.055,2.4);}
@@ -59,10 +55,13 @@ uint ReadPaletteTable(uint tableIndex, uint colorIndex) {
 }
 
 void main() {
-	uint tileIndex = (gl_WorkGroupID.x % 16) + (gl_WorkGroupID.y * 16);
+	uint sheetIndex = gl_WorkGroupID.y / 16;
+	uvec2 tileCoord = uvec2(gl_WorkGroupID.x % 16, gl_WorkGroupID.y % 16);
+	uint tileIndex = tileCoord.x + tileCoord.y * 16 + sheetIndex * 256;
+	uint palTableIndex = (gl_WorkGroupID.x / 16) + sheetIndex * 4;
+
 	int fine = int(gl_LocalInvocationID.x + gl_LocalInvocationID.y * 8); // Should be 6 bits (yyyxxx)
 	uint colorIndex = ReadCHRTile(tileIndex, fine, 0, 0);
-	uint palTableIndex = pushConstant.paletteIndex % 8;
 	uint paletteIndex = ReadPaletteTable(palTableIndex, colorIndex);
 	vec3 outColor = imageLoad(palette, int(paletteIndex)).rgb;
 	outColor = ToLinear(outColor);

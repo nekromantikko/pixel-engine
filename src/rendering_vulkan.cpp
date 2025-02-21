@@ -44,12 +44,6 @@ struct Buffer {
 	VkDeviceMemory memory;
 };
 
-struct ChrSheetRenderData {
-	Buffer sheetBuffer;
-	Image images[PALETTE_COUNT];
-	VkDescriptorSet descriptorSets[PALETTE_COUNT];
-};
-
 struct RenderContext {
 	VkInstance instance;
 	VkPhysicalDevice physicalDevice;
@@ -130,10 +124,11 @@ struct RenderContext {
 #ifdef EDITOR
 	VkDescriptorSetLayout debugDescriptorSetLayout;
 
-	ChrSheetRenderData chrData[CHR_COUNT];
+	Image chrImage;
 	VkPipelineLayout chrPipelineLayout;
 	VkPipeline chrPipeline;
 	VkShaderModule chrShaderModule;
+	VkDescriptorSet chrDescriptorSet;
 
 	Image debugPaletteImage;
 	VkPipelineLayout palettePipelineLayout;
@@ -986,19 +981,10 @@ static void TransferComputeBufferData() {
 }
 
 #ifdef EDITOR
-static void GetChrImageBarriers(u32 index, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageMemoryBarrier* outBarriers) {
-	ChrSheetRenderData& renderData = pContext->chrData[index];
-	
-	for (u32 i = 0; i < PALETTE_COUNT; i++) {
-		outBarriers[i] = GetImageBarrier(&renderData.images[i], oldLayout, newLayout);
-	}
-}
+static void RenderChrImage() {
+	VkCommandBuffer cmd = pContext->primaryCommandBuffers[pContext->currentCbIndex];
 
-static void RenderChrImage(u32 index, VkCommandBuffer cmd) {
-	const ChrSheetRenderData& renderData = pContext->chrData[index];
-
-	VkImageMemoryBarrier barriers[PALETTE_COUNT]{};
-	GetChrImageBarriers(index, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, barriers);
+	VkImageMemoryBarrier barrier = GetImageBarrier(&pContext->chrImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 	vkCmdPipelineBarrier(
 		cmd,
 		VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
@@ -1006,17 +992,14 @@ static void RenderChrImage(u32 index, VkCommandBuffer cmd) {
 		0,
 		0, nullptr,
 		0, nullptr,
-		PALETTE_COUNT, barriers
+		1, &barrier
 	);
 
-	for (u32 i = 0; i < PALETTE_COUNT; i++) {
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipelineLayout, 0, 1, &renderData.descriptorSets[i], 0, nullptr);
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipeline);
-		vkCmdPushConstants(cmd, pContext->chrPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(u32), &i);
-		vkCmdDispatch(cmd, 16, 16, 1);
-	}
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipelineLayout, 0, 1, &pContext->chrDescriptorSet, 0, nullptr);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipeline);
+	vkCmdDispatch(cmd, 64, 32, 1);
 
-	GetChrImageBarriers(index, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, barriers);
+	barrier = GetImageBarrier(&pContext->chrImage, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	vkCmdPipelineBarrier(
 		cmd,
 		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -1024,15 +1007,8 @@ static void RenderChrImage(u32 index, VkCommandBuffer cmd) {
 		0,
 		0, nullptr,
 		0, nullptr,
-		PALETTE_COUNT, barriers
+		1, &barrier
 	);
-}
-
-static void RenderChrImages() {
-	VkCommandBuffer commandBuffer = pContext->primaryCommandBuffers[pContext->currentCbIndex];
-
-	RenderChrImage(0, commandBuffer);
-	RenderChrImage(1, commandBuffer);
 }
 
 static void RenderPaletteImage() {
@@ -1704,7 +1680,7 @@ void Rendering::Render() {
 	TransferComputeBufferData();
 	RunSoftwareRenderer();
 #ifdef EDITOR
-	RenderChrImages();
+	RenderChrImage();
 	RenderPaletteImage();
 #endif
 	BeginRenderPass();
@@ -1775,18 +1751,10 @@ Scanline* Rendering::GetScanlinePtr(u32 offset) {
 //////////////////////////////////////////////////////
 #ifdef EDITOR
 static void CreateChrPipeline() {
-	// Selected palette as push constant
-	VkPushConstantRange pushConstant{};
-	pushConstant.offset = 0;
-	pushConstant.size = sizeof(u32);
-	pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
 	VkPipelineLayoutCreateInfo chrPipelineLayoutInfo{};
 	chrPipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	chrPipelineLayoutInfo.setLayoutCount = 1;
 	chrPipelineLayoutInfo.pSetLayouts = &pContext->debugDescriptorSetLayout;
-	chrPipelineLayoutInfo.pushConstantRangeCount = 1;
-	chrPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
 
 	vkCreatePipelineLayout(pContext->device, &chrPipelineLayoutInfo, nullptr, &pContext->chrPipelineLayout);
 
@@ -1817,7 +1785,7 @@ static void CreatePalettePipeline() {
 	chrPipelineLayoutInfo.setLayoutCount = 1;
 	chrPipelineLayoutInfo.pSetLayouts = &pContext->debugDescriptorSetLayout;
 
-	vkCreatePipelineLayout(pContext->device, &chrPipelineLayoutInfo, nullptr, &pContext->palettePipelineLayout);
+	VkResult err = vkCreatePipelineLayout(pContext->device, &chrPipelineLayoutInfo, nullptr, &pContext->palettePipelineLayout);
 
 	u32 chrShaderLength;
 	char* chrShader = AllocFileBytes("assets/shaders/debug_blit_pal.spv", chrShaderLength);
@@ -1836,7 +1804,7 @@ static void CreatePalettePipeline() {
 	chrCreateInfo.stage = chrShaderStageInfo;
 	chrCreateInfo.layout = pContext->palettePipelineLayout;
 
-	vkCreateComputePipelines(pContext->device, VK_NULL_HANDLE, 1, &chrCreateInfo, nullptr, &pContext->palettePipeline);
+	err = vkCreateComputePipelines(pContext->device, VK_NULL_HANDLE, 1, &chrCreateInfo, nullptr, &pContext->palettePipeline);
 }
 
 void Rendering::InitImGui(SDL_Window* pWindow) {
@@ -1951,107 +1919,85 @@ static void CreateChrSheetSubBuffer(u32 index, Buffer& outBuffer) {
 	outBuffer.memory = VK_NULL_HANDLE;
 }
 
-static void InitializeChrDescriptorSet(ChrSheetRenderData& renderData) {
-	VkDescriptorSetLayout layouts[PALETTE_COUNT]{};
-	for (u32 i = 0; i < PALETTE_COUNT; i++) {
-		layouts[i] = pContext->debugDescriptorSetLayout;
-	}
-
+static void InitializeChrDescriptorSet() {
 	VkDescriptorSetAllocateInfo chrDescriptorSetAllocInfo{};
 	chrDescriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	chrDescriptorSetAllocInfo.descriptorPool = pContext->descriptorPool;
-	chrDescriptorSetAllocInfo.descriptorSetCount = PALETTE_COUNT;
-	chrDescriptorSetAllocInfo.pSetLayouts = layouts;
+	chrDescriptorSetAllocInfo.descriptorSetCount = 1;
+	chrDescriptorSetAllocInfo.pSetLayouts = &pContext->debugDescriptorSetLayout;
 
-	VkResult res = vkAllocateDescriptorSets(pContext->device, &chrDescriptorSetAllocInfo, renderData.descriptorSets);
+	VkResult res = vkAllocateDescriptorSets(pContext->device, &chrDescriptorSetAllocInfo, &pContext->chrDescriptorSet);
 	if (res != VK_SUCCESS) {
 		DEBUG_ERROR("Whoopsie poopsie :c %d\n", res);
 	}
 
-	for (u32 i = 0; i < PALETTE_COUNT; i++) {
-		VkDescriptorImageInfo outBufferInfo{};
-		outBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		outBufferInfo.imageView = renderData.images[i].view;
-		outBufferInfo.sampler = pContext->defaultSampler;
+	VkDescriptorImageInfo outBufferInfo{};
+	outBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+	outBufferInfo.imageView = pContext->chrImage.view;
+	outBufferInfo.sampler = pContext->defaultSampler;
 
-		VkDescriptorImageInfo paletteBufferInfo{};
-		paletteBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		paletteBufferInfo.imageView = pContext->paletteImage.view;
-		paletteBufferInfo.sampler = pContext->defaultSampler;
+	VkDescriptorImageInfo paletteBufferInfo{};
+	paletteBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+	paletteBufferInfo.imageView = pContext->paletteImage.view;
+	paletteBufferInfo.sampler = pContext->defaultSampler;
 
-		VkDescriptorBufferInfo chrBufferInfo{};
-		chrBufferInfo.buffer = renderData.sheetBuffer.buffer;
-		chrBufferInfo.offset = 0;
-		chrBufferInfo.range = sizeof(ChrSheet);
+	VkDescriptorBufferInfo chrBufferInfo{};
+	chrBufferInfo.buffer = pContext->computeBufferDevice.buffer;
+	chrBufferInfo.offset = pContext->chrOffset;
+	chrBufferInfo.range = pContext->chrSize;
 
-		VkDescriptorBufferInfo palTableInfo{};
-		palTableInfo.buffer = pContext->computeBufferDevice.buffer;
-		palTableInfo.offset = pContext->paletteTableOffset;
-		palTableInfo.range = pContext->paletteTableSize;
+	VkDescriptorBufferInfo palTableInfo{};
+	palTableInfo.buffer = pContext->computeBufferDevice.buffer;
+	palTableInfo.offset = pContext->paletteTableOffset;
+	palTableInfo.range = pContext->paletteTableSize;
 
-		VkWriteDescriptorSet descriptorWrite[4]{};
-		descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[0].dstSet = renderData.descriptorSets[i];
-		descriptorWrite[0].dstBinding = 0;
-		descriptorWrite[0].dstArrayElement = 0;
-		descriptorWrite[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		descriptorWrite[0].descriptorCount = 1;
-		descriptorWrite[0].pImageInfo = &outBufferInfo;
+	VkWriteDescriptorSet descriptorWrite[4]{};
+	descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrite[0].dstSet = pContext->chrDescriptorSet;
+	descriptorWrite[0].dstBinding = 0;
+	descriptorWrite[0].dstArrayElement = 0;
+	descriptorWrite[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	descriptorWrite[0].descriptorCount = 1;
+	descriptorWrite[0].pImageInfo = &outBufferInfo;
 
-		descriptorWrite[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[1].dstSet = renderData.descriptorSets[i];
-		descriptorWrite[1].dstBinding = 1;
-		descriptorWrite[1].dstArrayElement = 0;
-		descriptorWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		descriptorWrite[1].descriptorCount = 1;
-		descriptorWrite[1].pImageInfo = &paletteBufferInfo;
+	descriptorWrite[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrite[1].dstSet = pContext->chrDescriptorSet;
+	descriptorWrite[1].dstBinding = 1;
+	descriptorWrite[1].dstArrayElement = 0;
+	descriptorWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	descriptorWrite[1].descriptorCount = 1;
+	descriptorWrite[1].pImageInfo = &paletteBufferInfo;
 
-		descriptorWrite[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[2].dstSet = renderData.descriptorSets[i];
-		descriptorWrite[2].dstBinding = 2;
-		descriptorWrite[2].dstArrayElement = 0;
-		descriptorWrite[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		descriptorWrite[2].descriptorCount = 1;
-		descriptorWrite[2].pBufferInfo = &chrBufferInfo;
+	descriptorWrite[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrite[2].dstSet = pContext->chrDescriptorSet;
+	descriptorWrite[2].dstBinding = 2;
+	descriptorWrite[2].dstArrayElement = 0;
+	descriptorWrite[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	descriptorWrite[2].descriptorCount = 1;
+	descriptorWrite[2].pBufferInfo = &chrBufferInfo;
 
-		descriptorWrite[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[3].dstSet = renderData.descriptorSets[i];
-		descriptorWrite[3].dstBinding = 3;
-		descriptorWrite[3].dstArrayElement = 0;
-		descriptorWrite[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		descriptorWrite[3].descriptorCount = 1;
-		descriptorWrite[3].pBufferInfo = &palTableInfo;
+	descriptorWrite[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrite[3].dstSet = pContext->chrDescriptorSet;
+	descriptorWrite[3].dstBinding = 3;
+	descriptorWrite[3].dstArrayElement = 0;
+	descriptorWrite[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	descriptorWrite[3].descriptorCount = 1;
+	descriptorWrite[3].pBufferInfo = &palTableInfo;
 
-		vkUpdateDescriptorSets(pContext->device, 4, descriptorWrite, 0, nullptr);
-	}
+	vkUpdateDescriptorSets(pContext->device, 4, descriptorWrite, 0, nullptr);
 }
 
-void Rendering::CreateImGuiChrTextures(u32 index, ImTextureID* pTextures) {
-	ChrSheetRenderData& renderData = pContext->chrData[index];
-	CreateChrSheetSubBuffer(index, renderData.sheetBuffer);
-	
-	for (u32 i = 0; i < PALETTE_COUNT; i++) {
-		CreateImage(CHR_DIM_PIXELS, CHR_DIM_PIXELS, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, renderData.images[i]);
+void Rendering::CreateImGuiChrTexture(ImTextureID* pTexture) {
+	constexpr u32 sheetPaletteCount = PALETTE_COUNT / CHR_COUNT;
+	CreateImage(CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, pContext->chrImage);
+	*pTexture = (ImTextureID)ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, pContext->chrImage.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-		pTextures[i] = (ImTextureID)ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, renderData.images[i].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	}
-
-	InitializeChrDescriptorSet(renderData);
+	InitializeChrDescriptorSet();
 }
 
-static void FreeImGuiChrTextures(ChrSheetRenderData* pRenderData, ImTextureID* pTextures) {
-	FreeBuffer(pRenderData->sheetBuffer);
-
-	for (u32 i = 0; i < PALETTE_COUNT; i++) {
-		ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)pTextures[i]);
-		FreeImage(pRenderData->images[i]);
-	}
-}
-
-void Rendering::FreeImGuiChrTextures(u32 index, ImTextureID* pTextures) {
-	ChrSheetRenderData& renderData = pContext->chrData[index];
-
-	FreeImGuiChrTextures(&renderData, pTextures);
+void Rendering::FreeImGuiChrTexture(ImTextureID* pTexture) {
+	ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)*pTexture);
+	FreeImage(pContext->chrImage);
 }
 
 void Rendering::CreateImGuiPaletteTexture(ImTextureID* pTexture) {

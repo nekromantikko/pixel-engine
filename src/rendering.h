@@ -144,8 +144,8 @@ namespace Rendering
 	void BeginImGuiFrame();
 	void ShutdownImGui();
 
-	void CreateImGuiChrTextures(u32 index, ImTextureID* pTextures);
-	void FreeImGuiChrTextures(u32 index, ImTextureID* pTextures);
+	void CreateImGuiChrTexture(ImTextureID* pTexture);
+	void FreeImGuiChrTexture(ImTextureID* pTexture);
 	void CreateImGuiPaletteTexture(ImTextureID* pTexture);
 	void FreeImGuiPaletteTexture(ImTextureID* pTexture);
 	void CreateImGuiGameTexture(ImTextureID* pTexture);
