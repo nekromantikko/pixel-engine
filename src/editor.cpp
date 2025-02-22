@@ -426,38 +426,34 @@ static void DrawHitbox(const AABB* pHitbox, const ImVec2 origin, const r32 rende
 	drawList->AddRectFilled(pMin, pMax, color);
 }
 
-static void SwapMetasprites(Metasprite* pMetasprites, s32 a, s32 b) {
-	Metasprite& metaspriteA = pMetasprites[a];
-	char* nameA = Metasprites::GetName(a);
-	Metasprite& metaspriteB = pMetasprites[b];
-	char* nameB = Metasprites::GetName(b);
+static void swap(Metasprite& a, Metasprite& b) {
+	char* nameA = Metasprites::GetName(&a);
+	char* nameB = Metasprites::GetName(&b);
 
-	u32 tempSpriteCount = metaspriteA.spriteCount;
+	u32 tempSpriteCount = a.spriteCount;
 	char tempName[METASPRITE_MAX_NAME_LENGTH];
 	Sprite tempSprites[METASPRITE_MAX_SPRITE_COUNT];
 
 	memcpy(tempName, nameA, METASPRITE_MAX_NAME_LENGTH);
-	memcpy(tempSprites, metaspriteA.spritesRelativePos, METASPRITE_MAX_SPRITE_COUNT * sizeof(Sprite));
+	memcpy(tempSprites, a.spritesRelativePos, METASPRITE_MAX_SPRITE_COUNT * sizeof(Sprite));
 
-	metaspriteA.spriteCount = metaspriteB.spriteCount;
+	a.spriteCount = b.spriteCount;
 	memcpy(nameA, nameB, METASPRITE_MAX_NAME_LENGTH);
-	memcpy(metaspriteA.spritesRelativePos, metaspriteB.spritesRelativePos, METASPRITE_MAX_SPRITE_COUNT * sizeof(Sprite));
+	memcpy(a.spritesRelativePos, a.spritesRelativePos, METASPRITE_MAX_SPRITE_COUNT * sizeof(Sprite));
 
-	metaspriteB.spriteCount = tempSpriteCount;
+	b.spriteCount = tempSpriteCount;
 	memcpy(nameB, tempName, METASPRITE_MAX_NAME_LENGTH);
-	memcpy(metaspriteB.spritesRelativePos, tempSprites, METASPRITE_MAX_SPRITE_COUNT * sizeof(Sprite));
+	memcpy(b.spritesRelativePos, tempSprites, METASPRITE_MAX_SPRITE_COUNT * sizeof(Sprite));
 }
 
-static void SwapLevels(Level* pLevels, s32 a, s32 b) {
-	Level& levelA = pLevels[a];
-	Tilemap* levelATilemap = levelA.pTilemap;
-	char* levelAName = levelA.name;
-	Level& levelB = pLevels[b];
-	Tilemap* levelBTilemap = levelB.pTilemap;
-	char* levelBName = levelB.name;
+static void swap(Level& a, Level& b) {
+	Tilemap* levelATilemap = a.pTilemap;
+	char* levelAName = a.name;
+	Tilemap* levelBTilemap = b.pTilemap;
+	char* levelBName = b.name;
 
 	// Copy A to temp
-	Level temp = levelA;
+	Level temp = a;
 
 	Tilemap* tempTilemap = new Tilemap{};
 	char tempName[LEVEL_MAX_NAME_LENGTH];
@@ -466,16 +462,16 @@ static void SwapLevels(Level* pLevels, s32 a, s32 b) {
 	memcpy(tempName, levelAName, LEVEL_MAX_NAME_LENGTH);
 
 	// Copy B to A (But keep pointers pointing in original location)
-	levelA = levelB;
-	levelA.pTilemap = levelATilemap;
-	levelA.name = levelAName;
+	a = b;
+	a.pTilemap = levelATilemap;
+	a.name = levelAName;
 	memcpy(levelATilemap, levelBTilemap, sizeof(Tilemap));
 	memcpy(levelAName, levelBName, LEVEL_MAX_NAME_LENGTH);
 
 	// Copy Temp to B
-	levelB = temp;
-	levelB.pTilemap = levelBTilemap;
-	levelB.name = levelBName;
+	b = temp;
+	b.pTilemap = levelBTilemap;
+	b.name = levelBName;
 	memcpy(levelBTilemap, tempTilemap, sizeof(Tilemap));
 	memcpy(levelBName, tempName, LEVEL_MAX_NAME_LENGTH);
 
@@ -488,14 +484,7 @@ static r32 GetAudioSample(void* data, s32 idx) {
 }
 
 template <typename T>
-static void SwapElements(T* elements, s32 a, s32 b) {
-	T temp = elements[a];
-	elements[a] = elements[b];
-	elements[b] = temp;
-}
-
-template <typename T>
-static bool TrySwapElements(T* elements, ImVector<s32>& elementIndices, s32 i, s32 dir, void (*swapFunction)(T*, s32, s32) = nullptr) {
+static bool TrySwapElements(T* elements, ImVector<s32>& elementIndices, s32 i, s32 dir) {
 	s32& elementIndex = elementIndices[i];
 	s32 nextElementIndex = elementIndex + dir;
 
@@ -503,19 +492,14 @@ static bool TrySwapElements(T* elements, ImVector<s32>& elementIndices, s32 i, s
 		return false;
 	}
 
-	if (swapFunction == nullptr) {
-		SwapElements(elements, elementIndex, nextElementIndex);
-	}
-	else {
-		swapFunction(elements, elementIndex, nextElementIndex);
-	}
+	std::swap(elements[elementIndex], elements[nextElementIndex]);
 	elementIndex += dir;
 
 	return true;
 }
 
 template <typename T>
-static void MoveElements(T* elements, ImVector<s32>& elementIndices, s32 step, void (*swapFunction)(T*, s32, s32) = nullptr) {
+static void MoveElements(T* elements, ImVector<s32>& elementIndices, s32 step) {
 	if (step == 0) {
 		return;
 	}
@@ -531,7 +515,7 @@ static void MoveElements(T* elements, ImVector<s32>& elementIndices, s32 step, v
 				if (alreadyMoved.contains(i))
 					continue;
 
-				if (TrySwapElements(elements, elementIndices, i, dir, swapFunction)) {
+				if (TrySwapElements(elements, elementIndices, i, dir)) {
 					alreadyMoved.push_back(i);
 				}
 			}
@@ -874,7 +858,7 @@ static void DrawMetaspriteList(s32& selection) {
 				const bool canMove = CanMoveElements(MAX_METASPRITE_COUNT, vec, step);
 
 				if (canMove) {
-					MoveElements<Metasprite>(pMetasprites, vec, step, SwapMetasprites);
+					MoveElements<Metasprite>(pMetasprites, vec, step);
 					selection = vec[0];
 				}
 			}
@@ -1845,7 +1829,7 @@ static void DrawGameWindow() {
 					const bool canMove = CanMoveElements(MAX_LEVEL_COUNT, vec, step);
 
 					if (canMove) {
-						MoveElements<Level>(pLevels, vec, step, SwapLevels);
+						MoveElements<Level>(pLevels, vec, step);
 
 						Game::ReloadLevel();
 						selectedLevel = editing ? (pCurrentLevel - pLevels) : vec[0];

@@ -19,6 +19,15 @@ char* Metasprites::GetName(s32 index) {
 	return &nameMemory[index * METASPRITE_MAX_NAME_LENGTH];
 }
 
+char* Metasprites::GetName(const Metasprite* pMetasprite) {
+	const s32 index = GetIndex(pMetasprite);
+
+	if (index > 0) {
+		return GetName(index);
+	}
+	return nullptr;
+}
+
 s32 Metasprites::GetIndex(const Metasprite* pMetasprite) {
 	s32 index = pMetasprite - metasprites;
 	if (index < 0 || index >= MAX_METASPRITE_COUNT) {
