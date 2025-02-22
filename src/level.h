@@ -21,9 +21,14 @@ enum LevelScreenExit : u8 {
 enum LevelType : u8 {
     LEVEL_TYPE_SIDESCROLLER = 0,
     LEVEL_TYPE_OVERWORLD,
+    LEVEL_TYPE_TITLESCREEN,
 
     LEVEL_TYPE_COUNT
 };
+
+#ifdef EDITOR
+constexpr const char* LEVEL_TYPE_NAMES[LEVEL_TYPE_COUNT] = { "Sidescroller", "Overworld", "Title screen" };
+#endif
 
 struct LevelExit {
     s16 targetLevel;

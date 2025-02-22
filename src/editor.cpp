@@ -1568,6 +1568,10 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 
 			ImGui::InputText("Name", level.name, LEVEL_MAX_NAME_LENGTH);
 
+			u8 type = level.flags.type % LEVEL_TYPE_COUNT;
+			DrawTypeSelectionCombo("Type", LEVEL_TYPE_NAMES, LEVEL_TYPE_COUNT, type);
+			level.flags.type = type;
+
 			s32 size[2] = { level.pTilemap->width, level.pTilemap->height };
 			if (ImGui::InputInt2("Size", size)) {
 				level.pTilemap->width = glm::clamp(size[0], 1, s32(TILEMAP_MAX_DIM_SCREENS));
