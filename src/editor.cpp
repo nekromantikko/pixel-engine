@@ -255,10 +255,10 @@ static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
 static void DrawLevel(const Level* pLevel, ImVec2 pos, r32 scale) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-	const Tilemap& tilemap = pLevel->tilemap;
-	const Tileset* pTileset = tilemap.pTileset;
+	const Tilemap* pTilemap = pLevel->pTilemap;
+	const Tileset* pTileset = pTilemap->pTileset;
 
-	const u32 screenCount = tilemap.width * tilemap.height;
+	const u32 screenCount = pTilemap->width * pTilemap->height;
 	const u32 tileCount = screenCount * VIEWPORT_SIZE_TILES;
 
 	drawList->PushTextureID(pContext->chrTexture);
@@ -267,16 +267,16 @@ static void DrawLevel(const Level* pLevel, ImVec2 pos, r32 scale) {
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
 	ImVec2 uv[METATILE_TILE_COUNT * 4];
 
-	for (u32 yScreen = 0; yScreen < tilemap.height; yScreen++) {
-		for (u32 xScreen = 0; xScreen < tilemap.width; xScreen++) {
-			const u32 screenIndex = xScreen + tilemap.width * yScreen;
-			const Screen& screen = tilemap.pScreens[screenIndex];
+	for (u32 yScreen = 0; yScreen < pTilemap->height; yScreen++) {
+		for (u32 xScreen = 0; xScreen < pTilemap->width; xScreen++) {
+			const u32 screenIndex = xScreen + TILEMAP_MAX_DIM_SCREENS * yScreen;
+			const TilemapScreen& screen = pTilemap->screens[screenIndex];
 
 			for (u32 i = 0; i < VIEWPORT_SIZE_METATILES; i++) {
-				const u8 mapTileIndex = screen.tiles[i];
-				const MapTile& mapTile = pTileset->tiles[mapTileIndex];
-				const Metatile& metatile = mapTile.metatile;
-				const s32 palette = Tiles::GetTilesetPalette(pTileset, mapTileIndex);
+				const u8 tilesetTileIndex = screen.tiles[i];
+				const TilesetTile& tilesetTile = pTileset->tiles[tilesetTileIndex];
+				const Metatile& metatile = tilesetTile.metatile;
+				const s32 palette = Tiles::GetTilesetPalette(pTileset, tilesetTileIndex);
 
 				const u32 xMetatile = xScreen * VIEWPORT_WIDTH_METATILES + i % VIEWPORT_WIDTH_METATILES;
 				const u32 yMetatile = yScreen * VIEWPORT_HEIGHT_METATILES + i / VIEWPORT_WIDTH_METATILES;
@@ -450,34 +450,36 @@ static void SwapMetasprites(Metasprite* pMetasprites, s32 a, s32 b) {
 
 static void SwapLevels(Level* pLevels, s32 a, s32 b) {
 	Level& levelA = pLevels[a];
-	Screen* levelAScreens = levelA.tilemap.pScreens;
+	Tilemap* levelATilemap = levelA.pTilemap;
 	char* levelAName = levelA.name;
 	Level& levelB = pLevels[b];
-	Screen* levelBScreens = levelB.tilemap.pScreens;
+	Tilemap* levelBTilemap = levelB.pTilemap;
 	char* levelBName = levelB.name;
 
 	// Copy A to temp
 	Level temp = levelA;
 
-	Screen tempScreens[LEVEL_MAX_SCREEN_COUNT];
+	Tilemap* tempTilemap = new Tilemap{};
 	char tempName[LEVEL_MAX_NAME_LENGTH];
 
-	memcpy(tempScreens, levelAScreens, LEVEL_MAX_SCREEN_COUNT * sizeof(Screen));
+	memcpy(tempTilemap, levelATilemap, sizeof(Tilemap));
 	memcpy(tempName, levelAName, LEVEL_MAX_NAME_LENGTH);
 
 	// Copy B to A (But keep pointers pointing in original location)
 	levelA = levelB;
-	levelA.tilemap.pScreens = levelAScreens;
+	levelA.pTilemap = levelATilemap;
 	levelA.name = levelAName;
-	memcpy(levelAScreens, levelBScreens, LEVEL_MAX_SCREEN_COUNT * sizeof(Screen));
+	memcpy(levelATilemap, levelBTilemap, sizeof(Tilemap));
 	memcpy(levelAName, levelBName, LEVEL_MAX_NAME_LENGTH);
 
 	// Copy Temp to B
 	levelB = temp;
-	levelB.tilemap.pScreens = levelBScreens;
+	levelB.pTilemap = levelBTilemap;
 	levelB.name = levelBName;
-	memcpy(levelBScreens, tempScreens, LEVEL_MAX_SCREEN_COUNT * sizeof(Screen));
+	memcpy(levelBTilemap, tempTilemap, sizeof(Tilemap));
 	memcpy(levelBName, tempName, LEVEL_MAX_NAME_LENGTH);
+
+	delete tempTilemap;
 }
 
 // Callback for displaying waveform in audio window
@@ -1286,7 +1288,7 @@ static void DrawGameViewOverlay(const Level* pLevel, const Viewport* pViewport, 
 	const s32 screenEndX = (pViewport->x + VIEWPORT_WIDTH_METATILES) / VIEWPORT_WIDTH_METATILES;
 	const s32 screenEndY = (pViewport->y + VIEWPORT_HEIGHT_METATILES) / VIEWPORT_HEIGHT_METATILES;
 
-	const Tilemap* pTilemap = &pLevel->tilemap;
+	const Tilemap* pTilemap = pLevel->pTilemap;
 
 	for (s32 y = screenStartY; y <= screenEndY; y++) {
 		for (s32 x = screenStartX; x <= screenEndX; x++) {
@@ -1294,7 +1296,7 @@ static void DrawGameViewOverlay(const Level* pLevel, const Viewport* pViewport, 
 			const ImVec2 pMin = ImVec2((screenPixelPos.x - viewportPixelPos.x) * renderScale + topLeft.x, (screenPixelPos.y - viewportPixelPos.y) * renderScale + topLeft.y);
 			const ImVec2 pMax = ImVec2(pMin.x + viewportDrawSize.x, pMin.y + viewportDrawSize.y);
 
-			const s32 i = x + y * pTilemap->width;
+			const s32 i = x + y * TILEMAP_MAX_DIM_SCREENS;
 
 			if (drawBorders) {
 				DrawScreenBorders(i, pMin, pMax, renderScale);
@@ -1390,7 +1392,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 			const r32 dy = -(newDelta.y - dragDelta.y) / renderScale / METATILE_DIM_PIXELS;
 			dragDelta = newDelta;
 
-			MoveViewport(pViewport, pNametables, &pLevel->tilemap, dx, dy);
+			MoveViewport(pViewport, pNametables, pLevel->pTilemap, dx, dy);
 			scrolling = true;
 		}
 
@@ -1449,7 +1451,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 		}
 		case EDIT_MODE_TILES:
 		{
-			const Tilemap* pTilemap = &pLevel->tilemap;
+			Tilemap* pTilemap = pLevel->pTilemap;
 			static bool selecting = false;
 
 			// Selection
@@ -1517,7 +1519,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 
 					// Paint metatiles
 					if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
-						Tiles::SetMapTile(pTilemap, metatileWorldPos, metatileIndex);
+						Tiles::SetTilesetTile(pTilemap, metatileWorldPos, metatileIndex);
 
 						const u32 nametableIndex = Tiles::GetNametableIndex(metatileWorldPos);
 						const glm::ivec2 nametablePos = Tiles::GetNametableOffset(metatileWorldPos);
@@ -1556,7 +1558,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 	if (editing) {
 		ImGui::SameLine();
 		if (ImGui::Button("Refresh viewport")) {
-			RefreshViewport(pViewport, pNametables, &pLevel->tilemap);
+			RefreshViewport(pViewport, pNametables, pLevel->pTilemap);
 		}
 	}
 
@@ -1582,12 +1584,10 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 
 			ImGui::InputText("Name", level.name, LEVEL_MAX_NAME_LENGTH);
 
-			s32 size[2] = { level.tilemap.width, level.tilemap.height };
+			s32 size[2] = { level.pTilemap->width, level.pTilemap->height };
 			if (ImGui::InputInt2("Size", size)) {
-				if (size[0] >= 1 && size[1] >= 1 && size[0] * size[1] <= LEVEL_MAX_SCREEN_COUNT) {
-					level.tilemap.width = size[0];
-					level.tilemap.height = size[1];
-				}
+				level.pTilemap->width = glm::clamp(size[0], 1, s32(TILEMAP_MAX_DIM_SCREENS));
+				level.pTilemap->height = glm::clamp(size[1], 1, s32(TILEMAP_MAX_DIM_SCREENS));
 			}
 
 			// Screens
@@ -1595,7 +1595,7 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 				// TODO: Lay these out nicer
 				u32 screenCount = level.width * level.height;
 				for (u32 i = 0; i < screenCount; i++) {
-					Screen& screen = level.screens[i];
+					TilemapScreen& screen = level.screens[i];
 
 					if (ImGui::TreeNode(&screen, "%#04x", i)) {
 
@@ -1640,7 +1640,7 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 			const s32 currentSelection = (clipboard.size.x == 1 && clipboard.size.y == 1) ? clipboard.clipboard[0] : -1;
 			s32 newSelection = currentSelection;
 
-			DrawTileset(level.tilemap.pTileset, ImGui::GetContentRegionAvail().x - style.WindowPadding.x, &newSelection);
+			DrawTileset(level.pTilemap->pTileset, ImGui::GetContentRegionAvail().x - style.WindowPadding.x, &newSelection);
 
 			// Rewrite level editor clipboard if new selection was made
 			if (newSelection != currentSelection) {
@@ -1698,7 +1698,7 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 					// TODO: Lay these out nicer
 					u32 screenCount = level.width * level.height;
 					for (u32 i = 0; i < screenCount; i++) {
-						Screen& screen = level.screens[i];
+						TilemapScreen& screen = level.screens[i];
 
 						if (ImGui::TreeNode(&screen, "%#04x", i)) {
 
@@ -1773,7 +1773,7 @@ static void DrawGameWindow() {
 			}
 			if (ImGui::MenuItem("Revert changes")) {
 				Levels::LoadLevels("assets/levels.lev");
-				RefreshViewport(pViewport, pNametables, &pCurrentLevel->tilemap);
+				RefreshViewport(pViewport, pNametables, pCurrentLevel->pTilemap);
 			}
 			ImGui::EndMenu();
 		}
@@ -2482,15 +2482,15 @@ struct LevelNodeConnection {
 static glm::vec2 GetLevelNodeCanvasSize(const LevelNode& node) {
 	const Level& level = Levels::GetLevelsPtr()[node.levelIndex];
 
-	return glm::vec2(LEVEL_NODE_SCREEN_SIZE.x * level.tilemap.width, LEVEL_NODE_SCREEN_SIZE.y * level.tilemap.height);
+	return glm::vec2(LEVEL_NODE_SCREEN_SIZE.x * level.pTilemap->width, LEVEL_NODE_SCREEN_SIZE.y * level.pTilemap->height);
 }
 
 static void GetNodePins(const LevelNode& node, std::vector<LevelNodePin>& outPins) {
 	const Level& level = Levels::GetLevelsPtr()[node.levelIndex];
 
-	for (u32 y = 0; y < level.tilemap.height; y++) {
-		for (u32 x = 0; x < level.tilemap.width; x++) {
-			const u32 screenIndex = x + y * level.tilemap.width;
+	for (u32 y = 0; y < level.pTilemap->height; y++) {
+		for (u32 x = 0; x < level.pTilemap->width; x++) {
+			const u32 screenIndex = x + y * level.pTilemap->width;
 			const s32 exitOffset = SCREEN_EXIT_COUNT * screenIndex;
 
 			// Top connection pin
@@ -2504,11 +2504,11 @@ static void GetNodePins(const LevelNode& node, std::vector<LevelNodePin>& outPin
 			// Middle connection pin
 			outPins.emplace_back(node.id, exitOffset + SCREEN_EXIT_MID);
 			// Right connection pin
-			if (x == level.tilemap.width - 1) {
+			if (x == level.pTilemap->width - 1) {
 				outPins.emplace_back(node.id, exitOffset + SCREEN_EXIT_RIGHT);
 			}
 			// Bottom connection pin
-			if (y == level.tilemap.height - 1) {
+			if (y == level.pTilemap->height - 1) {
 				outPins.emplace_back(node.id, exitOffset + SCREEN_EXIT_BOTTOM);
 			}
 		}
@@ -2520,8 +2520,8 @@ static glm::vec2 GetNodePinPosition(const LevelNode& node, s32 exitIndex) {
 	const u8 exit = exitIndex % SCREEN_EXIT_COUNT;
 
 	const Level& level = Levels::GetLevelsPtr()[node.levelIndex];
-	const u32 xScreen = screenIndex % level.tilemap.width;
-	const u32 yScreen = screenIndex / level.tilemap.width;
+	const u32 xScreen = screenIndex % level.pTilemap->width;
+	const u32 yScreen = screenIndex / level.pTilemap->width;
 	const glm::vec2 screenTopLeft(xScreen * LEVEL_NODE_SCREEN_SIZE.x, yScreen * LEVEL_NODE_SCREEN_SIZE.y);
 	const glm::vec2 screenBtmRight = screenTopLeft + LEVEL_NODE_SCREEN_SIZE;
 	const glm::vec2 screenMid = screenTopLeft + LEVEL_NODE_SCREEN_SIZE / 2.0f;

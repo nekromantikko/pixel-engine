@@ -1,6 +1,7 @@
 #include "tiles.h"
 #include "rendering_util.h"
 #include "system.h"
+#include <limits>
 
 #pragma region Tileset
 static inline u32 GetTilesetAttributeIndex(u32 tileIndex) {
@@ -60,7 +61,7 @@ bool Tiles::TileInMapBounds(const Tilemap* pTilemap, const glm::ivec2& pos) {
 }
 
 static s32 GetScreenIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
-    return (pos.x / VIEWPORT_WIDTH_METATILES) + (pos.y / VIEWPORT_HEIGHT_METATILES) * pTilemap->width;
+    return (pos.x / VIEWPORT_WIDTH_METATILES) + (pos.y / VIEWPORT_HEIGHT_METATILES) * TILEMAP_MAX_DIM_SCREENS;
 }
 
 static s32 GetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
@@ -75,10 +76,10 @@ s32 Tiles::GetTilesetIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
     const s32 screenIndex = GetScreenIndex(pTilemap, pos);
     const s32 i = GetTileIndex(pTilemap, pos);
 
-    return pTilemap->pScreens[screenIndex].tiles[i];
+    return pTilemap->screens[screenIndex].tiles[i];
 }
 
-const MapTile* Tiles::GetMapTile(const Tilemap* pTilemap, const s32& tilesetIndex) {
+const TilesetTile* Tiles::GetTilesetTile(const Tilemap* pTilemap, const s32& tilesetIndex) {
     if (tilesetIndex == -1) {
         return nullptr;
     }
@@ -86,21 +87,21 @@ const MapTile* Tiles::GetMapTile(const Tilemap* pTilemap, const s32& tilesetInde
     return &pTilemap->pTileset->tiles[tilesetIndex];
 }
 
-const MapTile* Tiles::GetMapTile(const Tilemap* pTilemap, const glm::ivec2& pos) {
+const TilesetTile* Tiles::GetTilesetTile(const Tilemap* pTilemap, const glm::ivec2& pos) {
     s32 index = GetTilesetIndex(pTilemap, pos);
-    return GetMapTile(pTilemap, index);
+    return GetTilesetTile(pTilemap, index);
 }
 
-bool Tiles::SetMapTile(const Tilemap* pTilemap, s32 screenIndex, s32 tileIndex, const s32& tilesetIndex) {
+bool Tiles::SetTilesetTile(Tilemap* pTilemap, s32 screenIndex, s32 tileIndex, const s32& tilesetIndex) {
     if (tilesetIndex == -1) {
         return false;
     }
 
-    pTilemap->pScreens[screenIndex].tiles[tileIndex] = tilesetIndex;
+    pTilemap->screens[screenIndex].tiles[tileIndex] = tilesetIndex;
     return true;
 }
 
-bool Tiles::SetMapTile(const Tilemap* pTilemap, const glm::ivec2& pos, const s32& tilesetIndex) {
+bool Tiles::SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& tilesetIndex) {
     if (!TileInMapBounds(pTilemap, pos)) {
         return false;
     }
@@ -108,7 +109,7 @@ bool Tiles::SetMapTile(const Tilemap* pTilemap, const glm::ivec2& pos, const s32
     const s32 screenIndex = GetScreenIndex(pTilemap, pos);
     const s32 i = GetTileIndex(pTilemap, pos);
 
-    return SetMapTile(pTilemap, screenIndex, i, tilesetIndex);
+    return SetTilesetTile(pTilemap, screenIndex, i, tilesetIndex);
 }
 
 s32 Tiles::GetNametableIndex(const glm::ivec2& pos) {
@@ -136,7 +137,7 @@ void Tiles::LoadTileset(const char* fname) {
 	const char signature[4]{};
 	fread((void*)signature, sizeof(u8), 4, pFile);
 	fread((void*)name, sizeof(char), tilesetMaxNameLength, pFile);
-	fread((void*)&tileset.tiles, sizeof(MapTile), TILESET_SIZE, pFile);
+	fread((void*)&tileset.tiles, sizeof(TilesetTile), TILESET_SIZE, pFile);
 	fread((void*)&tileset.attributes, sizeof(u8), TILESET_ATTRIBUTE_COUNT, pFile);
 
 	fclose(pFile);
@@ -153,7 +154,7 @@ void Tiles::SaveTileset(const char* fname) {
 	const char signature[4] = "TIL";
 	fwrite(signature, sizeof(u8), 4, pFile);
 	fwrite(name, sizeof(char), tilesetMaxNameLength, pFile);
-	fwrite(&tileset.tiles, sizeof(MapTile), TILESET_SIZE, pFile);
+	fwrite(&tileset.tiles, sizeof(TilesetTile), TILESET_SIZE, pFile);
 	fwrite(&tileset.attributes, sizeof(u8), TILESET_ATTRIBUTE_COUNT, pFile);
 
 	fclose(pFile);
@@ -162,3 +163,53 @@ void Tiles::SaveTileset(const char* fname) {
 Tileset* Tiles::GetTileset() {
 	return &tileset;
 }
+
+#pragma region Compression
+void Tiles::CompressScreen(const TilemapScreen& screen, TilemapScreenCompressed& outCompressed) {
+	outCompressed.compressedTiles.clear();
+	outCompressed.compressedMetadata.clear();
+
+	for (u32 i = 0; i < VIEWPORT_SIZE_METATILES;) {
+		u8 tile = screen.tiles[i];
+		u16 length = 1;
+
+		while (i + length < VIEWPORT_SIZE_METATILES && screen.tiles[i + length] == tile && length < UCHAR_MAX) {
+			length++;
+		}
+
+		outCompressed.compressedTiles.emplace_back(tile, length);
+		i += length;
+	}
+
+	for (u32 i = 0; i < VIEWPORT_SIZE_METATILES;) {
+		TilemapTileMetadata metadata = screen.tileMetadata[i];
+		u16 length = 1;
+
+		while (i + length < VIEWPORT_SIZE_METATILES && screen.tileMetadata[i + length] == metadata && length < SHRT_MAX) {
+			length++;
+		}
+
+		outCompressed.compressedMetadata.emplace_back(metadata, length);
+		i += length;
+	}
+
+	memcpy(outCompressed.screenMetadata, screen.screenMetadata, TILEMAP_SCREEN_METADATA_SIZE);
+}
+
+void Tiles::DecompressScreen(const TilemapScreenCompressed& compressed, TilemapScreen& outScreen) {
+	u32 index = 0;
+	for (auto& tileRun : compressed.compressedTiles) {
+		for (u32 i = 0; i < tileRun.length; i++) {
+			outScreen.tiles[index++] = tileRun.tile;
+		}
+	}
+	index = 0;
+	for (auto& metadataRun : compressed.compressedMetadata) {
+		for (u32 i = 0; i < metadataRun.length; i++) {
+			outScreen.tileMetadata[index++] = metadataRun.metadata;
+		}
+	}
+
+	memcpy(outScreen.screenMetadata, compressed.screenMetadata, TILEMAP_SCREEN_METADATA_SIZE);
+}
+#pragma endregion

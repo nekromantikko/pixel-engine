@@ -4,6 +4,7 @@
 #include <cassert>
 #include "typedef.h"
 #include "rendering.h"
+#include <vector>
 
 constexpr u32 TILESET_DIM = 16;
 constexpr u32 TILESET_DIM_LOG2 = 4;
@@ -11,9 +12,14 @@ constexpr u32 TILESET_SIZE = TILESET_DIM * TILESET_DIM;
 constexpr u32 TILESET_DIM_ATTRIBUTES = TILESET_DIM >> 1;
 constexpr u32 TILESET_ATTRIBUTE_COUNT = TILESET_DIM_ATTRIBUTES * TILESET_DIM_ATTRIBUTES;
 
+constexpr u32 TILEMAP_MAX_DIM_SCREENS = 8;
+constexpr u32 TILEMAP_MAX_SCREEN_COUNT = TILEMAP_MAX_DIM_SCREENS * TILEMAP_MAX_DIM_SCREENS;
+constexpr u32 TILEMAP_SCREEN_METADATA_SIZE = 32;
+constexpr u32 TILEMAP_TILE_METADATA_SIZE = 4;
+
 static_assert(TILESET_DIM == (1 << TILESET_DIM_LOG2));
 
-enum MapTileType : s32 {
+enum TilesetTileType : s32 {
 	TILE_EMPTY = 0,
 	TILE_SOLID = 1,
 	TILE_TYPE_COUNT
@@ -23,25 +29,48 @@ enum MapTileType : s32 {
 constexpr const char* METATILE_TYPE_NAMES[TILE_TYPE_COUNT] = { "Empty", "Solid" };
 #endif
 
-struct MapTile {
+struct TilesetTile {
 	s32 type;
 	Metatile metatile;
 };
 
 struct Tileset {
-	MapTile tiles[TILESET_SIZE];
+	TilesetTile tiles[TILESET_SIZE];
 	u8 attributes[TILESET_ATTRIBUTE_COUNT];
 };
 
-struct Screen {
+typedef u8 TilemapScreenMetadata[TILEMAP_SCREEN_METADATA_SIZE];
+typedef u32 TilemapTileMetadata;
+
+struct TilemapScreen {
+	alignas(void*) TilemapScreenMetadata screenMetadata;
+
 	u8 tiles[VIEWPORT_SIZE_METATILES];
+	TilemapTileMetadata tileMetadata[VIEWPORT_SIZE_METATILES];
+};
+
+struct TileIndexRun {
+	u8 tile;
+	u8 length;
+};
+
+struct TileMetadataRun {
+	TilemapTileMetadata metadata;
+	alignas(4) u16 length;
+};
+
+struct TilemapScreenCompressed {
+	alignas(void*) TilemapScreenMetadata screenMetadata;
+
+	std::vector<TileIndexRun> compressedTiles;
+	std::vector<TileMetadataRun> compressedMetadata;
 };
 
 struct Tilemap {
 	s32 width;
 	s32 height;
 	Tileset* pTileset;
-	Screen* pScreens;
+	TilemapScreen screens[TILEMAP_MAX_SCREEN_COUNT];
 };
 
 namespace Tiles {
@@ -52,10 +81,10 @@ namespace Tiles {
 	// New API
 	bool TileInMapBounds(const Tilemap* pTilemap, const glm::ivec2& pos);
 	s32 GetTilesetIndex(const Tilemap* pTilemap, const glm::ivec2& pos);
-	const MapTile* GetMapTile(const Tilemap* pTilemap, const s32& tilesetIndex);
-	const MapTile* GetMapTile(const Tilemap* pTilemap, const glm::ivec2& pos);
-	bool SetMapTile(const Tilemap* pTilemap, s32 screenIndex, s32 tileIndex, const s32& tilesetIndex);
-	bool SetMapTile(const Tilemap* pTilemap, const glm::ivec2& pos, const s32& tilesetIndex);
+	const TilesetTile* GetTilesetTile(const Tilemap* pTilemap, const s32& tilesetIndex);
+	const TilesetTile* GetTilesetTile(const Tilemap* pTilemap, const glm::ivec2& pos);
+	bool SetTilesetTile(Tilemap* pTilemap, s32 screenIndex, s32 tileIndex, const s32& tilesetIndex);
+	bool SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& tilesetIndex);
 
 	s32 GetNametableIndex(const glm::ivec2& pos);
 	glm::ivec2 GetNametableOffset(const glm::ivec2& pos);
@@ -64,4 +93,8 @@ namespace Tiles {
 	void LoadTileset(const char* fname);
 	void SaveTileset(const char* fname);
 	Tileset* GetTileset();
+
+	// Compression
+	void CompressScreen(const TilemapScreen& screen, TilemapScreenCompressed& outCompressed);
+	void DecompressScreen(const TilemapScreenCompressed& compressed, TilemapScreen& outScreen);
 }

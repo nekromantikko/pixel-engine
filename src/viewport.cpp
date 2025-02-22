@@ -69,7 +69,7 @@ void MoveViewport(Viewport* pViewport, Nametable* pNametable, const Tilemap *pTi
             }
 
             const s32 tilesetIndex = Tiles::GetTilesetIndex(pTilemap, { x, y });
-            const MapTile* tile = Tiles::GetMapTile(pTilemap, tilesetIndex);
+            const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
 
             if (!tile) {
                 continue;
@@ -99,7 +99,7 @@ void RefreshViewport(Viewport* pViewport, Nametable* pNametable, const Tilemap* 
     for (s32 x = xStart; x < xEnd; x++) {
         for (s32 y = yStart; y < yEnd; y++) {
             const s32 tilesetIndex = Tiles::GetTilesetIndex(pTilemap, { x, y });
-            const MapTile* tile = Tiles::GetMapTile(pTilemap, tilesetIndex);
+            const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
 
             if (!tile) {
                 continue;

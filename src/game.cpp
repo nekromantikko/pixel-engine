@@ -249,7 +249,7 @@ namespace Game {
             delta.y = targetOffset.y + viewportScrollThreshold.y;
         }
 
-        MoveViewport(&viewport, pNametables, &pCurrentLevel->tilemap, delta.x, delta.y);
+        MoveViewport(&viewport, pNametables, pCurrentLevel->pTilemap, delta.x, delta.y);
     }
 
     static bool PositionInViewportBounds(glm::vec2 pos) {
@@ -504,7 +504,7 @@ namespace Game {
 
         const r32 dx = pActor->velocity.x;
 
-        Collision::SweepBoxHorizontal(&pCurrentLevel->tilemap, hitbox, pActor->position, dx, outHit);
+        Collision::SweepBoxHorizontal(pCurrentLevel->pTilemap, hitbox, pActor->position, dx, outHit);
         pActor->position.x = outHit.location.x;
         return outHit.blockingHit;
     }
@@ -514,7 +514,7 @@ namespace Game {
 
         const r32 dy = pActor->velocity.y;
 
-        Collision::SweepBoxVertical(&pCurrentLevel->tilemap, hitbox, pActor->position, dy, outHit);
+        Collision::SweepBoxVertical(pCurrentLevel->pTilemap, hitbox, pActor->position, dy, outHit);
         pActor->position.y = outHit.location.y;
         return outHit.blockingHit;
     }
@@ -1386,7 +1386,7 @@ namespace Game {
         UpdateScreenScroll();
 
         if (refresh) {
-            RefreshViewport(&viewport, pNametables, &pCurrentLevel->tilemap);
+            RefreshViewport(&viewport, pNametables, pCurrentLevel->pTilemap);
         }
     }
 
@@ -1403,7 +1403,7 @@ namespace Game {
         actors.Clear();
 
         if (refresh) {
-            RefreshViewport(&viewport, pNametables, &pCurrentLevel->tilemap);
+            RefreshViewport(&viewport, pNametables, pCurrentLevel->pTilemap);
         }
     }
 
@@ -1425,7 +1425,7 @@ namespace Game {
         gameplayFramesElapsed = 0;
 
         if (refresh) {
-            RefreshViewport(&viewport, pNametables, &pCurrentLevel->tilemap);
+            RefreshViewport(&viewport, pNametables, pCurrentLevel->pTilemap);
         }
     }
 

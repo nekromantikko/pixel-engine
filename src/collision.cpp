@@ -42,7 +42,7 @@ namespace Collision {
 			for (s32 i = 0; i <= yTileDelta; i++) {
 				glm::ivec2 tileCoord = glm::ivec2{ xTile, yTopTile + i };
 
-				const MapTile* tile = Tiles::GetMapTile(pTilemap, tileCoord);
+				const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tileCoord);
 
 				// Treat outside of screen as solid wall
 				if (!tile || tile->type == TILE_SOLID) {
@@ -96,7 +96,7 @@ namespace Collision {
 			for (s32 i = 0; i <= xTileDelta; i++) {
 				glm::ivec2 metatileCoord = glm::ivec2{ xLeftTile + i, yTile };
 
-				const MapTile* tile = Tiles::GetMapTile(pTilemap, metatileCoord);
+				const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, metatileCoord);
 				
 				// Treat outside of screen as solid wall
 				if (!tile || tile->type == TILE_SOLID) {
