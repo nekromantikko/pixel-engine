@@ -1,6 +1,7 @@
 #pragma once
 #include "typedef.h"
 #include "system.h"
+#include <algorithm>
 
 template <typename T>
 class PoolHandle {
@@ -53,6 +54,29 @@ public:
 	}
 	Pool(u32 s) {
 		Init(s);
+	}
+	Pool(const Pool& other) {
+		size = other.size;
+		count = other.count;
+
+		objs = new T[size]{};
+		handles = new THandle[size]{};
+		erase = new u32[size]{};
+
+		std::copy(other.objs, other.objs + size, objs);
+		std::copy(other.handles, other.handles + size, handles);
+		std::copy(other.erase, other.erase + size, erase);
+	}
+	Pool(Pool&& other) noexcept
+		: objs(other.objs), handles(other.handles), erase(other.erase),
+		size(other.size), count(other.count) {
+
+		// Null out the source object's pointers to prevent double delete
+		other.objs = nullptr;
+		other.handles = nullptr;
+		other.erase = nullptr;
+		other.size = 0;
+		other.count = 0;
 	}
 	void Free() {
 		delete[] objs;
@@ -142,5 +166,44 @@ public:
 			THandle handle = GetHandle(0);
 			Remove(handle);
 		}
+	}
+
+	Pool& operator=(const Pool& other) {
+		if (this != &other) {  // Prevent self-assignment
+			Free(); // Free current resources
+
+			size = other.size;
+			count = other.count;
+
+			objs = new T[size];
+			handles = new THandle[size];
+			erase = new u32[size];
+
+			std::copy(other.objs, other.objs + size, objs);
+			std::copy(other.handles, other.handles + size, handles);
+			std::copy(other.erase, other.erase + size, erase);
+		}
+		return *this;
+	}
+
+	Pool& operator=(Pool&& other) noexcept {
+		if (this != &other) {
+			Free(); // Free existing resources
+
+			// Steal data
+			objs = other.objs;
+			handles = other.handles;
+			erase = other.erase;
+			size = other.size;
+			count = other.count;
+
+			// Null out source
+			other.objs = nullptr;
+			other.handles = nullptr;
+			other.erase = nullptr;
+			other.size = 0;
+			other.count = 0;
+		}
+		return *this;
 	}
 };
