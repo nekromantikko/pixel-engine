@@ -18,6 +18,7 @@
 #include <gtx/matrix_transform_2d.hpp>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <algorithm>
 #include "random.h"
 
@@ -2446,26 +2447,38 @@ constexpr r32 LEVEL_NODE_OVERWORLD_TILE_DIM = 25.0f;
 constexpr glm::vec2 LEVEL_NODE_SCREEN_SIZE = glm::vec2(LEVEL_NODE_SCREEN_HEIGHT * LEVEL_SCREEN_ASPECT, LEVEL_NODE_SCREEN_HEIGHT);
 
 struct LevelNode {
-	u64 id;
-	glm::vec2 position;
 	s32 levelIndex;
+	glm::vec2 position;
 };
 
 struct LevelNodePin {
-	u64 nodeId = UUID_NULL;
+	s32 levelIndex = -1;
 	s8 screenIndex = -1;
 	s16 tileIndex = -1;
-	u8 exit;
+	u8 exit = 0;
 
 	bool Valid() const {
-		return nodeId != UUID_NULL && screenIndex != -1;
+		return levelIndex != -1 && screenIndex != -1;
 	}
 	bool operator==(const LevelNodePin& a) const {
-		return nodeId == a.nodeId && screenIndex == a.screenIndex && tileIndex == a.tileIndex && exit == a.exit;
+		return Hash() == a.Hash();
+	}
+	u64 Hash() const {
+		return (u64(u32(levelIndex)) << 32 |
+			u64(u8(screenIndex)) << 24 |
+			u64(u16(tileIndex)) << 8 |
+			u64(exit)
+			);
 	}
 };
 
-typedef std::unordered_map<u64, LevelNode> LevelNodeMap;
+struct LevelNodePinHasher {
+	u64 operator()(const LevelNodePin& pin) const {
+		return pin.Hash();
+	}
+};
+
+typedef std::unordered_map<s32, LevelNode> LevelNodeMap;
 
 struct LevelNodeConnection {
 	LevelNodePin from, to;
@@ -2499,27 +2512,27 @@ static void GetNodePins(const LevelNode& node, std::vector<LevelNodePin>& outPin
 
 			if (level.flags.type == LEVEL_TYPE_OVERWORLD) {
 				for (u16 i = 0; i < VIEWPORT_SIZE_METATILES; i++) {
-					outPins.emplace_back(node.id, screenIndex, i, SCREEN_EXIT_MID);
+					outPins.emplace_back(node.levelIndex, screenIndex, i, SCREEN_EXIT_MID);
 				}
 			}
 			else {
 				// Top connection pin
 				if (y == 0) {
-					outPins.emplace_back(node.id, screenIndex, -1, SCREEN_EXIT_TOP);
+					outPins.emplace_back(node.levelIndex, screenIndex, -1, SCREEN_EXIT_TOP);
 				}
 				// Left connection pin
 				if (x == 0) {
-					outPins.emplace_back(node.id, screenIndex, -1, SCREEN_EXIT_LEFT);
+					outPins.emplace_back(node.levelIndex, screenIndex, -1, SCREEN_EXIT_LEFT);
 				}
 				// Middle connection pin
-				outPins.emplace_back(node.id, screenIndex, -1, SCREEN_EXIT_MID);
+				outPins.emplace_back(node.levelIndex, screenIndex, -1, SCREEN_EXIT_MID);
 				// Right connection pin
 				if (x == level.pTilemap->width - 1) {
-					outPins.emplace_back(node.id, screenIndex, -1, SCREEN_EXIT_RIGHT);
+					outPins.emplace_back(node.levelIndex, screenIndex, -1, SCREEN_EXIT_RIGHT);
 				}
 				// Bottom connection pin
 				if (y == level.pTilemap->height - 1) {
-					outPins.emplace_back(node.id, screenIndex, -1, SCREEN_EXIT_BOTTOM);
+					outPins.emplace_back(node.levelIndex, screenIndex, -1, SCREEN_EXIT_BOTTOM);
 				}
 			}
 
@@ -2588,12 +2601,8 @@ static bool MousePosWithinNodeBounds(const LevelNode& node, const glm::vec3& mou
 		mousePosInCanvas.y < node.position.y + nodeSize.y);
 }
 
-static bool IsPinConnected(const LevelNodePin& pin, const std::vector<LevelNodeConnection>& connections) {
-	auto it = std::find_if(connections.begin(), connections.end(), [pin](const LevelNodeConnection& connection) {
-		return connection.from == pin || connection.to == pin;
-	});
-
-	return it != connections.end();
+static bool IsPinConnected(const LevelNodePin& pin, const std::unordered_set<LevelNodePin, LevelNodePinHasher>& connectedPins) {
+	return connectedPins.find(pin) != connectedPins.end();
 }
 
 static void ClearPinConnections(const LevelNodePin& pin, std::vector<LevelNodeConnection>& connections) {
@@ -2602,9 +2611,9 @@ static void ClearPinConnections(const LevelNodePin& pin, std::vector<LevelNodeCo
 		});
 }
 
-static void ClearNodeConnections(u64 nodeId, std::vector<LevelNodeConnection>& connections) {
-	std::erase_if(connections, [nodeId](const LevelNodeConnection& connection) {
-		return connection.from.nodeId == nodeId || connection.to.nodeId == nodeId;
+static void ClearNodeConnections(s32 levelIndex, std::vector<LevelNodeConnection>& connections) {
+	std::erase_if(connections, [levelIndex](const LevelNodeConnection& connection) {
+		return connection.from.levelIndex == levelIndex || connection.to.levelIndex == levelIndex;
 		});
 }
 
@@ -2639,7 +2648,7 @@ static glm::vec2 GetPinOutDir(const LevelNodePin& pin) {
 	return result;
 }
 
-static void DrawLevelNode(const LevelNode& node, const glm::mat3& canvasToScreen, const std::vector<LevelNodeConnection>& connections, bool& outHovered, LevelNodePin& outHoveredPin) {
+static void DrawLevelNode(const LevelNode& node, const glm::mat3& canvasToScreen, const std::unordered_set<LevelNodePin, LevelNodePinHasher>& connectedPins, bool& outHovered, LevelNodePin& outHoveredPin) {
 	outHovered = false;
 	outHoveredPin = LevelNodePin();
 
@@ -2715,7 +2724,7 @@ static void DrawLevelNode(const LevelNode& node, const glm::mat3& canvasToScreen
 		constexpr ImU32 pinConnectedColor = IM_COL32(0x27, 0xae, 0x60, 255);
 
 		const LevelNodePin& pin = pins[i];
-		const bool connected = IsPinConnected(pin, connections);
+		const bool connected = IsPinConnected(pin, connectedPins);
 		const bool hovered = outHoveredPin == pin;
 
 		// There are so many possible pins in the overworld that I don't want to draw them all
@@ -2765,11 +2774,9 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 			const glm::mat3 screenToCanvas = glm::inverse(canvasToScreen);
 			const glm::vec2 mouseInCanvas = screenToCanvas * glm::vec3(io.MousePos.x, io.MousePos.y, 1.0f);
 
-			const u64 nodeId = Random::GenerateUUID();
-			nodes.emplace(nodeId, LevelNode{
-				.id = nodeId,
-				.position = mouseInCanvas,
+			nodes.emplace(levelInd, LevelNode{
 				.levelIndex = levelInd,
+				.position = mouseInCanvas,
 				});
 		}
 		ImGui::EndDragDropTarget();
@@ -2831,8 +2838,8 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 	const glm::vec3 mousePosInCanvas = screenToCanvas * glm::vec3(io.MousePos.x, io.MousePos.y, 1.0f);
 
 	// Draw nodes
-	static u64 draggedNode = UUID_NULL;
-	static u64 contextNode = UUID_NULL;
+	static s32 draggedNode = -1;
+	static s32 contextNode = -1;
 
 	static LevelNodePin contextPin{};
 
@@ -2842,13 +2849,23 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 		.to = LevelNodePin()
 	};
 
+	// Precompute connected pin set
+	static std::unordered_set<LevelNodePin, LevelNodePinHasher> connectedPins;
+	connectedPins.clear();
+	connectedPins.reserve(connections.size() * 2);
+
+	for (const auto& connection : connections) {
+		connectedPins.insert(connection.from);
+		connectedPins.insert(connection.to);
+	}
+
 	for (const auto& [id, node] : nodes) {
 		bool nodeHovered = false;
 		LevelNodePin pin{};
-		DrawLevelNode(node, canvasToScreen, connections, nodeHovered, pin);
+		DrawLevelNode(node, canvasToScreen, connectedPins, nodeHovered, pin);
 
 		const bool pinHovered = pin.Valid();
-		const bool hoveredExitConnected = pinHovered && IsPinConnected(pin, connections);
+		const bool hoveredExitConnected = pinHovered && IsPinConnected(pin, connectedPins);
 		// If hovering over an exit
 		if (hovered && pinHovered) {
 			// Try to set hovered exit as connection target
@@ -2861,7 +2878,7 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 		}
 		else if (pendingConnection.to == pin)
 		{
-			pendingConnection.to = LevelNodePin();
+			pendingConnection.to = LevelNodePin{};
 		}
 
 		if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -2885,7 +2902,7 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 		}
 	}
 
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && draggedNode != UUID_NULL) {
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && draggedNode != -1) {
 		glm::vec2 scaledDelta = screenToCanvas * glm::vec3(io.MouseDelta.x, io.MouseDelta.y, 0.0f);
 
 		LevelNode& node = nodes[draggedNode];
@@ -2894,19 +2911,19 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 	}
 
 	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-		draggedNode = UUID_NULL;
+		draggedNode = -1;
 
 		if (pendingConnection.from.Valid() && pendingConnection.to.Valid()) {
 			connections.push_back(pendingConnection);
 		}
-		pendingConnection = { UUID_NULL,-1,-1,0,UUID_NULL,-1,-1,0 };
+		pendingConnection = LevelNodeConnection{};
 	}
 
 	if (ImGui::BeginPopup("NodeContextMenu")) {
-		if (ImGui::MenuItem("Delete Node") && contextNode != UUID_NULL) {
+		if (ImGui::MenuItem("Delete Node") && contextNode != -1) {
 			ClearNodeConnections(contextNode, connections);
 			nodes.erase(contextNode);
-			contextNode = UUID_NULL;
+			contextNode = -1;
 		}
 		ImGui::EndPopup();
 	}
@@ -2922,7 +2939,7 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 	// Draw connections
 	constexpr r32 bezierOffset = 64.f;
 	if (pendingConnection.from.Valid()) {
-		const glm::vec2 pCanvas = GetNodePinPosition(nodes[pendingConnection.from.nodeId], pendingConnection.from);
+		const glm::vec2 pCanvas = GetNodePinPosition(nodes[pendingConnection.from.levelIndex], pendingConnection.from);
 		const glm::vec2 pScreen = canvasToScreen * glm::vec3(pCanvas.x, pCanvas.y, 1.0f);
 		const glm::vec2 pTangent = GetPinOutDir(pendingConnection.from);
 
@@ -2935,11 +2952,11 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 	}
 
 	for (auto& connection : connections) {
-		const glm::vec2 p0Canvas = GetNodePinPosition(nodes[connection.from.nodeId], connection.from);
+		const glm::vec2 p0Canvas = GetNodePinPosition(nodes[connection.from.levelIndex], connection.from);
 		const glm::vec2 p0Screen = canvasToScreen * glm::vec3(p0Canvas.x, p0Canvas.y, 1.0f);
 		const glm::vec2 p0Tangent = GetPinOutDir(connection.from);
 
-		const glm::vec2 p1Canvas = GetNodePinPosition(nodes[connection.to.nodeId], connection.to);
+		const glm::vec2 p1Canvas = GetNodePinPosition(nodes[connection.to.levelIndex], connection.to);
 		const glm::vec2 p1Screen = canvasToScreen * glm::vec3(p1Canvas.x, p1Canvas.y, 1.0f);
 		const glm::vec2 p1Tangent = GetPinOutDir(connection.to);
 
