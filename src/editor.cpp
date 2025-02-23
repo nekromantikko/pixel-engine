@@ -68,21 +68,37 @@ static s32 SignExtendSpritePos(u16 spritePos) {
 	return (spritePos ^ 0x100) - 0x100;
 }
 
-static glm::ivec2 GetChrTileCoord(u8 index) {
-	const glm::ivec2 coord(index % CHR_DIM_TILES, index / CHR_DIM_TILES);
-	return coord;
+static inline glm::vec4 NormalizedToChrTexCoord(const glm::vec4& normalized, u8 chrIndex, u8 palette) {
+	constexpr r32 INV_CHR_COUNT = 1.0f / CHR_COUNT;
+	constexpr r32 INV_SHEET_PALETTE_COUNT = (1.0f / PALETTE_COUNT) * CHR_COUNT;
+	
+	// Apply palette and sheet index offsets to normalized coordinates
+	return glm::vec4(
+		(normalized.x + palette) * INV_SHEET_PALETTE_COUNT,
+		(normalized.y + chrIndex) * INV_CHR_COUNT,
+		(normalized.z + palette) * INV_SHEET_PALETTE_COUNT,
+		(normalized.w + chrIndex) * INV_CHR_COUNT
+	);
 }
 
-static glm::vec2 ChrTileCoordToTexCoord(glm::ivec2 coord, u8 chrIndex, u8 palette) {
-	const glm::vec2 sheetCoord((r32)coord.x / CHR_DIM_TILES, (r32)coord.y / CHR_DIM_TILES);
-	constexpr r32 sheetPaletteCount = r32(PALETTE_COUNT / CHR_COUNT);
-	glm::vec2 texCoord = sheetCoord;
-	texCoord.x += palette;
-	texCoord.x /= sheetPaletteCount;
-	texCoord.y += chrIndex;
-	texCoord.y /= (r32)CHR_COUNT;
+static glm::vec4 ChrTileToTexCoord(u8 tileIndex, u8 chrIndex, u8 palette) {
+	constexpr r32 INV_CHR_DIM_TILES = 1.0f / CHR_DIM_TILES;
+	constexpr u32 CHR_DIM_TILES_BITS = 0xf;
+	constexpr u32 CHR_DIM_TILES_LOG2 = 4;
 
-	return texCoord;
+	// Compute base tile coordinates (bitwise optimization)
+	const u8 tileX = tileIndex & CHR_DIM_TILES_BITS;
+	const u8 tileY = tileIndex >> CHR_DIM_TILES_LOG2;
+
+	// Convert to normalized texture coordinates
+	const glm::vec4 normalized(
+		tileX * INV_CHR_DIM_TILES,
+		tileY * INV_CHR_DIM_TILES,
+		(tileX + 1) * INV_CHR_DIM_TILES,
+		(tileY + 1) * INV_CHR_DIM_TILES
+	);
+
+	return NormalizedToChrTexCoord(normalized, chrIndex, palette);
 }
 
 static ImVec2 DrawTileGrid(ImVec2 size, r32 gridStep, s32* selection = nullptr, bool* focused = nullptr) {
@@ -128,7 +144,7 @@ static void DrawTileGridSelection(ImVec2 gridPos, ImVec2 gridSize, r32 gridStep,
 }
 
 static void GetMetatileVertices(const Metatile& metatile, s32 palette, ImVec2* outVertices, ImVec2* outUV) {
-	const r32 tileSize = 1.0f / METATILE_DIM_TILES;
+	constexpr r32 tileSize = 1.0f / METATILE_DIM_TILES;
 
 	for (u32 i = 0; i < METATILE_TILE_COUNT; i++) {
 		ImVec2 pMin = ImVec2((i & 1) * tileSize, (i >> 1) * tileSize);
@@ -139,14 +155,12 @@ static void GetMetatileVertices(const Metatile& metatile, s32 palette, ImVec2* o
 		outVertices[i * 4 + 2] = pMax;
 		outVertices[i * 4 + 3] = ImVec2(pMin.x, pMax.y);
 
-		const glm::ivec2 chrCoord = GetChrTileCoord(metatile.tiles[i]);
-		const glm::vec2 uvMin = ChrTileCoordToTexCoord(chrCoord, 0, palette);
-		const glm::vec2 uvMax = ChrTileCoordToTexCoord(glm::ivec2(chrCoord.x + 1, chrCoord.y + 1), 0, palette);
+		const glm::vec4 uvMinMax = ChrTileToTexCoord(metatile.tiles[i], 0, palette);
 
-		outUV[i * 4] = ImVec2(uvMin.x, uvMin.y);
-		outUV[i * 4 + 1] = ImVec2(uvMax.x, uvMin.y);
-		outUV[i * 4 + 2] = ImVec2(uvMax.x, uvMax.y);
-		outUV[i * 4 + 3] = ImVec2(uvMin.x, uvMax.y);
+		outUV[i * 4] = ImVec2(uvMinMax.x, uvMinMax.y);
+		outUV[i * 4 + 1] = ImVec2(uvMinMax.z, uvMinMax.y);
+		outUV[i * 4 + 2] = ImVec2(uvMinMax.z, uvMinMax.w);
+		outUV[i * 4 + 3] = ImVec2(uvMinMax.x, uvMinMax.w);
 	}
 }
 
@@ -243,10 +257,9 @@ static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	const ImVec2 gridSize = ImVec2(size, size);
 	const ImVec2 chrPos = DrawTileGrid(gridSize, gridStepPixels, selectedTile);
-	const glm::vec2 uvMin = ChrTileCoordToTexCoord({ 0,0 }, index, palette);
-	const glm::vec2 uvMax = ChrTileCoordToTexCoord({ CHR_DIM_TILES,CHR_DIM_TILES }, index, palette);
+	const glm::vec4 uvMinMax = NormalizedToChrTexCoord({ 0,0,1,1, }, index, palette);
 
-	drawList->AddImage(pContext->chrTexture, chrPos, ImVec2(chrPos.x + size, chrPos.y + size), ImVec2(uvMin.x, uvMin.y), ImVec2(uvMax.x, uvMax.y));
+	drawList->AddImage(pContext->chrTexture, chrPos, ImVec2(chrPos.x + size, chrPos.y + size), ImVec2(uvMinMax.x, uvMinMax.y), ImVec2(uvMinMax.z, uvMinMax.w));
 	if (selectedTile != nullptr && *selectedTile >= 0) {
 		DrawTileGridSelection(chrPos, gridSize, gridStepPixels, *selectedTile);
 	}
@@ -335,11 +348,9 @@ static void DrawSprite(const Sprite& sprite, const ImVec2& pos, r32 renderScale,
 	const bool flipY = sprite.flipVertical;
 	const u8 palette = sprite.palette;
 
-	glm::ivec2 tileCoord = GetChrTileCoord(index);
-	glm::vec2 tileStart = ChrTileCoordToTexCoord(tileCoord, 1, palette);
-	glm::vec2 tileEnd = ChrTileCoordToTexCoord(glm::ivec2(tileCoord.x + 1, tileCoord.y + 1), 1, palette);
+	glm::vec4 uvMinMax = ChrTileToTexCoord(index, 1, palette);
 
-	drawList->AddImage(pContext->chrTexture, pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), ImVec2(flipX ? tileEnd.x : tileStart.x, flipY ? tileEnd.y : tileStart.y), ImVec2(!flipX ? tileEnd.x : tileStart.x, !flipY ? tileEnd.y : tileStart.y), color);
+	drawList->AddImage(pContext->chrTexture, pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y), color);
 }
 
 static void DrawMetasprite(const Metasprite* pMetasprite, const ImVec2& origin, r32 renderScale, ImU32 color = IM_COL32(255, 255, 255, 255)) {
@@ -904,9 +915,7 @@ static void DrawMetaspritePreview(Metasprite& metasprite, ImVector<s32>& spriteS
 		const bool flipY = sprite.flipVertical;
 		const u8 palette = sprite.palette;
 
-		glm::ivec2 tileCoord = GetChrTileCoord(index);
-		glm::vec2 tileStart = ChrTileCoordToTexCoord(tileCoord, 1, palette);
-		glm::vec2 tileEnd = ChrTileCoordToTexCoord(glm::ivec2(tileCoord.x + 1, tileCoord.y + 1), 1, palette);
+		glm::vec4 uvMinMax = ChrTileToTexCoord(index, 1, palette);
 		ImVec2 pos = ImVec2(origin.x + renderScale * SignExtendSpritePos(sprite.x), origin.y + renderScale * SignExtendSpritePos(sprite.y));
 
 		// Select sprite by clicking (Topmost sprite gets selected)
@@ -919,7 +928,7 @@ static void DrawMetaspritePreview(Metasprite& metasprite, ImVector<s32>& spriteS
 		// Move sprite if dragged
 		ImVec2 posWithDrag = selected ? ImVec2(pos.x + dragDelta.x, pos.y + dragDelta.y) : pos;
 
-		drawList->AddImage(pContext->chrTexture, posWithDrag, ImVec2(posWithDrag.x + gridStepPixels, posWithDrag.y + gridStepPixels), ImVec2(flipX ? tileEnd.x : tileStart.x, flipY ? tileEnd.y : tileStart.y), ImVec2(!flipX ? tileEnd.x : tileStart.x, !flipY ? tileEnd.y : tileStart.y));
+		drawList->AddImage(pContext->chrTexture, posWithDrag, ImVec2(posWithDrag.x + gridStepPixels, posWithDrag.y + gridStepPixels), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
 
 
 		// Commit drag
@@ -1013,15 +1022,9 @@ static void DrawSpriteEditor(Metasprite& metasprite, ImVector<s32>& spriteSelect
 static void DrawSpriteListPreview(const Sprite& sprite) {
 	// Draw a nice little preview of the sprite
 	u8 index = (u8)sprite.tileId;
-	glm::ivec2 tileCoord = GetChrTileCoord(index);
-
-	r32 x1 = sprite.flipHorizontal ? tileCoord.x + 1 : tileCoord.x;
-	r32 x2 = sprite.flipHorizontal ? tileCoord.x : tileCoord.x + 1;
-	r32 y1 = sprite.flipVertical ? tileCoord.y + 1 : tileCoord.y;
-	r32 y2 = sprite.flipVertical ? tileCoord.y : tileCoord.y + 1;
-
-	glm::vec2 tileStart = ChrTileCoordToTexCoord(glm::ivec2(x1, y1), 1, sprite.palette);
-	glm::vec2 tileEnd = ChrTileCoordToTexCoord(glm::ivec2(x2, y2), 1, sprite.palette);
+	const bool flipX = sprite.flipHorizontal;
+	const bool flipY = sprite.flipVertical;
+	glm::vec4 uvMinMax = ChrTileToTexCoord(index, 1, sprite.palette);
 	ImGuiStyle& style = ImGui::GetStyle();
 	r32 itemHeight = ImGui::GetItemRectSize().y - style.FramePadding.y;
 
@@ -1029,7 +1032,7 @@ static void DrawSpriteListPreview(const Sprite& sprite) {
 	const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
 	const ImVec2 topLeft = ImVec2(ImGui::GetItemRectMin().x + 88, ImGui::GetItemRectMin().y + style.FramePadding.y);
 	const ImVec2 btmRight = ImVec2(topLeft.x + itemHeight, topLeft.y + itemHeight);
-	drawList->AddImage(pContext->chrTexture, topLeft, btmRight, ImVec2(tileStart.x, tileStart.y), ImVec2(tileEnd.x, tileEnd.y));
+	drawList->AddImage(pContext->chrTexture, topLeft, btmRight, ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
 }
 
 static void DrawMetaspriteEditor(Metasprite& metasprite, ImVector<s32>& spriteSelection, bool& selectionLocked, bool& showColliderPreview) {
