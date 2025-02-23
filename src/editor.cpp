@@ -2439,6 +2439,7 @@ static void DrawAudioWindow() {
 #pragma region Level Connections
 constexpr r32 LEVEL_SCREEN_ASPECT = (r32)VIEWPORT_WIDTH_METATILES / VIEWPORT_HEIGHT_METATILES;
 constexpr r32 LEVEL_NODE_SCREEN_HEIGHT = 100.0f;
+constexpr r32 LEVEL_NODE_OVERWORLD_TILE_DIM = 25.0f;
 constexpr glm::vec2 LEVEL_NODE_SCREEN_SIZE = glm::vec2(LEVEL_NODE_SCREEN_HEIGHT * LEVEL_SCREEN_ASPECT, LEVEL_NODE_SCREEN_HEIGHT);
 
 struct LevelNode {
@@ -2449,13 +2450,15 @@ struct LevelNode {
 
 struct LevelNodePin {
 	u64 nodeId = UUID_NULL;
-	s32 exitIndex = -1;
+	s8 screenIndex = -1;
+	s16 tileIndex = -1;
+	u8 exit;
 
 	bool Valid() const {
-		return nodeId != UUID_NULL && exitIndex != -1;
+		return nodeId != UUID_NULL && screenIndex != -1;
 	}
 	bool operator==(const LevelNodePin& a) const {
-		return nodeId == a.nodeId && exitIndex == a.exitIndex;
+		return nodeId == a.nodeId && screenIndex == a.screenIndex && tileIndex == a.tileIndex && exit == a.exit;
 	}
 };
 
@@ -2465,12 +2468,23 @@ struct LevelNodeConnection {
 	LevelNodePin from, to;
 };
 
-
-
-static glm::vec2 GetLevelNodeCanvasSize(const LevelNode& node) {
+static r32 GetLevelNodeDrawScale(const LevelNode& node, const glm::mat3& canvasToScreen) {
 	const Level& level = Levels::GetLevelsPtr()[node.levelIndex];
 
-	return glm::vec2(LEVEL_NODE_SCREEN_SIZE.x * level.pTilemap->width, LEVEL_NODE_SCREEN_SIZE.y * level.pTilemap->height);
+	const r32 zoomScale = glm::length(glm::vec2(canvasToScreen[0][0], canvasToScreen[1][0]));
+
+	if (level.flags.type == LEVEL_TYPE_OVERWORLD) {
+		return zoomScale * LEVEL_NODE_OVERWORLD_TILE_DIM;
+	}
+
+	return zoomScale * (LEVEL_NODE_SCREEN_HEIGHT / VIEWPORT_HEIGHT_METATILES);
+
+}
+
+static glm::vec2 GetLevelNodeCanvasSize(const LevelNode& node, r32 scale) {
+	const Level& level = Levels::GetLevelsPtr()[node.levelIndex];
+
+	return glm::vec2(VIEWPORT_WIDTH_METATILES * level.pTilemap->width, VIEWPORT_HEIGHT_METATILES * level.pTilemap->height) * scale;
 }
 
 static void GetNodePins(const LevelNode& node, std::vector<LevelNodePin>& outPins) {
@@ -2478,44 +2492,59 @@ static void GetNodePins(const LevelNode& node, std::vector<LevelNodePin>& outPin
 
 	for (u32 y = 0; y < level.pTilemap->height; y++) {
 		for (u32 x = 0; x < level.pTilemap->width; x++) {
-			const u32 screenIndex = x + y * level.pTilemap->width;
-			const s32 exitOffset = SCREEN_EXIT_COUNT * screenIndex;
+			const s8 screenIndex = x + y * TILEMAP_MAX_DIM_SCREENS;
 
-			// Top connection pin
-			if (y == 0) {
-				outPins.emplace_back(node.id, exitOffset + SCREEN_EXIT_TOP );
+			if (level.flags.type == LEVEL_TYPE_OVERWORLD) {
+				for (u16 i = 0; i < VIEWPORT_SIZE_METATILES; i++) {
+					outPins.emplace_back(node.id, screenIndex, i, SCREEN_EXIT_MID);
+				}
 			}
-			// Left connection pin
-			if (x == 0) {
-				outPins.emplace_back(node.id, exitOffset + SCREEN_EXIT_LEFT);
+			else {
+				// Top connection pin
+				if (y == 0) {
+					outPins.emplace_back(node.id, screenIndex, -1, SCREEN_EXIT_TOP);
+				}
+				// Left connection pin
+				if (x == 0) {
+					outPins.emplace_back(node.id, screenIndex, -1, SCREEN_EXIT_LEFT);
+				}
+				// Middle connection pin
+				outPins.emplace_back(node.id, screenIndex, -1, SCREEN_EXIT_MID);
+				// Right connection pin
+				if (x == level.pTilemap->width - 1) {
+					outPins.emplace_back(node.id, screenIndex, -1, SCREEN_EXIT_RIGHT);
+				}
+				// Bottom connection pin
+				if (y == level.pTilemap->height - 1) {
+					outPins.emplace_back(node.id, screenIndex, -1, SCREEN_EXIT_BOTTOM);
+				}
 			}
-			// Middle connection pin
-			outPins.emplace_back(node.id, exitOffset + SCREEN_EXIT_MID);
-			// Right connection pin
-			if (x == level.pTilemap->width - 1) {
-				outPins.emplace_back(node.id, exitOffset + SCREEN_EXIT_RIGHT);
-			}
-			// Bottom connection pin
-			if (y == level.pTilemap->height - 1) {
-				outPins.emplace_back(node.id, exitOffset + SCREEN_EXIT_BOTTOM);
-			}
+
 		}
 	}
 }
 
-static glm::vec2 GetNodePinPosition(const LevelNode& node, s32 exitIndex) {
-	const u32 screenIndex = exitIndex / SCREEN_EXIT_COUNT;
-	const u8 exit = exitIndex % SCREEN_EXIT_COUNT;
-
+static glm::vec2 GetNodePinPosition(const LevelNode& node, const LevelNodePin& pin) {
 	const Level& level = Levels::GetLevelsPtr()[node.levelIndex];
-	const u32 xScreen = screenIndex % level.pTilemap->width;
-	const u32 yScreen = screenIndex / level.pTilemap->width;
-	const glm::vec2 screenTopLeft(xScreen * LEVEL_NODE_SCREEN_SIZE.x, yScreen * LEVEL_NODE_SCREEN_SIZE.y);
+	const u32 xScreen = pin.screenIndex % TILEMAP_MAX_DIM_SCREENS;
+	const u32 yScreen = pin.screenIndex / TILEMAP_MAX_DIM_SCREENS;
+
+	if (level.flags.type == LEVEL_TYPE_OVERWORLD) {
+		const glm::vec2 screenSize = LEVEL_NODE_OVERWORLD_TILE_DIM * glm::vec2(VIEWPORT_WIDTH_METATILES, VIEWPORT_HEIGHT_METATILES);
+		const glm::vec2 screenTopLeft = glm::vec2(xScreen, yScreen) * screenSize;
+
+		const u32 xTile = pin.tileIndex % VIEWPORT_WIDTH_METATILES;
+		const u32 yTile = pin.tileIndex / VIEWPORT_WIDTH_METATILES;
+
+		return node.position + screenTopLeft + glm::vec2(xTile + 0.5f, yTile + 0.5f) * LEVEL_NODE_OVERWORLD_TILE_DIM;
+	}
+
+	const glm::vec2 screenTopLeft = glm::vec2(xScreen, yScreen) * LEVEL_NODE_SCREEN_SIZE;
 	const glm::vec2 screenBtmRight = screenTopLeft + LEVEL_NODE_SCREEN_SIZE;
 	const glm::vec2 screenMid = screenTopLeft + LEVEL_NODE_SCREEN_SIZE / 2.0f;
 
 	glm::vec2 result{};
-	switch (exit) {
+	switch (pin.exit) {
 	case SCREEN_EXIT_LEFT: {
 		result.x = screenTopLeft.x;
 		result.y = screenMid.y;
@@ -2548,7 +2577,7 @@ static glm::vec2 GetNodePinPosition(const LevelNode& node, s32 exitIndex) {
 }
 
 static bool MousePosWithinNodeBounds(const LevelNode& node, const glm::vec3& mousePosInCanvas) {
-	const glm::vec2 nodeSize = GetLevelNodeCanvasSize(node);
+	const glm::vec2 nodeSize = GetLevelNodeCanvasSize(node, 1.0f / LEVEL_NODE_SCREEN_HEIGHT);
 
 	return (mousePosInCanvas.x >= node.position.x && 
 		mousePosInCanvas.y >= node.position.y &&
@@ -2578,9 +2607,8 @@ static void ClearNodeConnections(u64 nodeId, std::vector<LevelNodeConnection>& c
 
 static glm::vec2 GetPinOutDir(const LevelNodePin& pin) {
 	glm::vec2 result{};
-	const u8 exit = pin.exitIndex % SCREEN_EXIT_COUNT;
 
-	switch (exit) {
+	switch (pin.exit) {
 	case SCREEN_EXIT_LEFT: {
 		result.x = -1;
 		result.y = 0;
@@ -2626,7 +2654,7 @@ static void DrawLevelNode(const LevelNode& node, const glm::mat3& canvasToScreen
 	for (u32 i = 0; i < pins.size(); i++) {
 		const LevelNodePin& pin = pins[i];
 		glm::vec2& pinPos = pinPositions[i];
-		pinPos = GetNodePinPosition(node, pin.exitIndex);
+		pinPos = GetNodePinPosition(node, pin);
 		pinPos = canvasToScreen * glm::vec3(pinPos.x, pinPos.y, 1.0f);
 
 		if (glm::distance(glm::vec2(io.MousePos.x, io.MousePos.y), pinPos) <= pinRadius) {
@@ -2635,10 +2663,11 @@ static void DrawLevelNode(const LevelNode& node, const glm::mat3& canvasToScreen
 	}
 
 	// Node body
+	const r32 levelDrawScale = GetLevelNodeDrawScale(node, canvasToScreen);
 	const glm::vec2 nodeScreenTopLeft = canvasToScreen * glm::vec3(node.position.x, node.position.y, 1.0f);
 
-	const glm::vec2 nodeCanvasSize = GetLevelNodeCanvasSize(node);
-	const glm::vec2 nodeScreenBtmRight = canvasToScreen * glm::vec3(node.position.x + nodeCanvasSize.x, node.position.y + nodeCanvasSize.y, 1.0f);
+	const glm::vec2 nodeCanvasSize = GetLevelNodeCanvasSize(node, levelDrawScale);
+	const glm::vec2 nodeScreenBtmRight = nodeScreenTopLeft + nodeCanvasSize;
 
 	const ImVec2 nodeDrawMin = ImVec2(nodeScreenTopLeft.x, nodeScreenTopLeft.y);
 	const ImVec2 nodeDrawMax = ImVec2(nodeScreenBtmRight.x, nodeScreenBtmRight.y);
@@ -2652,8 +2681,6 @@ static void DrawLevelNode(const LevelNode& node, const glm::mat3& canvasToScreen
 	drawList->AddImage(pContext->paletteTexture, nodeDrawMin, nodeDrawMax, ImVec2(0, 0), ImVec2(0.015625f, 1.0f));
 
 	const Level& level = Levels::GetLevelsPtr()[node.levelIndex];
-	const r32 zoomScale = glm::length(glm::vec2(canvasToScreen[0][0], canvasToScreen[1][0]));
-	const r32 levelDrawScale = zoomScale * (LEVEL_NODE_SCREEN_HEIGHT / VIEWPORT_HEIGHT_METATILES);
 	DrawLevel(&level, nodeDrawMin, levelDrawScale);
 
 	drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0, 0, 0, 0x80));
@@ -2685,11 +2712,19 @@ static void DrawLevelNode(const LevelNode& node, const glm::mat3& canvasToScreen
 		constexpr ImU32 pinConnectedColor = IM_COL32(0x27, 0xae, 0x60, 255);
 
 		const LevelNodePin& pin = pins[i];
+		const bool connected = IsPinConnected(pin, connections);
+		const bool hovered = outHoveredPin == pin;
+
+		// There are so many possible pins in the overworld that I don't want to draw them all
+		if (level.flags.type == LEVEL_TYPE_OVERWORLD && !connected && !hovered) {
+			continue;
+		}
+
 		const glm::vec2& pinPos = pinPositions[i];
-		const ImU32 pinDrawColor = IsPinConnected(pin, connections) ? pinConnectedColor : pinDisconnectedColor;
+		const ImU32 pinDrawColor = connected ? pinConnectedColor : pinDisconnectedColor;
 		ImU32 pinOutlineColor = outlineColor;
 		r32 pinOutlineThickness = outlineThickness;
-		if (outHoveredPin.exitIndex == pin.exitIndex) {
+		if (hovered) {
 			pinOutlineColor = outlineHoveredColor;
 			pinOutlineThickness = outlineHoveredThickness;
 		}
@@ -2716,7 +2751,7 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 	static glm::mat3 viewMat = glm::mat3(1.0f);
 	const glm::mat3 canvasMat = glm::translate(glm::mat3(1.0f), glm::vec2(canvas_p0.x, canvas_p0.y));
 
-	ImGui::InvisibleButton("canvas", canvas_sz, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+	ImGui::InvisibleButton("canvas", canvas_sz, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
 	if (ImGui::BeginDragDropTarget())
 	{
 		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dd_levels"))
@@ -2760,7 +2795,7 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 	const glm::mat3 screenToCanvas = glm::inverse(canvasToScreen);
 
 	// Canvas scrolling
-	if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Right))
+	if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle))
 	{
 		glm::vec2 scaledDelta = screenToCanvas * glm::vec3(io.MouseDelta.x, io.MouseDelta.y, 0.0f);
 		viewMat = glm::translate(viewMat, glm::vec2(scaledDelta.x, scaledDelta.y));
@@ -2861,7 +2896,7 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 		if (pendingConnection.from.Valid() && pendingConnection.to.Valid()) {
 			connections.push_back(pendingConnection);
 		}
-		pendingConnection = { UUID_NULL,-1,UUID_NULL,-1 };
+		pendingConnection = { UUID_NULL,-1,-1,0,UUID_NULL,-1,-1,0 };
 	}
 
 	if (ImGui::BeginPopup("NodeContextMenu")) {
@@ -2884,7 +2919,7 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 	// Draw connections
 	constexpr r32 bezierOffset = 64.f;
 	if (pendingConnection.from.Valid()) {
-		const glm::vec2 pCanvas = GetNodePinPosition(nodes[pendingConnection.from.nodeId], pendingConnection.from.exitIndex);
+		const glm::vec2 pCanvas = GetNodePinPosition(nodes[pendingConnection.from.nodeId], pendingConnection.from);
 		const glm::vec2 pScreen = canvasToScreen * glm::vec3(pCanvas.x, pCanvas.y, 1.0f);
 		const glm::vec2 pTangent = GetPinOutDir(pendingConnection.from);
 
@@ -2897,11 +2932,11 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 	}
 
 	for (auto& connection : connections) {
-		const glm::vec2 p0Canvas = GetNodePinPosition(nodes[connection.from.nodeId], connection.from.exitIndex);
+		const glm::vec2 p0Canvas = GetNodePinPosition(nodes[connection.from.nodeId], connection.from);
 		const glm::vec2 p0Screen = canvasToScreen * glm::vec3(p0Canvas.x, p0Canvas.y, 1.0f);
 		const glm::vec2 p0Tangent = GetPinOutDir(connection.from);
 
-		const glm::vec2 p1Canvas = GetNodePinPosition(nodes[connection.to.nodeId], connection.to.exitIndex);
+		const glm::vec2 p1Canvas = GetNodePinPosition(nodes[connection.to.nodeId], connection.to);
 		const glm::vec2 p1Screen = canvasToScreen * glm::vec3(p1Canvas.x, p1Canvas.y, 1.0f);
 		const glm::vec2 p1Tangent = GetPinOutDir(connection.to);
 
