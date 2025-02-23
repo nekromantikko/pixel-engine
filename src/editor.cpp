@@ -20,7 +20,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
-#include "random.h"
+#include <span>
+#include <execution>
 
 constexpr u32 CLIPBOARD_DIM_TILES = (VIEWPORT_WIDTH_TILES / 2) + 1;
 
@@ -144,17 +145,111 @@ static void DrawTileGridSelection(ImVec2 gridPos, ImVec2 gridSize, r32 gridStep,
 	drawList->AddRect(selectedTilePos, ImVec2(selectedTilePos.x + gridStep, selectedTilePos.y + gridStep), IM_COL32(255, 255, 255, 255));
 }
 
-static void GetMetatileVertices(const Metatile& metatile, s32 palette, ImVec2* outVertices, ImVec2* outUV) {
+// See GetMetatileVertices for human-readable version
+static void GetMetatileVerticesAVX(const Metatile& metatile, s32 palette, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
+	constexpr r32 TILE_SIZE = 1.0f / METATILE_DIM_TILES;
+	constexpr r32 INV_CHR_COUNT = 1.0f / CHR_COUNT;
+	constexpr r32 INV_CHR_DIM_TILES = 1.0f / CHR_DIM_TILES;
+	constexpr u32 CHR_DIM_TILES_BITS = 0xf;
+	constexpr u32 CHR_DIM_TILES_LOG2 = 4;
+	constexpr r32 INV_SHEET_PALETTE_COUNT = (1.0f / PALETTE_COUNT) * CHR_COUNT;
+
+	const __m256 xMask = _mm256_setr_ps(0, 1, 0, 1, 1, 0, 1, 0);
+	const __m256 yMask = _mm256_setr_ps(0, 0, 0, 0, 1, 1, 1, 1);
+
+	const s32 i0 = metatile.tiles[0];
+	const s32 i1 = metatile.tiles[1];
+	const s32 i2 = metatile.tiles[2];
+	const s32 i3 = metatile.tiles[3];
+
+	const __m256i ti0 = _mm256_setr_epi32(i0, i0, i1, i1, i0, i0, i1, i1);
+	const __m256i ti1 = _mm256_setr_epi32(i2, i2, i3, i3, i2, i2, i3, i3);
+	const __m256 ci = _mm256_set1_ps(INV_CHR_COUNT);
+	const __m256 cit = _mm256_set1_ps(INV_CHR_DIM_TILES);
+	const __m256i cb = _mm256_set1_epi32(CHR_DIM_TILES_BITS);
+
+	const __m256 p = _mm256_set1_ps(r32(palette));
+	const __m256 pi = _mm256_set1_ps(INV_SHEET_PALETTE_COUNT);
+
+	const __m256 s = _mm256_set1_ps(scale * TILE_SIZE);
+	const __m256 tx = _mm256_set1_ps(pos.x);
+	const __m256 ty = _mm256_set1_ps(pos.y);
+
+	__m256 x = _mm256_setr_ps(0, 1, 1, 2, 1, 0, 2, 1);
+	x = _mm256_mul_ps(x, s);
+	x = _mm256_add_ps(x, tx);
+
+	__m256 y0 = _mm256_setr_ps(0, 0, 0, 0, 1, 1, 1, 1);
+	y0 = _mm256_mul_ps(y0, s);
+	y0 = _mm256_add_ps(y0, ty);
+
+	const __m256i tix0 = _mm256_and_si256(ti0, cb);
+	const __m256i tiy0 = _mm256_srli_epi32(ti0, CHR_DIM_TILES_LOG2);
+	__m256 u0 = _mm256_cvtepi32_ps(tix0);
+	u0 = _mm256_add_ps(u0, xMask);
+	u0 = _mm256_mul_ps(u0, cit);
+
+	u0 = _mm256_add_ps(u0, p);
+	u0 = _mm256_mul_ps(u0, pi);
+
+	__m256 v0 = _mm256_cvtepi32_ps(tiy0);
+	v0 = _mm256_add_ps(v0, yMask);
+	v0 = _mm256_mul_ps(v0, cit);
+
+	v0 = _mm256_mul_ps(v0, ci);
+
+	__m256 y1 = _mm256_setr_ps(1, 1, 1, 1, 2, 2, 2, 2);
+	y1 = _mm256_mul_ps(y1, s);
+	y1 = _mm256_add_ps(y1, ty);
+
+	const __m256i tix1 = _mm256_and_si256(ti1, cb);
+	const __m256i tiy1 = _mm256_srli_epi32(ti1, CHR_DIM_TILES_LOG2);
+	__m256 u1 = _mm256_cvtepi32_ps(tix1);
+	u1 = _mm256_add_ps(u1, xMask);
+	u1 = _mm256_mul_ps(u1, cit);
+
+	u1 = _mm256_add_ps(u1, p);
+	u1 = _mm256_mul_ps(u1, pi);
+
+	__m256 v1 = _mm256_cvtepi32_ps(tiy1);
+	v1 = _mm256_add_ps(v1, yMask);
+	v1 = _mm256_mul_ps(v1, cit);
+
+	v1 = _mm256_mul_ps(v1, ci);
+
+	_mm256_store_ps((r32*)outVertices, _mm256_unpacklo_ps(x, y0));
+	_mm256_store_ps((r32*)outVertices + 8, _mm256_unpackhi_ps(x, y0));
+	_mm256_store_ps((r32*)outVertices + 16, _mm256_unpacklo_ps(x, y1));
+	_mm256_store_ps((r32*)outVertices + 24, _mm256_unpackhi_ps(x, y1));
+
+	_mm256_store_ps((r32*)outUV, _mm256_unpacklo_ps(u0, v0));
+	_mm256_store_ps((r32*)outUV + 8, _mm256_unpackhi_ps(u0, v0));
+	_mm256_store_ps((r32*)outUV + 16, _mm256_unpacklo_ps(u1, v1));
+	_mm256_store_ps((r32*)outUV + 24, _mm256_unpackhi_ps(u1, v1));
+}
+
+static void GetMetatileVertices(const Metatile& metatile, s32 palette, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
 	constexpr r32 tileSize = 1.0f / METATILE_DIM_TILES;
 
 	for (u32 i = 0; i < METATILE_TILE_COUNT; i++) {
-		ImVec2 pMin = ImVec2((i & 1) * tileSize, (i >> 1) * tileSize);
-		ImVec2 pMax = ImVec2(pMin.x + tileSize, pMin.y + tileSize);
+		const ImVec2 pMin = ImVec2((i & 1) * tileSize, (i >> 1) * tileSize);
+		const ImVec2 pMax = ImVec2(pMin.x + tileSize, pMin.y + tileSize);
 
-		outVertices[i * 4] = pMin;
-		outVertices[i * 4 + 1] = ImVec2(pMax.x, pMin.y);
-		outVertices[i * 4 + 2] = pMax;
-		outVertices[i * 4 + 3] = ImVec2(pMin.x, pMax.y);
+		ImVec2 p0 = pMin;
+		ImVec2 p1(pMax.x, pMin.y);
+		ImVec2 p2 = pMax;
+		ImVec2 p3(pMin.x, pMax.y);
+
+		// Transform vertices
+		p0 = ImVec2(p0.x * scale + pos.x, p0.y * scale + pos.y);
+		p1 = ImVec2(p1.x * scale + pos.x, p1.y * scale + pos.y);
+		p2 = ImVec2(p2.x * scale + pos.x, p2.y * scale + pos.y);
+		p3 = ImVec2(p3.x * scale + pos.x, p3.y * scale + pos.y);
+
+		outVertices[i * 4] = p0;
+		outVertices[i * 4 + 1] = p1;
+		outVertices[i * 4 + 2] = p2;
+		outVertices[i * 4 + 3] = p3;
 
 		const glm::vec4 uvMinMax = ChrTileToTexCoord(metatile.tiles[i], 0, palette);
 
@@ -165,35 +260,10 @@ static void GetMetatileVertices(const Metatile& metatile, s32 palette, ImVec2* o
 	}
 }
 
-static void TransformMetatileVerts(ImVec2* verts, const ImVec2& pos, r32 scale) {
-	for (u32 i = 0; i < METATILE_TILE_COUNT; i++) {
-		ImVec2 p0 = verts[i * 4];
-		ImVec2 p1 = verts[i * 4 + 1];
-		ImVec2 p2 = verts[i * 4 + 2];
-		ImVec2 p3 = verts[i * 4 + 3];
-
-		// Transform vertices
-		p0 = ImVec2(p0.x * scale + pos.x, p0.y * scale + pos.y);
-		p1 = ImVec2(p1.x * scale + pos.x, p1.y * scale + pos.y);
-		p2 = ImVec2(p2.x * scale + pos.x, p2.y * scale + pos.y);
-		p3 = ImVec2(p3.x * scale + pos.x, p3.y * scale + pos.y);
-
-		verts[i * 4] = p0;
-		verts[i * 4 + 1] = p1;
-		verts[i * 4 + 2] = p2;
-		verts[i * 4 + 3] = p3;
-	}
-}
-
 static void WriteMetatile(const ImVec2* verts, const ImVec2* uv, ImU32 color = IM_COL32(255, 255, 255, 255)) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 	for (u32 i = 0; i < METATILE_TILE_COUNT; i++) {
-		const ImVec2 p0 = verts[i * 4];
-		const ImVec2 p1 = verts[i * 4 + 1];
-		const ImVec2 p2 = verts[i * 4 + 2];
-		const ImVec2 p3 = verts[i * 4 + 3];
-
 		drawList->PrimWriteIdx(drawList->_VtxCurrentIdx);
 		drawList->PrimWriteIdx(drawList->_VtxCurrentIdx + 1);
 		drawList->PrimWriteIdx(drawList->_VtxCurrentIdx + 2);
@@ -201,10 +271,10 @@ static void WriteMetatile(const ImVec2* verts, const ImVec2* uv, ImU32 color = I
 		drawList->PrimWriteIdx(drawList->_VtxCurrentIdx + 2);
 		drawList->PrimWriteIdx(drawList->_VtxCurrentIdx + 3);
 
-		drawList->PrimWriteVtx(p0, uv[i * 4], color);
-		drawList->PrimWriteVtx(p1, uv[i * 4 + 1], color);
-		drawList->PrimWriteVtx(p2, uv[i * 4 + 2], color);
-		drawList->PrimWriteVtx(p3, uv[i * 4 + 3], color);
+		drawList->PrimWriteVtx(verts[i * 4], uv[i * 4], color);
+		drawList->PrimWriteVtx(verts[i * 4 + 1], uv[i * 4 + 1], color);
+		drawList->PrimWriteVtx(verts[i * 4 + 2], uv[i * 4 + 2], color);
+		drawList->PrimWriteVtx(verts[i * 4 + 3], uv[i * 4 + 3], color);
 	}
 }
 
@@ -218,8 +288,7 @@ static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, s32 pal
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
 	ImVec2 uv[METATILE_TILE_COUNT * 4];
 
-	GetMetatileVertices(metatile, palette, verts, uv);
-	TransformMetatileVerts(verts, pos, size);
+	GetMetatileVerticesAVX(metatile, palette, pos, size, verts, uv);
 	WriteMetatile(verts, uv, color);
 
 	drawList->PopTextureID();
@@ -281,27 +350,51 @@ static void DrawLevel(const Level* pLevel, ImVec2 pos, r32 scale) {
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
 	ImVec2 uv[METATILE_TILE_COUNT * 4];
 
-	for (u32 yScreen = 0; yScreen < pTilemap->height; yScreen++) {
-		for (u32 xScreen = 0; xScreen < pTilemap->width; xScreen++) {
-			const u32 screenIndex = xScreen + TILEMAP_MAX_DIM_SCREENS * yScreen;
-			const TilemapScreen& screen = pTilemap->screens[screenIndex];
+	struct ScreenDrawData {
+		ImVec2 verts[VIEWPORT_SIZE_METATILES * METATILE_TILE_COUNT * 4];
+		ImVec2 uv[VIEWPORT_SIZE_METATILES * METATILE_TILE_COUNT * 4];
+	};
+	static ScreenDrawData screenData[TILEMAP_MAX_SCREEN_COUNT];
 
-			for (u32 i = 0; i < VIEWPORT_SIZE_METATILES; i++) {
-				const u8 tilesetTileIndex = screen.tiles[i];
-				const TilesetTile& tilesetTile = pTileset->tiles[tilesetTileIndex];
-				const Metatile& metatile = tilesetTile.metatile;
-				const s32 palette = Tiles::GetTilesetPalette(pTileset, tilesetTileIndex);
+	std::span<const TilemapScreen> screenSpan(pTilemap->screens, TILEMAP_MAX_SCREEN_COUNT);
+	std::for_each(std::execution::par, screenSpan.begin(), screenSpan.end(), [&](const TilemapScreen& screen) {
+		const u32 screenIndex = &screen - pTilemap->screens;
+		const u32 xScreen = screenIndex % TILEMAP_MAX_DIM_SCREENS;
+		const u32 yScreen = screenIndex / TILEMAP_MAX_DIM_SCREENS;
 
-				const u32 xMetatile = xScreen * VIEWPORT_WIDTH_METATILES + i % VIEWPORT_WIDTH_METATILES;
-				const u32 yMetatile = yScreen * VIEWPORT_HEIGHT_METATILES + i / VIEWPORT_WIDTH_METATILES;
-				const ImVec2 metatileOffset = ImVec2(pos.x + xMetatile * scale, pos.y + yMetatile * scale);
+		if (xScreen >= pTilemap->width || yScreen >= pTilemap->height) {
+			return;
+		}
 
-				GetMetatileVertices(metatile, palette, verts, uv);
-				TransformMetatileVerts(verts, metatileOffset, scale);
-				WriteMetatile(verts, uv);
-			}
+		const u32 outIndex = xScreen + pTilemap->width * yScreen;
+		ScreenDrawData& data = screenData[outIndex];
+		for (u32 i = 0; i < VIEWPORT_SIZE_METATILES; i++) {
+			const u8 tilesetTileIndex = screen.tiles[i];
+			const TilesetTile& tilesetTile = pTileset->tiles[tilesetTileIndex];
+			const Metatile& metatile = tilesetTile.metatile;
+			const s32 palette = Tiles::GetTilesetPalette(pTileset, tilesetTileIndex);
+
+			const u32 xMetatile = xScreen * VIEWPORT_WIDTH_METATILES + i % VIEWPORT_WIDTH_METATILES;
+			const u32 yMetatile = yScreen * VIEWPORT_HEIGHT_METATILES + i / VIEWPORT_WIDTH_METATILES;
+			const ImVec2 metatileOffset = ImVec2(pos.x + xMetatile * scale, pos.y + yMetatile * scale);
+
+			ImVec2* verts = data.verts + (METATILE_TILE_COUNT * 4) * i;
+			ImVec2* uv = data.uv + (METATILE_TILE_COUNT * 4) * i;
+
+			GetMetatileVerticesAVX(metatile, palette, metatileOffset, scale, verts, uv);
+		}
+
+	});
+
+	for (u32 s = 0; s < screenCount; s++) {
+		const auto& data = screenData[s];
+		for (u32 i = 0; i < VIEWPORT_SIZE_METATILES; i++) {
+			const ImVec2* verts = data.verts + (METATILE_TILE_COUNT * 4) * i;
+			const ImVec2* uv = data.uv + (METATILE_TILE_COUNT * 4) * i;
+			WriteMetatile(verts, uv);
 		}
 	}
+
 	drawList->PopTextureID();
 }
 
@@ -329,8 +422,7 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 
 		const Metatile& metatile = pTileset->tiles[i].metatile;
 		const s32 palette = Tiles::GetTilesetPalette(pTileset, i);
-		GetMetatileVertices(metatile, palette, verts, uv);
-		TransformMetatileVerts(verts, metatileOffset, renderScale * TILESET_DIM);
+		GetMetatileVerticesAVX(metatile, palette, metatileOffset, renderScale * TILESET_DIM, verts, uv);
 		WriteMetatile(verts, uv);
 	}
 	drawList->PopTextureID();
