@@ -79,7 +79,7 @@ namespace Tiles {
 	bool SetTilesetPalette(Tileset* tileset, u32 tileIndex, s32 palette);
 
 	// New API
-	bool TileInMapBounds(const Tilemap* pTilemap, const glm::ivec2& pos);
+	bool PointInMapBounds(const Tilemap* pTilemap, const glm::vec2& pos);
 	s32 GetTilesetIndex(const Tilemap* pTilemap, const glm::ivec2& pos);
 	const TilesetTile* GetTilesetTile(const Tilemap* pTilemap, const s32& tilesetIndex);
 	const TilesetTile* GetTilesetTile(const Tilemap* pTilemap, const glm::ivec2& pos);

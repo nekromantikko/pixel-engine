@@ -105,6 +105,8 @@ struct PlayerState {
 	u16 wingFrame;
 	u16 shootCounter;
 	u16 damageCounter;
+
+	u16 entryDelayCounter;
 };
 
 #ifdef EDITOR

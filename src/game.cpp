@@ -83,6 +83,8 @@ namespace Game {
     Pool<Coroutine> coroutines;
     Pool<PoolHandle<Coroutine>> coroutineRemoveList;
 
+    PoolHandle<Coroutine> transitionCoroutine = PoolHandle<Coroutine>::Null();
+
     // Input
     u8 currentInput = BUTTON_NONE;
     u8 previousInput = BUTTON_NONE;
@@ -127,6 +129,7 @@ namespace Game {
     u8 basePaletteColors[PALETTE_MEMORY_SIZE];
 
     // TODO: Try to eliminate as much of this as possible
+    constexpr s32 playerPrototypeIndex = 0;
     constexpr s32 playerGrenadePrototypeIndex = 1;
     constexpr s32 playerArrowPrototypeIndex = 4;
     constexpr s32 dmgNumberPrototypeIndex = 5;
@@ -170,19 +173,19 @@ namespace Game {
     }
 
     template <typename S>
-    static bool StartCoroutine(CoroutineFunc func, const S& state) {
+    static PoolHandle<Coroutine> StartCoroutine(CoroutineFunc func, const S& state) {
         static_assert(sizeof(S) <= MAX_COROUTINE_STATE_SIZE);
 
         auto handle = coroutines.Add();
         Coroutine* pCoroutine = coroutines.Get(handle);
 
         if (pCoroutine == nullptr) {
-            return false;
+            return PoolHandle<Coroutine>::Null();
         }
 
         pCoroutine->func = func;
         memcpy(pCoroutine->state, &state, sizeof(S));
-        return true;
+        return handle;
     }
 #pragma endregion
 
@@ -607,6 +610,66 @@ namespace Game {
 #pragma endregion
 
 #pragma region Player logic
+    static void CorrectPlayerSpawnY(const Level* pLevel, Actor* pPlayer) {
+        HitResult hit{};
+
+        const r32 dy = VIEWPORT_HEIGHT_METATILES / 2.0f;  // Sweep downwards to find a floor
+
+        Collision::SweepBoxVertical(pLevel->pTilemap, pPlayer->pPrototype->hitbox, pPlayer->position, dy, hit);
+        while (hit.startPenetrating) {
+            pPlayer->position.y -= 1.0f;
+            Collision::SweepBoxVertical(pLevel->pTilemap, pPlayer->pPrototype->hitbox, pPlayer->position, dy, hit);
+        }
+        pPlayer->position = hit.location;
+    }
+
+    static void SpawnPlayerAtEntrance(const Level* pLevel, u8 screenIndex, u8 direction) {
+        r32 x = (screenIndex & pLevel->pTilemap->width) * VIEWPORT_WIDTH_METATILES;
+        r32 y = (screenIndex / pLevel->pTilemap->width) * VIEWPORT_HEIGHT_METATILES;
+
+        Actor* pPlayer = SpawnActor(playerPrototypeIndex, glm::vec2(x, y));
+        if (pPlayer == nullptr) {
+            return;
+        }
+
+        constexpr r32 initialHSpeed = 0.0625f;
+
+        switch (direction) {
+        case SCREEN_EXIT_DIR_LEFT: {
+            pPlayer->position.x += 0.5f;
+            pPlayer->position.y += VIEWPORT_HEIGHT_METATILES / 2.0f;
+            pPlayer->flags.facingDir = ACTOR_FACING_RIGHT;
+            pPlayer->velocity.x = initialHSpeed;
+            CorrectPlayerSpawnY(pLevel, pPlayer);
+            break;
+        }
+        case SCREEN_EXIT_DIR_RIGHT: {
+            pPlayer->position.x += VIEWPORT_WIDTH_METATILES - 0.5f;
+            pPlayer->position.y += VIEWPORT_HEIGHT_METATILES / 2.0f;
+            pPlayer->flags.facingDir = ACTOR_FACING_LEFT;
+            pPlayer->velocity.x = -initialHSpeed;
+            CorrectPlayerSpawnY(pLevel, pPlayer);
+            break;
+        }
+        case SCREEN_EXIT_DIR_TOP: {
+            pPlayer->position.x += VIEWPORT_WIDTH_METATILES / 2.0f;
+            pPlayer->position.y += 0.5f;
+            // TODO: Set initial velocity
+            break;
+        }
+        case SCREEN_EXIT_DIR_BOTTOM: {
+            pPlayer->position.x += VIEWPORT_WIDTH_METATILES / 2.0f;
+            pPlayer->position.y += VIEWPORT_HEIGHT_METATILES - 0.5f;
+            // TODO: Set initial velocity
+            break;
+        }
+        default:
+            break;
+        }
+
+        pPlayer->playerState.entryDelayCounter = 15;
+    }
+
     static void HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
         // If invulnerable
         if (pPlayer->playerState.damageCounter != 0) {
@@ -859,13 +922,15 @@ namespace Game {
     }
 
     static void UpdatePlayerSidescroller(Actor* pActor) {
+        UpdateCounter(pActor->playerState.entryDelayCounter);
         UpdateCounter(pActor->playerState.damageCounter);
         
         // Reset slow fall
         pActor->playerState.flags.slowFall = false;
 
-        const bool playerStunned = pActor->playerState.damageCounter > 0;
-        if (!playerStunned) {
+        const bool enteringLevel = pActor->playerState.entryDelayCounter > 0;
+        const bool stunned = pActor->playerState.damageCounter > 0;
+        if (!enteringLevel && !stunned) {
             PlayerInput(pActor);
             PlayerShoot(pActor);
         }
@@ -1333,19 +1398,150 @@ namespace Game {
         }
     }
 
+    static void UpdateFadeToBlack(r32 progress) {
+        progress = glm::smoothstep(0.0f, 1.0f, progress);
+
+        for (u32 i = 0; i < PALETTE_MEMORY_SIZE; i++) {
+            u8 baseColor = ((u8*)basePaletteColors)[i];
+
+            const s32 baseBrightness = (baseColor & 0b1110000) >> 4;
+            const s32 hue = baseColor & 0b0001111;
+
+            const s32 minBrightness = hue == 0 ? 0 : -1;
+
+            s32 newBrightness = glm::mix(minBrightness, baseBrightness, 1.0f - progress);
+
+            if (newBrightness >= 0) {
+                ((u8*)pPalettes)[i] = hue | (newBrightness << 4);
+            }
+            else {
+                ((u8*)pPalettes)[i] = 0x00;
+            }
+        }
+    }
+
+    enum ScreenTransitionState : u8 {
+        TRANSITION_FADE_OUT,
+        TRANSITION_LOADING,
+        TRANSITION_FADE_IN,
+        TRANSITION_COMPLETE
+    };
+
+    struct ScreenFadeState {
+        u16 nextLevelIndex;
+        u16 nextScreenIndex;
+        u8 nextDirection;
+        r32 progress;
+
+        u8 transitionState = TRANSITION_FADE_OUT;
+        u8 holdTimer = 12;
+    };
+
+    static bool ScreenFadeCoroutine(void* userData) {
+        ScreenFadeState* state = (ScreenFadeState*)userData;
+
+        switch (state->transitionState) {
+        case TRANSITION_FADE_OUT: {
+            if (state->progress < 1.0f) {
+                state->progress += 0.1f;
+                UpdateFadeToBlack(state->progress);
+                return true;
+            }
+            state->transitionState = TRANSITION_LOADING;
+            break;
+        }
+        case TRANSITION_LOADING: {
+            if (state->holdTimer > 0) {
+                state->holdTimer--;
+                return true;
+            }
+            LoadLevel(state->nextLevelIndex, state->nextScreenIndex);
+            state->transitionState = TRANSITION_FADE_IN;
+            break;
+        }
+        case TRANSITION_FADE_IN: {
+            if (state->progress > 0.0f) {
+                state->progress -= 0.10f;
+                UpdateFadeToBlack(state->progress);
+                return true;
+            }
+            state->transitionState = TRANSITION_COMPLETE;
+            break;
+        }
+        default:
+            return false;
+        }
+    }
+
+    static void HandleLevelExit() {
+        const Actor* pPlayer = actors.Get(playerHandle);
+        if (pPlayer == nullptr) {
+            return;
+        }
+
+        if (!Tiles::PointInMapBounds(pCurrentLevel->pTilemap, pPlayer->position)) {
+            u8 exitDirection = 0;
+            u32 xScreen = 0;
+            u32 yScreen = 0;
+
+            // Some redundancy...
+            if (pPlayer->position.x < 0) {
+                exitDirection = SCREEN_EXIT_DIR_LEFT;
+                xScreen = 0;
+                yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pCurrentLevel->pTilemap->height);
+            }
+            else if (pPlayer->position.x >= pCurrentLevel->pTilemap->width * VIEWPORT_WIDTH_METATILES) {
+                exitDirection = SCREEN_EXIT_DIR_RIGHT;
+                xScreen = pCurrentLevel->pTilemap->width - 1;
+                yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pCurrentLevel->pTilemap->height);
+            }
+            else if (pPlayer->position.y < 0) {
+                exitDirection = SCREEN_EXIT_DIR_TOP;
+                xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pCurrentLevel->pTilemap->width);
+                yScreen = 0;
+            }
+            else if (pPlayer->position.y >= pCurrentLevel->pTilemap->height * VIEWPORT_HEIGHT_METATILES) {
+                exitDirection = SCREEN_EXIT_DIR_BOTTOM;
+                xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pCurrentLevel->pTilemap->width);
+                yScreen = pCurrentLevel->pTilemap->height - 1;
+            }
+
+            const u32 screenIndex = xScreen + TILEMAP_MAX_DIM_SCREENS * yScreen;
+            const TilemapScreen& screen = pCurrentLevel->pTilemap->screens[screenIndex];
+            const LevelExit* exits = (LevelExit*)&screen.screenMetadata;
+
+            const LevelExit& exit = exits[exitDirection];
+
+            ScreenFadeState state = {
+                //.nextLevelIndex = exit.targetLevel,
+                .nextLevelIndex = 0x11,
+                .nextScreenIndex = exit.targetScreen,
+                .nextDirection = exitDirection,
+                .progress = 0.0f
+            };
+            transitionCoroutine = StartCoroutine(ScreenFadeCoroutine, state);
+        }
+    }
+
     static void Step() {
         previousInput = currentInput;
         currentInput = Input::GetControllerState();
 
         ClearSpriteLayers(spriteLayers);
 
+        // TODO: There should be a better way to check handle validity
+        bool transitioning = coroutines.Get(transitionCoroutine);
+
         if (!paused) {
             gameplayFramesElapsed++;
 
             UpdateCoroutines();
-            UpdateActors();
 
-            UpdateViewport();
+            if (!transitioning) {
+                UpdateActors();
+                UpdateViewport();
+                HandleLevelExit();
+            }
         }
 
         UpdateScreenScroll();
@@ -1358,21 +1554,6 @@ namespace Game {
                 Audio::StopMusic();
             }
             musicPlaying = !musicPlaying;
-        }*/
-
-        // Animate color palette brightness
-        /*r32 deltaBrightness = glm::sin(gameplayFramesElapsed / 40.f);
-        for (u32 i = 0; i < PALETTE_MEMORY_SIZE; i++) {
-            u8 baseColor = ((u8*)basePaletteColors)[i];
-
-            s32 brightness = (baseColor & 0b1110000) >> 4;
-            s32 d = (s32)glm::roundEven(deltaBrightness * 8);
-
-            s32 newBrightness = brightness + d;
-            newBrightness = (newBrightness < 0) ? 0 : (newBrightness > 7) ? 7 : newBrightness;
-
-            u8 newColor = (baseColor & 0b0001111) | (newBrightness << 4);
-            ((u8*)pPalettes)[i] = newColor;
         }*/
 
         // Animate color palette hue
@@ -1398,13 +1579,7 @@ namespace Game {
 
         pCurrentLevel = Levels::GetLevelsPtr() + index;
 
-        viewport.x = 0;
-        viewport.y = 0;
-        UpdateScreenScroll();
-
-        if (refresh) {
-            RefreshViewport(&viewport, pNametables, pCurrentLevel->pTilemap);
-        }
+        ReloadLevel(refresh);
     }
 
     void UnloadLevel(bool refresh) {
@@ -1431,12 +1606,17 @@ namespace Game {
 
         UnloadLevel(refresh);
 
+        // Spawn player in sidescrolling level
+        if (pCurrentLevel->flags.type == LEVEL_TYPE_SIDESCROLLER) {
+            SpawnPlayerAtEntrance(pCurrentLevel, 0, SCREEN_EXIT_DIR_LEFT);
+        }
+
         for (u32 i = 0; i < pCurrentLevel->actors.Count(); i++)
         {
             auto handle = pCurrentLevel->actors.GetHandle(i);
             const Actor* pActor = pCurrentLevel->actors.Get(handle);
 
-            auto spawnedHandle = SpawnActor(pActor);
+            SpawnActor(pActor);
         }
 
         gameplayFramesElapsed = 0;

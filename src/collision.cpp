@@ -43,9 +43,11 @@ namespace Collision {
 				glm::ivec2 tileCoord = glm::ivec2{ xTile, yTopTile + i };
 
 				const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tileCoord);
+				if (!tile) {
+					continue;
+				}
 
-				// Treat outside of screen as solid wall
-				if (!tile || tile->type == TILE_SOLID) {
+				if (tile->type == TILE_SOLID) {
 					outHit.blockingHit = true;
 					outHit.startPenetrating = IsNearlyZero(dist);
 					outHit.distance = dist;
@@ -53,7 +55,7 @@ namespace Collision {
 					outHit.impactPoint = glm::vec2{ xSide, pos.y };
 					outHit.location = glm::vec2{ pos.x + glm::sign(dx) * dist, pos.y };
 					outHit.normal = glm::vec2{ glm::sign(dx), 0 };
-					outHit.tileType = tile ? tile->type: TILE_SOLID;
+					outHit.tileType = tile->type;
 
 					break;
 				}
@@ -97,9 +99,11 @@ namespace Collision {
 				glm::ivec2 metatileCoord = glm::ivec2{ xLeftTile + i, yTile };
 
 				const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, metatileCoord);
+				if (!tile) {
+					continue;
+				}
 				
-				// Treat outside of screen as solid wall
-				if (!tile || tile->type == TILE_SOLID) {
+				if (tile->type == TILE_SOLID) {
 					outHit.blockingHit = true;
 					outHit.startPenetrating = IsNearlyZero(dist);
 					outHit.distance = dist;
@@ -107,7 +111,7 @@ namespace Collision {
 					outHit.impactPoint = glm::vec2{ pos.x, ySide };
 					outHit.location = glm::vec2{ pos.x, pos.y + glm::sign(dy) * dist };
 					outHit.normal = glm::vec2{ 0, glm::sign(dy) };
-					outHit.tileType = tile ? tile->type : TILE_SOLID;
+					outHit.tileType = tile->type;
 
 					break;
 				}

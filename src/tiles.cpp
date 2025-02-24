@@ -45,19 +45,19 @@ bool Tiles::SetTilesetPalette(Tileset* tileset, u32 tileIndex, s32 palette) {
 #pragma endregion
 
 #pragma region New API
-bool Tiles::TileInMapBounds(const Tilemap* pTilemap, const glm::ivec2& pos) {
-    if (pos.x < 0 || pos.y < 0) {
-        return false;
-    }
+bool Tiles::PointInMapBounds(const Tilemap* pTilemap, const glm::vec2& pos) {
+	if (pos.x < 0 || pos.y < 0) {
+		return false;
+	}
 
-    const s32 xMax = pTilemap->width * VIEWPORT_WIDTH_METATILES;
-    const s32 yMax = pTilemap->height * VIEWPORT_HEIGHT_METATILES;
+	const s32 xMax = pTilemap->width * VIEWPORT_WIDTH_METATILES;
+	const s32 yMax = pTilemap->height * VIEWPORT_HEIGHT_METATILES;
 
-    if (pos.x >= xMax || pos.y >= yMax) {
-        return false;
-    }
+	if (pos.x >= xMax || pos.y >= yMax) {
+		return false;
+	}
 
-    return true;
+	return true;
 }
 
 static s32 GetScreenIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
@@ -69,7 +69,7 @@ static s32 GetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
 }
 
 s32 Tiles::GetTilesetIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
-    if (!TileInMapBounds(pTilemap, pos)) {
+    if (!PointInMapBounds(pTilemap, pos)) {
         return -1;
     }
 
@@ -102,7 +102,7 @@ bool Tiles::SetTilesetTile(Tilemap* pTilemap, s32 screenIndex, s32 tileIndex, co
 }
 
 bool Tiles::SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& tilesetIndex) {
-    if (!TileInMapBounds(pTilemap, pos)) {
+    if (!PointInMapBounds(pTilemap, pos)) {
         return false;
     }
 
