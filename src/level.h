@@ -8,14 +8,11 @@ constexpr u32 MAX_LEVEL_COUNT = 256;
 constexpr u32 LEVEL_MAX_NAME_LENGTH = 256;
 constexpr u32 LEVEL_MAX_ACTOR_COUNT = 256;
 
-enum LevelScreenExit : u8 {
-    SCREEN_EXIT_MID,
-    SCREEN_EXIT_LEFT,
-    SCREEN_EXIT_RIGHT,
-    SCREEN_EXIT_TOP,
-    SCREEN_EXIT_BOTTOM,
-
-    SCREEN_EXIT_COUNT
+enum LevelScreenExitDir : u8 {
+    SCREEN_EXIT_DIR_LEFT,
+    SCREEN_EXIT_DIR_RIGHT,
+    SCREEN_EXIT_DIR_TOP,
+    SCREEN_EXIT_DIR_BOTTOM,
 };
 
 enum LevelType : u8 {
@@ -31,9 +28,8 @@ constexpr const char* LEVEL_TYPE_NAMES[LEVEL_TYPE_COUNT] = { "Sidescroller", "Ov
 #endif
 
 struct LevelExit {
-    s16 targetLevel;
-    u8 targetScreen;
-    u8 exitType;
+    u16 targetLevel : 12;
+    u16 targetScreen : 4;
 };
 
 struct LevelFlags {
