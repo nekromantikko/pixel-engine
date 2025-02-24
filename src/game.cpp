@@ -1479,33 +1479,38 @@ namespace Game {
             return;
         }
 
-        if (!Tiles::PointInMapBounds(pCurrentLevel->pTilemap, pPlayer->position)) {
-            u8 exitDirection = 0;
-            u32 xScreen = 0;
-            u32 yScreen = 0;
+        bool shouldExit = false;
+        u8 exitDirection = 0;
+        u32 xScreen = 0;
+        u32 yScreen = 0;
 
-            // Some redundancy...
-            if (pPlayer->position.x < 0) {
-                exitDirection = SCREEN_EXIT_DIR_LEFT;
-                xScreen = 0;
-                yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pCurrentLevel->pTilemap->height);
-            }
-            else if (pPlayer->position.x >= pCurrentLevel->pTilemap->width * VIEWPORT_WIDTH_METATILES) {
-                exitDirection = SCREEN_EXIT_DIR_RIGHT;
-                xScreen = pCurrentLevel->pTilemap->width - 1;
-                yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pCurrentLevel->pTilemap->height);
-            }
-            else if (pPlayer->position.y < 0) {
-                exitDirection = SCREEN_EXIT_DIR_TOP;
-                xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pCurrentLevel->pTilemap->width);
-                yScreen = 0;
-            }
-            else if (pPlayer->position.y >= pCurrentLevel->pTilemap->height * VIEWPORT_HEIGHT_METATILES) {
-                exitDirection = SCREEN_EXIT_DIR_BOTTOM;
-                xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pCurrentLevel->pTilemap->width);
-                yScreen = pCurrentLevel->pTilemap->height - 1;
-            }
+        // Left side of screen is ugly, so trigger transition earlier
+        if (pPlayer->position.x < 0.5f) {
+            shouldExit = true;
+            exitDirection = SCREEN_EXIT_DIR_LEFT;
+            xScreen = 0;
+            yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pCurrentLevel->pTilemap->height);
+        }
+        else if (pPlayer->position.x >= pCurrentLevel->pTilemap->width * VIEWPORT_WIDTH_METATILES) {
+            shouldExit = true;
+            exitDirection = SCREEN_EXIT_DIR_RIGHT;
+            xScreen = pCurrentLevel->pTilemap->width - 1;
+            yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pCurrentLevel->pTilemap->height);
+        }
+        else if (pPlayer->position.y < 0) {
+            shouldExit = true;
+            exitDirection = SCREEN_EXIT_DIR_TOP;
+            xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pCurrentLevel->pTilemap->width);
+            yScreen = 0;
+        }
+        else if (pPlayer->position.y >= pCurrentLevel->pTilemap->height * VIEWPORT_HEIGHT_METATILES) {
+            shouldExit = true;
+            exitDirection = SCREEN_EXIT_DIR_BOTTOM;
+            xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pCurrentLevel->pTilemap->width);
+            yScreen = pCurrentLevel->pTilemap->height - 1;
+        }
 
+        if (shouldExit) {
             const u32 screenIndex = xScreen + TILEMAP_MAX_DIM_SCREENS * yScreen;
             const TilemapScreen& screen = pCurrentLevel->pTilemap->screens[screenIndex];
             const LevelExit* exits = (LevelExit*)&screen.screenMetadata;

@@ -220,6 +220,11 @@ namespace Rendering
 			fclose(pFile);
 		}
 
+		// Sign-extend 9-bit unsigned sprite position
+		s32 SignExtendSpritePos(u16 spritePos) {
+			return (spritePos ^ 0x100) - 0x100;
+		}
+
 		void CopyMetasprite(const Sprite* src, Sprite* dst, u32 count, glm::ivec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
 			for (int i = 0; i < count; i++) {
 				Sprite sprite = src[i];
@@ -234,8 +239,17 @@ namespace Rendering
 				if (paletteOverride != -1) {
 					sprite.palette = paletteOverride;
 				}
-				sprite.y += pos.y;
-				sprite.x += pos.x;
+
+				// Fix ugly wraparound
+				if (pos.x + SignExtendSpritePos(sprite.x) > VIEWPORT_WIDTH_PIXELS || pos.y + SignExtendSpritePos(sprite.y) > VIEWPORT_HEIGHT_PIXELS) {
+					sprite.x = 0;
+					sprite.y = 288;
+				}
+				else {
+					sprite.y += pos.y;
+					sprite.x += pos.x;
+				}
+
 				dst[i] = sprite;
 			}
 		}

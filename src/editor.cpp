@@ -65,11 +65,6 @@ struct EditorContext {
 static EditorContext* pContext;
 
 #pragma region Utils
-// Sign-extend 9-bit unsigned sprite position
-static s32 SignExtendSpritePos(u16 spritePos) {
-	return (spritePos ^ 0x100) - 0x100;
-}
-
 static inline glm::vec4 NormalizedToChrTexCoord(const glm::vec4& normalized, u8 chrIndex, u8 palette) {
 	constexpr r32 INV_CHR_COUNT = 1.0f / CHR_COUNT;
 	constexpr r32 INV_SHEET_PALETTE_COUNT = (1.0f / PALETTE_COUNT) * CHR_COUNT;
@@ -451,7 +446,7 @@ static void DrawMetasprite(const Metasprite* pMetasprite, const ImVec2& origin, 
 	const r32 tileDrawSize = TILE_DIM_PIXELS * renderScale;
 	for (s32 i = pMetasprite->spriteCount - 1; i >= 0; i--) {
 		const Sprite& sprite = pMetasprite->spritesRelativePos[i];
-		const ImVec2 pos = ImVec2(origin.x + renderScale * SignExtendSpritePos(sprite.x), origin.y + renderScale * SignExtendSpritePos(sprite.y));
+		const ImVec2 pos = ImVec2(origin.x + renderScale * Rendering::Util::SignExtendSpritePos(sprite.x), origin.y + renderScale * Rendering::Util::SignExtendSpritePos(sprite.y));
 		DrawSprite(sprite, pos, renderScale, color);
 	}
 }
@@ -470,7 +465,7 @@ static AABB GetActorBoundingBox(const Actor* pActor) {
 	case ANIMATION_TYPE_SPRITES: {
 		const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex);
 		Sprite& sprite = pMetasprite->spritesRelativePos[0];
-		result.min = { (r32)SignExtendSpritePos(sprite.x) / METATILE_DIM_PIXELS, (r32)SignExtendSpritePos(sprite.y) / METATILE_DIM_PIXELS };
+		result.min = { (r32)Rendering::Util::SignExtendSpritePos(sprite.x) / METATILE_DIM_PIXELS, (r32)Rendering::Util::SignExtendSpritePos(sprite.y) / METATILE_DIM_PIXELS };
 		result.max = { result.min.x + tileWorldDim, result.min.y + tileWorldDim };
 		break;
 	}
@@ -484,7 +479,7 @@ static AABB GetActorBoundingBox(const Actor* pActor) {
 
 		for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
 			Sprite& sprite = pMetasprite->spritesRelativePos[i];
-			const glm::vec2 spriteMin = { (r32)SignExtendSpritePos(sprite.x) / METATILE_DIM_PIXELS, (r32)SignExtendSpritePos(sprite.y) / METATILE_DIM_PIXELS };
+			const glm::vec2 spriteMin = { (r32)Rendering::Util::SignExtendSpritePos(sprite.x) / METATILE_DIM_PIXELS, (r32)Rendering::Util::SignExtendSpritePos(sprite.y) / METATILE_DIM_PIXELS };
 			const glm::vec2 spriteMax = { spriteMin.x + tileWorldDim, spriteMin.y + tileWorldDim };
 			result.x1 = glm::min(result.x1, spriteMin.x);
 			result.x2 = glm::max(result.x2, spriteMax.x);
@@ -506,7 +501,7 @@ static void DrawActor(const ActorPrototype* pPrototype, const ImVec2& origin, r3
 	case ANIMATION_TYPE_SPRITES: {
 		const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex);
 		Sprite& sprite = pMetasprite->spritesRelativePos[frameIndex];
-		ImVec2 pos = ImVec2(origin.x + renderScale * SignExtendSpritePos(sprite.x), origin.y + renderScale * SignExtendSpritePos(sprite.y));
+		ImVec2 pos = ImVec2(origin.x + renderScale * Rendering::Util::SignExtendSpritePos(sprite.x), origin.y + renderScale * Rendering::Util::SignExtendSpritePos(sprite.y));
 		DrawSprite(sprite, pos, renderScale, color);
 		break;
 	}
@@ -1009,7 +1004,7 @@ static void DrawMetaspritePreview(Metasprite& metasprite, ImVector<s32>& spriteS
 		const u8 palette = sprite.palette;
 
 		glm::vec4 uvMinMax = ChrTileToTexCoord(index, 1, palette);
-		ImVec2 pos = ImVec2(origin.x + renderScale * SignExtendSpritePos(sprite.x), origin.y + renderScale * SignExtendSpritePos(sprite.y));
+		ImVec2 pos = ImVec2(origin.x + renderScale * Rendering::Util::SignExtendSpritePos(sprite.x), origin.y + renderScale * Rendering::Util::SignExtendSpritePos(sprite.y));
 
 		// Select sprite by clicking (Topmost sprite gets selected)
 		bool spriteClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left) && io.MousePos.x >= pos.x && io.MousePos.x < pos.x + gridStepPixels && io.MousePos.y >= pos.y && io.MousePos.y < pos.y + gridStepPixels;
@@ -1100,7 +1095,7 @@ static void DrawSpriteEditor(Metasprite& metasprite, ImVector<s32>& spriteSelect
 		}
 		ImGui::EndChild();
 
-		ImGui::Text("Position: (%d, %d)", SignExtendSpritePos(sprite.x), SignExtendSpritePos(sprite.y));
+		ImGui::Text("Position: (%d, %d)", Rendering::Util::SignExtendSpritePos(sprite.x), Rendering::Util::SignExtendSpritePos(sprite.y));
 
 		if (ImGui::Checkbox("Flip horizontal", &flipX)) {
 			sprite.flipHorizontal = flipX;
