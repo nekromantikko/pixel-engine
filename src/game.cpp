@@ -620,29 +620,46 @@ namespace Game {
         }
 
         // Recoil
+        constexpr r32 recoilSpeed = 0.046875f; // Recoil speed from Zelda 2
         if (pEnemy->position.x > pPlayer->position.x) {
             pPlayer->flags.facingDir = 1;
-            pPlayer->velocity.x = -0.0625f;
+            pPlayer->velocity.x = -recoilSpeed;
         }
         else {
             pPlayer->flags.facingDir = -1;
-            pPlayer->velocity.x = 0.0625f;
+            pPlayer->velocity.x = recoilSpeed;
         }
 
     }
 
     static void PlayerInput(Actor* pPlayer) {
+        constexpr r32 maxSpeed = 0.09375f; // Actual movement speed from Zelda 2
+        constexpr r32 acceleration = maxSpeed / 24.f; // Acceleration from Zelda 2
+
         PlayerState& playerState = pPlayer->playerState;
         if (ButtonDown(BUTTON_DPAD_LEFT)) {
+            pPlayer->velocity.x -= acceleration;
+            if (pPlayer->flags.facingDir != ACTOR_FACING_LEFT) {
+                pPlayer->velocity.x -= acceleration;
+            }
+
+            pPlayer->velocity.x = glm::clamp(pPlayer->velocity.x, -maxSpeed, maxSpeed);
             pPlayer->flags.facingDir = ACTOR_FACING_LEFT;
-            pPlayer->velocity.x = -0.125;
         }
         else if (ButtonDown(BUTTON_DPAD_RIGHT)) {
+            pPlayer->velocity.x += acceleration;
+            if (pPlayer->flags.facingDir != ACTOR_FACING_RIGHT) {
+                pPlayer->velocity.x += acceleration;
+            }
+
+            pPlayer->velocity.x = glm::clamp(pPlayer->velocity.x, -maxSpeed, maxSpeed);
             pPlayer->flags.facingDir = ACTOR_FACING_RIGHT;
-            pPlayer->velocity.x = 0.125f;
         }
         else {
-            pPlayer->velocity.x = 0;
+            // Deceleration if no direcion pressed
+            if (!pPlayer->flags.inAir && pPlayer->velocity.x != 0.0f) {
+                pPlayer->velocity.x -= acceleration * glm::sign(pPlayer->velocity.x);
+            }
         }
 
         // Aim mode
