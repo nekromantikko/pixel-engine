@@ -2804,6 +2804,55 @@ static bool CanPinsConnect(const LevelNodePin& a, const LevelNodePin& b) {
 		);
 }
 
+static void GetScreenExitDirs(u8 aFlags, u8 bFlags, u8& aOutDir, u8& bOutDir) {
+	if ((aFlags & NODE_EXIT_LEFT) && (bFlags & NODE_EXIT_RIGHT)) {
+		aOutDir = SCREEN_EXIT_DIR_LEFT;
+		bOutDir = SCREEN_EXIT_DIR_RIGHT;
+		return;
+	}
+	if ((aFlags & NODE_EXIT_RIGHT) && (bFlags & NODE_EXIT_LEFT)) {
+		aOutDir = SCREEN_EXIT_DIR_RIGHT;
+		bOutDir = SCREEN_EXIT_DIR_LEFT;
+		return;
+	}
+	if ((aFlags & NODE_EXIT_TOP) && (bFlags & NODE_EXIT_BOTTOM)) {
+		aOutDir = SCREEN_EXIT_DIR_TOP;
+		bOutDir = SCREEN_EXIT_DIR_BOTTOM;
+		return;
+	}
+	if ((aFlags & NODE_EXIT_BOTTOM) && (bFlags & NODE_EXIT_TOP)) {
+		aOutDir = SCREEN_EXIT_DIR_BOTTOM;
+		bOutDir = SCREEN_EXIT_DIR_TOP;
+		return;
+	}
+
+}
+
+static void ConnectLevels(const LevelNodePin& a, const LevelNodePin& b) {
+	// Write level screen metadata with new connection
+	const Level& aLevel = Levels::GetLevelsPtr()[a.levelIndex];
+	const Level& bLevel = Levels::GetLevelsPtr()[b.levelIndex];
+
+	const TilemapScreen& aScreen = aLevel.pTilemap->screens[a.screenIndex];
+	const TilemapScreen& bScreen = bLevel.pTilemap->screens[b.screenIndex];
+
+	u8 aDir, bDir;
+	GetScreenExitDirs(a.exit, b.exit, aDir, bDir);
+
+	LevelExit* aExits = (LevelExit*)&aScreen.screenMetadata;
+	LevelExit* bExits = (LevelExit*)&bScreen.screenMetadata;
+
+	aExits[aDir] = {
+		.targetLevel = u16(b.levelIndex),
+		.targetScreen = u16(b.screenIndex)
+	};
+
+	bExits[bDir] = {
+		.targetLevel = u16(a.levelIndex),
+		.targetScreen = u16(a.screenIndex)
+	};
+}
+
 static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 	// NOTE: ImGui examples -> custom rendering -> canvas
 	ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();
@@ -2972,6 +3021,7 @@ static void DrawLevelNodeGraph(LevelNodeMap& nodes) {
 		draggedNode = -1;
 
 		if (CanPinsConnect(pendingConnection.from, pendingConnection.to)) {
+			ConnectLevels(pendingConnection.from, pendingConnection.to);
 			connections.push_back(pendingConnection);
 		}
 		pendingConnection = LevelNodeConnection{};

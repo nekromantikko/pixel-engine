@@ -624,8 +624,8 @@ namespace Game {
     }
 
     static void SpawnPlayerAtEntrance(const Level* pLevel, u8 screenIndex, u8 direction) {
-        r32 x = (screenIndex & pLevel->pTilemap->width) * VIEWPORT_WIDTH_METATILES;
-        r32 y = (screenIndex / pLevel->pTilemap->width) * VIEWPORT_HEIGHT_METATILES;
+        r32 x = (screenIndex % TILEMAP_MAX_DIM_SCREENS) * VIEWPORT_WIDTH_METATILES;
+        r32 y = (screenIndex / TILEMAP_MAX_DIM_SCREENS) * VIEWPORT_HEIGHT_METATILES;
 
         Actor* pPlayer = SpawnActor(playerPrototypeIndex, glm::vec2(x, y));
         if (pPlayer == nullptr) {
@@ -1455,7 +1455,7 @@ namespace Game {
                 state->holdTimer--;
                 return true;
             }
-            LoadLevel(state->nextLevelIndex, state->nextScreenIndex);
+            LoadLevel(state->nextLevelIndex, state->nextScreenIndex, state->nextDirection);
             state->transitionState = TRANSITION_FADE_IN;
             break;
         }
@@ -1481,6 +1481,7 @@ namespace Game {
 
         bool shouldExit = false;
         u8 exitDirection = 0;
+        u8 enterDirection = 0;
         u32 xScreen = 0;
         u32 yScreen = 0;
 
@@ -1488,24 +1489,28 @@ namespace Game {
         if (pPlayer->position.x < 0.5f) {
             shouldExit = true;
             exitDirection = SCREEN_EXIT_DIR_LEFT;
+            enterDirection = SCREEN_EXIT_DIR_RIGHT;
             xScreen = 0;
             yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pCurrentLevel->pTilemap->height);
         }
         else if (pPlayer->position.x >= pCurrentLevel->pTilemap->width * VIEWPORT_WIDTH_METATILES) {
             shouldExit = true;
             exitDirection = SCREEN_EXIT_DIR_RIGHT;
+            enterDirection = SCREEN_EXIT_DIR_LEFT;
             xScreen = pCurrentLevel->pTilemap->width - 1;
             yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pCurrentLevel->pTilemap->height);
         }
         else if (pPlayer->position.y < 0) {
             shouldExit = true;
             exitDirection = SCREEN_EXIT_DIR_TOP;
+            enterDirection = SCREEN_EXIT_DIR_BOTTOM;
             xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pCurrentLevel->pTilemap->width);
             yScreen = 0;
         }
         else if (pPlayer->position.y >= pCurrentLevel->pTilemap->height * VIEWPORT_HEIGHT_METATILES) {
             shouldExit = true;
             exitDirection = SCREEN_EXIT_DIR_BOTTOM;
+            enterDirection = SCREEN_EXIT_DIR_TOP;
             xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pCurrentLevel->pTilemap->width);
             yScreen = pCurrentLevel->pTilemap->height - 1;
         }
@@ -1518,10 +1523,9 @@ namespace Game {
             const LevelExit& exit = exits[exitDirection];
 
             ScreenFadeState state = {
-                //.nextLevelIndex = exit.targetLevel,
-                .nextLevelIndex = 0x11,
+                .nextLevelIndex = exit.targetLevel,
                 .nextScreenIndex = exit.targetScreen,
-                .nextDirection = exitDirection,
+                .nextDirection = enterDirection,
                 .progress = 0.0f
             };
             transitionCoroutine = StartCoroutine(ScreenFadeCoroutine, state);
@@ -1577,14 +1581,14 @@ namespace Game {
     }
 
 #pragma region Public API
-    void LoadLevel(u32 index, s32 screenIndex, bool refresh) {
+    void LoadLevel(u32 index, s32 screenIndex, u8 direction, bool refresh) {
         if (index >= MAX_LEVEL_COUNT) {
             DEBUG_ERROR("Level count exceeded!");
         }
 
         pCurrentLevel = Levels::GetLevelsPtr() + index;
 
-        ReloadLevel(refresh);
+        ReloadLevel(screenIndex, direction, refresh);
     }
 
     void UnloadLevel(bool refresh) {
@@ -1604,7 +1608,7 @@ namespace Game {
         }
     }
 
-    void ReloadLevel(bool refresh) {
+    void ReloadLevel(s32 screenIndex, u8 direction, bool refresh) {
         if (pCurrentLevel == nullptr) {
             return;
         }
@@ -1613,7 +1617,9 @@ namespace Game {
 
         // Spawn player in sidescrolling level
         if (pCurrentLevel->flags.type == LEVEL_TYPE_SIDESCROLLER) {
-            SpawnPlayerAtEntrance(pCurrentLevel, 0, SCREEN_EXIT_DIR_LEFT);
+            SpawnPlayerAtEntrance(pCurrentLevel, screenIndex, direction);
+            UpdateViewport();
+            UpdateScreenScroll();
         }
 
         for (u32 i = 0; i < pCurrentLevel->actors.Count(); i++)
