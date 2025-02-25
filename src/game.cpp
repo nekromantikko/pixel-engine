@@ -109,7 +109,10 @@ namespace Game {
 
     // Global player stuff
     PoolHandle<Actor> playerHandle;
-    u16 playerHealth = 10;
+    u16 playerMaxHealth = 96;
+    u16 playerHealth = 96;
+    u16 playerDispRedHealth = 96;
+    u16 playerDispYellowHealth = 96;
     u8 playerWeapon = PLAYER_WEAPON_LAUNCHER;
 
     ChrSheet playerBank;
@@ -365,6 +368,57 @@ namespace Game {
 #pragma endregion
 
 #pragma region Rendering
+    static bool DrawSprite(SpriteLayer* pLayer, const Sprite& sprite) {
+        Sprite* outSprite = GetNextFreeSprite(pLayer);
+        if (outSprite == nullptr) {
+            return false;
+        }
+        *outSprite = sprite;
+
+        return true;
+    }
+
+    static void DrawPlayerHealthBar() {
+        const u16 xStart = 16;
+        const u16 y = 16;
+
+        SpriteLayer& layer = spriteLayers[SPRITE_LAYER_UI];
+
+        const u32 totalSegments = playerMaxHealth >> 2;
+        const u32 fullRedSegments = playerDispRedHealth >> 2;
+        const u32 fullYellowSegments = playerDispYellowHealth >> 2;
+
+        u16 x = xStart;
+        for (u32 i = 0; i < totalSegments; i++) {
+            const u16 healthDrawn = (i * 4);
+            const u16 remainingRedHealth = healthDrawn > playerDispRedHealth ? 0 : playerDispRedHealth - healthDrawn;
+            const u16 remainingYellowHealth = healthDrawn > playerDispYellowHealth ? 0 : playerDispYellowHealth - healthDrawn;
+
+            u8 tileId;
+            if (i < fullRedSegments) {
+                tileId = 0xe4;
+            }
+            else if (i < fullYellowSegments) {
+                tileId = 0xe5 + (remainingRedHealth & 3);
+            }
+            else {
+                if (remainingYellowHealth != remainingRedHealth) {
+                    tileId = 0xe8 + (remainingYellowHealth & 3);
+                }
+                else tileId = 0xe0 + (remainingRedHealth & 3);
+            }
+
+            Sprite sprite{};
+            sprite.tileId = tileId;
+            sprite.palette = 0x1;
+            sprite.x = x;
+            sprite.y = y;
+            DrawSprite(&layer, sprite);
+
+            x += 8;
+        }
+    }
+
     static bool DrawActor(const Actor* pActor, u8 layerIndex = SPRITE_LAYER_FG, const glm::ivec2& pixelOffset = {0,0}, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1) {
         // Culling
         if (!PositionInViewportBounds(pActor->position)) {
@@ -670,17 +724,49 @@ namespace Game {
         pPlayer->playerState.entryDelayCounter = 15;
     }
 
+    struct HealthAnimState {
+        u16& targetHealth;
+        u16& currentHealth;
+
+        u16 delay = 12;
+        r32 progress;
+    };
+
+    static bool AnimateHealthCoroutine(void* userData) {
+        HealthAnimState& state = *(HealthAnimState*)userData;
+
+        if (state.delay > 0) {
+            state.delay--;
+            return true;
+        }
+
+        state.progress += 0.01f;
+        const r32 t = glm::smoothstep(0.0f, 1.0f, state.progress);
+        state.currentHealth = glm::mix(state.currentHealth, state.targetHealth, t);
+
+        return state.currentHealth != state.targetHealth;
+    }
+
     static void HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
         // If invulnerable
         if (pPlayer->playerState.damageCounter != 0) {
             return;
         }
 
-        const u32 damage = Random::GenerateInt(1, 2);
+        const u32 damage = Random::GenerateInt(1, 20);
         Audio::PlaySFX(&damageSfx, CHAN_ID_PULSE0);
+
+        playerDispYellowHealth = playerHealth;
         if (!ActorTakeDamage(pPlayer, damage, playerHealth, pPlayer->playerState.damageCounter)) {
             // TODO: Player death
         }
+
+        playerDispRedHealth = playerHealth;
+        HealthAnimState state = {
+            .targetHealth = playerHealth,
+            .currentHealth = playerDispYellowHealth
+        };
+        StartCoroutine(AnimateHealthCoroutine, state);
 
         // Recoil
         constexpr r32 recoilSpeed = 0.046875f; // Recoil speed from Zelda 2
@@ -1551,6 +1637,9 @@ namespace Game {
                 UpdateViewport();
                 HandleLevelExit();
             }
+
+            // Draw HUD
+            DrawPlayerHealthBar();
         }
 
         UpdateScreenScroll();
