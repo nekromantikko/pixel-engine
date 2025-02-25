@@ -654,13 +654,13 @@ namespace Game {
         case SCREEN_EXIT_DIR_TOP: {
             pPlayer->position.x += VIEWPORT_WIDTH_METATILES / 2.0f;
             pPlayer->position.y += 0.5f;
-            // TODO: Set initial velocity
+            pPlayer->velocity.y = 0.25f;
             break;
         }
         case SCREEN_EXIT_DIR_BOTTOM: {
             pPlayer->position.x += VIEWPORT_WIDTH_METATILES / 2.0f;
             pPlayer->position.y += VIEWPORT_HEIGHT_METATILES - 0.5f;
-            // TODO: Set initial velocity
+            pPlayer->velocity.y = -0.25f;
             break;
         }
         default:
