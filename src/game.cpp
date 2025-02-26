@@ -113,6 +113,8 @@ namespace Game {
     u16 playerHealth = 96;
     u16 playerDispRedHealth = 96;
     u16 playerDispYellowHealth = 96;
+    u16 playerExp = 0;
+    u16 playerDispExp = 0;
     u8 playerWeapon = PLAYER_WEAPON_LAUNCHER;
 
     ChrSheet playerBank;
@@ -419,6 +421,38 @@ namespace Game {
         }
     }
 
+    static void DrawExpCounter() {
+        static char buffer[10];
+        snprintf(buffer, sizeof(buffer), "%05u", playerDispExp);
+        u32 length = strlen(buffer);
+
+        SpriteLayer& layer = spriteLayers[SPRITE_LAYER_UI];
+
+        const u16 xStart = VIEWPORT_WIDTH_PIXELS - 16 - (length*8);
+        const u16 y = 16;
+
+        // Draw halo indicator
+        Sprite sprite{};
+        sprite.tileId = 0x68;
+        sprite.palette = 0x0;
+        sprite.x = xStart - 8;
+        sprite.y = y;
+        DrawSprite(&layer, sprite);
+
+        // Draw counter
+        u16 x = xStart;
+        for (u32 i = 0; i < length; i++) {
+            Sprite sprite{};
+            sprite.tileId = 0xd6 + buffer[i] - '0';
+            sprite.palette = 0x1;
+            sprite.x = x;
+            sprite.y = y;
+            DrawSprite(&layer, sprite);
+
+            x += 8;
+        }
+    }
+
     static bool DrawActor(const Actor* pActor, u8 layerIndex = SPRITE_LAYER_FG, const glm::ivec2& pixelOffset = {0,0}, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1) {
         // Culling
         if (!PositionInViewportBounds(pActor->position)) {
@@ -582,6 +616,23 @@ namespace Game {
 #pragma endregion
 
 #pragma region Damage
+    struct ExpAnimState {
+        const u16& targetExp;
+        u16& currentExp;
+
+        r32 progress = 0.0f;
+    };
+
+    static bool AnimateExpCoroutine(void* userData) {
+        ExpAnimState& state = *(ExpAnimState*)userData;
+
+        state.progress += 0.05f;
+        const r32 t = glm::smoothstep(0.0f, 1.0f, state.progress);
+        state.currentExp = glm::mix(state.currentExp, state.targetExp, t);
+
+        return state.currentExp != state.targetExp;
+    }
+
     // TODO: Where to get this info properly?
     constexpr u16 largeExpValue = 500;
     constexpr u16 smallExpValue = 10;
@@ -603,6 +654,7 @@ namespace Game {
             pSpawned->velocity = Random::GenerateDirection() * speed;
             pSpawned->pickupState.lingerCounter = 30;
             pSpawned->flags.facingDir = (s8)Random::GenerateInt(-1, 1);
+            pSpawned->pickupState.value = pSpawned->pPrototype->pickupData.value;
 
             if (state.remainingValue < spawnedValue) {
                 state.remainingValue = 0;
@@ -725,11 +777,11 @@ namespace Game {
     }
 
     struct HealthAnimState {
-        u16& targetHealth;
+        const u16& targetHealth;
         u16& currentHealth;
 
         u16 delay = 12;
-        r32 progress;
+        r32 progress = 0.0f;
     };
 
     static bool AnimateHealthCoroutine(void* userData) {
@@ -1266,6 +1318,14 @@ namespace Game {
         if (ActorCollidesWithPlayer(pActor, pPlayer)) {
             Audio::PlaySFX(&expSfx, CHAN_ID_PULSE0);
             pActor->flags.pendingRemoval = true;
+
+            playerExp += pActor->pickupState.value;
+            ExpAnimState state = {
+                .targetExp = playerExp,
+                .currentExp = playerDispExp,
+            };
+            StartCoroutine(AnimateExpCoroutine, state);
+
             return;
         }
 
@@ -1640,6 +1700,7 @@ namespace Game {
 
             // Draw HUD
             DrawPlayerHealthBar();
+            DrawExpCounter();
         }
 
         UpdateScreenScroll();
