@@ -25,6 +25,8 @@ typedef bool (*CoroutineFunc)(void*);
 struct Coroutine {
     CoroutineFunc func;
     alignas(void*) u8 state[MAX_COROUTINE_STATE_SIZE];
+
+    void (*callback)() = nullptr;
 };
 
 // TODO: Move somewhere else?
@@ -117,6 +119,16 @@ namespace Game {
     u16 playerDispExp = 0;
     u8 playerWeapon = PLAYER_WEAPON_LAUNCHER;
 
+    // Dialogue stuff
+    struct DialogueState {
+        bool active = false;
+        u32 currentLine = 0;
+        const char* const* pDialogueLines = nullptr;
+        u32 lineCount;
+        PoolHandle<Coroutine> currentLineCoroutine = PoolHandle<Coroutine>::Null();
+    };
+    DialogueState dialogue;
+
     ChrSheet playerBank;
 
     bool paused = false;
@@ -178,7 +190,7 @@ namespace Game {
     }
 
     template <typename S>
-    static PoolHandle<Coroutine> StartCoroutine(CoroutineFunc func, const S& state) {
+    static PoolHandle<Coroutine> StartCoroutine(CoroutineFunc func, const S& state, void (*callback)() = nullptr) {
         static_assert(sizeof(S) <= MAX_COROUTINE_STATE_SIZE);
 
         auto handle = coroutines.Add();
@@ -190,6 +202,7 @@ namespace Game {
 
         pCoroutine->func = func;
         memcpy(pCoroutine->state, &state, sizeof(S));
+        pCoroutine->callback = callback;
         return handle;
     }
 #pragma endregion
@@ -369,7 +382,205 @@ namespace Game {
     }
 #pragma endregion
 
+    /*s32 Tiles::GetNametableIndex(const glm::ivec2& pos) {
+        return (pos.x / NAMETABLE_WIDTH_METATILES + pos.y / NAMETABLE_HEIGHT_METATILES) % NAMETABLE_COUNT;
+    }
+
+    glm::ivec2 Tiles::GetNametableOffset(const glm::ivec2& pos) {
+        return { (s32)(pos.x % NAMETABLE_WIDTH_METATILES), (s32)(pos.y % NAMETABLE_HEIGHT_METATILES) };
+    }*/
+
 #pragma region Rendering
+    static u8 GetBoxTileId(u32 x, u32 y, u32 w, u32 h) {
+        const u8 offset = 0x10;
+        u8 xIndex = 0;
+        u8 yIndex = 0;
+
+        if (w != 1) {
+            xIndex = 0b01;
+            xIndex <<= (x % w != 0) ? 1 : 0;
+            xIndex += (x % w == w - 1) ? 1 : 0;
+        }
+        if (h != 1) {
+            yIndex = 0b01;
+            yIndex <<= (y % h != 0) ? 1 : 0;
+            yIndex += (y % h == h - 1) ? 1 : 0;
+        }
+
+        const u8 index = xIndex + (yIndex << 2);
+        return index + offset;
+    }
+
+    static void CopyLevelTileToNametable(const glm::ivec2& worldPos) {
+        const u32 nametableIndex = Tiles::GetNametableIndex(worldPos);
+        const glm::ivec2 nametableOffset = Tiles::GetNametableOffset(worldPos);
+
+        const Tilemap* pTilemap = pCurrentLevel->pTilemap;
+        const s32 tilesetIndex = Tiles::GetTilesetIndex(pTilemap, worldPos);
+        const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
+
+        const Metatile& metatile = tile->metatile;
+        const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, tilesetIndex);
+        Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
+    }
+
+    static void CopyBoxTileToNametable(const glm::ivec2& worldPos, const glm::ivec2& tileOffset, const glm::ivec2& sizeTiles, u8 palette) {
+        const u32 nametableIndex = Tiles::GetNametableIndex(worldPos);
+        const glm::ivec2 nametableOffset = Tiles::GetNametableOffset(worldPos);
+
+        // Construct a metatile
+        Metatile metatile{};
+        metatile.tiles[0] = GetBoxTileId(tileOffset.x, tileOffset.y, sizeTiles.x, sizeTiles.y);
+        metatile.tiles[1] = GetBoxTileId(tileOffset.x + 1, tileOffset.y, sizeTiles.x, sizeTiles.y);
+        metatile.tiles[2] = GetBoxTileId(tileOffset.x, tileOffset.y + 1, sizeTiles.x, sizeTiles.y);
+        metatile.tiles[3] = GetBoxTileId(tileOffset.x + 1, tileOffset.y + 1, sizeTiles.x, sizeTiles.y);
+
+        Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
+    }
+
+    static void DrawBgBoxAnimated(const glm::ivec2& viewportPos, const glm::ivec2& size, const glm::ivec2 maxSize, u8 palette) {
+        const glm::ivec2 worldPos = viewportPos + glm::ivec2(viewport.x, viewport.y);
+        const glm::ivec2 sizeTiles(size.x << 1, size.y << 1);
+
+        for (u32 y = 0; y < maxSize.y; y++) {
+            for (u32 x = 0; x < maxSize.x; x++) {
+
+                const glm::ivec2 offset(x, y);
+
+                if (x < size.x && y < size.y) {
+                    const glm::ivec2 tileOffset(x << 1, y << 1);
+                    CopyBoxTileToNametable(worldPos + offset, tileOffset, sizeTiles, palette);
+                }
+                else {
+                    CopyLevelTileToNametable(worldPos + offset);
+                }
+            }
+        }
+    }
+
+    struct BgBoxAnimState {
+        const glm::ivec2 viewportPos;
+        const u32 width;
+        const u32 maxHeight;
+        const u8 palette;
+        const s32 direction = 1;
+
+        u32 height = 0;
+    };
+
+    static bool AnimBgBoxCoroutine(void* userData) {
+        BgBoxAnimState& state = *(BgBoxAnimState*)userData;
+
+        if (state.direction > 0) {
+            if (state.height < state.maxHeight) {
+                state.height++;
+            }
+
+            DrawBgBoxAnimated(state.viewportPos, glm::ivec2(state.width, state.height), glm::ivec2(state.width, state.maxHeight), state.palette);
+
+            return state.height != state.maxHeight;
+        }
+        else {
+            if (state.height > 0) {
+                state.height--;
+            }
+
+            DrawBgBoxAnimated(state.viewportPos, glm::ivec2(state.width, state.height), glm::ivec2(state.width, state.maxHeight), state.palette);
+
+            return state.height != 0;
+        }
+    }
+
+    static void DrawBgText(const glm::ivec2& boxViewportPos, const glm::ivec2& boxSize, const char* pText, u32 length) {
+        const glm::ivec2 worldPos = boxViewportPos + glm::ivec2(viewport.x, viewport.y);
+        const glm::ivec2 worldTilePos(worldPos.x * METATILE_DIM_TILES, worldPos.y * METATILE_DIM_TILES);
+        const glm::ivec2 innerSizeTiles((boxSize.x << 1) - 2, (boxSize.y << 1) - 2);
+
+        const u32 xTileStart = worldTilePos.x + 1;
+        const u32 yTileStart = worldTilePos.y + 1;
+
+        u32 xTile = xTileStart;
+        u32 yTile = yTileStart;
+
+        for (u32 i = 0; i < length; i++) {
+            const char c = pText[i];
+
+            // Handle manual newlines
+            if (c == '\n') {
+                xTile = xTileStart; // Reset to the beginning of the line
+                yTile++; // Move to the next line
+
+                // Stop if we exceed the box height
+                if (yTile >= yTileStart + innerSizeTiles.y) {
+                    break;
+                }
+
+                continue;
+            }
+
+            // Automatic newline if text exceedd box width
+            if (xTile >= xTileStart + innerSizeTiles.x) {
+                xTile = xTileStart;
+                yTile++;
+
+                if (yTile >= yTileStart + innerSizeTiles.y) {
+                    break;
+                }
+            }
+
+            // TODO: These could be utils too
+            const u32 nametableIndex = (xTile / NAMETABLE_WIDTH_TILES + yTile / NAMETABLE_HEIGHT_TILES) % NAMETABLE_COUNT;
+            const glm::ivec2 nametableOffset(xTile % NAMETABLE_WIDTH_TILES, yTile % NAMETABLE_HEIGHT_TILES);
+            const u32 nametableTileIndex = nametableOffset.x + nametableOffset.y * NAMETABLE_WIDTH_TILES;
+
+            pNametables[nametableIndex].tiles[nametableTileIndex] = c;
+            xTile++;
+        }
+    }
+
+    static void ClearBgText(const glm::ivec2& boxViewportPos, const glm::ivec2& boxSize) {
+        const glm::ivec2 worldPos = boxViewportPos + glm::ivec2(viewport.x, viewport.y);
+        const glm::ivec2 worldTilePos(worldPos.x * METATILE_DIM_TILES, worldPos.y * METATILE_DIM_TILES);
+        const glm::ivec2 innerSizeTiles((boxSize.x << 1) - 2, (boxSize.y << 1) - 2);
+
+        const u32 xTileStart = worldTilePos.x + 1;
+        const u32 yTileStart = worldTilePos.y + 1;
+
+        for (u32 y = 0; y < innerSizeTiles.y; y++) {
+            u32 yTile = yTileStart + y;
+
+            for (u32 x = 0; x < innerSizeTiles.x; x++) {
+                u32 xTile = xTileStart + x;
+
+                const u32 nametableIndex = (xTile / NAMETABLE_WIDTH_TILES + yTile / NAMETABLE_HEIGHT_TILES) % NAMETABLE_COUNT;
+                const glm::ivec2 nametableOffset(xTile % NAMETABLE_WIDTH_TILES, yTile % NAMETABLE_HEIGHT_TILES);
+                const u32 nametableTileIndex = nametableOffset.x + nametableOffset.y * NAMETABLE_WIDTH_TILES;
+
+                pNametables[nametableIndex].tiles[nametableTileIndex] = 0;
+            }
+        }
+    }
+
+    struct AnimTextState {
+        const char* pText = nullptr;
+        const glm::ivec2 boxViewportPos;
+        const glm::ivec2 boxSize;
+
+        u32 pos = 0;
+    };
+
+    static bool AnimTextCoroutine(void* userData) {
+        AnimTextState& state = *(AnimTextState*)userData;
+
+        if (state.pos <= strlen(state.pText)) {
+            DrawBgText(state.boxViewportPos, state.boxSize, state.pText, state.pos);
+            state.pos++;
+            return true;
+        }
+
+        return false;
+    }
+
     static bool DrawSprite(SpriteLayer* pLayer, const Sprite& sprite) {
         Sprite* outSprite = GetNextFreeSprite(pLayer);
         if (outSprite == nullptr) {
@@ -872,10 +1083,6 @@ namespace Game {
         }
         else playerState.flags.aimMode = PLAYER_AIM_FWD;
 
-        if (ButtonPressed(BUTTON_START)) {
-            pRenderSettings->useCRTFilter = !pRenderSettings->useCRTFilter;
-        }
-
         if (ButtonPressed(BUTTON_A) && (!pPlayer->flags.inAir || !playerState.flags.doubleJumped)) {
             pPlayer->velocity.y = -0.25f;
             if (pPlayer->flags.inAir) {
@@ -1068,7 +1275,7 @@ namespace Game {
 
         const bool enteringLevel = pActor->playerState.entryDelayCounter > 0;
         const bool stunned = pActor->playerState.damageCounter > 0;
-        if (!enteringLevel && !stunned) {
+        if (!enteringLevel && !stunned && !dialogue.active) {
             PlayerInput(pActor);
             PlayerShoot(pActor);
         }
@@ -1535,6 +1742,10 @@ namespace Game {
 
             if (!StepCoroutine(pCoroutine)) {
                 coroutineRemoveList.Add(handle);
+
+                if (pCoroutine->callback) {
+                    pCoroutine->callback();
+                }
             }
         }
 
@@ -1678,9 +1889,74 @@ namespace Game {
         }
     }
 
+#pragma region Dialogue
+    static void EndDialogue() {
+        dialogue.active = false;
+    }
+
+    static void AdvanceDialogue() {
+        if (!dialogue.active) {
+            return;
+        }
+
+        // Stop the previous coroutine
+        if (coroutines.Get(dialogue.currentLineCoroutine)) {
+            coroutines.Remove(dialogue.currentLineCoroutine);
+        }
+
+        if (dialogue.currentLine >= dialogue.lineCount) {
+            // Close dialogue box, then end dialogue
+            BgBoxAnimState state{
+                    .viewportPos = glm::ivec2(8,3),
+                    .width = 16,
+                    .maxHeight = 4,
+                    .palette = 3,
+                    .direction = -1,
+
+                    .height = 4
+            };
+            StartCoroutine(AnimBgBoxCoroutine, state, EndDialogue);
+            return;
+        }
+        else {
+            ClearBgText(glm::ivec2(8, 3), glm::ivec2(16, 4));
+            AnimTextState state{
+                .pText = dialogue.pDialogueLines[dialogue.currentLine],
+                .boxViewportPos = glm::ivec2(8,3),
+                .boxSize = glm::ivec2(16,4),
+            };
+            dialogue.currentLineCoroutine = StartCoroutine(AnimTextCoroutine, state);
+        }
+
+        dialogue.currentLine++;
+    }
+
+    static void BeginDialogue(const char* const* pLines, u32 count) {
+        if (dialogue.active) {
+            return;
+        }
+
+        dialogue.active = true;
+        dialogue.currentLine = 0;
+        dialogue.pDialogueLines = pLines;
+        dialogue.lineCount = count;
+
+        BgBoxAnimState state{
+                    .viewportPos = glm::ivec2(8,3),
+                    .width = 16,
+                    .maxHeight = 4,
+                    .palette = 3,
+                    .direction = 1,
+        };
+        StartCoroutine(AnimBgBoxCoroutine, state, AdvanceDialogue);
+    }
+#pragma endregion
+
     static void Step() {
         previousInput = currentInput;
         currentInput = Input::GetControllerState();
+
+        static char textBuffer[256]{};
 
         ClearSpriteLayers(spriteLayers);
 
@@ -1714,6 +1990,20 @@ namespace Game {
             }
             musicPlaying = !musicPlaying;
         }*/
+
+        static constexpr const char* lines[] = {
+                "What a horrible night to have a curse, am I right fellas???",
+                "I can print multiple lines of dialogue here.",
+                "This is the second to last\nline, getting closer to the\nend...",
+                "This is the last line of\ndialogue, thxbye!"
+        };
+
+        if (ButtonPressed(BUTTON_START)) {
+            if (!dialogue.active) {
+                BeginDialogue(lines, 4);
+            }
+            else AdvanceDialogue();
+        }
 
         // Animate color palette hue
         /*s32 hueShift = (s32)glm::roundEven(gameplayFramesElapsed / 12.f);
