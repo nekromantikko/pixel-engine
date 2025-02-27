@@ -14,6 +14,7 @@
 #include "viewport.h"
 #include "actors.h"
 #include "audio.h"
+#include "random.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <gtx/matrix_transform_2d.hpp>
 #include <vector>
@@ -1416,7 +1417,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 				PoolHandle<Actor> handle = pLevel->actors.Add();
 				Actor* pNewActor = pLevel->actors.Get(handle);
 				pNewActor->pPrototype = Actors::GetPrototype(0);
-				snprintf(pNewActor->name, ACTOR_MAX_NAME_LENGTH, "New actor");
+				pNewActor->id = Random::GenerateUUID();
 				pNewActor->position = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
 			}
 			ImGui::EndPopup();
@@ -1518,8 +1519,6 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 				const ImVec2 pMax = ImVec2((boundsAbs.max.x - pViewport->x) * tileDrawSize + topLeft.x, (boundsAbs.max.y - pViewport->y) * tileDrawSize + topLeft.y);
 
 				drawList->AddRect(pMin, pMax, IM_COL32(255, 255, 255, 255));
-				const ImVec2 namePos = ImVec2(pMin.x, pMax.y + tileDrawSize / 4);
-				drawList->AddText(namePos, IM_COL32(255, 255, 255, 255), pActor->name);
 			}
 
 			break;
@@ -1746,8 +1745,7 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 				ImGui::PushID(selectedActorHandle.Raw());
 				ImGui::BeginDisabled(!editing);
 
-				ImGui::SeparatorText(pActor->name);
-				ImGui::InputText("Name", pActor->name, ACTOR_MAX_NAME_LENGTH);
+				ImGui::Text("UUID: %llu", pActor->id);
 
 				if (ImGui::BeginCombo("Prototype", Actors::GetPrototypeName(pActor->pPrototype))) {
 					for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++) {

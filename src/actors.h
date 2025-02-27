@@ -247,7 +247,7 @@ struct ActorPrototype {
 };
 
 struct Actor {
-	char name[ACTOR_MAX_NAME_LENGTH];
+	u64 id;
 
 	ActorFlags flags;
 

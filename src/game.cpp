@@ -15,6 +15,7 @@
 #include "nes_timing.h"
 #include <gtc/constants.hpp>
 #include "random.h"
+#include "fixed_hash_map.h"
 
 // TODO: Move somewhere else?
 constexpr u32 MAX_COROUTINE_COUNT = 256;
@@ -134,6 +135,12 @@ namespace Game {
         u8 screenIndex;
     };
     Checkpoint lastCheckpoint;
+
+    struct PersistedActorState {
+        bool dead = false;
+    };
+
+    FixedHashMap<PersistedActorState> persistedActorStates;
 
     ChrSheet playerBank;
 
@@ -364,6 +371,7 @@ namespace Game {
         Actor* pActor = actors.Get(handle);
 
         const ActorPrototype* pPrototype = Actors::GetPrototype(presetIndex);
+        pActor->id = Random::GenerateUUID();
         pActor->pPrototype = pPrototype;
         if (pPrototype->type == ACTOR_TYPE_PLAYER) {
             playerHandle = handle;
@@ -885,6 +893,16 @@ namespace Game {
 
     static void NPCDie(Actor* pActor) {
         pActor->flags.pendingRemoval = true;
+
+        PersistedActorState* persistState = persistedActorStates.Get(pActor->id);
+        if (persistState) {
+            persistState->dead = true;
+        }
+        else {
+            persistedActorStates.Add(pActor->id, {
+                .dead = true,
+                });
+        }
 
         Audio::PlaySFX(&enemyDieSfx, CHAN_ID_NOISE);
         SpawnActor(pActor->pPrototype->npcData.spawnOnDeath, pActor->position);
@@ -2091,7 +2109,11 @@ namespace Game {
             auto handle = pCurrentLevel->actors.GetHandle(i);
             const Actor* pActor = pCurrentLevel->actors.Get(handle);
 
-            SpawnActor(pActor);
+            const PersistedActorState* persistState = persistedActorStates.Get(pActor->id);
+            if (!persistState || !persistState->dead) {
+                SpawnActor(pActor);
+            }
+
         }
 
         gameplayFramesElapsed = 0;
