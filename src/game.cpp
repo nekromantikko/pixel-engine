@@ -129,6 +129,12 @@ namespace Game {
     };
     DialogueState dialogue;
 
+    struct Checkpoint {
+        u16 levelIndex;
+        u8 screenIndex;
+    };
+    Checkpoint lastCheckpoint;
+
     ChrSheet playerBank;
 
     bool paused = false;
@@ -987,6 +993,140 @@ namespace Game {
         pPlayer->playerState.entryDelayCounter = 15;
     }
 
+    static void UpdateFadeToBlack(r32 progress) {
+        progress = glm::smoothstep(0.0f, 1.0f, progress);
+
+        for (u32 i = 0; i < PALETTE_MEMORY_SIZE; i++) {
+            u8 baseColor = ((u8*)basePaletteColors)[i];
+
+            const s32 baseBrightness = (baseColor & 0b1110000) >> 4;
+            const s32 hue = baseColor & 0b0001111;
+
+            const s32 minBrightness = hue == 0 ? 0 : -1;
+
+            s32 newBrightness = glm::mix(minBrightness, baseBrightness, 1.0f - progress);
+
+            if (newBrightness >= 0) {
+                ((u8*)pPalettes)[i] = hue | (newBrightness << 4);
+            }
+            else {
+                ((u8*)pPalettes)[i] = 0x00;
+            }
+        }
+    }
+
+    enum ScreenTransitionState : u8 {
+        TRANSITION_FADE_OUT,
+        TRANSITION_LOADING,
+        TRANSITION_FADE_IN,
+        TRANSITION_COMPLETE
+    };
+
+    struct ScreenFadeState {
+        u16 nextLevelIndex;
+        u16 nextScreenIndex;
+        u8 nextDirection;
+        r32 progress;
+
+        u8 transitionState = TRANSITION_FADE_OUT;
+        u8 holdTimer = 12;
+    };
+
+    static bool ScreenFadeCoroutine(void* userData) {
+        ScreenFadeState* state = (ScreenFadeState*)userData;
+
+        switch (state->transitionState) {
+        case TRANSITION_FADE_OUT: {
+            if (state->progress < 1.0f) {
+                state->progress += 0.1f;
+                UpdateFadeToBlack(state->progress);
+                return true;
+            }
+            state->transitionState = TRANSITION_LOADING;
+            break;
+        }
+        case TRANSITION_LOADING: {
+            if (state->holdTimer > 0) {
+                state->holdTimer--;
+                return true;
+            }
+            LoadLevel(state->nextLevelIndex, state->nextScreenIndex, state->nextDirection);
+            state->transitionState = TRANSITION_FADE_IN;
+            break;
+        }
+        case TRANSITION_FADE_IN: {
+            if (state->progress > 0.0f) {
+                state->progress -= 0.10f;
+                UpdateFadeToBlack(state->progress);
+                return true;
+            }
+            state->transitionState = TRANSITION_COMPLETE;
+            break;
+        }
+        default:
+            return false;
+        }
+    }
+
+    static void HandleLevelExit() {
+        const Actor* pPlayer = actors.Get(playerHandle);
+        if (pPlayer == nullptr) {
+            return;
+        }
+
+        bool shouldExit = false;
+        u8 exitDirection = 0;
+        u8 enterDirection = 0;
+        u32 xScreen = 0;
+        u32 yScreen = 0;
+
+        // Left side of screen is ugly, so trigger transition earlier
+        if (pPlayer->position.x < 0.5f) {
+            shouldExit = true;
+            exitDirection = SCREEN_EXIT_DIR_LEFT;
+            enterDirection = SCREEN_EXIT_DIR_RIGHT;
+            xScreen = 0;
+            yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pCurrentLevel->pTilemap->height);
+        }
+        else if (pPlayer->position.x >= pCurrentLevel->pTilemap->width * VIEWPORT_WIDTH_METATILES) {
+            shouldExit = true;
+            exitDirection = SCREEN_EXIT_DIR_RIGHT;
+            enterDirection = SCREEN_EXIT_DIR_LEFT;
+            xScreen = pCurrentLevel->pTilemap->width - 1;
+            yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pCurrentLevel->pTilemap->height);
+        }
+        else if (pPlayer->position.y < 0) {
+            shouldExit = true;
+            exitDirection = SCREEN_EXIT_DIR_TOP;
+            enterDirection = SCREEN_EXIT_DIR_BOTTOM;
+            xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pCurrentLevel->pTilemap->width);
+            yScreen = 0;
+        }
+        else if (pPlayer->position.y >= pCurrentLevel->pTilemap->height * VIEWPORT_HEIGHT_METATILES) {
+            shouldExit = true;
+            exitDirection = SCREEN_EXIT_DIR_BOTTOM;
+            enterDirection = SCREEN_EXIT_DIR_TOP;
+            xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pCurrentLevel->pTilemap->width);
+            yScreen = pCurrentLevel->pTilemap->height - 1;
+        }
+
+        if (shouldExit) {
+            const u32 screenIndex = xScreen + TILEMAP_MAX_DIM_SCREENS * yScreen;
+            const TilemapScreen& screen = pCurrentLevel->pTilemap->screens[screenIndex];
+            const LevelExit* exits = (LevelExit*)&screen.screenMetadata;
+
+            const LevelExit& exit = exits[exitDirection];
+
+            ScreenFadeState state = {
+                .nextLevelIndex = exit.targetLevel,
+                .nextScreenIndex = exit.targetScreen,
+                .nextDirection = enterDirection,
+                .progress = 0.0f
+            };
+            transitionCoroutine = StartCoroutine(ScreenFadeCoroutine, state);
+        }
+    }
+
     struct HealthAnimState {
         const u16& targetHealth;
         u16& currentHealth;
@@ -1010,6 +1150,24 @@ namespace Game {
         return state.currentHealth != state.targetHealth;
     }
 
+    static void PlayerDie(Actor* pPlayer) {
+        // TODO: drop xp in level
+        playerExp = 0;
+
+        // Restore life
+        playerHealth = playerMaxHealth;
+        playerDispRedHealth = playerMaxHealth;
+
+        // Transition to checkpoint
+        ScreenFadeState state = {
+                .nextLevelIndex = lastCheckpoint.levelIndex,
+                .nextScreenIndex = lastCheckpoint.screenIndex,
+                .nextDirection = 0,
+                .progress = 0.0f
+        };
+        transitionCoroutine = StartCoroutine(ScreenFadeCoroutine, state);
+    }
+
     static void HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
         // If invulnerable
         if (pPlayer->playerState.damageCounter != 0) {
@@ -1021,7 +1179,7 @@ namespace Game {
 
         playerDispYellowHealth = playerHealth;
         if (!ActorTakeDamage(pPlayer, damage, playerHealth, pPlayer->playerState.damageCounter)) {
-            // TODO: Player death
+            PlayerDie(pPlayer);
         }
 
         playerDispRedHealth = playerHealth;
@@ -1752,140 +1910,6 @@ namespace Game {
         for (u32 i = 0; i < coroutineRemoveList.Count(); i++) {
             auto handle = *coroutineRemoveList.Get(coroutineRemoveList.GetHandle(i));
             coroutines.Remove(handle);
-        }
-    }
-
-    static void UpdateFadeToBlack(r32 progress) {
-        progress = glm::smoothstep(0.0f, 1.0f, progress);
-
-        for (u32 i = 0; i < PALETTE_MEMORY_SIZE; i++) {
-            u8 baseColor = ((u8*)basePaletteColors)[i];
-
-            const s32 baseBrightness = (baseColor & 0b1110000) >> 4;
-            const s32 hue = baseColor & 0b0001111;
-
-            const s32 minBrightness = hue == 0 ? 0 : -1;
-
-            s32 newBrightness = glm::mix(minBrightness, baseBrightness, 1.0f - progress);
-
-            if (newBrightness >= 0) {
-                ((u8*)pPalettes)[i] = hue | (newBrightness << 4);
-            }
-            else {
-                ((u8*)pPalettes)[i] = 0x00;
-            }
-        }
-    }
-
-    enum ScreenTransitionState : u8 {
-        TRANSITION_FADE_OUT,
-        TRANSITION_LOADING,
-        TRANSITION_FADE_IN,
-        TRANSITION_COMPLETE
-    };
-
-    struct ScreenFadeState {
-        u16 nextLevelIndex;
-        u16 nextScreenIndex;
-        u8 nextDirection;
-        r32 progress;
-
-        u8 transitionState = TRANSITION_FADE_OUT;
-        u8 holdTimer = 12;
-    };
-
-    static bool ScreenFadeCoroutine(void* userData) {
-        ScreenFadeState* state = (ScreenFadeState*)userData;
-
-        switch (state->transitionState) {
-        case TRANSITION_FADE_OUT: {
-            if (state->progress < 1.0f) {
-                state->progress += 0.1f;
-                UpdateFadeToBlack(state->progress);
-                return true;
-            }
-            state->transitionState = TRANSITION_LOADING;
-            break;
-        }
-        case TRANSITION_LOADING: {
-            if (state->holdTimer > 0) {
-                state->holdTimer--;
-                return true;
-            }
-            LoadLevel(state->nextLevelIndex, state->nextScreenIndex, state->nextDirection);
-            state->transitionState = TRANSITION_FADE_IN;
-            break;
-        }
-        case TRANSITION_FADE_IN: {
-            if (state->progress > 0.0f) {
-                state->progress -= 0.10f;
-                UpdateFadeToBlack(state->progress);
-                return true;
-            }
-            state->transitionState = TRANSITION_COMPLETE;
-            break;
-        }
-        default:
-            return false;
-        }
-    }
-
-    static void HandleLevelExit() {
-        const Actor* pPlayer = actors.Get(playerHandle);
-        if (pPlayer == nullptr) {
-            return;
-        }
-
-        bool shouldExit = false;
-        u8 exitDirection = 0;
-        u8 enterDirection = 0;
-        u32 xScreen = 0;
-        u32 yScreen = 0;
-
-        // Left side of screen is ugly, so trigger transition earlier
-        if (pPlayer->position.x < 0.5f) {
-            shouldExit = true;
-            exitDirection = SCREEN_EXIT_DIR_LEFT;
-            enterDirection = SCREEN_EXIT_DIR_RIGHT;
-            xScreen = 0;
-            yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pCurrentLevel->pTilemap->height);
-        }
-        else if (pPlayer->position.x >= pCurrentLevel->pTilemap->width * VIEWPORT_WIDTH_METATILES) {
-            shouldExit = true;
-            exitDirection = SCREEN_EXIT_DIR_RIGHT;
-            enterDirection = SCREEN_EXIT_DIR_LEFT;
-            xScreen = pCurrentLevel->pTilemap->width - 1;
-            yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pCurrentLevel->pTilemap->height);
-        }
-        else if (pPlayer->position.y < 0) {
-            shouldExit = true;
-            exitDirection = SCREEN_EXIT_DIR_TOP;
-            enterDirection = SCREEN_EXIT_DIR_BOTTOM;
-            xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pCurrentLevel->pTilemap->width);
-            yScreen = 0;
-        }
-        else if (pPlayer->position.y >= pCurrentLevel->pTilemap->height * VIEWPORT_HEIGHT_METATILES) {
-            shouldExit = true;
-            exitDirection = SCREEN_EXIT_DIR_BOTTOM;
-            enterDirection = SCREEN_EXIT_DIR_TOP;
-            xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pCurrentLevel->pTilemap->width);
-            yScreen = pCurrentLevel->pTilemap->height - 1;
-        }
-
-        if (shouldExit) {
-            const u32 screenIndex = xScreen + TILEMAP_MAX_DIM_SCREENS * yScreen;
-            const TilemapScreen& screen = pCurrentLevel->pTilemap->screens[screenIndex];
-            const LevelExit* exits = (LevelExit*)&screen.screenMetadata;
-
-            const LevelExit& exit = exits[exitDirection];
-
-            ScreenFadeState state = {
-                .nextLevelIndex = exit.targetLevel,
-                .nextScreenIndex = exit.targetScreen,
-                .nextDirection = enterDirection,
-                .progress = 0.0f
-            };
-            transitionCoroutine = StartCoroutine(ScreenFadeCoroutine, state);
         }
     }
 
