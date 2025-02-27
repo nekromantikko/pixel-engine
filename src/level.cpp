@@ -41,19 +41,14 @@ void Levels::LoadLevels(const char* fname) {
     // Deserialize levels
     for (u32 i = 0; i < MAX_LEVEL_COUNT; i++) {
         Level& level = levels[i];
-        level.name = &nameMemory[i * LEVEL_MAX_NAME_LENGTH];
         fread(&level.flags, sizeof(u32), 1, pFile);
         fread(&level.unused, sizeof(u32), 1, pFile);
 
+        level.name = &nameMemory[i * LEVEL_MAX_NAME_LENGTH];
+        fread(level.name, LEVEL_MAX_NAME_LENGTH, 1, pFile);
+
         level.pTilemap = &tilemapMemory[i];
-        level.actors.Clear();
-    }
-
-    fread(nameMemory, LEVEL_MAX_NAME_LENGTH, MAX_LEVEL_COUNT, pFile);
-
-    // Deserialize tilemaps
-    for (u32 i = 0; i < MAX_LEVEL_COUNT; i++) {
-        Tilemap& tilemap = tilemapMemory[i];
+        Tilemap& tilemap = *level.pTilemap;
 
         fread(&tilemap.width, sizeof(u32), 1, pFile);
         fread(&tilemap.height, sizeof(u32), 1, pFile);
@@ -85,6 +80,22 @@ void Levels::LoadLevels(const char* fname) {
 
             Tiles::DecompressScreen(compressed, screen);
         }
+
+        // Read actors
+        level.actors.Clear();
+        u32 actorCount = 0;
+        fread(&actorCount, sizeof(u32), 1, pFile);
+        for (u32 a = 0; a < actorCount; a++) {
+            Actor actor{};
+
+            fread(&actor.id, sizeof(u64), 1, pFile);
+            u32 prototypeIndex;
+            fread(&prototypeIndex, sizeof(u32), 1, pFile);
+            actor.pPrototype = Actors::GetPrototype(prototypeIndex);
+            fread(&actor.position, sizeof(glm::vec2), 1, pFile);
+
+            level.actors.Add(actor);
+        }
     }
 
     fclose(pFile);
@@ -108,15 +119,11 @@ void Levels::SaveLevels(const char* fname) {
         fwrite(&level.flags, sizeof(u32), 1, pFile);
         fwrite(&level.unused, sizeof(u32), 1, pFile);
 
-        // TODO: Serialize actors
-    }
+        fwrite(level.name, LEVEL_MAX_NAME_LENGTH, 1, pFile);
 
-    fwrite(nameMemory, LEVEL_MAX_NAME_LENGTH, MAX_LEVEL_COUNT, pFile);
+        const Tilemap& tilemap = *level.pTilemap;
 
-    // Serialize tilemaps
-    for (u32 i = 0; i < MAX_LEVEL_COUNT; i++) {
-        const Tilemap& tilemap = tilemapMemory[i];
-
+        // Serialize tilemap
         fwrite(&tilemap.width, sizeof(u32), 1, pFile);
         fwrite(&tilemap.height, sizeof(u32), 1, pFile);
         s32 tilesetIndex = 0;
@@ -136,6 +143,19 @@ void Levels::SaveLevels(const char* fname) {
             u32 compressedMetadataSize = compressed.compressedMetadata.size();
             fwrite(&compressedMetadataSize, sizeof(u32), 1, pFile);
             fwrite(compressed.compressedMetadata.data(), sizeof(TileMetadataRun), compressed.compressedMetadata.size(), pFile);
+        }
+
+        // Serialize actors
+        const u32 actorCount = level.actors.Count();
+        fwrite(&actorCount, sizeof(u32), 1, pFile);
+        for (u32 a = 0; a < actorCount; a++) {
+            // TODO: what if there's a null actor somehow?
+            const Actor* pActor = level.actors.Get(level.actors.GetHandle(a));
+
+            fwrite(&pActor->id, sizeof(u64), 1, pFile);
+            const u32 prototypeIndex = Actors::GetPrototypeIndex(pActor->pPrototype);
+            fwrite(&prototypeIndex, sizeof(u32), 1, pFile);
+            fwrite(&pActor->position, sizeof(glm::vec2), 1, pFile);
         }
     }
 
