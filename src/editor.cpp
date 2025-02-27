@@ -1389,6 +1389,22 @@ static void DrawGameViewOverlay(const Level* pLevel, const Viewport* pViewport, 
 	}
 }
 
+static PoolHandle<Actor> GetHoveredActorHandle(const Level* pLevel, const ImVec2& mousePosInWorldCoords) {
+	auto result = PoolHandle<Actor>::Null();
+	// TODO: Some quadtree action needed desperately
+	for (u32 i = 0; i < pLevel->actors.Count(); i++) {
+		PoolHandle<Actor> handle = pLevel->actors.GetHandle(i);
+		const Actor* pActor = pLevel->actors.Get(handle);
+
+		const AABB bounds = GetActorBoundingBox(pActor);
+		if (Collision::PointInsideBox({ mousePosInWorldCoords.x, mousePosInWorldCoords.y }, bounds, pActor->position)) {
+			result = handle;
+			break;
+		}
+	}
+	return result;
+}
+
 static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboard& clipboard, u32& selectedLevel, PoolHandle<Actor>& selectedActorHandle) {
 	Viewport* pViewport = Game::GetViewport();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
@@ -1409,23 +1425,15 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 	// Invisible button to prevent dragging window
 	ImGui::InvisibleButton("##canvas", ImVec2(contentWidth, contentHeight), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
 
-	// Context menu handling
-	if (editing && editMode == EDIT_MODE_ACTORS) {
-		if (ImGui::BeginPopupContextItem("actor_popup"))
-		{
-			if (ImGui::Selectable("Add actor")) {
-				PoolHandle<Actor> handle = pLevel->actors.Add();
-				Actor* pNewActor = pLevel->actors.Get(handle);
-				pNewActor->pPrototype = Actors::GetPrototype(0);
-				pNewActor->id = Random::GenerateUUID();
-				pNewActor->position = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
-			}
-			ImGui::EndPopup();
-		}
-	}
-
 	const bool hovered = ImGui::IsItemHovered(); // Hovered
 	const bool active = ImGui::IsItemActive();   // Held
+
+	// Context menu handling
+	if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+		if (editing && editMode == EDIT_MODE_ACTORS) {
+			ImGui::OpenPopup("ActorContextMenu");
+		}
+	}
 
 	drawList->PushClipRect(topLeft, btmRight, true);
 
@@ -1484,25 +1492,15 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 		{
 			Actor* pActor = pLevel->actors.Get(selectedActorHandle);
 			const AABB actorBounds = GetActorBoundingBox(pActor);
+			PoolHandle<Actor> hoveredActorHandle = GetHoveredActorHandle(pLevel, mousePosInWorldCoords);
 
 			// Selection
 			if (!scrolling) {
 				static glm::vec2 selectionStartPos{};
 
-				if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-					selectedActorHandle = PoolHandle<Actor>::Null();
-					// TODO: Some quadtree action needed desperately
-					for (u32 i = 0; i < pLevel->actors.Count(); i++) {
-						PoolHandle<Actor> handle = pLevel->actors.GetHandle(i);
-						const Actor* pActor = pLevel->actors.Get(handle);
-
-						const AABB bounds = GetActorBoundingBox(pActor);
-						if (Collision::PointInsideBox({ mousePosInWorldCoords.x, mousePosInWorldCoords.y }, bounds, pActor->position)) {
-							selectedActorHandle = handle;
-							selectionStartPos = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
-							break;
-						}
-					}
+				if (active && (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
+					selectedActorHandle = hoveredActorHandle;
+					selectionStartPos = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
 				}
 
 				if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Left) && pActor != nullptr) {
@@ -1511,6 +1509,22 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 
 					pActor->position = selectionStartPos + deltaInWorldCoords;
 				}
+			}
+
+			if (ImGui::BeginPopup("ActorContextMenu")) {
+				if (selectedActorHandle != PoolHandle<Actor>::Null()) {
+					if (ImGui::MenuItem("Remove actor")) {
+						pLevel->actors.Remove(selectedActorHandle);
+					}
+				}
+				else if (ImGui::MenuItem("Add actor")) {
+					PoolHandle<Actor> handle = pLevel->actors.Add();
+					Actor* pNewActor = pLevel->actors.Get(handle);
+					pNewActor->pPrototype = Actors::GetPrototype(0);
+					pNewActor->id = Random::GenerateUUID();
+					pNewActor->position = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
+				}
+				ImGui::EndPopup();
 			}
 
 			if (pActor != nullptr) {
