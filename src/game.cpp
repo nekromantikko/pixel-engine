@@ -136,6 +136,13 @@ namespace Game {
     };
     Checkpoint lastCheckpoint;
 
+    struct ExpRemnant {
+        s32 levelIndex = -1;
+        glm::vec2 position;
+        u16 value;
+    };
+    ExpRemnant expRemnant;
+
     struct PersistedActorState {
         bool dead = false;
     };
@@ -166,6 +173,7 @@ namespace Game {
     constexpr s32 enemyFireballPrototypeIndex = 8;
     constexpr s32 haloSmallPrototypeIndex = 0x0a;
     constexpr s32 haloLargePrototypeIndex = 0x0b;
+    constexpr s32 xpRemnantPrototypeIndex = 0x0c;
 
     constexpr u8 playerWingFrameBankOffsets[4] = { 0x00, 0x08, 0x10, 0x18 };
     constexpr u8 playerHeadFrameBankOffsets[12] = { 0x20, 0x24, 0x28, 0x2C, 0x30, 0x34, 0x38, 0x3C, 0x40, 0x44, 0x48, 0x4C };
@@ -1169,8 +1177,13 @@ namespace Game {
     }
 
     static void PlayerDie(Actor* pPlayer) {
-        // TODO: drop xp in level
+        expRemnant = {
+            .levelIndex = Levels::GetIndex(pCurrentLevel),
+            .position = pPlayer->position,
+            .value = playerExp
+        };
         playerExp = 0;
+        playerDispExp = 0;
 
         // Restore life
         playerHealth = playerMaxHealth;
@@ -1720,6 +1733,26 @@ namespace Game {
         DrawActor(pActor, SPRITE_LAYER_FG, {0,0}, pActor->flags.facingDir == ACTOR_FACING_LEFT);
     }
 
+    static void UpdateExpRemnant(Actor* pActor) {
+        Actor* pPlayer = actors.Get(playerHandle);
+        if (ActorCollidesWithPlayer(pActor, pPlayer)) {
+            Audio::PlaySFX(&expSfx, CHAN_ID_PULSE0);
+            pActor->flags.pendingRemoval = true;
+
+            expRemnant.levelIndex = -1;
+
+            playerExp += pActor->pickupState.value;
+            ExpAnimState state = {
+                .targetExp = playerExp,
+                .currentExp = playerDispExp,
+            };
+            StartCoroutine(AnimateExpCoroutine, state);
+
+            return;
+        }
+
+        DrawActor(pActor, SPRITE_LAYER_FG);
+    }
 #pragma endregion
 
 #pragma region Effects
@@ -1833,6 +1866,10 @@ namespace Game {
         switch (pActor->pPrototype->subtype) {
         case PICKUP_SUBTYPE_HALO: {
             UpdateExpHalo(pActor);
+            break;
+        }
+        case PICKUP_SUBTYPE_XP_REMNANT: {
+            UpdateExpRemnant(pActor);
             break;
         }
         default:
@@ -2114,6 +2151,12 @@ namespace Game {
                 SpawnActor(pActor);
             }
 
+        }
+
+        // Spawn xp remnant
+        if (expRemnant.levelIndex == Levels::GetIndex(pCurrentLevel)) {
+            Actor* pRemnant = SpawnActor(xpRemnantPrototypeIndex, expRemnant.position);
+            pRemnant->pickupState.value = expRemnant.value;
         }
 
         gameplayFramesElapsed = 0;

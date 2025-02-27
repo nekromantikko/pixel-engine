@@ -47,6 +47,7 @@ struct Level {
 
 namespace Levels {
     Level* GetLevelsPtr();
+    s32 GetIndex(Level* pLevel);
 
     // Generates empty data
     void InitializeLevels();

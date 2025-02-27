@@ -11,6 +11,15 @@ Level* Levels::GetLevelsPtr() {
     return levels;
 }
 
+s32 Levels::GetIndex(Level* pLevel) {
+    s32 index = pLevel - levels;
+    if (index < 0 || index >= MAX_LEVEL_COUNT) {
+        return -1;
+    }
+
+    return index;
+}
+
 void Levels::InitializeLevels() {
     /*for (u32 i = 0; i < maxLevelCount; i++) {
         Level& level = levels[i];
