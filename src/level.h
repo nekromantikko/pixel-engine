@@ -42,11 +42,10 @@ struct Level {
     u32 unused;
     Tilemap* pTilemap;
 
-    Pool<Actor> actors;
+    Pool<Actor, LEVEL_MAX_ACTOR_COUNT> actors;
 };
 
 namespace Levels {
-    void Init();
     Level* GetLevelsPtr();
 
     // Generates empty data

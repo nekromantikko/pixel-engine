@@ -3,6 +3,9 @@
 #include "memory_pool.h"
 #include "actors.h"
 
+constexpr u32 MAX_DYNAMIC_ACTOR_COUNT = 512;
+typedef Pool<Actor, MAX_DYNAMIC_ACTOR_COUNT> DynamicActorPool;
+
 struct Viewport;
 
 struct Level;
@@ -21,5 +24,5 @@ namespace Game {
 	Viewport* GetViewport();
 	Level* GetLevel();
 
-	Pool<Actor>* GetActors();
+	DynamicActorPool* GetActors();
 }

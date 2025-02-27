@@ -1337,7 +1337,7 @@ static void DrawScreenCollisionCells(ImVec2 pMin, ImVec2 pMax, ImVec2 viewportDr
 }
 
 static void DrawActorColliders(const Viewport* pViewport, const ImVec2 topLeft, const r32 renderScale) {
-	const Pool<Actor>* actors = Game::GetActors();
+	const DynamicActorPool* actors = Game::GetActors();
 
 	const glm::vec2 viewportPixelPos = { pViewport->x * METATILE_DIM_PIXELS, pViewport->y * METATILE_DIM_PIXELS };
 	for (u32 i = 0; i < actors->Count(); i++)

@@ -7,13 +7,6 @@ static Level levels[MAX_LEVEL_COUNT];
 static char nameMemory[MAX_LEVEL_COUNT * LEVEL_MAX_NAME_LENGTH];
 static Tilemap tilemapMemory[MAX_LEVEL_COUNT];
 
-void Levels::Init() {
-    for (u32 i = 0; i < MAX_LEVEL_COUNT; i++) {
-        Level& level = levels[i];
-        level.actors.Init(LEVEL_MAX_ACTOR_COUNT);
-    }
-}
-
 Level* Levels::GetLevelsPtr() {
     return levels;
 }

@@ -82,8 +82,8 @@ namespace Game {
     u32 gameplayFramesElapsed = 0;
 
     // Coroutines
-    Pool<Coroutine> coroutines;
-    Pool<PoolHandle<Coroutine>> coroutineRemoveList;
+    Pool<Coroutine, MAX_COROUTINE_COUNT> coroutines;
+    Pool<PoolHandle<Coroutine>, MAX_COROUTINE_COUNT> coroutineRemoveList;
 
     PoolHandle<Coroutine> transitionCoroutine = PoolHandle<Coroutine>::Null();
 
@@ -106,8 +106,8 @@ namespace Game {
 
     Level* pCurrentLevel = nullptr;
 
-    Pool<Actor> actors;
-    Pool<PoolHandle<Actor>> actorRemoveList;
+    Pool<Actor, MAX_DYNAMIC_ACTOR_COUNT> actors;
+    Pool<PoolHandle<Actor>, MAX_DYNAMIC_ACTOR_COUNT> actorRemoveList;
 
     // Global player stuff
     PoolHandle<Actor> playerHandle;
@@ -2102,9 +2102,6 @@ namespace Game {
     }
 
     void Initialize() {
-        coroutines.Init(MAX_COROUTINE_COUNT);
-        coroutineRemoveList.Init(MAX_COROUTINE_COUNT);
-
         // Rendering data
         pRenderSettings = Rendering::GetSettingsPtr();
         pChr = Rendering::GetChrPtr(0);
@@ -2133,7 +2130,6 @@ namespace Game {
 
         Tiles::LoadTileset("assets/forest.til");
         Metasprites::Load("assets/meta.spr");
-        Levels::Init();
         Levels::LoadLevels("assets/levels.lev");
         Actors::LoadPrototypes("assets/actors.prt");
 
@@ -2144,9 +2140,6 @@ namespace Game {
 
         viewport.x = 0.0f;
         viewport.y = 0.0f;
-
-        actors.Init(512);
-        actorRemoveList.Init(512);
 
         // TEMP SOUND STUFF
         jumpSfx = Audio::LoadSound("assets/jump.nsf");
@@ -2200,7 +2193,7 @@ namespace Game {
     Level* GetLevel() {
         return pCurrentLevel;
     }
-    Pool<Actor>* GetActors() {
+    DynamicActorPool* GetActors() {
         return &actors;
     }
 #pragma endregion

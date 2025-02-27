@@ -1,6 +1,5 @@
 #pragma once
 #include "typedef.h"
-#include "system.h"
 #include <algorithm>
 
 template <typename T>
@@ -38,92 +37,82 @@ public:
 	}
 };
 
-template<typename T, typename THandle = PoolHandle<T>>
+template<typename T, u32 capacity, typename THandle = PoolHandle<T>>
 class Pool
 {
 private:
-	T* objs;
-	THandle* handles;
-	u32* erase;
+	T objs[capacity];
+	THandle handles[capacity];
+	u32 erase[capacity];
 
-	u32 size;
 	u32 count;
-public:
-	Pool() {
-		Init(0);
-	}
-	Pool(u32 s) {
-		Init(s);
-	}
-	Pool(const Pool& other) {
-		size = other.size;
-		count = other.count;
 
-		objs = new T[size]{};
-		handles = new THandle[size]{};
-		erase = new u32[size]{};
-
-		std::copy(other.objs, other.objs + size, objs);
-		std::copy(other.handles, other.handles + size, handles);
-		std::copy(other.erase, other.erase + size, erase);
-	}
-	Pool(Pool&& other) noexcept
-		: objs(other.objs), handles(other.handles), erase(other.erase),
-		size(other.size), count(other.count) {
-
-		// Null out the source object's pointers to prevent double delete
-		other.objs = nullptr;
-		other.handles = nullptr;
-		other.erase = nullptr;
-		other.size = 0;
-		other.count = 0;
-	}
-	void Free() {
-		delete[] objs;
-		delete[] handles;
-		delete[] erase;
-	}
-	~Pool() {
-		Free();
-	}
-	void Init(u32 s) {
-		Free();
-
-		size = s;
-		count = 0;
-
-		objs = new T[size]{};
-		handles = new THandle[size]{};
-		erase = new u32[size]{};
-
-		for (u32 i = 0; i < size; i++)
-		{
-			handles[i] = THandle(i, 1);
-			erase[i] = i;
-		}
-	}
-	T* Get(const THandle handle) const {
+	bool GetArrayIndex(const THandle handle, u32& index) const {
 		if (handle == THandle::Null()) {
-			return nullptr;
+			return false;
 		}
 
 		const u32 arrayIndex = handle.Index();
 		const u32 handleIndex = erase[arrayIndex];
 		if (handleIndex >= count) {
-			return nullptr;
+			return false;
 		}
 
 		const THandle h = handles[handleIndex];
 		if (h != handle) {
+			return false;
+		}
+
+		index = arrayIndex;
+		return true;
+	}
+public:
+	Pool() {
+		count = 0;
+
+		for (u32 i = 0; i < capacity; i++)
+		{
+			handles[i] = THandle(i, 1);
+			erase[i] = i;
+		}
+	}
+	Pool(const Pool& other) {
+		count = other.count;
+
+		std::copy(other.objs, other.objs + capacity, objs);
+		std::copy(other.handles, other.handles + capacity, handles);
+		std::copy(other.erase, other.erase + capacity, erase);
+	}
+	Pool(Pool&& other) noexcept {
+		count = other.count;
+
+		std::copy(other.objs, other.objs + capacity, objs);
+		std::copy(other.handles, other.handles + capacity, handles);
+		std::copy(other.erase, other.erase + capacity, erase);
+
+		other.Clear();
+	}
+	T* Get(const THandle handle) {
+		u32 arrayIndex;
+		if (!GetArrayIndex(handle, arrayIndex)) {
 			return nullptr;
 		}
+
+		return &objs[arrayIndex];
+	}
+	const T* Get(const THandle handle) const {
+		u32 arrayIndex;
+		if (!GetArrayIndex(handle, arrayIndex)) {
+			return nullptr;
+		}
+
 		return &objs[arrayIndex];
 	}
 	T* operator[](THandle handle) {
 		return Get(handle);
 	}
 	THandle Add() {
-		if (count >= size) {
+		if (count >= capacity) {
 			return THandle::Null();
 		}
 		THandle handle = handles[count++];
@@ -170,39 +159,25 @@ public:
 
 	Pool& operator=(const Pool& other) {
 		if (this != &other) {  // Prevent self-assignment
-			Free(); // Free current resources
-
-			size = other.size;
 			count = other.count;
 
-			objs = new T[size];
-			handles = new THandle[size];
-			erase = new u32[size];
-
-			std::copy(other.objs, other.objs + size, objs);
-			std::copy(other.handles, other.handles + size, handles);
-			std::copy(other.erase, other.erase + size, erase);
+			std::copy(other.objs, other.objs + capacity, objs);
+			std::copy(other.handles, other.handles + capacity, handles);
+			std::copy(other.erase, other.erase + capacity, erase);
 		}
 		return *this;
 	}
 
 	Pool& operator=(Pool&& other) noexcept {
 		if (this != &other) {
-			Free(); // Free existing resources
-
-			// Steal data
-			objs = other.objs;
-			handles = other.handles;
-			erase = other.erase;
-			size = other.size;
 			count = other.count;
 
-			// Null out source
-			other.objs = nullptr;
-			other.handles = nullptr;
-			other.erase = nullptr;
-			other.size = 0;
-			other.count = 0;
+			std::copy(other.objs, other.objs + capacity, objs);
+			std::copy(other.handles, other.handles + capacity, handles);
+			std::copy(other.erase, other.erase + capacity, erase);
+
+			// Clear source
+			other.Clear();
 		}
 		return *this;
 	}
