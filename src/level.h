@@ -13,6 +13,8 @@ enum LevelScreenExitDir : u8 {
     SCREEN_EXIT_DIR_RIGHT,
     SCREEN_EXIT_DIR_TOP,
     SCREEN_EXIT_DIR_BOTTOM,
+
+    SCREEN_EXIT_DIR_DEATH_WARP,
 };
 
 enum LevelType : u8 {

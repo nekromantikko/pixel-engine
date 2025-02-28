@@ -16,6 +16,7 @@ enum ActorType : u16 {
 	ACTOR_TYPE_BULLET,
 	ACTOR_TYPE_PICKUP,
 	ACTOR_TYPE_EFFECT,
+	ACTOR_TYPE_CHECKPOINT,
 
 	ACTOR_TYPE_COUNT
 };
@@ -41,7 +42,7 @@ struct ActorFlags {
 };
 
 #ifdef EDITOR
-constexpr const char* ACTOR_TYPE_NAMES[ACTOR_TYPE_COUNT] = { "Player", "NPC", "Bullet", "Pickup", "Effect" };
+constexpr const char* ACTOR_TYPE_NAMES[ACTOR_TYPE_COUNT] = { "Player", "NPC", "Bullet", "Pickup", "Effect", "Checkpoint" };
 constexpr const char* ACTOR_ALIGNMENT_NAMES[ACTOR_ALIGNMENT_COUNT] = { "Neutral", "Friendly", "Hostile" };
 #endif
 #pragma endregion
@@ -209,6 +210,27 @@ constexpr const char* EFFECT_SUBTYPE_NAMES[EFFECT_SUBTYPE_COUNT] = { "Numbers", 
 #endif
 #pragma endregion
 
+#pragma region Checkpoints
+enum CheckpointSubtype : u16 {
+	CHECKPOINT_SUBTYPE_DEFAULT,
+
+	CHECKPOINT_SUBTYPE_COUNT
+};
+
+struct CheckpointData {
+
+};
+
+struct CheckpointState {
+	bool activated;
+};
+
+#ifdef EDITOR
+constexpr const char* CHECKPOINT_SUBTYPE_NAMES[CHECKPOINT_SUBTYPE_COUNT] = { "Default" };
+#endif
+
+#pragma endregion
+
 enum AnimationType : u8 {
 	ANIMATION_TYPE_SPRITES = 0,
 	ANIMATION_TYPE_METASPRITES,
@@ -244,6 +266,7 @@ struct ActorPrototype {
 		BulletData bulletData;
 		PickupData pickupData;
 		EffectData effectData;
+		CheckpointData checkpointData;
 	};
 };
 
@@ -257,6 +280,7 @@ struct Actor {
 
 	glm::vec2 velocity;
 
+	u16 animIndex = 0;
 	u16 frameIndex = 0;
 	u16 animCounter = 0;
 
@@ -266,6 +290,7 @@ struct Actor {
 		BulletState bulletState;
 		PickupState pickupState;
 		EffectState effectState;
+		CheckpointState checkpointState;
 	};
 
 	const ActorPrototype* pPrototype;

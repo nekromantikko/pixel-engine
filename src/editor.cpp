@@ -2200,6 +2200,10 @@ static void DrawActorWindow() {
 					subtypeCount = EFFECT_SUBTYPE_COUNT;
 					break;
 				}
+				case ACTOR_TYPE_CHECKPOINT: {
+					subtypeNames = CHECKPOINT_SUBTYPE_NAMES;
+					subtypeCount = CHECKPOINT_SUBTYPE_COUNT;
+				}
 				default:
 					break;
 				}

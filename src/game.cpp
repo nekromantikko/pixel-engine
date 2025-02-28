@@ -120,6 +120,8 @@ namespace Game {
     u16 playerDispExp = 0;
     u8 playerWeapon = PLAYER_WEAPON_LAUNCHER;
 
+    PoolHandle<Actor> interactableHandle;
+
     // Dialogue stuff
     struct DialogueState {
         bool active = false;
@@ -144,7 +146,9 @@ namespace Game {
     ExpRemnant expRemnant;
 
     struct PersistedActorState {
-        bool dead = false;
+        bool dead : 1 = false;
+        bool permaDead : 1 = false;
+        bool activated : 1 = false;
     };
 
     FixedHashMap<PersistedActorState> persistedActorStates;
@@ -321,6 +325,7 @@ namespace Game {
         pActor->initialPosition = pActor->position;
         pActor->velocity = glm::vec2{};
 
+        pActor->animIndex = 0;
         pActor->frameIndex = 0;
         pActor->animCounter = pPrototype->animations[0].frameLength;
 
@@ -345,6 +350,14 @@ namespace Game {
         case ACTOR_TYPE_EFFECT: {
             pActor->effectState.lifetime = pPrototype->effectData.lifetime;
             pActor->effectState.lifetimeCounter = pPrototype->effectData.lifetime;
+            break;
+        }
+        case ACTOR_TYPE_CHECKPOINT: {
+            const PersistedActorState* pPersistState = persistedActorStates.Get(pActor->id);
+            if (pPersistState && pPersistState->activated) {
+                pActor->checkpointState.activated = true;
+            }
+            
             break;
         }
         default: 
@@ -402,15 +415,14 @@ namespace Game {
         counter--;
         return true;
     }
-#pragma endregion
 
-    /*s32 Tiles::GetNametableIndex(const glm::ivec2& pos) {
-        return (pos.x / NAMETABLE_WIDTH_METATILES + pos.y / NAMETABLE_HEIGHT_METATILES) % NAMETABLE_COUNT;
+    static u8 GetScreenIndex(const glm::vec2 position) {
+        const u32 xScreen = position.x / VIEWPORT_WIDTH_TILES;
+        const u32 yScreen = position.y / VIEWPORT_HEIGHT_TILES;
+
+        return xScreen + yScreen * TILEMAP_MAX_DIM_SCREENS;
     }
-
-    glm::ivec2 Tiles::GetNametableOffset(const glm::ivec2& pos) {
-        return { (s32)(pos.x % NAMETABLE_WIDTH_METATILES), (s32)(pos.y % NAMETABLE_HEIGHT_METATILES) };
-    }*/
+#pragma endregion
 
 #pragma region Rendering
     static u8 GetBoxTileId(u32 x, u32 y, u32 w, u32 h) {
@@ -695,7 +707,8 @@ namespace Game {
         SpriteLayer& layer = spriteLayers[layerIndex];
 
         glm::ivec2 drawPos = WorldPosToScreenPixels(pActor->position) + pixelOffset;
-        const Animation& currentAnim = pActor->pPrototype->animations[0];
+        const u16 animIndex = pActor->animIndex % pActor->pPrototype->animCount;
+        const Animation& currentAnim = pActor->pPrototype->animations[animIndex];
 
         switch (currentAnim.type) {
         case ANIMATION_TYPE_SPRITES: {
@@ -778,12 +791,12 @@ namespace Game {
 
     // TODO: Actor collisions could use HitResult as well...
     static void ForEachActorCollision(Actor* pActor, u16 type, u8 alignment, void (*callback)(Actor*, Actor*)) {
+        if (!pActor->flags.active || pActor->flags.pendingRemoval) {
+            return;
+        }
+        
         for (u32 i = 0; i < actors.Count(); i++)
         {
-            if (!pActor->flags.active || pActor->flags.pendingRemoval) {
-                break;
-            }
-
             PoolHandle<Actor> handle = actors.GetHandle(i);
             Actor* pOther = actors.Get(handle);
 
@@ -791,8 +804,6 @@ namespace Game {
                 continue;
             }
 
-            const AABB& hitbox = pActor->pPrototype->hitbox;
-            const AABB& hitboxOther = pOther->pPrototype->hitbox;
             if (ActorsColliding(pActor, pOther)) {
                 callback(pActor, pOther);
             }
@@ -972,7 +983,38 @@ namespace Game {
         pPlayer->position = hit.location;
     }
 
+    static bool SpawnPlayerAtCheckpoint() {
+        Actor* pCheckpoint = nullptr;
+
+        for (u32 i = 0; i < actors.Count(); i++)
+        {
+            PoolHandle<Actor> handle = actors.GetHandle(i);
+            Actor* pActor = actors.Get(handle);
+
+            if (pActor == nullptr) {
+                continue;
+            }
+
+            if (pActor->pPrototype->type == ACTOR_TYPE_CHECKPOINT) {
+                pCheckpoint = pActor;
+                break;
+            }
+        }
+
+        if (pCheckpoint == nullptr) {
+            return false;
+        }
+
+        Actor* pPlayer = SpawnActor(playerPrototypeIndex, pCheckpoint->position);
+        
+        return true;
+    }
+
     static void SpawnPlayerAtEntrance(const Level* pLevel, u8 screenIndex, u8 direction) {
+        if (direction == SCREEN_EXIT_DIR_DEATH_WARP && SpawnPlayerAtCheckpoint()) {
+            return;
+        }
+
         r32 x = (screenIndex % TILEMAP_MAX_DIM_SCREENS) * VIEWPORT_WIDTH_METATILES;
         r32 y = (screenIndex / TILEMAP_MAX_DIM_SCREENS) * VIEWPORT_HEIGHT_METATILES;
 
@@ -1041,34 +1083,34 @@ namespace Game {
         }
     }
 
-    enum ScreenTransitionState : u8 {
+    enum LevelTransitionStatus : u8 {
         TRANSITION_FADE_OUT,
         TRANSITION_LOADING,
         TRANSITION_FADE_IN,
         TRANSITION_COMPLETE
     };
 
-    struct ScreenFadeState {
+    struct LevelTransitionState {
         u16 nextLevelIndex;
         u16 nextScreenIndex;
         u8 nextDirection;
-        r32 progress;
-
-        u8 transitionState = TRANSITION_FADE_OUT;
+        
+        r32 progress = 0.0f;
+        u8 status = TRANSITION_FADE_OUT;
         u8 holdTimer = 12;
     };
 
-    static bool ScreenFadeCoroutine(void* userData) {
-        ScreenFadeState* state = (ScreenFadeState*)userData;
+    static bool LevelTransitionCoroutine(void* userData) {
+        LevelTransitionState* state = (LevelTransitionState*)userData;
 
-        switch (state->transitionState) {
+        switch (state->status) {
         case TRANSITION_FADE_OUT: {
             if (state->progress < 1.0f) {
                 state->progress += 0.1f;
                 UpdateFadeToBlack(state->progress);
                 return true;
             }
-            state->transitionState = TRANSITION_LOADING;
+            state->status = TRANSITION_LOADING;
             break;
         }
         case TRANSITION_LOADING: {
@@ -1077,7 +1119,7 @@ namespace Game {
                 return true;
             }
             LoadLevel(state->nextLevelIndex, state->nextScreenIndex, state->nextDirection);
-            state->transitionState = TRANSITION_FADE_IN;
+            state->status = TRANSITION_FADE_IN;
             break;
         }
         case TRANSITION_FADE_IN: {
@@ -1086,7 +1128,7 @@ namespace Game {
                 UpdateFadeToBlack(state->progress);
                 return true;
             }
-            state->transitionState = TRANSITION_COMPLETE;
+            state->status = TRANSITION_COMPLETE;
             break;
         }
         default:
@@ -1143,13 +1185,12 @@ namespace Game {
 
             const LevelExit& exit = exits[exitDirection];
 
-            ScreenFadeState state = {
+            LevelTransitionState state = {
                 .nextLevelIndex = exit.targetLevel,
                 .nextScreenIndex = exit.targetScreen,
                 .nextDirection = enterDirection,
-                .progress = 0.0f
             };
-            transitionCoroutine = StartCoroutine(ScreenFadeCoroutine, state);
+            transitionCoroutine = StartCoroutine(LevelTransitionCoroutine, state);
         }
     }
 
@@ -1190,13 +1231,12 @@ namespace Game {
         playerDispRedHealth = playerMaxHealth;
 
         // Transition to checkpoint
-        ScreenFadeState state = {
+        LevelTransitionState state = {
                 .nextLevelIndex = lastCheckpoint.levelIndex,
                 .nextScreenIndex = lastCheckpoint.screenIndex,
-                .nextDirection = 0,
-                .progress = 0.0f
+                .nextDirection = SCREEN_EXIT_DIR_DEATH_WARP,
         };
-        transitionCoroutine = StartCoroutine(ScreenFadeCoroutine, state);
+        transitionCoroutine = StartCoroutine(LevelTransitionCoroutine, state);
     }
 
     static void HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
@@ -1455,6 +1495,74 @@ namespace Game {
         DrawActor(pPlayer, SPRITE_LAYER_FG, { 0, vOffset }, pPlayer->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
     }
 
+    static bool IsInteractable(const Actor* pActor) {
+        if (pActor->pPrototype->type == ACTOR_TYPE_NPC && pActor->pPrototype->alignment == ACTOR_ALIGNMENT_FRIENDLY) {
+            return true;
+        }
+
+        if (pActor->pPrototype->type == ACTOR_TYPE_CHECKPOINT) {
+            return true;
+        }
+
+        return false;
+    }
+
+    static void FindPlayerInteractableActor(Actor* pPlayer) {
+        for (u32 i = 0; i < actors.Count(); i++)
+        {
+            PoolHandle<Actor> handle = actors.GetHandle(i);
+            Actor* pOther = actors.Get(handle);
+
+            if (pOther == nullptr || pOther->flags.pendingRemoval || !pOther->flags.active) {
+                continue;
+            }
+
+            if (IsInteractable(pOther) && ActorsColliding(pPlayer, pOther)) {
+                interactableHandle = handle;
+                return;
+            }
+        }
+
+        interactableHandle = PoolHandle<Actor>::Null();
+    }
+
+    static void ReviveKilledEnemy(u64 id, PersistedActorState& persistedState) {
+        persistedState.dead = false;
+    }
+
+    static void TriggerInteraction(Actor* pPlayer) {
+        if (interactableHandle == PoolHandle<Actor>::Null()) {
+            return;
+        }
+
+        Actor* pInteractable = actors.Get(interactableHandle);
+        if (pInteractable == nullptr) {
+            return;
+        }
+
+        if (pInteractable->pPrototype->type == ACTOR_TYPE_CHECKPOINT) {
+            pInteractable->checkpointState.activated = true;
+
+            PersistedActorState* persistState = persistedActorStates.Get(pInteractable->id);
+            if (persistState) {
+                persistState->activated = true;
+            }
+            else {
+                persistedActorStates.Add(pInteractable->id, {
+                    .activated = true,
+                    });
+            }
+            
+            lastCheckpoint = {
+                .levelIndex = u16(Levels::GetIndex(pCurrentLevel)),
+                .screenIndex = GetScreenIndex(pInteractable->position)
+            };
+
+            // Revive enemies
+            persistedActorStates.ForEach(ReviveKilledEnemy);
+        }
+    }
+
     static void UpdatePlayerSidescroller(Actor* pActor) {
         UpdateCounter(pActor->playerState.entryDelayCounter);
         UpdateCounter(pActor->playerState.damageCounter);
@@ -1462,11 +1570,21 @@ namespace Game {
         // Reset slow fall
         pActor->playerState.flags.slowFall = false;
 
+        FindPlayerInteractableActor(pActor);
+
         const bool enteringLevel = pActor->playerState.entryDelayCounter > 0;
         const bool stunned = pActor->playerState.damageCounter > 0;
         if (!enteringLevel && !stunned && !dialogue.active) {
             PlayerInput(pActor);
-            PlayerShoot(pActor);
+            
+            if (interactableHandle != PoolHandle<Actor>::Null()) {
+                if (ButtonPressed(BUTTON_B)) {
+                    TriggerInteraction(pActor);
+                }
+            }
+            else {
+                PlayerShoot(pActor);
+            }
         }
 
         HitResult hit{};
@@ -1892,6 +2010,17 @@ namespace Game {
         }
     }
 
+    static void UpdateCheckpoint(Actor* pActor) {
+        if (pActor->checkpointState.activated) {
+            pActor->animIndex = 1;
+        }
+        else {
+            pActor->animIndex = 0;
+        }
+
+        DrawActor(pActor, SPRITE_LAYER_FG, { 0,0 }, pActor->flags.facingDir == ACTOR_FACING_LEFT);
+    }
+
     static void UpdateActors() {
         
         actorRemoveList.Clear();
@@ -1933,6 +2062,10 @@ namespace Game {
             }
             case ACTOR_TYPE_EFFECT: {
                 UpdateEffect(pActor);
+                break;
+            }
+            case ACTOR_TYPE_CHECKPOINT: {
+                UpdateCheckpoint(pActor);
                 break;
             }
             default:
@@ -2134,23 +2267,23 @@ namespace Game {
 
         UnloadLevel(refresh);
 
-        // Spawn player in sidescrolling level
-        if (pCurrentLevel->flags.type == LEVEL_TYPE_SIDESCROLLER) {
-            SpawnPlayerAtEntrance(pCurrentLevel, screenIndex, direction);
-            UpdateViewport();
-            UpdateScreenScroll();
-        }
-
         for (u32 i = 0; i < pCurrentLevel->actors.Count(); i++)
         {
             auto handle = pCurrentLevel->actors.GetHandle(i);
             const Actor* pActor = pCurrentLevel->actors.Get(handle);
 
-            const PersistedActorState* persistState = persistedActorStates.Get(pActor->id);
-            if (!persistState || !persistState->dead) {
+            const PersistedActorState* pPersistState = persistedActorStates.Get(pActor->id);
+            if (!pPersistState || !(pPersistState->dead || pPersistState->permaDead)) {
                 SpawnActor(pActor);
             }
 
+        }
+
+        // Spawn player in sidescrolling level
+        if (pCurrentLevel->flags.type == LEVEL_TYPE_SIDESCROLLER) {
+            SpawnPlayerAtEntrance(pCurrentLevel, screenIndex, direction);
+            UpdateViewport();
+            UpdateScreenScroll();
         }
 
         // Spawn xp remnant

@@ -119,6 +119,19 @@ public:
 			data[i].key = UUID_NULL;
 		}
 	}
+	void ForEach(void (*callback) (u64, T&)) {
+		if (callback == nullptr) {
+			return;
+		}
+
+		for (u32 i = 0; i < HASH_MAP_SIZE; i++) {
+			TBucket& bucket = data[i];
+			if (bucket.key != UUID_NULL) {
+				callback(bucket.key, bucket.value);
+			}
+		}
+	}
+
 	FixedHashMap() {
 		Clear();
 	}
