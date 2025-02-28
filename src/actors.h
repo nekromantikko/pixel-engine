@@ -93,12 +93,20 @@ enum PlayerWeaponType : u8 {
 	PLAYER_WEAPON_LAUNCHER
 };
 
+enum PlayerSitDownState : u8 {
+	PLAYER_STANDING = 0b00,
+	PLAYER_SITTING = 0b01,
+	PLAYER_SIT_TO_STAND = 0b10,
+	PLAYER_STAND_TO_SIT = 0b11
+};
+
 struct PlayerFlags {
 	u8 aimMode : 2;
 	bool slowFall : 1;
 	bool doubleJumped : 1;
+	u8 sitState : 2;
 };
-
+ 
 struct PlayerState {
 	PlayerFlags flags;
 
@@ -106,6 +114,7 @@ struct PlayerState {
 	u16 wingFrame;
 	u16 shootCounter;
 	u16 damageCounter;
+	u16 sitCounter;
 
 	u16 entryDelayCounter;
 };
@@ -191,6 +200,7 @@ constexpr const char* PICKUP_SUBTYPE_NAMES[PICKUP_SUBTYPE_COUNT] = { "Halo (Exp)
 enum EffectSubtype : u16 {
 	EFFECT_SUBTYPE_NUMBERS,
 	EFFECT_SUBTYPE_EXPLOSION,
+	EFFECT_SUBTYPE_FEATHER,
 
 	EFFECT_SUBTYPE_COUNT
 };
@@ -206,7 +216,7 @@ struct EffectState {
 };
 
 #ifdef EDITOR
-constexpr const char* EFFECT_SUBTYPE_NAMES[EFFECT_SUBTYPE_COUNT] = { "Numbers", "Explosion" };
+constexpr const char* EFFECT_SUBTYPE_NAMES[EFFECT_SUBTYPE_COUNT] = { "Numbers", "Explosion", "Feather" };
 #endif
 #pragma endregion
 
@@ -277,7 +287,7 @@ struct Actor {
 
 	glm::vec2 initialPosition;
 	glm::vec2 position;
-
+	glm::vec2 initialVelocity;
 	glm::vec2 velocity;
 
 	u16 animIndex = 0;

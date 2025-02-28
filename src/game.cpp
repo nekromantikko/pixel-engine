@@ -86,8 +86,6 @@ namespace Game {
     Pool<Coroutine, MAX_COROUTINE_COUNT> coroutines;
     Pool<PoolHandle<Coroutine>, MAX_COROUTINE_COUNT> coroutineRemoveList;
 
-    PoolHandle<Coroutine> transitionCoroutine = PoolHandle<Coroutine>::Null();
-
     // Input
     u8 currentInput = BUTTON_NONE;
     u8 previousInput = BUTTON_NONE;
@@ -119,6 +117,7 @@ namespace Game {
     u16 playerExp = 0;
     u16 playerDispExp = 0;
     u8 playerWeapon = PLAYER_WEAPON_LAUNCHER;
+    u16 playerDeathCounter = 0;
 
     PoolHandle<Actor> interactableHandle;
 
@@ -153,6 +152,8 @@ namespace Game {
 
     FixedHashMap<PersistedActorState> persistedActorStates;
 
+    bool pauseGameplay = false;
+
     ChrSheet playerBank;
 
     bool paused = false;
@@ -178,12 +179,15 @@ namespace Game {
     constexpr s32 haloSmallPrototypeIndex = 0x0a;
     constexpr s32 haloLargePrototypeIndex = 0x0b;
     constexpr s32 xpRemnantPrototypeIndex = 0x0c;
+    constexpr s32 featherPrototypeIndex = 0x0e;
 
     constexpr u8 playerWingFrameBankOffsets[4] = { 0x00, 0x08, 0x10, 0x18 };
     constexpr u8 playerHeadFrameBankOffsets[12] = { 0x20, 0x24, 0x28, 0x2C, 0x30, 0x34, 0x38, 0x3C, 0x40, 0x44, 0x48, 0x4C };
     constexpr u8 playerLegsFrameBankOffsets[4] = { 0x50, 0x54, 0x58, 0x5C };
-    constexpr u8 playerBowFrameBankOffsets[3] = { 0x60, 0x68, 0x70 };
-    constexpr u8 playerLauncherFrameBankOffsets[3] = { 0x80, 0x88, 0x90 };
+    constexpr u8 playerSitBankOffsets[2] = { 0x60, 0x68 };
+    constexpr u8 playerDeadBankOffsets[2] = { 0x70, 0x78 };
+    constexpr u8 playerBowFrameBankOffsets[3] = { 0x80, 0x88, 0x90 };
+    constexpr u8 playerLauncherFrameBankOffsets[3] = { 0xA0, 0xA8, 0xB0 };
 
     constexpr u8 playerWingFrameChrOffset = 0x00;
     constexpr u8 playerHeadFrameChrOffset = 0x08;
@@ -233,6 +237,10 @@ namespace Game {
 #pragma endregion
 
 #pragma region Input
+    static bool AnyButtonDown() {
+        return currentInput != 0;
+    }
+
     static bool ButtonDown(u8 flags) {
         return Input::ButtonDown(flags, currentInput);
     }
@@ -323,7 +331,7 @@ namespace Game {
         pActor->flags.pendingRemoval = false;
 
         pActor->initialPosition = pActor->position;
-        pActor->velocity = glm::vec2{};
+        pActor->initialVelocity = pActor->velocity;
 
         pActor->animIndex = 0;
         pActor->frameIndex = 0;
@@ -332,6 +340,11 @@ namespace Game {
         switch (pPrototype->type) {
         case ACTOR_TYPE_PLAYER: {
             pActor->playerState.damageCounter = 0;
+            pActor->playerState.sitCounter = 0;
+            pActor->playerState.flags.aimMode = PLAYER_AIM_FWD;
+            pActor->playerState.flags.doubleJumped = false;
+            pActor->playerState.flags.sitState = PLAYER_STANDING;
+            pActor->playerState.flags.slowFall = false;
             break;
         }
         case ACTOR_TYPE_NPC: {
@@ -377,12 +390,13 @@ namespace Game {
         }
 
         Actor* pActor = actors.Get(handle);
+        pActor->velocity = glm::vec2{};
         InitializeActor(pActor);
 
         return pActor;
     }
 
-    static Actor* SpawnActor(u32 presetIndex, const glm::vec2& position) {
+    static Actor* SpawnActor(u32 presetIndex, const glm::vec2& position, const glm::vec2& velocity = glm::vec2{}) {
         auto handle = actors.Add();
 
         if (handle == PoolHandle<Actor>::Null()) {
@@ -390,6 +404,8 @@ namespace Game {
         }
 
         Actor* pActor = actors.Get(handle);
+        // Clear previous data
+        *pActor = Actor{};
 
         const ActorPrototype* pPrototype = Actors::GetPrototype(presetIndex);
         pActor->id = Random::GenerateUUID();
@@ -399,6 +415,7 @@ namespace Game {
         }
 
         pActor->position = position;
+        pActor->velocity = velocity;
         InitializeActor(pActor);
 
         return pActor;
@@ -412,7 +429,10 @@ namespace Game {
             return false;
         }
 
-        counter--;
+        if (--counter == 0) {
+            return false;
+        }
+
         return true;
     }
 
@@ -421,6 +441,12 @@ namespace Game {
         const u32 yScreen = position.y / VIEWPORT_HEIGHT_TILES;
 
         return xScreen + yScreen * TILEMAP_MAX_DIM_SCREENS;
+    }
+#pragma endregion
+
+#pragma region Callbacks
+    static void ReviveKilledEnemy(u64 id, PersistedActorState& persistedState) {
+        persistedState.dead = false;
     }
 #pragma endregion
 
@@ -778,6 +804,69 @@ namespace Game {
     }
 #pragma endregion
 
+#pragma region Dialogue
+    static void EndDialogue() {
+        dialogue.active = false;
+    }
+
+    static void AdvanceDialogue() {
+        if (!dialogue.active) {
+            return;
+        }
+
+        // Stop the previous coroutine
+        if (coroutines.Get(dialogue.currentLineCoroutine)) {
+            coroutines.Remove(dialogue.currentLineCoroutine);
+        }
+
+        if (dialogue.currentLine >= dialogue.lineCount) {
+            // Close dialogue box, then end dialogue
+            BgBoxAnimState state{
+                    .viewportPos = glm::ivec2(8,3),
+                    .width = 16,
+                    .maxHeight = 4,
+                    .palette = 3,
+                    .direction = -1,
+
+                    .height = 4
+            };
+            StartCoroutine(AnimBgBoxCoroutine, state, EndDialogue);
+            return;
+        }
+        else {
+            ClearBgText(glm::ivec2(8, 3), glm::ivec2(16, 4));
+            AnimTextState state{
+                .pText = dialogue.pDialogueLines[dialogue.currentLine],
+                .boxViewportPos = glm::ivec2(8,3),
+                .boxSize = glm::ivec2(16,4),
+            };
+            dialogue.currentLineCoroutine = StartCoroutine(AnimTextCoroutine, state);
+        }
+
+        dialogue.currentLine++;
+    }
+
+    static void BeginDialogue(const char* const* pLines, u32 count) {
+        if (dialogue.active) {
+            return;
+        }
+
+        dialogue.active = true;
+        dialogue.currentLine = 0;
+        dialogue.pDialogueLines = pLines;
+        dialogue.lineCount = count;
+
+        BgBoxAnimState state{
+                    .viewportPos = glm::ivec2(8,3),
+                    .width = 16,
+                    .maxHeight = 4,
+                    .palette = 3,
+                    .direction = 1,
+        };
+        StartCoroutine(AnimBgBoxCoroutine, state, AdvanceDialogue);
+    }
+#pragma endregion
+
 #pragma region Collision
     static bool ActorsColliding(const Actor* pActor, const Actor* pOther) {
         const AABB& hitbox = pActor->pPrototype->hitbox;
@@ -811,12 +900,11 @@ namespace Game {
     }
 
     static bool ActorCollidesWithPlayer(Actor* pActor, Actor* pPlayer) {
-        if (pPlayer != nullptr) {
-            if (ActorsColliding(pActor, pPlayer)) {
-                return true;
-            }
+        if (pPlayer == nullptr || playerHealth == 0) {
+            return false;
         }
-        return false;
+
+        return ActorsColliding(pActor, pPlayer);
     }
 #pragma endregion
 
@@ -877,6 +965,14 @@ namespace Game {
         return state.currentExp != state.targetExp;
     }
 
+    static void AnimatePlayerExp() {
+        ExpAnimState state = {
+                .targetExp = playerExp,
+                .currentExp = playerDispExp,
+        };
+        StartCoroutine(AnimateExpCoroutine, state);
+    }
+
     // TODO: Where to get this info properly?
     constexpr u16 largeExpValue = 500;
     constexpr u16 smallExpValue = 10;
@@ -893,9 +989,11 @@ namespace Game {
             u16 spawnedValue = state.remainingValue >= largeExpValue ? largeExpValue : smallExpValue;
             s32 prototypeIndex = spawnedValue >= largeExpValue ? haloLargePrototypeIndex : haloSmallPrototypeIndex;
 
-            Actor* pSpawned = SpawnActor(prototypeIndex, state.position);
             const r32 speed = Random::GenerateReal(0.1f, 0.3f);
-            pSpawned->velocity = Random::GenerateDirection() * speed;
+            const glm::vec2 velocity = Random::GenerateDirection() * speed;
+
+            Actor* pSpawned = SpawnActor(prototypeIndex, state.position, velocity);
+
             pSpawned->pickupState.lingerCounter = 30;
             pSpawned->flags.facingDir = (s8)Random::GenerateInt(-1, 1);
             pSpawned->pickupState.value = pSpawned->pPrototype->pickupData.value;
@@ -955,10 +1053,10 @@ namespace Game {
         };
         const glm::vec2 spawnPos = pActor->position + randomPointInsideHitbox;
 
-        Actor* pDmg = SpawnActor(dmgNumberPrototypeIndex, spawnPos);
+        constexpr glm::vec2 velocity = { 0, -0.03125f };
+        Actor* pDmg = SpawnActor(dmgNumberPrototypeIndex, spawnPos, velocity);
         if (pDmg != nullptr) {
             pDmg->effectState.value = -dmgValue;
-            pDmg->velocity = { 0, -0.03125f };
         }
 
         if (health <= 0) {
@@ -1120,6 +1218,7 @@ namespace Game {
             }
             LoadLevel(state->nextLevelIndex, state->nextScreenIndex, state->nextDirection);
             state->status = TRANSITION_FADE_IN;
+            pauseGameplay = false;
             break;
         }
         case TRANSITION_FADE_IN: {
@@ -1190,7 +1289,8 @@ namespace Game {
                 .nextScreenIndex = exit.targetScreen,
                 .nextDirection = enterDirection,
             };
-            transitionCoroutine = StartCoroutine(LevelTransitionCoroutine, state);
+            StartCoroutine(LevelTransitionCoroutine, state);
+            pauseGameplay = true;
         }
     }
 
@@ -1217,6 +1317,49 @@ namespace Game {
         return state.currentHealth != state.targetHealth;
     }
 
+    static void AnimatePlayerHealth(u16 previousHealth) {
+        playerDispYellowHealth = previousHealth;
+        playerDispRedHealth = playerHealth;
+        HealthAnimState state = {
+            .targetHealth = playerHealth,
+            .currentHealth = playerDispYellowHealth
+        };
+        StartCoroutine(AnimateHealthCoroutine, state);
+    }
+
+    struct ScreenShakeState {
+        const s16 magnitude;
+        u16 length;
+    };
+
+    static bool ShakeScreenCoroutine(void* userData) {
+        ScreenShakeState& state = *(ScreenShakeState*)userData;
+
+        if (state.length == 0) {
+            pauseGameplay = false;
+            return false;
+        }
+
+        const Scanline scanline = {
+            (s32)(viewport.x * METATILE_DIM_PIXELS) + Random::GenerateInt(-state.magnitude, state.magnitude),
+            (s32)(viewport.y * METATILE_DIM_PIXELS) + Random::GenerateInt(-state.magnitude, state.magnitude)
+        };
+        for (int i = 0; i < SCANLINE_COUNT; i++) {
+            pScanlines[i] = scanline;
+        }
+
+        state.length--;
+        return true;
+    }
+
+    static void PlayerRevive() {
+        // TODO: Animate standing up
+
+        // Restore life
+        playerHealth = playerMaxHealth;
+        AnimatePlayerHealth(0);
+    }
+
     static void PlayerDie(Actor* pPlayer) {
         expRemnant = {
             .levelIndex = Levels::GetIndex(pCurrentLevel),
@@ -1224,11 +1367,7 @@ namespace Game {
             .value = playerExp
         };
         playerExp = 0;
-        playerDispExp = 0;
-
-        // Restore life
-        playerHealth = playerMaxHealth;
-        playerDispRedHealth = playerMaxHealth;
+        AnimatePlayerExp();
 
         // Transition to checkpoint
         LevelTransitionState state = {
@@ -1236,29 +1375,53 @@ namespace Game {
                 .nextScreenIndex = lastCheckpoint.screenIndex,
                 .nextDirection = SCREEN_EXIT_DIR_DEATH_WARP,
         };
-        transitionCoroutine = StartCoroutine(LevelTransitionCoroutine, state);
+        StartCoroutine(LevelTransitionCoroutine, state, PlayerRevive);
+        pauseGameplay = true;
+    }
+
+    static void SpawnFeathers(Actor* pPlayer, u32 count) {
+        for (u32 i = 0; i < count; i++) {
+            const glm::vec2 spawnOffset = {
+                Random::GenerateReal(-1.0f, 1.0f),
+                Random::GenerateReal(-1.0f, 1.0f)
+            };
+
+            const glm::vec2 velocity = Random::GenerateDirection() * 0.0625f;
+            Actor* pSpawned = SpawnActor(featherPrototypeIndex, pPlayer->position + spawnOffset, velocity);
+            pSpawned->frameIndex = Random::GenerateInt(0, pSpawned->pPrototype->animations[0].frameCount - 1);
+        }
+    }
+
+    static void PlayerMortalHit(Actor* pPlayer) {
+        pauseGameplay = true;
+        ScreenShakeState state = {
+            .magnitude = 2,
+            .length = 30
+        };
+        StartCoroutine(ShakeScreenCoroutine, state);
+        pPlayer->velocity.y = -0.25f;
+        playerDeathCounter = 240;
     }
 
     static void HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
-        // If invulnerable
-        if (pPlayer->playerState.damageCounter != 0) {
+        // If invulnerable, or dead
+        if (pPlayer->playerState.damageCounter != 0 || playerHealth == 0) {
             return;
         }
 
         const u32 damage = Random::GenerateInt(1, 20);
         Audio::PlaySFX(&damageSfx, CHAN_ID_PULSE0);
 
-        playerDispYellowHealth = playerHealth;
+        u32 featherCount = Random::GenerateInt(1, 4);
+
+        const u16 prevHealth = playerHealth;
         if (!ActorTakeDamage(pPlayer, damage, playerHealth, pPlayer->playerState.damageCounter)) {
-            PlayerDie(pPlayer);
+            PlayerMortalHit(pPlayer);
+            featherCount = 8;
         }
 
-        playerDispRedHealth = playerHealth;
-        HealthAnimState state = {
-            .targetHealth = playerHealth,
-            .currentHealth = playerDispYellowHealth
-        };
-        StartCoroutine(AnimateHealthCoroutine, state);
+        SpawnFeathers(pPlayer, featherCount);
+        AnimatePlayerHealth(prevHealth);
 
         // Recoil
         constexpr r32 recoilSpeed = 0.046875f; // Recoil speed from Zelda 2
@@ -1273,74 +1436,58 @@ namespace Game {
 
     }
 
-    static void PlayerInput(Actor* pPlayer) {
-        constexpr r32 maxSpeed = 0.09375f; // Actual movement speed from Zelda 2
-        constexpr r32 acceleration = maxSpeed / 24.f; // Acceleration from Zelda 2
+    static void PlayerSitDown(Actor* pPlayer) {
+        pPlayer->playerState.flags.sitState = PLAYER_STAND_TO_SIT;
+        pPlayer->playerState.sitCounter = 15;
+    }
 
-        PlayerState& playerState = pPlayer->playerState;
-        if (ButtonDown(BUTTON_DPAD_LEFT)) {
-            pPlayer->velocity.x -= acceleration;
-            if (pPlayer->flags.facingDir != ACTOR_FACING_LEFT) {
-                pPlayer->velocity.x -= acceleration;
+    static void PlayerStandUp(Actor* pPlayer) {
+        pPlayer->playerState.flags.sitState = PLAYER_SIT_TO_STAND;
+        pPlayer->playerState.sitCounter = 15;
+    }
+
+    static void TriggerInteraction(Actor* pPlayer) {
+        if (interactableHandle == PoolHandle<Actor>::Null()) {
+            return;
+        }
+
+        Actor* pInteractable = actors.Get(interactableHandle);
+        if (pInteractable == nullptr) {
+            return;
+        }
+
+        if (pInteractable->pPrototype->type == ACTOR_TYPE_CHECKPOINT) {
+            pInteractable->checkpointState.activated = true;
+
+            PersistedActorState* persistState = persistedActorStates.Get(pInteractable->id);
+            if (persistState) {
+                persistState->activated = true;
+            }
+            else {
+                persistedActorStates.Add(pInteractable->id, {
+                    .activated = true,
+                    });
             }
 
-            pPlayer->velocity.x = glm::clamp(pPlayer->velocity.x, -maxSpeed, maxSpeed);
-            pPlayer->flags.facingDir = ACTOR_FACING_LEFT;
-        }
-        else if (ButtonDown(BUTTON_DPAD_RIGHT)) {
-            pPlayer->velocity.x += acceleration;
-            if (pPlayer->flags.facingDir != ACTOR_FACING_RIGHT) {
-                pPlayer->velocity.x += acceleration;
+            lastCheckpoint = {
+                .levelIndex = u16(Levels::GetIndex(pCurrentLevel)),
+                .screenIndex = GetScreenIndex(pInteractable->position)
+            };
+
+            // Revive enemies
+            persistedActorStates.ForEach(ReviveKilledEnemy);
+
+            // Sit down
+            PlayerSitDown(pPlayer);
+
+            // Add dialogue
+            static constexpr const char* lines[] = {
+                "I just put a regular dialogue box here, but it would\nnormally be a level up menu.",
+            };
+
+            if (!dialogue.active) {
+                BeginDialogue(lines, 1);
             }
-
-            pPlayer->velocity.x = glm::clamp(pPlayer->velocity.x, -maxSpeed, maxSpeed);
-            pPlayer->flags.facingDir = ACTOR_FACING_RIGHT;
-        }
-        else {
-            // Deceleration if no direcion pressed
-            if (!pPlayer->flags.inAir && pPlayer->velocity.x != 0.0f) {
-                pPlayer->velocity.x -= acceleration * glm::sign(pPlayer->velocity.x);
-            }
-        }
-
-        // Aim mode
-        if (ButtonDown(BUTTON_DPAD_UP)) {
-            playerState.flags.aimMode = PLAYER_AIM_UP;
-        }
-        else if (ButtonDown(BUTTON_DPAD_DOWN)) {
-            playerState.flags.aimMode = PLAYER_AIM_DOWN;
-        }
-        else playerState.flags.aimMode = PLAYER_AIM_FWD;
-
-        if (ButtonPressed(BUTTON_A) && (!pPlayer->flags.inAir || !playerState.flags.doubleJumped)) {
-            pPlayer->velocity.y = -0.25f;
-            if (pPlayer->flags.inAir) {
-                playerState.flags.doubleJumped = true;
-            }
-
-            // Trigger new flap by taking wings out of falling position by advancing the frame index
-            playerState.wingFrame = ++playerState.wingFrame % PLAYER_WING_FRAME_COUNT;
-
-            Audio::PlaySFX(&jumpSfx, CHAN_ID_PULSE0);
-        }
-
-        if (pPlayer->velocity.y < 0 && ButtonReleased(BUTTON_A)) {
-            pPlayer->velocity.y /= 2;
-        }
-
-        if (ButtonDown(BUTTON_A) && pPlayer->velocity.y > 0) {
-            playerState.flags.slowFall = true;
-        }
-
-        if (ButtonReleased(BUTTON_B)) {
-            playerState.shootCounter = 0.0f;
-        }
-
-        if (ButtonPressed(BUTTON_SELECT)) {
-            if (playerWeapon == PLAYER_WEAPON_LAUNCHER) {
-                playerWeapon = PLAYER_WEAPON_BOW;
-            }
-            else playerWeapon = PLAYER_WEAPON_LAUNCHER;
         }
     }
 
@@ -1381,6 +1528,100 @@ namespace Game {
                 Audio::PlaySFX(&gunSfx, CHAN_ID_NOISE);
             }
 
+        }
+    }
+
+    static void PlayerInput(Actor* pPlayer) {
+        constexpr r32 maxSpeed = 0.09375f; // Actual movement speed from Zelda 2
+        constexpr r32 acceleration = maxSpeed / 24.f; // Acceleration from Zelda 2
+
+        const bool dead = playerHealth == 0;
+        const bool enteringLevel = pPlayer->playerState.entryDelayCounter > 0;
+        const bool stunned = pPlayer->playerState.damageCounter > 0;
+        const bool sitting = pPlayer->playerState.flags.sitState != PLAYER_STANDING;
+
+        const bool inputDisabled = dead || enteringLevel || stunned || sitting || dialogue.active;
+
+        PlayerState& playerState = pPlayer->playerState;
+        if (!inputDisabled && ButtonDown(BUTTON_DPAD_LEFT)) {
+            pPlayer->velocity.x -= acceleration;
+            if (pPlayer->flags.facingDir != ACTOR_FACING_LEFT) {
+                pPlayer->velocity.x -= acceleration;
+            }
+
+            pPlayer->velocity.x = glm::clamp(pPlayer->velocity.x, -maxSpeed, maxSpeed);
+            pPlayer->flags.facingDir = ACTOR_FACING_LEFT;
+        }
+        else if (!inputDisabled && ButtonDown(BUTTON_DPAD_RIGHT)) {
+            pPlayer->velocity.x += acceleration;
+            if (pPlayer->flags.facingDir != ACTOR_FACING_RIGHT) {
+                pPlayer->velocity.x += acceleration;
+            }
+
+            pPlayer->velocity.x = glm::clamp(pPlayer->velocity.x, -maxSpeed, maxSpeed);
+            pPlayer->flags.facingDir = ACTOR_FACING_RIGHT;
+        }
+        else if (!enteringLevel && !pPlayer->flags.inAir && pPlayer->velocity.x != 0.0f) { // Decelerate
+            pPlayer->velocity.x -= acceleration * glm::sign(pPlayer->velocity.x);
+        }
+
+        // Interaction / Shooting
+        if (dialogue.active && ButtonPressed(BUTTON_B)) {
+            AdvanceDialogue();
+        }
+        else if (!inputDisabled) {
+            if (interactableHandle != PoolHandle<Actor>::Null() && ButtonPressed(BUTTON_B)) {
+            TriggerInteraction(pPlayer);
+            }
+            else PlayerShoot(pPlayer);
+        }
+
+        if (inputDisabled) {
+            if (!dialogue.active && pPlayer->playerState.flags.sitState == PLAYER_SITTING && AnyButtonDown()) {
+                PlayerStandUp(pPlayer);
+            }
+
+            return;
+        }
+
+        // Aim mode
+        if (ButtonDown(BUTTON_DPAD_UP)) {
+            playerState.flags.aimMode = PLAYER_AIM_UP;
+        }
+        else if (ButtonDown(BUTTON_DPAD_DOWN)) {
+            playerState.flags.aimMode = PLAYER_AIM_DOWN;
+        }
+        else playerState.flags.aimMode = PLAYER_AIM_FWD;
+
+        if (ButtonPressed(BUTTON_A) && (!pPlayer->flags.inAir || !playerState.flags.doubleJumped)) {
+            pPlayer->velocity.y = -0.25f;
+            if (pPlayer->flags.inAir) {
+                playerState.flags.doubleJumped = true;
+            }
+
+            // Trigger new flap by taking wings out of falling position by advancing the frame index
+            playerState.wingFrame = ++playerState.wingFrame % PLAYER_WING_FRAME_COUNT;
+
+            Audio::PlaySFX(&jumpSfx, CHAN_ID_PULSE0);
+        }
+
+        if (pPlayer->velocity.y < 0 && ButtonReleased(BUTTON_A)) {
+            pPlayer->velocity.y /= 2;
+        }
+
+        if (ButtonDown(BUTTON_A) && pPlayer->velocity.y > 0) {
+            playerState.flags.slowFall = true;
+        }
+
+        if (ButtonReleased(BUTTON_B)) {
+            playerState.shootCounter = 0.0f;
+        }
+
+        if (ButtonPressed(BUTTON_SELECT)) {
+            if (playerWeapon == PLAYER_WEAPON_LAUNCHER) {
+                playerWeapon = PLAYER_WEAPON_BOW;
+            }
+            else playerWeapon = PLAYER_WEAPON_LAUNCHER;
         }
     }
 
@@ -1425,8 +1666,65 @@ namespace Game {
         return true;
     }
 
+    static void DrawPlayerDead(Actor* pPlayer) {
+        u8 frameIdx = !pPlayer->flags.inAir;
+
+        Rendering::Util::CopyChrTiles(
+            playerBank.tiles + playerDeadBankOffsets[frameIdx],
+            pChr[1].tiles + playerHeadFrameChrOffset,
+            8
+        );
+
+        pPlayer->animIndex = 2;
+        pPlayer->frameIndex = frameIdx;
+        DrawActor(pPlayer, SPRITE_LAYER_FG, { 0, 0 }, pPlayer->flags.facingDir == ACTOR_FACING_LEFT);
+    }
+
+    static void DrawPlayerSitting(Actor* pPlayer) {
+        u8 frameIdx = 1;
+
+        // If in transition state
+        if (pPlayer->playerState.flags.sitState & 0b10) {
+            frameIdx = ((pPlayer->playerState.flags.sitState & 0b01) ^ (pPlayer->playerState.sitCounter >> 3)) & 1;
+        }
+
+        Rendering::Util::CopyChrTiles(
+            playerBank.tiles + playerSitBankOffsets[frameIdx],
+            pChr[1].tiles + playerHeadFrameChrOffset,
+            8
+        );
+
+        // Get wings in sitting position
+        const bool wingsInPosition = pPlayer->playerState.wingFrame == PLAYER_WINGS_FLAP_END;
+        const u16 wingAnimFrameLength = 6;
+
+        if (!wingsInPosition) {
+            AdvanceAnimation(pPlayer->playerState.wingCounter, pPlayer->playerState.wingFrame, PLAYER_WING_FRAME_COUNT, wingAnimFrameLength, 0);
+        }
+
+        Rendering::Util::CopyChrTiles(
+            playerBank.tiles + playerWingFrameBankOffsets[pPlayer->playerState.wingFrame],
+            pChr[1].tiles + playerWingFrameChrOffset,
+            playerWingFrameTileCount
+        );
+
+        pPlayer->animIndex = 1;
+        pPlayer->frameIndex = 0;
+        DrawActor(pPlayer, SPRITE_LAYER_FG, { 0, 0 }, pPlayer->flags.facingDir == ACTOR_FACING_LEFT);
+    }
+
     static void DrawPlayer(Actor* pPlayer) {
         PlayerState& playerState = pPlayer->playerState;
+
+        if (playerHealth == 0) {
+            DrawPlayerDead(pPlayer);
+            return;
+        }
+
+        if (playerState.flags.sitState != PLAYER_STANDING) {
+            DrawPlayerSitting(pPlayer);
+            return;
+        }
 
         // Animate chr sheet using player bank
         const bool jumping = pPlayer->velocity.y < 0;
@@ -1491,6 +1789,7 @@ namespace Game {
 
         DrawPlayerGun(pPlayer, vOffset);
         const s32 paletteOverride = GetDamagePaletteOverride(playerState.damageCounter);
+        pPlayer->animIndex = 0;
         pPlayer->frameIndex = playerState.flags.aimMode;
         DrawActor(pPlayer, SPRITE_LAYER_FG, { 0, vOffset }, pPlayer->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
     }
@@ -1526,66 +1825,26 @@ namespace Game {
         interactableHandle = PoolHandle<Actor>::Null();
     }
 
-    static void ReviveKilledEnemy(u64 id, PersistedActorState& persistedState) {
-        persistedState.dead = false;
-    }
-
-    static void TriggerInteraction(Actor* pPlayer) {
-        if (interactableHandle == PoolHandle<Actor>::Null()) {
-            return;
-        }
-
-        Actor* pInteractable = actors.Get(interactableHandle);
-        if (pInteractable == nullptr) {
-            return;
-        }
-
-        if (pInteractable->pPrototype->type == ACTOR_TYPE_CHECKPOINT) {
-            pInteractable->checkpointState.activated = true;
-
-            PersistedActorState* persistState = persistedActorStates.Get(pInteractable->id);
-            if (persistState) {
-                persistState->activated = true;
-            }
-            else {
-                persistedActorStates.Add(pInteractable->id, {
-                    .activated = true,
-                    });
-            }
-            
-            lastCheckpoint = {
-                .levelIndex = u16(Levels::GetIndex(pCurrentLevel)),
-                .screenIndex = GetScreenIndex(pInteractable->position)
-            };
-
-            // Revive enemies
-            persistedActorStates.ForEach(ReviveKilledEnemy);
-        }
-    }
-
     static void UpdatePlayerSidescroller(Actor* pActor) {
         UpdateCounter(pActor->playerState.entryDelayCounter);
         UpdateCounter(pActor->playerState.damageCounter);
+
+        if (!UpdateCounter(pActor->playerState.sitCounter)) {
+            pActor->playerState.flags.sitState &= 1;
+        }
+        
+        if (playerDeathCounter != 0) {
+            if (!UpdateCounter(playerDeathCounter)) {
+                PlayerDie(pActor);
+            }
+        }
         
         // Reset slow fall
         pActor->playerState.flags.slowFall = false;
 
         FindPlayerInteractableActor(pActor);
 
-        const bool enteringLevel = pActor->playerState.entryDelayCounter > 0;
-        const bool stunned = pActor->playerState.damageCounter > 0;
-        if (!enteringLevel && !stunned && !dialogue.active) {
-            PlayerInput(pActor);
-            
-            if (interactableHandle != PoolHandle<Actor>::Null()) {
-                if (ButtonPressed(BUTTON_B)) {
-                    TriggerInteraction(pActor);
-                }
-            }
-            else {
-                PlayerShoot(pActor);
-            }
-        }
+        PlayerInput(pActor);
 
         HitResult hit{};
         if (ActorMoveHorizontal(pActor, hit)) {
@@ -1779,13 +2038,10 @@ namespace Game {
 
             Actor* pPlayer = actors.Get(playerHandle);
             if (pPlayer != nullptr) {
-                Actor* pBullet = SpawnActor(enemyFireballPrototypeIndex, pActor->position);
-                if (pBullet == nullptr) {
-                    return;
-                }
-
                 const glm::vec2 playerDir = glm::normalize(pPlayer->position - pActor->position);
-                pBullet->velocity = playerDir * 0.0625f;
+                const glm::vec2 velocity = playerDir * 0.0625f;
+
+                SpawnActor(enemyFireballPrototypeIndex, pActor->position, velocity);
             }
         }
 
@@ -1834,11 +2090,7 @@ namespace Game {
             pActor->flags.pendingRemoval = true;
 
             playerExp += pActor->pickupState.value;
-            ExpAnimState state = {
-                .targetExp = playerExp,
-                .currentExp = playerDispExp,
-            };
-            StartCoroutine(AnimateExpCoroutine, state);
+            AnimatePlayerExp();
 
             return;
         }
@@ -1846,7 +2098,7 @@ namespace Game {
         // Smoothstep animation when inside specified radius from player
         const Animation& currentAnim = pActor->pPrototype->animations[0];
         constexpr r32 animRadius = 4.0f;
-        pActor->frameIndex = glm::roundEven((1.0f - glm::smoothstep(0.0f, animRadius, playerDist)) * currentAnim.frameCount);
+        pActor->frameIndex = glm::floor((1.0f - glm::smoothstep(0.0f, animRadius, playerDist)) * currentAnim.frameCount);
 
         DrawActor(pActor, SPRITE_LAYER_FG, {0,0}, pActor->flags.facingDir == ACTOR_FACING_LEFT);
     }
@@ -1933,6 +2185,26 @@ namespace Game {
             };
         }
     }
+
+    static void UpdateFeather(Actor* pActor) {
+        UpdateDefaultEffect(pActor);
+
+        constexpr r32 maxFallSpeed = 0.03125f;
+        ApplyGravity(pActor, 0.005f);
+        if (pActor->velocity.y > maxFallSpeed) {
+            pActor->velocity.y = maxFallSpeed;
+        }
+
+        constexpr r32 amplitude = 2.0f;
+        constexpr r32 timeMultiplier = 1 / 30.f;
+        const u16 time = pActor->effectState.lifetimeCounter - pActor->effectState.lifetime;
+        const r32 sineTime = glm::sin(time * timeMultiplier);
+        pActor->velocity.x = pActor->initialVelocity.x * sineTime;
+
+        pActor->position += pActor->velocity;
+
+        DrawActor(pActor, SPRITE_LAYER_FX);
+    }
 #pragma endregion
     static void UpdatePlayer(Actor* pActor) {
         switch (pActor->pPrototype->subtype) {
@@ -2005,6 +2277,10 @@ namespace Game {
             UpdateNumbers(pActor);
             break;
         }
+        case EFFECT_SUBTYPE_FEATHER: {
+            UpdateFeather(pActor);
+            break;
+        }
         default:
             break;
         }
@@ -2018,7 +2294,7 @@ namespace Game {
             pActor->animIndex = 0;
         }
 
-        DrawActor(pActor, SPRITE_LAYER_FG, { 0,0 }, pActor->flags.facingDir == ACTOR_FACING_LEFT);
+        DrawActor(pActor, SPRITE_LAYER_BG, { 0,0 }, pActor->flags.facingDir == ACTOR_FACING_LEFT);
     }
 
     static void UpdateActors() {
@@ -2101,86 +2377,20 @@ namespace Game {
         }
     }
 
-#pragma region Dialogue
-    static void EndDialogue() {
-        dialogue.active = false;
-    }
-
-    static void AdvanceDialogue() {
-        if (!dialogue.active) {
-            return;
-        }
-
-        // Stop the previous coroutine
-        if (coroutines.Get(dialogue.currentLineCoroutine)) {
-            coroutines.Remove(dialogue.currentLineCoroutine);
-        }
-
-        if (dialogue.currentLine >= dialogue.lineCount) {
-            // Close dialogue box, then end dialogue
-            BgBoxAnimState state{
-                    .viewportPos = glm::ivec2(8,3),
-                    .width = 16,
-                    .maxHeight = 4,
-                    .palette = 3,
-                    .direction = -1,
-
-                    .height = 4
-            };
-            StartCoroutine(AnimBgBoxCoroutine, state, EndDialogue);
-            return;
-        }
-        else {
-            ClearBgText(glm::ivec2(8, 3), glm::ivec2(16, 4));
-            AnimTextState state{
-                .pText = dialogue.pDialogueLines[dialogue.currentLine],
-                .boxViewportPos = glm::ivec2(8,3),
-                .boxSize = glm::ivec2(16,4),
-            };
-            dialogue.currentLineCoroutine = StartCoroutine(AnimTextCoroutine, state);
-        }
-
-        dialogue.currentLine++;
-    }
-
-    static void BeginDialogue(const char* const* pLines, u32 count) {
-        if (dialogue.active) {
-            return;
-        }
-
-        dialogue.active = true;
-        dialogue.currentLine = 0;
-        dialogue.pDialogueLines = pLines;
-        dialogue.lineCount = count;
-
-        BgBoxAnimState state{
-                    .viewportPos = glm::ivec2(8,3),
-                    .width = 16,
-                    .maxHeight = 4,
-                    .palette = 3,
-                    .direction = 1,
-        };
-        StartCoroutine(AnimBgBoxCoroutine, state, AdvanceDialogue);
-    }
-#pragma endregion
-
     static void Step() {
         previousInput = currentInput;
         currentInput = Input::GetControllerState();
 
         static char textBuffer[256]{};
 
-        ClearSpriteLayers(spriteLayers);
-
-        // TODO: There should be a better way to check handle validity
-        bool transitioning = coroutines.Get(transitionCoroutine);
-
         if (!paused) {
             gameplayFramesElapsed++;
 
             UpdateCoroutines();
 
-            if (!transitioning) {
+            if (!pauseGameplay) {
+                ClearSpriteLayers(spriteLayers);
+
                 UpdateActors();
                 UpdateViewport();
                 HandleLevelExit();
@@ -2191,7 +2401,9 @@ namespace Game {
             DrawExpCounter();
         }
 
-        UpdateScreenScroll();
+        if (!pauseGameplay) {
+            UpdateScreenScroll();
+        }
 
         /*if (ButtonPressed(BUTTON_START)) {
             if (!musicPlaying) {
@@ -2202,20 +2414,6 @@ namespace Game {
             }
             musicPlaying = !musicPlaying;
         }*/
-
-        static constexpr const char* lines[] = {
-                "What a horrible night to have a curse, am I right fellas???",
-                "I can print multiple lines of dialogue here.",
-                "This is the second to last\nline, getting closer to the\nend...",
-                "This is the last line of\ndialogue, thxbye!"
-        };
-
-        if (ButtonPressed(BUTTON_START)) {
-            if (!dialogue.active) {
-                BeginDialogue(lines, 4);
-            }
-            else AdvanceDialogue();
-        }
 
         // Animate color palette hue
         /*s32 hueShift = (s32)glm::roundEven(gameplayFramesElapsed / 12.f);
@@ -2382,6 +2580,7 @@ namespace Game {
         return paused;
     }
     void SetPaused(bool p) {
+        ClearSpriteLayers(spriteLayers);
         paused = p;
     }
 
