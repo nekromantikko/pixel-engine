@@ -81,9 +81,6 @@ namespace Game {
     // Sprites
     SpriteLayer spriteLayers[SPRITE_LAYER_COUNT];
 
-    // Viewport
-    glm::vec2 viewportPos;
-
     Level* pCurrentLevel = nullptr;
 
     Pool<Actor, MAX_DYNAMIC_ACTOR_COUNT> actors;
@@ -186,66 +183,34 @@ namespace Game {
 
 
 #pragma region Viewport
-    static void UpdateScreenScroll() {
-        // Drugs mode
-        /*for (int i = 0; i < 288; i++) {
-            float sine = glm::sin(gameplayFramesElapsed / 60.f + (i / 16.0f));
-            const Scanline state = {
-                (s32)((viewport.x + sine / 4) * METATILE_DIM_PIXELS),
-                (s32)(viewport.y * METATILE_DIM_PIXELS)
-            };
-            pScanlines[i] = state;
-        }*/
-
-        const Scanline state = {
-            (s32)(viewportPos.x * METATILE_DIM_PIXELS),
-            (s32)(viewportPos.y * METATILE_DIM_PIXELS)
-        };
-        for (int i = 0; i < SCANLINE_COUNT; i++) {
-            pScanlines[i] = state;
-        }
-    }
-
     static void UpdateViewport() {
         Actor* pPlayer = actors.Get(playerHandle);
-        if (pPlayer == nullptr) {
+        if (!pPlayer) {
             return;
         }
 
-        glm::vec2 viewportCenter = glm::vec2{ viewportPos.x + VIEWPORT_WIDTH_METATILES / 2.0f, viewportPos.y + VIEWPORT_HEIGHT_METATILES / 2.0f };
-        glm::vec2 targetOffset = pPlayer->position - viewportCenter;
+        const glm::vec2 viewportPos = GetViewportPos();
+        const glm::vec2 viewportCenter = viewportPos + glm::vec2{ VIEWPORT_WIDTH_METATILES / 2.0f, VIEWPORT_HEIGHT_METATILES / 2.0f };
+        const glm::vec2 targetOffset = pPlayer->position - viewportCenter;
 
         glm::vec2 delta = { 0.0f, 0.0f };
         if (targetOffset.x > viewportScrollThreshold.x) {
             delta.x = targetOffset.x - viewportScrollThreshold.x;
-        }
+        } 
         else if (targetOffset.x < -viewportScrollThreshold.x) {
             delta.x = targetOffset.x + viewportScrollThreshold.x;
         }
 
         if (targetOffset.y > viewportScrollThreshold.y) {
             delta.y = targetOffset.y - viewportScrollThreshold.y;
-        }
+        } 
         else if (targetOffset.y < -viewportScrollThreshold.y) {
             delta.y = targetOffset.y + viewportScrollThreshold.y;
         }
 
-        viewportPos = MoveViewport(viewportPos, pNametables, pCurrentLevel->pTilemap, delta);
+        SetViewportPos(viewportPos + delta);
     }
 
-    static bool PositionInViewportBounds(glm::vec2 pos) {
-        return pos.x >= viewportPos.x &&
-            pos.x < viewportPos.x + VIEWPORT_WIDTH_METATILES &&
-            pos.y >= viewportPos.y &&
-            pos.y < viewportPos.y + VIEWPORT_HEIGHT_METATILES;
-    }
-
-	static glm::i16vec2 WorldPosToScreenPixels(glm::vec2 pos) {
-		return glm::i16vec2{
-			(s16)glm::roundEven((pos.x - viewportPos.x) * METATILE_DIM_PIXELS),
-			(s16)glm::roundEven((pos.y - viewportPos.y) * METATILE_DIM_PIXELS)
-		};
-	}
 #pragma endregion
 
 #pragma region Actor utils
@@ -1132,6 +1097,7 @@ namespace Game {
             return false;
         }
 
+        const glm::vec2 viewportPos = GetViewportPos();
         const Scanline scanline = {
             (s32)(viewportPos.x * METATILE_DIM_PIXELS) + Random::GenerateInt(-state.magnitude, state.magnitude),
             (s32)(viewportPos.y * METATILE_DIM_PIXELS) + Random::GenerateInt(-state.magnitude, state.magnitude)
@@ -2098,10 +2064,6 @@ namespace Game {
             DrawExpCounter();
         }
 
-        if (!pauseGameplay) {
-            UpdateScreenScroll();
-        }
-
         /*if (ButtonPressed(BUTTON_START)) {
             if (!musicPlaying) {
                 Audio::PlayMusic(&bgm, true);
@@ -2143,14 +2105,13 @@ namespace Game {
             return;
         }
 
-        viewportPos = glm::vec2(0.0f);
-        UpdateScreenScroll();
+        SetViewportPos(glm::vec2(0.0f), false);
 
         // Clear actors
         actors.Clear();
 
         if (refresh) {
-            RefreshViewport(viewportPos, pNametables, pCurrentLevel->pTilemap);
+            RefreshViewport();
         }
     }
 
@@ -2177,7 +2138,6 @@ namespace Game {
         if (pCurrentLevel->flags.type == LEVEL_TYPE_SIDESCROLLER) {
             SpawnPlayerAtEntrance(pCurrentLevel, screenIndex, direction);
             UpdateViewport();
-            UpdateScreenScroll();
         }
 
         // Spawn xp remnant
@@ -2189,7 +2149,7 @@ namespace Game {
         gameplayFramesElapsed = 0;
 
         if (refresh) {
-            RefreshViewport(viewportPos, pNametables, pCurrentLevel->pTilemap);
+            RefreshViewport();
         }
     }
 
@@ -2230,7 +2190,7 @@ namespace Game {
             pScanlines[i] = { 0, 0 };
         }
 
-        viewportPos = glm::vec2(0.0f);
+        SetViewportPos(glm::vec2(0.0f), false);
 
         // TEMP SOUND STUFF
         jumpSfx = Audio::LoadSound("assets/jump.nsf");
@@ -2279,13 +2239,6 @@ namespace Game {
         paused = p;
     }
 
-    glm::vec2 GetViewportPos() {
-        return viewportPos;
-    }
-    void SetViewportPos(const glm::vec2& pos) {
-		const glm::vec2 delta = pos - viewportPos;
-		viewportPos = MoveViewport(viewportPos, pNametables, pCurrentLevel->pTilemap, delta);
-    }
     Level* GetCurrentLevel() {
         return pCurrentLevel;
     }

@@ -21,8 +21,6 @@ namespace Game {
 	bool IsPaused();
 	void SetPaused(bool paused);
 
-	glm::vec2 GetViewportPos();
-	void SetViewportPos(const glm::vec2& pos);
 	Level* GetCurrentLevel();
 
 	DynamicActorPool* GetActors();

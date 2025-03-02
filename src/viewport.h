@@ -7,6 +7,11 @@ struct Nametable;
 struct Tilemap;
 
 namespace Game {
-	glm::vec2 MoveViewport(const glm::vec2& viewportPos, Nametable* pNametables, const Tilemap* pTilemap, const glm::vec2& delta, bool loadTiles = true);
-	void RefreshViewport(const glm::vec2& viewportPos, Nametable* pNametables, const Tilemap* pTilemap);
+	glm::vec2 GetViewportPos();
+	glm::vec2 SetViewportPos(const glm::vec2& pos, bool loadTiles = true);
+
+	void RefreshViewport();
+
+	bool PositionInViewportBounds(const glm::vec2& pos);
+	glm::i16vec2 WorldPosToScreenPixels(const glm::vec2& pos);
 }

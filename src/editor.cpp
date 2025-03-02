@@ -1406,7 +1406,7 @@ static PoolHandle<Actor> GetHoveredActorHandle(const Level* pLevel, const ImVec2
 }
 
 static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboard& clipboard, u32& selectedLevel, PoolHandle<Actor>& selectedActorHandle) {
-	const glm::vec2 viewportPos = Game::GetViewportPos();
+	glm::vec2 viewportPos = Game::GetViewportPos();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -1442,6 +1442,34 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 	static bool drawCollisionCells = false;
 	static bool drawHitboxes = false;
 
+	// View scrolling
+	bool scrolling = false;
+	if (editing) {
+		static ImVec2 dragStartPos = ImVec2(0, 0);
+		static ImVec2 dragDelta = ImVec2(0, 0);
+
+		if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
+			dragStartPos = io.MousePos;
+			selectedActorHandle = PoolHandle<Actor>::Null();
+		}
+
+		if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+			const ImVec2 newDelta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Middle);
+			glm::vec2 newViewportPos = viewportPos;
+			newViewportPos.x -= (newDelta.x - dragDelta.x) / renderScale / METATILE_DIM_PIXELS;
+			newViewportPos.y -= (newDelta.y - dragDelta.y) / renderScale / METATILE_DIM_PIXELS;
+			dragDelta = newDelta;
+
+			viewportPos = Game::SetViewportPos(newViewportPos);
+			scrolling = true;
+		}
+
+		// Reset drag delta when mouse released
+		if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
+			dragDelta = ImVec2(0, 0);
+		}
+	}
+
 	DrawGameViewOverlay(pLevel, viewportPos, topLeft, btmRight, renderScale, editing, drawCollisionCells, drawHitboxes);
 
 	if (editing) {
@@ -1460,31 +1488,6 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 			DrawActor(pActor->pPrototype, drawPos, renderScale, 0, 0, IM_COL32(255, 255, 255, opacity));
 		}
 
-		// View scrolling
-		static ImVec2 dragStartPos = ImVec2(0, 0);
-		static ImVec2 dragDelta = ImVec2(0, 0);
-		bool scrolling = false;
-
-		if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
-			dragStartPos = io.MousePos;
-			selectedActorHandle = PoolHandle<Actor>::Null();
-		}
-
-		if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-			const ImVec2 newDelta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Middle);
-			glm::vec2 newViewportPos = viewportPos;
-			newViewportPos.x -= (newDelta.x - dragDelta.x) / renderScale / METATILE_DIM_PIXELS;
-			newViewportPos.y -= (newDelta.y - dragDelta.y) / renderScale / METATILE_DIM_PIXELS;
-			dragDelta = newDelta;
-
-			Game::SetViewportPos(newViewportPos);
-			scrolling = true;
-		}
-
-		// Reset drag delta when mouse released
-		if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
-			dragDelta = ImVec2(0, 0);
-		}
 
 		const ImVec2 hoveredTileWorldPos = ImVec2(glm::floor(mousePosInWorldCoords.x), glm::floor(mousePosInWorldCoords.y));
 
@@ -1647,7 +1650,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 	if (editing) {
 		ImGui::SameLine();
 		if (ImGui::Button("Refresh viewport")) {
-			Game::RefreshViewport(viewportPos, pNametables, pLevel->pTilemap);
+			Game::RefreshViewport();
 		}
 	}
 
@@ -1865,7 +1868,7 @@ static void DrawGameWindow() {
 			}
 			if (ImGui::MenuItem("Revert changes")) {
 				Levels::LoadLevels("assets/levels.lev");
-				Game::RefreshViewport(viewportPos, pNametables, pCurrentLevel->pTilemap);
+				Game::RefreshViewport();
 			}
 			ImGui::EndMenu();
 		}

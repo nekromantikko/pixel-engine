@@ -2,6 +2,7 @@
 #include "rendering_util.h"
 #include "tiles.h"
 #include "game.h"
+#include "viewport.h"
 #include "level.h"
 #define GLM_FORCE_RADIANS
 #include <glm.hpp>
