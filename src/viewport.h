@@ -1,13 +1,12 @@
 #pragma once
 #include "typedef.h"
-#include "rendering.h"
+#define GLM_FORCE_RADIANS
+#include <glm.hpp>
 
+struct Nametable;
 struct Tilemap;
 
-struct Viewport {
-    r32 x;
-    r32 y;
-};
-
-void MoveViewport(Viewport* pViewport, Nametable* pNametables, const Tilemap* pTilemap, r32 dx, r32 dy, bool loadTiles = true);
-void RefreshViewport(Viewport* pViewport, Nametable* pNametables, const Tilemap* pTilemap);
+namespace Game {
+	glm::vec2 MoveViewport(const glm::vec2& viewportPos, Nametable* pNametables, const Tilemap* pTilemap, const glm::vec2& delta, bool loadTiles = true);
+	void RefreshViewport(const glm::vec2& viewportPos, Nametable* pNametables, const Tilemap* pTilemap);
+}

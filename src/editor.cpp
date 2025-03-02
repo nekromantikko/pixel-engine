@@ -1337,10 +1337,10 @@ static void DrawScreenCollisionCells(ImVec2 pMin, ImVec2 pMax, ImVec2 viewportDr
 	}
 }
 
-static void DrawActorColliders(const Viewport* pViewport, const ImVec2 topLeft, const r32 renderScale) {
+static void DrawActorColliders(const glm::vec2& viewportPos, const ImVec2 topLeft, const r32 renderScale) {
 	const DynamicActorPool* actors = Game::GetActors();
 
-	const glm::vec2 viewportPixelPos = { pViewport->x * METATILE_DIM_PIXELS, pViewport->y * METATILE_DIM_PIXELS };
+	const glm::vec2 viewportPixelPos = viewportPos * r32(METATILE_DIM_PIXELS);
 	for (u32 i = 0; i < actors->Count(); i++)
 	{
 		PoolHandle<Actor> handle = actors->GetHandle(i);
@@ -1354,15 +1354,15 @@ static void DrawActorColliders(const Viewport* pViewport, const ImVec2 topLeft, 
 	}
 }
 
-static void DrawGameViewOverlay(const Level* pLevel, const Viewport* pViewport, const ImVec2 topLeft, const ImVec2 btmRight, const r32 renderScale, bool drawBorders, bool drawCollisionCells, bool drawHitboxes) {
-	const glm::vec2 viewportPixelPos = { pViewport->x * METATILE_DIM_PIXELS, pViewport->y * METATILE_DIM_PIXELS };
+static void DrawGameViewOverlay(const Level* pLevel, const glm::vec2& viewportPos, const ImVec2 topLeft, const ImVec2 btmRight, const r32 renderScale, bool drawBorders, bool drawCollisionCells, bool drawHitboxes) {
+	const glm::vec2 viewportPixelPos = viewportPos * r32(METATILE_DIM_PIXELS);
 	const ImVec2 viewportDrawSize = ImVec2(VIEWPORT_WIDTH_PIXELS * renderScale, VIEWPORT_HEIGHT_PIXELS * renderScale);
 
-	const s32 screenStartX = pViewport->x / VIEWPORT_WIDTH_METATILES;
-	const s32 screenStartY = pViewport->y / VIEWPORT_HEIGHT_METATILES;
+	const s32 screenStartX = viewportPos.x / VIEWPORT_WIDTH_METATILES;
+	const s32 screenStartY = viewportPos.y / VIEWPORT_HEIGHT_METATILES;
 
-	const s32 screenEndX = (pViewport->x + VIEWPORT_WIDTH_METATILES) / VIEWPORT_WIDTH_METATILES;
-	const s32 screenEndY = (pViewport->y + VIEWPORT_HEIGHT_METATILES) / VIEWPORT_HEIGHT_METATILES;
+	const s32 screenEndX = (viewportPos.x + VIEWPORT_WIDTH_METATILES) / VIEWPORT_WIDTH_METATILES;
+	const s32 screenEndY = (viewportPos.y + VIEWPORT_HEIGHT_METATILES) / VIEWPORT_HEIGHT_METATILES;
 
 	const Tilemap* pTilemap = pLevel->pTilemap;
 
@@ -1383,7 +1383,7 @@ static void DrawGameViewOverlay(const Level* pLevel, const Viewport* pViewport, 
 			}
 
 			if (drawHitboxes) {
-				DrawActorColliders(pViewport, topLeft, renderScale);
+				DrawActorColliders(viewportPos, topLeft, renderScale);
 			}
 		}
 	}
@@ -1406,7 +1406,7 @@ static PoolHandle<Actor> GetHoveredActorHandle(const Level* pLevel, const ImVec2
 }
 
 static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboard& clipboard, u32& selectedLevel, PoolHandle<Actor>& selectedActorHandle) {
-	Viewport* pViewport = Game::GetViewport();
+	const glm::vec2 viewportPos = Game::GetViewportPos();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -1420,7 +1420,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 	ImGuiIO& io = ImGui::GetIO();
 	const r32 tileDrawSize = METATILE_DIM_PIXELS * renderScale;
 	const ImVec2 mousePosInViewportCoords = ImVec2((io.MousePos.x - topLeft.x) / tileDrawSize, (io.MousePos.y - topLeft.y) / tileDrawSize);
-	const ImVec2 mousePosInWorldCoords = ImVec2(mousePosInViewportCoords.x + pViewport->x, mousePosInViewportCoords.y + pViewport->y);
+	const ImVec2 mousePosInWorldCoords = ImVec2(mousePosInViewportCoords.x + viewportPos.x, mousePosInViewportCoords.y + viewportPos.y);
 
 	// Invisible button to prevent dragging window
 	ImGui::InvisibleButton("##canvas", ImVec2(contentWidth, contentHeight), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
@@ -1442,11 +1442,11 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 	static bool drawCollisionCells = false;
 	static bool drawHitboxes = false;
 
-	DrawGameViewOverlay(pLevel, pViewport, topLeft, btmRight, renderScale, editing, drawCollisionCells, drawHitboxes);
+	DrawGameViewOverlay(pLevel, viewportPos, topLeft, btmRight, renderScale, editing, drawCollisionCells, drawHitboxes);
 
 	if (editing) {
 		// Draw actors
-		const glm::vec2 viewportPixelPos = { pViewport->x * METATILE_DIM_PIXELS, pViewport->y * METATILE_DIM_PIXELS };
+		const glm::vec2 viewportPixelPos = viewportPos * r32(METATILE_DIM_PIXELS);
 		for (u32 i = 0; i < pLevel->actors.Count(); i++)
 		{
 			PoolHandle<Actor> handle = pLevel->actors.GetHandle(i);
@@ -1472,11 +1472,12 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 
 		if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
 			const ImVec2 newDelta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Middle);
-			const r32 dx = -(newDelta.x - dragDelta.x) / renderScale / METATILE_DIM_PIXELS;
-			const r32 dy = -(newDelta.y - dragDelta.y) / renderScale / METATILE_DIM_PIXELS;
+			glm::vec2 newViewportPos = viewportPos;
+			newViewportPos.x -= (newDelta.x - dragDelta.x) / renderScale / METATILE_DIM_PIXELS;
+			newViewportPos.y -= (newDelta.y - dragDelta.y) / renderScale / METATILE_DIM_PIXELS;
 			dragDelta = newDelta;
 
-			MoveViewport(pViewport, pNametables, pLevel->pTilemap, dx, dy);
+			Game::SetViewportPos(newViewportPos);
 			scrolling = true;
 		}
 
@@ -1529,8 +1530,8 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 
 			if (pActor != nullptr) {
 				const AABB boundsAbs(actorBounds.min + pActor->position, actorBounds.max + pActor->position);
-				const ImVec2 pMin = ImVec2((boundsAbs.min.x - pViewport->x) * tileDrawSize + topLeft.x, (boundsAbs.min.y - pViewport->y) * tileDrawSize + topLeft.y);
-				const ImVec2 pMax = ImVec2((boundsAbs.max.x - pViewport->x) * tileDrawSize + topLeft.x, (boundsAbs.max.y - pViewport->y) * tileDrawSize + topLeft.y);
+				const ImVec2 pMin = ImVec2((boundsAbs.min.x - viewportPos.x) * tileDrawSize + topLeft.x, (boundsAbs.min.y - viewportPos.y) * tileDrawSize + topLeft.y);
+				const ImVec2 pMax = ImVec2((boundsAbs.max.x - viewportPos.x) * tileDrawSize + topLeft.x, (boundsAbs.max.y - viewportPos.y) * tileDrawSize + topLeft.y);
 
 				drawList->AddRect(pMin, pMax, IM_COL32(255, 255, 255, 255));
 			}
@@ -1559,8 +1560,8 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 					selectionTopLeft = ImVec2(glm::min(selectionStartPos.x, hoveredTileWorldPos.x), glm::min(selectionStartPos.y, hoveredTileWorldPos.y));
 					selectionBtmRight = ImVec2(glm::max(selectionStartPos.x, hoveredTileWorldPos.x) + 1, glm::max(selectionStartPos.y, hoveredTileWorldPos.y) + 1);
 
-					const ImVec2 selectionTopLeftInPixelCoords = ImVec2((selectionTopLeft.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionTopLeft.y - pViewport->y) * tileDrawSize + topLeft.y);
-					const ImVec2 selectionBtmRightInPixelCoords = ImVec2((selectionBtmRight.x - pViewport->x) * tileDrawSize + topLeft.x, (selectionBtmRight.y - pViewport->y) * tileDrawSize + topLeft.y);
+					const ImVec2 selectionTopLeftInPixelCoords = ImVec2((selectionTopLeft.x - viewportPos.x) * tileDrawSize + topLeft.x, (selectionTopLeft.y - viewportPos.y) * tileDrawSize + topLeft.y);
+					const ImVec2 selectionBtmRightInPixelCoords = ImVec2((selectionBtmRight.x - viewportPos.x) * tileDrawSize + topLeft.x, (selectionBtmRight.y - viewportPos.y) * tileDrawSize + topLeft.y);
 
 					drawList->AddRectFilled(selectionTopLeftInPixelCoords, selectionBtmRightInPixelCoords, IM_COL32(255, 255, 255, 63));
 				}
@@ -1597,7 +1598,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 				for (u32 y = 0; y < clipboardHeight; y++) {
 					u32 clipboardIndex = y * clipboardWidth + x;
 					const glm::ivec2 metatileWorldPos = { clipboardTopLeft.x + x, clipboardTopLeft.y + y };
-					const ImVec2 metatileInViewportCoords = ImVec2(metatileWorldPos.x - pViewport->x, metatileWorldPos.y - pViewport->y);
+					const ImVec2 metatileInViewportCoords = ImVec2(metatileWorldPos.x - viewportPos.x, metatileWorldPos.y - viewportPos.y);
 					const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
 					const u8 metatileIndex = clipboard.clipboard[clipboardIndex];
 							
@@ -1616,8 +1617,8 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 				}
 			}
 
-			const ImVec2 clipboardTopLeftInPixelCoords = ImVec2((clipboardTopLeft.x - pViewport->x) * tileDrawSize + topLeft.x, (clipboardTopLeft.y - pViewport->y) * tileDrawSize + topLeft.y);
-			const ImVec2 clipboardBtmRightInPixelCoords = ImVec2((clipboardBtmRight.x - pViewport->x) * tileDrawSize + topLeft.x, (clipboardBtmRight.y - pViewport->y) * tileDrawSize + topLeft.y);
+			const ImVec2 clipboardTopLeftInPixelCoords = ImVec2((clipboardTopLeft.x - viewportPos.x) * tileDrawSize + topLeft.x, (clipboardTopLeft.y - viewportPos.y) * tileDrawSize + topLeft.y);
+			const ImVec2 clipboardBtmRightInPixelCoords = ImVec2((clipboardBtmRight.x - viewportPos.x) * tileDrawSize + topLeft.x, (clipboardBtmRight.y - viewportPos.y) * tileDrawSize + topLeft.y);
 			drawList->AddRect(clipboardTopLeftInPixelCoords, clipboardBtmRightInPixelCoords, IM_COL32(255, 255, 255, 255));
 			break;
 		}
@@ -1646,12 +1647,12 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 	if (editing) {
 		ImGui::SameLine();
 		if (ImGui::Button("Refresh viewport")) {
-			RefreshViewport(pViewport, pNametables, pLevel->pTilemap);
+			Game::RefreshViewport(viewportPos, pNametables, pLevel->pTilemap);
 		}
 	}
 
 	ImGui::Text("Currently loaded level: %s", pLevel->name);
-	ImGui::Text("Viewport pos = (%f, %f)", pViewport->x, pViewport->y);
+	ImGui::Text("Viewport pos = (%f, %f)", viewportPos.x, viewportPos.y);
 
 	ImGui::SeparatorText("Debug");
 	ImGui::Checkbox("Draw collision cells", &drawCollisionCells);
@@ -1836,8 +1837,8 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 static void DrawGameWindow() {
 	ImGui::Begin("Level editor", &pContext->gameWindowOpen, ImGuiWindowFlags_MenuBar);
 
-	Level* pCurrentLevel = Game::GetLevel();
-	Viewport* pViewport = Game::GetViewport();
+	Level* pCurrentLevel = Game::GetCurrentLevel();
+	const glm::vec2 viewportPos = Game::GetViewportPos();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
 
 	static u32 selectedLevel = 0;
@@ -1864,7 +1865,7 @@ static void DrawGameWindow() {
 			}
 			if (ImGui::MenuItem("Revert changes")) {
 				Levels::LoadLevels("assets/levels.lev");
-				RefreshViewport(pViewport, pNametables, pCurrentLevel->pTilemap);
+				Game::RefreshViewport(viewportPos, pNametables, pCurrentLevel->pTilemap);
 			}
 			ImGui::EndMenu();
 		}

@@ -54,7 +54,8 @@ set(SOURCES
 		src/actors.cpp
 		src/audio.cpp
 		src/random.cpp
-		src/coroutines.cpp)
+		src/coroutines.cpp
+		src/dialog.cpp)
 
 set(EDITOR_SOURCES
 		src/editor.cpp)

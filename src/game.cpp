@@ -17,6 +17,7 @@
 #include "random.h"
 #include "fixed_hash_map.h"
 #include "coroutines.h"
+#include "dialog.h"
 
 // TODO: Move somewhere else?
 enum SpriteLayerType : u8 {
@@ -85,7 +86,7 @@ namespace Game {
     SpriteLayer spriteLayers[SPRITE_LAYER_COUNT];
 
     // Viewport
-    Viewport viewport;
+    glm::vec2 viewportPos;
 
     Level* pCurrentLevel = nullptr;
 
@@ -104,16 +105,6 @@ namespace Game {
     u16 playerDeathCounter = 0;
 
     PoolHandle<Actor> interactableHandle;
-
-    // Dialogue stuff
-    struct DialogueState {
-        bool active = false;
-        u32 currentLine = 0;
-        const char* const* pDialogueLines = nullptr;
-        u32 lineCount;
-        PoolHandle<Coroutine> currentLineCoroutine = PoolHandle<Coroutine>::Null();
-    };
-    DialogueState dialogue;
 
     struct Checkpoint {
         u16 levelIndex;
@@ -232,8 +223,8 @@ namespace Game {
         }*/
 
         const Scanline state = {
-            (s32)(viewport.x * METATILE_DIM_PIXELS),
-            (s32)(viewport.y * METATILE_DIM_PIXELS)
+            (s32)(viewportPos.x * METATILE_DIM_PIXELS),
+            (s32)(viewportPos.y * METATILE_DIM_PIXELS)
         };
         for (int i = 0; i < SCANLINE_COUNT; i++) {
             pScanlines[i] = state;
@@ -246,7 +237,7 @@ namespace Game {
             return;
         }
 
-        glm::vec2 viewportCenter = glm::vec2{ viewport.x + VIEWPORT_WIDTH_METATILES / 2.0f, viewport.y + VIEWPORT_HEIGHT_METATILES / 2.0f };
+        glm::vec2 viewportCenter = glm::vec2{ viewportPos.x + VIEWPORT_WIDTH_METATILES / 2.0f, viewportPos.y + VIEWPORT_HEIGHT_METATILES / 2.0f };
         glm::vec2 targetOffset = pPlayer->position - viewportCenter;
 
         glm::vec2 delta = { 0.0f, 0.0f };
@@ -264,20 +255,20 @@ namespace Game {
             delta.y = targetOffset.y + viewportScrollThreshold.y;
         }
 
-        MoveViewport(&viewport, pNametables, pCurrentLevel->pTilemap, delta.x, delta.y);
+        viewportPos = MoveViewport(viewportPos, pNametables, pCurrentLevel->pTilemap, delta);
     }
 
     static bool PositionInViewportBounds(glm::vec2 pos) {
-        return pos.x >= viewport.x &&
-            pos.x < viewport.x + VIEWPORT_WIDTH_METATILES &&
-            pos.y >= viewport.y &&
-            pos.y < viewport.y + VIEWPORT_HEIGHT_METATILES;
+        return pos.x >= viewportPos.x &&
+            pos.x < viewportPos.x + VIEWPORT_WIDTH_METATILES &&
+            pos.y >= viewportPos.y &&
+            pos.y < viewportPos.y + VIEWPORT_HEIGHT_METATILES;
     }
 
 	static glm::i16vec2 WorldPosToScreenPixels(glm::vec2 pos) {
 		return glm::i16vec2{
-			(s16)glm::roundEven((pos.x - viewport.x) * METATILE_DIM_PIXELS),
-			(s16)glm::roundEven((pos.y - viewport.y) * METATILE_DIM_PIXELS)
+			(s16)glm::roundEven((pos.x - viewportPos.x) * METATILE_DIM_PIXELS),
+			(s16)glm::roundEven((pos.y - viewportPos.y) * METATILE_DIM_PIXELS)
 		};
 	}
 #pragma endregion
@@ -311,196 +302,6 @@ namespace Game {
 #pragma endregion
 
 #pragma region Rendering
-    static u8 GetBoxTileId(u32 x, u32 y, u32 w, u32 h) {
-        const u8 offset = 0x10;
-        u8 xIndex = 0;
-        u8 yIndex = 0;
-
-        if (w != 1) {
-            xIndex = 0b01;
-            xIndex <<= (x % w != 0) ? 1 : 0;
-            xIndex += (x % w == w - 1) ? 1 : 0;
-        }
-        if (h != 1) {
-            yIndex = 0b01;
-            yIndex <<= (y % h != 0) ? 1 : 0;
-            yIndex += (y % h == h - 1) ? 1 : 0;
-        }
-
-        const u8 index = xIndex + (yIndex << 2);
-        return index + offset;
-    }
-
-    static void CopyLevelTileToNametable(const glm::ivec2& worldPos) {
-        const u32 nametableIndex = Tiles::GetNametableIndex(worldPos);
-        const glm::ivec2 nametableOffset = Tiles::GetNametableOffset(worldPos);
-
-        const Tilemap* pTilemap = pCurrentLevel->pTilemap;
-        const s32 tilesetIndex = Tiles::GetTilesetIndex(pTilemap, worldPos);
-        const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
-
-        const Metatile& metatile = tile->metatile;
-        const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, tilesetIndex);
-        Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
-    }
-
-    static void CopyBoxTileToNametable(const glm::ivec2& worldPos, const glm::ivec2& tileOffset, const glm::ivec2& sizeTiles, u8 palette) {
-        const u32 nametableIndex = Tiles::GetNametableIndex(worldPos);
-        const glm::ivec2 nametableOffset = Tiles::GetNametableOffset(worldPos);
-
-        // Construct a metatile
-        Metatile metatile{};
-        metatile.tiles[0] = GetBoxTileId(tileOffset.x, tileOffset.y, sizeTiles.x, sizeTiles.y);
-        metatile.tiles[1] = GetBoxTileId(tileOffset.x + 1, tileOffset.y, sizeTiles.x, sizeTiles.y);
-        metatile.tiles[2] = GetBoxTileId(tileOffset.x, tileOffset.y + 1, sizeTiles.x, sizeTiles.y);
-        metatile.tiles[3] = GetBoxTileId(tileOffset.x + 1, tileOffset.y + 1, sizeTiles.x, sizeTiles.y);
-
-        Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
-    }
-
-    static void DrawBgBoxAnimated(const glm::ivec2& viewportPos, const glm::ivec2& size, const glm::ivec2 maxSize, u8 palette) {
-        const glm::ivec2 worldPos = viewportPos + glm::ivec2(viewport.x, viewport.y);
-        const glm::ivec2 sizeTiles(size.x << 1, size.y << 1);
-
-        for (u32 y = 0; y < maxSize.y; y++) {
-            for (u32 x = 0; x < maxSize.x; x++) {
-
-                const glm::ivec2 offset(x, y);
-
-                if (x < size.x && y < size.y) {
-                    const glm::ivec2 tileOffset(x << 1, y << 1);
-                    CopyBoxTileToNametable(worldPos + offset, tileOffset, sizeTiles, palette);
-                }
-                else {
-                    CopyLevelTileToNametable(worldPos + offset);
-                }
-            }
-        }
-    }
-
-    struct BgBoxAnimState {
-        const glm::ivec2 viewportPos;
-        const u32 width;
-        const u32 maxHeight;
-        const u8 palette;
-        const s32 direction = 1;
-
-        u32 height = 0;
-    };
-
-    static bool AnimBgBoxCoroutine(void* userData) {
-        BgBoxAnimState& state = *(BgBoxAnimState*)userData;
-
-        if (state.direction > 0) {
-            if (state.height < state.maxHeight) {
-                state.height++;
-            }
-
-            DrawBgBoxAnimated(state.viewportPos, glm::ivec2(state.width, state.height), glm::ivec2(state.width, state.maxHeight), state.palette);
-
-            return state.height != state.maxHeight;
-        }
-        else {
-            if (state.height > 0) {
-                state.height--;
-            }
-
-            DrawBgBoxAnimated(state.viewportPos, glm::ivec2(state.width, state.height), glm::ivec2(state.width, state.maxHeight), state.palette);
-
-            return state.height != 0;
-        }
-    }
-
-    static void DrawBgText(const glm::ivec2& boxViewportPos, const glm::ivec2& boxSize, const char* pText, u32 length) {
-        const glm::ivec2 worldPos = boxViewportPos + glm::ivec2(viewport.x, viewport.y);
-        const glm::ivec2 worldTilePos(worldPos.x * METATILE_DIM_TILES, worldPos.y * METATILE_DIM_TILES);
-        const glm::ivec2 innerSizeTiles((boxSize.x << 1) - 2, (boxSize.y << 1) - 2);
-
-        const u32 xTileStart = worldTilePos.x + 1;
-        const u32 yTileStart = worldTilePos.y + 1;
-
-        u32 xTile = xTileStart;
-        u32 yTile = yTileStart;
-
-        for (u32 i = 0; i < length; i++) {
-            const char c = pText[i];
-
-            // Handle manual newlines
-            if (c == '\n') {
-                xTile = xTileStart; // Reset to the beginning of the line
-                yTile++; // Move to the next line
-
-                // Stop if we exceed the box height
-                if (yTile >= yTileStart + innerSizeTiles.y) {
-                    break;
-                }
-
-                continue;
-            }
-
-            // Automatic newline if text exceedd box width
-            if (xTile >= xTileStart + innerSizeTiles.x) {
-                xTile = xTileStart;
-                yTile++;
-
-                if (yTile >= yTileStart + innerSizeTiles.y) {
-                    break;
-                }
-            }
-
-            // TODO: These could be utils too
-            const u32 nametableIndex = (xTile / NAMETABLE_WIDTH_TILES + yTile / NAMETABLE_HEIGHT_TILES) % NAMETABLE_COUNT;
-            const glm::ivec2 nametableOffset(xTile % NAMETABLE_WIDTH_TILES, yTile % NAMETABLE_HEIGHT_TILES);
-            const u32 nametableTileIndex = nametableOffset.x + nametableOffset.y * NAMETABLE_WIDTH_TILES;
-
-            pNametables[nametableIndex].tiles[nametableTileIndex] = c;
-            xTile++;
-        }
-    }
-
-    static void ClearBgText(const glm::ivec2& boxViewportPos, const glm::ivec2& boxSize) {
-        const glm::ivec2 worldPos = boxViewportPos + glm::ivec2(viewport.x, viewport.y);
-        const glm::ivec2 worldTilePos(worldPos.x * METATILE_DIM_TILES, worldPos.y * METATILE_DIM_TILES);
-        const glm::ivec2 innerSizeTiles((boxSize.x << 1) - 2, (boxSize.y << 1) - 2);
-
-        const u32 xTileStart = worldTilePos.x + 1;
-        const u32 yTileStart = worldTilePos.y + 1;
-
-        for (u32 y = 0; y < innerSizeTiles.y; y++) {
-            u32 yTile = yTileStart + y;
-
-            for (u32 x = 0; x < innerSizeTiles.x; x++) {
-                u32 xTile = xTileStart + x;
-
-                const u32 nametableIndex = (xTile / NAMETABLE_WIDTH_TILES + yTile / NAMETABLE_HEIGHT_TILES) % NAMETABLE_COUNT;
-                const glm::ivec2 nametableOffset(xTile % NAMETABLE_WIDTH_TILES, yTile % NAMETABLE_HEIGHT_TILES);
-                const u32 nametableTileIndex = nametableOffset.x + nametableOffset.y * NAMETABLE_WIDTH_TILES;
-
-                pNametables[nametableIndex].tiles[nametableTileIndex] = 0;
-            }
-        }
-    }
-
-    struct AnimTextState {
-        const char* pText = nullptr;
-        const glm::ivec2 boxViewportPos;
-        const glm::ivec2 boxSize;
-
-        u32 pos = 0;
-    };
-
-    static bool AnimTextCoroutine(void* userData) {
-        AnimTextState& state = *(AnimTextState*)userData;
-
-        if (state.pos <= strlen(state.pText)) {
-            DrawBgText(state.boxViewportPos, state.boxSize, state.pText, state.pos);
-            state.pos++;
-            return true;
-        }
-
-        return false;
-    }
-
     static bool DrawSprite(SpriteLayer* pLayer, const Sprite& sprite) {
         Sprite* outSprite = GetNextFreeSprite(pLayer);
         if (outSprite == nullptr) {
@@ -880,67 +681,6 @@ namespace Game {
         InitializeActor(pActor);
 
         return pActor;
-    }
-#pragma endregion
-
-#pragma region Dialogue
-    static void EndDialogue() {
-        dialogue.active = false;
-    }
-
-    static void AdvanceDialogue() {
-        if (!dialogue.active) {
-            return;
-        }
-
-        // Stop the previous coroutine
-		StopCoroutine(dialogue.currentLineCoroutine);
-
-        if (dialogue.currentLine >= dialogue.lineCount) {
-            // Close dialogue box, then end dialogue
-            BgBoxAnimState state{
-                    .viewportPos = glm::ivec2(8,3),
-                    .width = 16,
-                    .maxHeight = 4,
-                    .palette = 3,
-                    .direction = -1,
-
-                    .height = 4
-            };
-            StartCoroutine(AnimBgBoxCoroutine, state, EndDialogue);
-            return;
-        }
-        else {
-            ClearBgText(glm::ivec2(8, 3), glm::ivec2(16, 4));
-            AnimTextState state{
-                .pText = dialogue.pDialogueLines[dialogue.currentLine],
-                .boxViewportPos = glm::ivec2(8,3),
-                .boxSize = glm::ivec2(16,4),
-            };
-            dialogue.currentLineCoroutine = StartCoroutine(AnimTextCoroutine, state);
-        }
-
-        dialogue.currentLine++;
-    }
-
-    static void BeginDialogue(const char* const* pLines, u32 count) {
-        if (dialogue.active) {
-            return;
-        }
-
-        dialogue.active = true;
-        dialogue.currentLine = 0;
-        dialogue.pDialogueLines = pLines;
-        dialogue.lineCount = count;
-
-        BgBoxAnimState state{
-                    .viewportPos = glm::ivec2(8,3),
-                    .width = 16,
-                    .maxHeight = 4,
-                    .palette = 3,
-                    .direction = 1,
-        };
-        StartCoroutine(AnimBgBoxCoroutine, state, AdvanceDialogue);
     }
 #pragma endregion
 
@@ -1418,8 +1158,8 @@ namespace Game {
         }
 
         const Scanline scanline = {
-            (s32)(viewport.x * METATILE_DIM_PIXELS) + Random::GenerateInt(-state.magnitude, state.magnitude),
-            (s32)(viewport.y * METATILE_DIM_PIXELS) + Random::GenerateInt(-state.magnitude, state.magnitude)
+            (s32)(viewportPos.x * METATILE_DIM_PIXELS) + Random::GenerateInt(-state.magnitude, state.magnitude),
+            (s32)(viewportPos.y * METATILE_DIM_PIXELS) + Random::GenerateInt(-state.magnitude, state.magnitude)
         };
         for (int i = 0; i < SCANLINE_COUNT; i++) {
             pScanlines[i] = scanline;
@@ -1562,9 +1302,9 @@ namespace Game {
                 "I just put a regular dialogue box here, but it would\nnormally be a level up menu.",
             };
 
-            if (!dialogue.active) {
-                BeginDialogue(lines, 1);
-            }
+			if (!Game::IsDialogActive()) {
+				Game::OpenDialog(lines, 1);
+			}
         }
     }
 
@@ -1617,7 +1357,7 @@ namespace Game {
         const bool stunned = pPlayer->playerState.damageCounter > 0;
         const bool sitting = pPlayer->playerState.flags.sitState != PLAYER_STANDING;
 
-        const bool inputDisabled = dead || enteringLevel || stunned || sitting || dialogue.active;
+        const bool inputDisabled = dead || enteringLevel || stunned || sitting || Game::IsDialogActive();
 
         PlayerState& playerState = pPlayer->playerState;
         if (!inputDisabled && ButtonDown(BUTTON_DPAD_LEFT)) {
@@ -1643,8 +1383,8 @@ namespace Game {
         }
 
         // Interaction / Shooting
-        if (dialogue.active && ButtonPressed(BUTTON_B)) {
-            AdvanceDialogue();
+        if (Game::IsDialogActive() && ButtonPressed(BUTTON_B)) {
+            Game::AdvanceDialogText();
         }
         else if (!inputDisabled) {
             if (interactableHandle != PoolHandle<Actor>::Null() && ButtonPressed(BUTTON_B)) {
@@ -1654,7 +1394,7 @@ namespace Game {
         }
 
         if (inputDisabled) {
-            if (!dialogue.active && pPlayer->playerState.flags.sitState == PLAYER_SITTING && AnyButtonDown()) {
+            if (!Game::IsDialogActive() && pPlayer->playerState.flags.sitState == PLAYER_SITTING && AnyButtonDown()) {
                 PlayerStandUp(pPlayer);
             }
 
@@ -2429,15 +2169,14 @@ namespace Game {
             return;
         }
 
-        viewport.x = 0;
-        viewport.y = 0;
+        viewportPos = glm::vec2(0.0f);
         UpdateScreenScroll();
 
         // Clear actors
         actors.Clear();
 
         if (refresh) {
-            RefreshViewport(&viewport, pNametables, pCurrentLevel->pTilemap);
+            RefreshViewport(viewportPos, pNametables, pCurrentLevel->pTilemap);
         }
     }
 
@@ -2476,7 +2215,7 @@ namespace Game {
         gameplayFramesElapsed = 0;
 
         if (refresh) {
-            RefreshViewport(&viewport, pNametables, pCurrentLevel->pTilemap);
+            RefreshViewport(viewportPos, pNametables, pCurrentLevel->pTilemap);
         }
     }
 
@@ -2517,8 +2256,7 @@ namespace Game {
             pScanlines[i] = { 0, 0 };
         }
 
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
+        viewportPos = glm::vec2(0.0f);
 
         // TEMP SOUND STUFF
         jumpSfx = Audio::LoadSound("assets/jump.nsf");
@@ -2567,10 +2305,14 @@ namespace Game {
         paused = p;
     }
 
-    Viewport* GetViewport() {
-        return &viewport;
+    glm::vec2 GetViewportPos() {
+        return viewportPos;
     }
-    Level* GetLevel() {
+    void SetViewportPos(const glm::vec2& pos) {
+		const glm::vec2 delta = pos - viewportPos;
+		viewportPos = MoveViewport(viewportPos, pNametables, pCurrentLevel->pTilemap, delta);
+    }
+    Level* GetCurrentLevel() {
         return pCurrentLevel;
     }
     DynamicActorPool* GetActors() {
