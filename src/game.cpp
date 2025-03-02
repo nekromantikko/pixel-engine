@@ -1,6 +1,6 @@
 #include "game.h"
 #include "system.h"
-#include "input.h"
+#include "game_input.h"
 #include <cstring>
 #include <cstdio>
 #include "rendering_util.h"
@@ -70,10 +70,6 @@ namespace Game {
 
     // 16ms Frames elapsed while not paused
     u32 gameplayFramesElapsed = 0;
-
-    // Input
-    u8 currentInput = BUTTON_NONE;
-    u8 previousInput = BUTTON_NONE;
 
     // Rendering data
     RenderSettings* pRenderSettings;
@@ -188,27 +184,6 @@ namespace Game {
 
     constexpr glm::vec2 viewportScrollThreshold = { 4.0f, 3.0f };
 
-#pragma region Input
-    static bool AnyButtonDown() {
-        return currentInput != 0;
-    }
-
-    static bool ButtonDown(u8 flags) {
-        return Input::ButtonDown(flags, currentInput);
-    }
-
-    static bool ButtonUp(u8 flags) {
-        return Input::ButtonUp(flags, currentInput);
-    }
-
-    static bool ButtonPressed(u8 flags) {
-        return Input::ButtonPressed(flags, currentInput, previousInput);
-    }
-
-    static bool ButtonReleased(u8 flags) {
-        return Input::ButtonReleased(flags, currentInput, previousInput);
-    }
-#
 
 #pragma region Viewport
     static void UpdateScreenScroll() {
@@ -1314,7 +1289,7 @@ namespace Game {
         PlayerState& playerState = pPlayer->playerState;
         UpdateCounter(playerState.shootCounter);
 
-        if (ButtonDown(BUTTON_B) && playerState.shootCounter == 0) {
+        if (Input::ButtonDown(BUTTON_B) && playerState.shootCounter == 0) {
             playerState.shootCounter = shootDelay;
 
             const s32 prototypeIndex = playerWeapon == PLAYER_WEAPON_LAUNCHER ? playerGrenadePrototypeIndex : playerArrowPrototypeIndex;
@@ -1360,7 +1335,7 @@ namespace Game {
         const bool inputDisabled = dead || enteringLevel || stunned || sitting || Game::IsDialogActive();
 
         PlayerState& playerState = pPlayer->playerState;
-        if (!inputDisabled && ButtonDown(BUTTON_DPAD_LEFT)) {
+        if (!inputDisabled && Input::ButtonDown(BUTTON_DPAD_LEFT)) {
             pPlayer->velocity.x -= acceleration;
             if (pPlayer->flags.facingDir != ACTOR_FACING_LEFT) {
                 pPlayer->velocity.x -= acceleration;
@@ -1369,7 +1344,7 @@ namespace Game {
             pPlayer->velocity.x = glm::clamp(pPlayer->velocity.x, -maxSpeed, maxSpeed);
             pPlayer->flags.facingDir = ACTOR_FACING_LEFT;
         }
-        else if (!inputDisabled && ButtonDown(BUTTON_DPAD_RIGHT)) {
+        else if (!inputDisabled && Input::ButtonDown(BUTTON_DPAD_RIGHT)) {
             pPlayer->velocity.x += acceleration;
             if (pPlayer->flags.facingDir != ACTOR_FACING_RIGHT) {
                 pPlayer->velocity.x += acceleration;
@@ -1383,18 +1358,18 @@ namespace Game {
         }
 
         // Interaction / Shooting
-        if (Game::IsDialogActive() && ButtonPressed(BUTTON_B)) {
+        if (Game::IsDialogActive() && Input::ButtonPressed(BUTTON_B)) {
             Game::AdvanceDialogText();
         }
         else if (!inputDisabled) {
-            if (interactableHandle != PoolHandle<Actor>::Null() && ButtonPressed(BUTTON_B)) {
+            if (interactableHandle != PoolHandle<Actor>::Null() && Input::ButtonPressed(BUTTON_B)) {
             TriggerInteraction(pPlayer);
             }
             else PlayerShoot(pPlayer);
         }
 
         if (inputDisabled) {
-            if (!Game::IsDialogActive() && pPlayer->playerState.flags.sitState == PLAYER_SITTING && AnyButtonDown()) {
+            if (!Game::IsDialogActive() && pPlayer->playerState.flags.sitState == PLAYER_SITTING && Input::AnyButtonDown()) {
                 PlayerStandUp(pPlayer);
             }
 
@@ -1402,15 +1377,15 @@ namespace Game {
         }
 
         // Aim mode
-        if (ButtonDown(BUTTON_DPAD_UP)) {
+        if (Input::ButtonDown(BUTTON_DPAD_UP)) {
             playerState.flags.aimMode = PLAYER_AIM_UP;
         }
-        else if (ButtonDown(BUTTON_DPAD_DOWN)) {
+        else if (Input::ButtonDown(BUTTON_DPAD_DOWN)) {
             playerState.flags.aimMode = PLAYER_AIM_DOWN;
         }
         else playerState.flags.aimMode = PLAYER_AIM_FWD;
 
-        if (ButtonPressed(BUTTON_A) && (!pPlayer->flags.inAir || !playerState.flags.doubleJumped)) {
+        if (Input::ButtonPressed(BUTTON_A) && (!pPlayer->flags.inAir || !playerState.flags.doubleJumped)) {
             pPlayer->velocity.y = -0.25f;
             if (pPlayer->flags.inAir) {
                 playerState.flags.doubleJumped = true;
@@ -1422,19 +1397,19 @@ namespace Game {
             Audio::PlaySFX(&jumpSfx, CHAN_ID_PULSE0);
         }
 
-        if (pPlayer->velocity.y < 0 && ButtonReleased(BUTTON_A)) {
+        if (pPlayer->velocity.y < 0 && Input::ButtonReleased(BUTTON_A)) {
             pPlayer->velocity.y /= 2;
         }
 
-        if (ButtonDown(BUTTON_A) && pPlayer->velocity.y > 0) {
+        if (Input::ButtonDown(BUTTON_A) && pPlayer->velocity.y > 0) {
             playerState.flags.slowFall = true;
         }
 
-        if (ButtonReleased(BUTTON_B)) {
+        if (Input::ButtonReleased(BUTTON_B)) {
             playerState.shootCounter = 0.0f;
         }
 
-        if (ButtonPressed(BUTTON_SELECT)) {
+        if (Input::ButtonPressed(BUTTON_SELECT)) {
             if (playerWeapon == PLAYER_WEAPON_LAUNCHER) {
                 playerWeapon = PLAYER_WEAPON_BOW;
             }
@@ -2103,8 +2078,7 @@ namespace Game {
     }
 
     static void Step() {
-        previousInput = currentInput;
-        currentInput = Input::GetControllerState();
+		Input::Update();
 
         if (!paused) {
             gameplayFramesElapsed++;

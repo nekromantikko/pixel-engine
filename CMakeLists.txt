@@ -55,7 +55,8 @@ set(SOURCES
 		src/audio.cpp
 		src/random.cpp
 		src/coroutines.cpp
-		src/dialog.cpp)
+		src/dialog.cpp
+		src/game_input.cpp)
 
 set(EDITOR_SOURCES
 		src/editor.cpp)

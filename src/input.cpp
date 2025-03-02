@@ -1,7 +1,6 @@
 #include "input.h"
-#include "system.h"
+#include "game_input.h"
 #include <SDL.h>
-#include <cmath>
 
 //TODO: multiple controller support
 static SDL_GameController* gameController = nullptr;
@@ -159,21 +158,5 @@ void Input::ProcessEvent(const SDL_Event* event) {
 
 u8 Input::GetControllerState() {
     return controllerState;
-}
-
-bool Input::ButtonDown(u8 flags, u8 state) {
-    return (flags & state) == flags;
-}
-
-bool Input::ButtonUp(u8 flags, u8 state) {
-    return (flags & ~state) == flags;
-}
-
-bool Input::ButtonPressed(u8 flags, u8 currentState, u8 previousState) {
-    return ((currentState & ~previousState) & flags) == flags;
-}
-
-bool Input::ButtonReleased(u8 flags, u8 currentState, u8 previousState) {
-    return ((~currentState & previousState) & flags) == flags;
 }
 #pragma endregion
