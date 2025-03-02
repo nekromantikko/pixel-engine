@@ -274,12 +274,12 @@ namespace Game {
             pos.y < viewport.y + VIEWPORT_HEIGHT_METATILES;
     }
 
-    static glm::ivec2 WorldPosToScreenPixels(glm::vec2 pos) {
-        return glm::ivec2{
-            (s32)glm::roundEven((pos.x - viewport.x) * METATILE_DIM_PIXELS),
-            (s32)glm::roundEven((pos.y - viewport.y) * METATILE_DIM_PIXELS)
-        };
-    }
+	static glm::i16vec2 WorldPosToScreenPixels(glm::vec2 pos) {
+		return glm::i16vec2{
+			(s16)glm::roundEven((pos.x - viewport.x) * METATILE_DIM_PIXELS),
+			(s16)glm::roundEven((pos.y - viewport.y) * METATILE_DIM_PIXELS)
+		};
+	}
 #pragma endregion
 
 #pragma region Actor initialization
@@ -294,9 +294,7 @@ namespace Game {
         pActor->initialPosition = pActor->position;
         pActor->initialVelocity = pActor->velocity;
 
-        pActor->animIndex = 0;
-        pActor->frameIndex = 0;
-        pActor->animCounter = pPrototype->animations[0].frameLength;
+		pActor->drawState = ActorDrawState{};
 
         switch (pPrototype->type) {
         case ACTOR_TYPE_PLAYER: {
@@ -306,24 +304,29 @@ namespace Game {
             pActor->playerState.flags.doubleJumped = false;
             pActor->playerState.flags.sitState = PLAYER_STANDING;
             pActor->playerState.flags.slowFall = false;
+            pActor->drawState.layer = SPRITE_LAYER_FG;
             break;
         }
         case ACTOR_TYPE_NPC: {
             pActor->npcState.health = pPrototype->npcData.health;
             pActor->npcState.damageCounter = 0;
+            pActor->drawState.layer = SPRITE_LAYER_FG;
             break;
         }
         case ACTOR_TYPE_BULLET: {
             pActor->bulletState.lifetime = pPrototype->bulletData.lifetime;
             pActor->bulletState.lifetimeCounter = pPrototype->bulletData.lifetime;
+            pActor->drawState.layer = SPRITE_LAYER_FG;
             break;
         }
         case ACTOR_TYPE_PICKUP: {
+			pActor->drawState.layer = SPRITE_LAYER_FG;
             break;
         }
         case ACTOR_TYPE_EFFECT: {
             pActor->effectState.lifetime = pPrototype->effectData.lifetime;
             pActor->effectState.lifetimeCounter = pPrototype->effectData.lifetime;
+			pActor->drawState.layer = SPRITE_LAYER_FX;
             break;
         }
         case ACTOR_TYPE_CHECKPOINT: {
@@ -331,7 +334,7 @@ namespace Game {
             if (pPersistState && pPersistState->activated) {
                 pActor->checkpointState.activated = true;
             }
-            
+			pActor->drawState.layer = SPRITE_LAYER_BG;
             break;
         }
         default: 
@@ -685,17 +688,20 @@ namespace Game {
         }
     }
 
-    static bool DrawActor(const Actor* pActor, u8 layerIndex = SPRITE_LAYER_FG, const glm::ivec2& pixelOffset = {0,0}, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1) {
+    static bool DrawActor(const Actor* pActor) {
         // Culling
         if (!PositionInViewportBounds(pActor->position)) {
             return false;
         }
 
-        SpriteLayer& layer = spriteLayers[layerIndex];
+		const ActorDrawState& drawState = pActor->drawState;
 
-        glm::ivec2 drawPos = WorldPosToScreenPixels(pActor->position) + pixelOffset;
-        const u16 animIndex = pActor->animIndex % pActor->pPrototype->animCount;
+        SpriteLayer& layer = spriteLayers[drawState.layer];
+
+        glm::i16vec2 drawPos = WorldPosToScreenPixels(pActor->position) + drawState.pixelOffset;
+        const u16 animIndex = drawState.animIndex % pActor->pPrototype->animCount;
         const Animation& currentAnim = pActor->pPrototype->animations[animIndex];
+		const s32 customPalette = drawState.useCustomPalette ? drawState.palette : -1;
 
         switch (currentAnim.type) {
         case ANIMATION_TYPE_SPRITES: {
@@ -706,11 +712,11 @@ namespace Game {
 
             const s32 metaspriteIndex = (s32)currentAnim.metaspriteIndex;
             const Metasprite* pMetasprite = Metasprites::GetMetasprite(metaspriteIndex);
-            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos + pActor->frameIndex, outSprite, 1, drawPos, hFlip, vFlip, paletteOverride);
+            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos + drawState.frameIndex, outSprite, 1, drawPos, drawState.hFlip, drawState.vFlip, customPalette);
             break;
         }
         case ANIMATION_TYPE_METASPRITES: {
-            const s32 metaspriteIndex = (s32)currentAnim.metaspriteIndex + pActor->frameIndex;
+            const s32 metaspriteIndex = (s32)currentAnim.metaspriteIndex + drawState.frameIndex;
             const Metasprite* pMetasprite = Metasprites::GetMetasprite(metaspriteIndex);
 
             Sprite* outSprites = GetNextFreeSprite(&layer, pMetasprite->spriteCount);
@@ -718,7 +724,7 @@ namespace Game {
                 return false;
             }
 
-            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, outSprites, pMetasprite->spriteCount, drawPos, hFlip, vFlip, paletteOverride);
+            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, outSprites, pMetasprite->spriteCount, drawPos, drawState.hFlip, drawState.vFlip, customPalette);
             break;
         }
         default:
@@ -728,8 +734,14 @@ namespace Game {
         return true;
     }
 
-    static s32 GetDamagePaletteOverride(u8 damageCounter) {
-        return (damageCounter > 0) ? (gameplayFramesElapsed / 3) % 4 : -1;
+    static void SetDamagePaletteOverride(Actor* pActor, u16 damageCounter) {
+		if (damageCounter > 0) {
+			pActor->drawState.useCustomPalette = true;
+			pActor->drawState.palette = (gameplayFramesElapsed / 3) % 4;
+		}
+		else {
+			pActor->drawState.useCustomPalette = false;
+		}
     }
 
     static void GetAnimFrameFromDirection(Actor* pActor) {
@@ -737,7 +749,7 @@ namespace Game {
         const r32 angle = glm::atan(dir.y, dir.x);
 
         const Animation& currentAnim = pActor->pPrototype->animations[0];
-        pActor->frameIndex = (s32)glm::roundEven(((angle + glm::pi<r32>()) / (glm::pi<r32>() * 2)) * currentAnim.frameCount) % currentAnim.frameCount;
+        pActor->drawState.frameIndex = (s32)glm::roundEven(((angle + glm::pi<r32>()) / (glm::pi<r32>() * 2)) * currentAnim.frameCount) % currentAnim.frameCount;
     }
 
     // General function that can be used to advance "fake" animations like pattern bank streaming
@@ -761,7 +773,7 @@ namespace Game {
 
     static void AdvanceCurrentAnimation(Actor* pActor) {
         const Animation& currentAnim = pActor->pPrototype->animations[0];
-        AdvanceAnimation(pActor->animCounter, pActor->frameIndex, currentAnim.frameCount, currentAnim.frameLength, currentAnim.loopPoint);
+        AdvanceAnimation(pActor->drawState.animCounter, pActor->drawState.frameIndex, currentAnim.frameCount, currentAnim.frameLength, currentAnim.loopPoint);
     }
 #pragma endregion
 
@@ -1347,7 +1359,7 @@ namespace Game {
 
             const glm::vec2 velocity = Random::GenerateDirection() * 0.0625f;
             Actor* pSpawned = SpawnActor(featherPrototypeIndex, pPlayer->position + spawnOffset, velocity);
-            pSpawned->frameIndex = Random::GenerateInt(0, pSpawned->pPrototype->animations[0].frameCount - 1);
+            pSpawned->drawState.frameIndex = Random::GenerateInt(0, pSpawned->pPrototype->animations[0].frameCount - 1);
         }
     }
 
@@ -1634,9 +1646,12 @@ namespace Game {
             8
         );
 
-        pPlayer->animIndex = 2;
-        pPlayer->frameIndex = frameIdx;
-        DrawActor(pPlayer, SPRITE_LAYER_FG, { 0, 0 }, pPlayer->flags.facingDir == ACTOR_FACING_LEFT);
+        pPlayer->drawState.animIndex = 2;
+        pPlayer->drawState.frameIndex = frameIdx;
+		pPlayer->drawState.pixelOffset = { 0, 0 };
+		pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
+		pPlayer->drawState.useCustomPalette = false;
+        DrawActor(pPlayer);
     }
 
     static void DrawPlayerSitting(Actor* pPlayer) {
@@ -1667,9 +1682,12 @@ namespace Game {
             playerWingFrameTileCount
         );
 
-        pPlayer->animIndex = 1;
-        pPlayer->frameIndex = 0;
-        DrawActor(pPlayer, SPRITE_LAYER_FG, { 0, 0 }, pPlayer->flags.facingDir == ACTOR_FACING_LEFT);
+        pPlayer->drawState.animIndex = 1;
+        pPlayer->drawState.frameIndex = 0;
+		pPlayer->drawState.pixelOffset = { 0, 0 };
+		pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
+		pPlayer->drawState.useCustomPalette = false;
+        DrawActor(pPlayer);
     }
 
     static void DrawPlayer(Actor* pPlayer) {
@@ -1747,10 +1765,12 @@ namespace Game {
         }
 
         DrawPlayerGun(pPlayer, vOffset);
-        const s32 paletteOverride = GetDamagePaletteOverride(playerState.damageCounter);
-        pPlayer->animIndex = 0;
-        pPlayer->frameIndex = playerState.flags.aimMode;
-        DrawActor(pPlayer, SPRITE_LAYER_FG, { 0, vOffset }, pPlayer->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
+        pPlayer->drawState.animIndex = 0;
+        pPlayer->drawState.frameIndex = playerState.flags.aimMode;
+		pPlayer->drawState.pixelOffset = { 0, vOffset };
+		pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
+		SetDamagePaletteOverride(pPlayer, playerState.damageCounter);
+        DrawActor(pPlayer);
     }
 
     static bool IsInteractable(const Actor* pActor) {
@@ -1978,8 +1998,9 @@ namespace Game {
             HandlePlayerEnemyCollision(pPlayer, pActor);
         }
 
-        const s32 paletteOverride = GetDamagePaletteOverride(pActor->npcState.damageCounter);
-        DrawActor(pActor, SPRITE_LAYER_FG, {0,0}, pActor->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
+		pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
+        SetDamagePaletteOverride(pActor, pActor->npcState.damageCounter);
+        DrawActor(pActor);
     }
 
     static void UpdateSkullEnemy(Actor* pActor) {
@@ -2009,8 +2030,9 @@ namespace Game {
             HandlePlayerEnemyCollision(pPlayer, pActor);
         }
 
-        const s32 paletteOverride = GetDamagePaletteOverride(pActor->npcState.damageCounter);
-        DrawActor(pActor, SPRITE_LAYER_FG, { 0,0 }, pActor->flags.facingDir == ACTOR_FACING_LEFT, false, paletteOverride);
+        pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
+        SetDamagePaletteOverride(pActor, pActor->npcState.damageCounter);
+        DrawActor(pActor);
     }
 #pragma endregion
 
@@ -2057,9 +2079,10 @@ namespace Game {
         // Smoothstep animation when inside specified radius from player
         const Animation& currentAnim = pActor->pPrototype->animations[0];
         constexpr r32 animRadius = 4.0f;
-        pActor->frameIndex = glm::floor((1.0f - glm::smoothstep(0.0f, animRadius, playerDist)) * currentAnim.frameCount);
 
-        DrawActor(pActor, SPRITE_LAYER_FG, {0,0}, pActor->flags.facingDir == ACTOR_FACING_LEFT);
+        pActor->drawState.frameIndex = glm::floor((1.0f - glm::smoothstep(0.0f, animRadius, playerDist)) * currentAnim.frameCount);
+		pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
+        DrawActor(pActor);
     }
 
     static void UpdateExpRemnant(Actor* pActor) {
@@ -2080,7 +2103,7 @@ namespace Game {
             return;
         }
 
-        DrawActor(pActor, SPRITE_LAYER_FG);
+        DrawActor(pActor);
     }
 #pragma endregion
 
@@ -2095,7 +2118,7 @@ namespace Game {
         UpdateDefaultEffect(pActor);
 
         AdvanceCurrentAnimation(pActor);
-        DrawActor(pActor, SPRITE_LAYER_FX);
+        DrawActor(pActor);
     }
 
     // Calls itoa, but adds a plus sign if value is positive
@@ -2162,7 +2185,7 @@ namespace Game {
 
         pActor->position += pActor->velocity;
 
-        DrawActor(pActor, SPRITE_LAYER_FX);
+        DrawActor(pActor);
     }
 #pragma endregion
     static void UpdatePlayer(Actor* pActor) {
@@ -2247,13 +2270,13 @@ namespace Game {
 
     static void UpdateCheckpoint(Actor* pActor) {
         if (pActor->checkpointState.activated) {
-            pActor->animIndex = 1;
+            pActor->drawState.animIndex = 1;
         }
         else {
-            pActor->animIndex = 0;
+            pActor->drawState.animIndex = 0;
         }
 
-        DrawActor(pActor, SPRITE_LAYER_BG, { 0,0 }, pActor->flags.facingDir == ACTOR_FACING_LEFT);
+        DrawActor(pActor);
     }
 
     static void UpdateActors() {

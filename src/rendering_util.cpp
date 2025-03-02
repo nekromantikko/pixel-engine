@@ -225,7 +225,7 @@ namespace Rendering
 			return (spritePos ^ 0x100) - 0x100;
 		}
 
-		void CopyMetasprite(const Sprite* src, Sprite* dst, u32 count, glm::ivec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
+		void CopyMetasprite(const Sprite* src, Sprite* dst, u32 count, glm::i16vec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
 			for (int i = 0; i < count; i++) {
 				Sprite sprite = src[i];
 				if (hFlip) {

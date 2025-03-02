@@ -19,7 +19,7 @@ namespace Rendering
 		void GeneratePaletteColors(u32* data);
 		void SavePaletteToFile(const char* fname);
 		s32 SignExtendSpritePos(u16 spritePos);
-		void CopyMetasprite(const Sprite* src, Sprite* dst, u32 count, glm::ivec2 pos, bool hFlip, bool vFlip, s32 paletteOverride = -1);
+		void CopyMetasprite(const Sprite* src, Sprite* dst, u32 count, glm::i16vec2 pos, bool hFlip, bool vFlip, s32 paletteOverride = -1);
 		void ClearSprites(Sprite* spr, u32 count);
 		void CopyChrTiles(const ChrTile* src, ChrTile* dst, u32 count);
 	}

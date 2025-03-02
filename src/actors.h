@@ -280,6 +280,21 @@ struct ActorPrototype {
 	};
 };
 
+struct ActorDrawState {
+	u16 animIndex = 0;
+	u16 frameIndex = 0;
+	u16 animCounter = 0;
+
+	glm::i16vec2 pixelOffset = {0, 0};
+
+	u8 layer : 2 = 0;
+	u8 palette : 2 = 0;
+	bool hFlip : 1 = false;
+	bool vFlip : 1 = false;
+	bool visible : 1 = true;
+	bool useCustomPalette : 1 = false;
+};
+
 struct Actor {
 	u64 id;
 
@@ -290,9 +305,7 @@ struct Actor {
 	glm::vec2 initialVelocity;
 	glm::vec2 velocity;
 
-	u16 animIndex = 0;
-	u16 frameIndex = 0;
-	u16 animCounter = 0;
+	ActorDrawState drawState;
 
 	union {
 		PlayerState playerState;
