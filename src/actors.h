@@ -295,6 +295,11 @@ struct ActorDrawState {
 	bool useCustomPalette : 1 = false;
 };
 
+struct Actor;
+
+typedef void (*ActorUpdateFn)(Actor* pActor);
+typedef void (*ActorDrawFn)(Actor* pActor);
+
 struct Actor {
 	u64 id;
 
@@ -317,6 +322,9 @@ struct Actor {
 	};
 
 	const ActorPrototype* pPrototype;
+
+	ActorUpdateFn pUpdateFn;
+	ActorDrawFn pDrawFn;
 };
 
 namespace Actors {

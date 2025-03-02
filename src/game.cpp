@@ -282,110 +282,6 @@ namespace Game {
 	}
 #pragma endregion
 
-#pragma region Actor initialization
-    static void InitializeActor(Actor* pActor) {
-        const ActorPrototype* pPrototype = pActor->pPrototype;
-
-        pActor->flags.facingDir = ACTOR_FACING_RIGHT;
-        pActor->flags.inAir = true;
-        pActor->flags.active = true;
-        pActor->flags.pendingRemoval = false;
-
-        pActor->initialPosition = pActor->position;
-        pActor->initialVelocity = pActor->velocity;
-
-		pActor->drawState = ActorDrawState{};
-
-        switch (pPrototype->type) {
-        case ACTOR_TYPE_PLAYER: {
-            pActor->playerState.damageCounter = 0;
-            pActor->playerState.sitCounter = 0;
-            pActor->playerState.flags.aimMode = PLAYER_AIM_FWD;
-            pActor->playerState.flags.doubleJumped = false;
-            pActor->playerState.flags.sitState = PLAYER_STANDING;
-            pActor->playerState.flags.slowFall = false;
-            pActor->drawState.layer = SPRITE_LAYER_FG;
-            break;
-        }
-        case ACTOR_TYPE_NPC: {
-            pActor->npcState.health = pPrototype->npcData.health;
-            pActor->npcState.damageCounter = 0;
-            pActor->drawState.layer = SPRITE_LAYER_FG;
-            break;
-        }
-        case ACTOR_TYPE_BULLET: {
-            pActor->bulletState.lifetime = pPrototype->bulletData.lifetime;
-            pActor->bulletState.lifetimeCounter = pPrototype->bulletData.lifetime;
-            pActor->drawState.layer = SPRITE_LAYER_FG;
-            break;
-        }
-        case ACTOR_TYPE_PICKUP: {
-			pActor->drawState.layer = SPRITE_LAYER_FG;
-            break;
-        }
-        case ACTOR_TYPE_EFFECT: {
-            pActor->effectState.lifetime = pPrototype->effectData.lifetime;
-            pActor->effectState.lifetimeCounter = pPrototype->effectData.lifetime;
-			pActor->drawState.layer = SPRITE_LAYER_FX;
-            break;
-        }
-        case ACTOR_TYPE_CHECKPOINT: {
-            const PersistedActorState* pPersistState = persistedActorStates.Get(pActor->id);
-            if (pPersistState && pPersistState->activated) {
-                pActor->checkpointState.activated = true;
-            }
-			pActor->drawState.layer = SPRITE_LAYER_BG;
-            break;
-        }
-        default: 
-            break;
-        }
-    }
-
-    static Actor* SpawnActor(const Actor* pTemplate) {
-        auto handle = actors.Add(*pTemplate);
-
-        if (handle == PoolHandle<Actor>::Null()) {
-            return nullptr;
-        }
-
-        if (pTemplate->pPrototype->type == ACTOR_TYPE_PLAYER) {
-            playerHandle = handle;
-        }
-
-        Actor* pActor = actors.Get(handle);
-        pActor->velocity = glm::vec2{};
-        InitializeActor(pActor);
-
-        return pActor;
-    }
-
-    static Actor* SpawnActor(u32 presetIndex, const glm::vec2& position, const glm::vec2& velocity = glm::vec2{}) {
-        auto handle = actors.Add();
-
-        if (handle == PoolHandle<Actor>::Null()) {
-            return nullptr;
-        }
-
-        Actor* pActor = actors.Get(handle);
-        // Clear previous data
-        *pActor = Actor{};
-
-        const ActorPrototype* pPrototype = Actors::GetPrototype(presetIndex);
-        pActor->id = Random::GenerateUUID();
-        pActor->pPrototype = pPrototype;
-        if (pPrototype->type == ACTOR_TYPE_PLAYER) {
-            playerHandle = handle;
-        }
-
-        pActor->position = position;
-        pActor->velocity = velocity;
-        InitializeActor(pActor);
-
-        return pActor;
-    }
-#pragma endregion
-
 #pragma region Actor utils
     // Returns false if counter stops, true if keeps running
     static bool UpdateCounter(u16& counter) {
@@ -689,12 +585,12 @@ namespace Game {
     }
 
     static bool DrawActor(const Actor* pActor) {
+        const ActorDrawState& drawState = pActor->drawState;
+
         // Culling
-        if (!PositionInViewportBounds(pActor->position)) {
+        if (!PositionInViewportBounds(pActor->position) || !drawState.visible) {
             return false;
         }
-
-		const ActorDrawState& drawState = pActor->drawState;
 
         SpriteLayer& layer = spriteLayers[drawState.layer];
 
@@ -774,6 +670,216 @@ namespace Game {
     static void AdvanceCurrentAnimation(Actor* pActor) {
         const Animation& currentAnim = pActor->pPrototype->animations[0];
         AdvanceAnimation(pActor->drawState.animCounter, pActor->drawState.frameIndex, currentAnim.frameCount, currentAnim.frameLength, currentAnim.loopPoint);
+    }
+#pragma endregion
+
+#pragma region Custom draw functions
+    static bool DrawPlayerGun(Actor* pPlayer) {
+        const ActorDrawState& drawState = pPlayer->drawState;
+        glm::i16vec2 drawPos = WorldPosToScreenPixels(pPlayer->position) + drawState.pixelOffset;
+
+        // Draw weapon first
+        glm::i16vec2 weaponOffset;
+        u8 weaponFrameBankOffset;
+        u32 weaponMetaspriteIndex;
+        switch (playerWeapon) {
+        case PLAYER_WEAPON_BOW: {
+            weaponOffset = playerBowOffsets[pPlayer->playerState.flags.aimMode];
+            weaponFrameBankOffset = playerBowFrameBankOffsets[pPlayer->playerState.flags.aimMode];
+            weaponMetaspriteIndex = pPlayer->playerState.flags.aimMode == PLAYER_AIM_FWD ? playerBowFwdMetaspriteIndex : playerBowDiagMetaspriteIndex;
+            break;
+        }
+        case PLAYER_WEAPON_LAUNCHER: {
+            weaponOffset = playerLauncherOffsets[pPlayer->playerState.flags.aimMode];
+            weaponFrameBankOffset = playerLauncherFrameBankOffsets[pPlayer->playerState.flags.aimMode];
+            weaponMetaspriteIndex = pPlayer->playerState.flags.aimMode == PLAYER_AIM_FWD ? playerLauncherFwdMetaspriteIndex : playerLauncherDiagMetaspriteIndex;
+            break;
+        }
+        default:
+            break;
+        }
+        weaponOffset.x *= pPlayer->flags.facingDir;
+
+        Rendering::Util::CopyChrTiles(playerBank.tiles + weaponFrameBankOffset, pChr[1].tiles + playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
+
+        const Metasprite* bowMetasprite = Metasprites::GetMetasprite(weaponMetaspriteIndex);
+
+        SpriteLayer& layer = spriteLayers[SPRITE_LAYER_FG];
+        Sprite* outSprites = GetNextFreeSprite(&layer, bowMetasprite->spriteCount);
+        if (outSprites == nullptr) {
+            return false;
+        }
+
+        Rendering::Util::CopyMetasprite(bowMetasprite->spritesRelativePos, outSprites, bowMetasprite->spriteCount, drawPos + weaponOffset, drawState.hFlip, drawState.vFlip);
+
+        return true;
+    }
+
+    static void DrawPlayer(Actor* pPlayer) {
+        if (playerHealth != 0 && pPlayer->playerState.flags.sitState == PLAYER_STANDING) {
+            DrawPlayerGun(pPlayer);
+        }
+        DrawActor(pPlayer);
+    }
+
+    // Calls itoa, but adds a plus sign if value is positive
+    static u32 ItoaSigned(s16 value, char* str) {
+        s32 i = 0;
+        if (value > 0) {
+            str[i++] = '+';
+        }
+
+        itoa(value, str + i, 10);
+
+        return strlen(str);
+    }
+
+    static void DrawNumbers(Actor* pActor) {
+        const Animation& currentAnim = pActor->pPrototype->animations[pActor->drawState.animIndex];
+        if (currentAnim.type != ANIMATION_TYPE_SPRITES) {
+            return;
+        }
+
+        static char numberStr[16]{};
+        const u32 strLength = ItoaSigned(pActor->effectState.value, numberStr);
+
+        // Ascii character '*' = 0x2A
+        constexpr u8 chrOffset = 0x2A;
+
+        SpriteLayer& layer = spriteLayers[pActor->drawState.layer];
+
+        const s32 frameCount = currentAnim.frameCount;
+        const glm::i16vec2 pixelPos = WorldPosToScreenPixels(pActor->position);
+
+        for (u32 c = 0; c < strLength; c++) {
+            Sprite* outSprite = GetNextFreeSprite(&layer);
+            if (outSprite == nullptr) {
+                break;
+            }
+
+            const s32 frameIndex = (numberStr[c] - chrOffset) % frameCount;
+            const u8 tileId = Metasprites::GetMetasprite(currentAnim.metaspriteIndex)->spritesRelativePos[frameIndex].tileId;
+
+            *outSprite = {
+                u16(pixelPos.y),
+                u16(pixelPos.x + c * 5),
+                tileId,
+                1
+            };
+        }
+    }
+#pragma endregion
+
+#pragma region Actor initialization
+    static void InitializeActor(Actor* pActor) {
+        const ActorPrototype* pPrototype = pActor->pPrototype;
+
+        pActor->flags.facingDir = ACTOR_FACING_RIGHT;
+        pActor->flags.inAir = true;
+        pActor->flags.active = true;
+        pActor->flags.pendingRemoval = false;
+
+        pActor->initialPosition = pActor->position;
+        pActor->initialVelocity = pActor->velocity;
+
+        pActor->drawState = ActorDrawState{};
+
+        pActor->pUpdateFn = nullptr;
+        pActor->pDrawFn = nullptr;
+
+        switch (pPrototype->type) {
+        case ACTOR_TYPE_PLAYER: {
+            pActor->playerState.damageCounter = 0;
+            pActor->playerState.sitCounter = 0;
+            pActor->playerState.flags.aimMode = PLAYER_AIM_FWD;
+            pActor->playerState.flags.doubleJumped = false;
+            pActor->playerState.flags.sitState = PLAYER_STANDING;
+            pActor->playerState.flags.slowFall = false;
+            pActor->drawState.layer = SPRITE_LAYER_FG;
+            pActor->pDrawFn = DrawPlayer;
+            break;
+        }
+        case ACTOR_TYPE_NPC: {
+            pActor->npcState.health = pPrototype->npcData.health;
+            pActor->npcState.damageCounter = 0;
+            pActor->drawState.layer = SPRITE_LAYER_FG;
+            break;
+        }
+        case ACTOR_TYPE_BULLET: {
+            pActor->bulletState.lifetime = pPrototype->bulletData.lifetime;
+            pActor->bulletState.lifetimeCounter = pPrototype->bulletData.lifetime;
+            pActor->drawState.layer = SPRITE_LAYER_FG;
+            break;
+        }
+        case ACTOR_TYPE_PICKUP: {
+            pActor->drawState.layer = SPRITE_LAYER_FG;
+            break;
+        }
+        case ACTOR_TYPE_EFFECT: {
+            pActor->effectState.lifetime = pPrototype->effectData.lifetime;
+            pActor->effectState.lifetimeCounter = pPrototype->effectData.lifetime;
+            pActor->drawState.layer = SPRITE_LAYER_FX;
+
+            if (pPrototype->subtype == EFFECT_SUBTYPE_NUMBERS) {
+                pActor->pDrawFn = DrawNumbers;
+            }
+
+            break;
+        }
+        case ACTOR_TYPE_CHECKPOINT: {
+            const PersistedActorState* pPersistState = persistedActorStates.Get(pActor->id);
+            if (pPersistState && pPersistState->activated) {
+                pActor->checkpointState.activated = true;
+            }
+            pActor->drawState.layer = SPRITE_LAYER_BG;
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
+    static Actor* SpawnActor(const Actor* pTemplate) {
+        auto handle = actors.Add(*pTemplate);
+
+        if (handle == PoolHandle<Actor>::Null()) {
+            return nullptr;
+        }
+
+        if (pTemplate->pPrototype->type == ACTOR_TYPE_PLAYER) {
+            playerHandle = handle;
+        }
+
+        Actor* pActor = actors.Get(handle);
+        pActor->velocity = glm::vec2{};
+        InitializeActor(pActor);
+
+        return pActor;
+    }
+
+    static Actor* SpawnActor(u32 presetIndex, const glm::vec2& position, const glm::vec2& velocity = glm::vec2{}) {
+        auto handle = actors.Add();
+
+        if (handle == PoolHandle<Actor>::Null()) {
+            return nullptr;
+        }
+
+        Actor* pActor = actors.Get(handle);
+        // Clear previous data
+        *pActor = Actor{};
+
+        const ActorPrototype* pPrototype = Actors::GetPrototype(presetIndex);
+        pActor->id = Random::GenerateUUID();
+        pActor->pPrototype = pPrototype;
+        if (pPrototype->type == ACTOR_TYPE_PLAYER) {
+            playerHandle = handle;
+        }
+
+        pActor->position = position;
+        pActor->velocity = velocity;
+        InitializeActor(pActor);
+
+        return pActor;
     }
 #pragma endregion
 
@@ -1596,48 +1702,7 @@ namespace Game {
         }
     }
 
-    static bool DrawPlayerGun(Actor* pPlayer, r32 vOffset) {
-        glm::ivec2 drawPos = WorldPosToScreenPixels(pPlayer->position);
-        drawPos.y += vOffset;
-
-        // Draw weapon first
-        glm::ivec2 weaponOffset;
-        u8 weaponFrameBankOffset;
-        u32 weaponMetaspriteIndex;
-        switch (playerWeapon) {
-        case PLAYER_WEAPON_BOW: {
-            weaponOffset = playerBowOffsets[pPlayer->playerState.flags.aimMode];
-            weaponFrameBankOffset = playerBowFrameBankOffsets[pPlayer->playerState.flags.aimMode];
-            weaponMetaspriteIndex = pPlayer->playerState.flags.aimMode == PLAYER_AIM_FWD ? playerBowFwdMetaspriteIndex : playerBowDiagMetaspriteIndex;
-            break;
-        }
-        case PLAYER_WEAPON_LAUNCHER: {
-            weaponOffset = playerLauncherOffsets[pPlayer->playerState.flags.aimMode];
-            weaponFrameBankOffset = playerLauncherFrameBankOffsets[pPlayer->playerState.flags.aimMode];
-            weaponMetaspriteIndex = pPlayer->playerState.flags.aimMode == PLAYER_AIM_FWD ? playerLauncherFwdMetaspriteIndex : playerLauncherDiagMetaspriteIndex;
-            break;
-        }
-        default:
-            break;
-        }
-        weaponOffset.x *= pPlayer->flags.facingDir;
-
-        Rendering::Util::CopyChrTiles(playerBank.tiles + weaponFrameBankOffset, pChr[1].tiles + playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
-
-        const Metasprite* bowMetasprite = Metasprites::GetMetasprite(weaponMetaspriteIndex);
-
-        SpriteLayer& layer = spriteLayers[SPRITE_LAYER_FG];
-        Sprite* outSprites = GetNextFreeSprite(&layer, bowMetasprite->spriteCount);
-        if (outSprites == nullptr) {
-            return false;
-        }
-
-        Rendering::Util::CopyMetasprite(bowMetasprite->spritesRelativePos, outSprites, bowMetasprite->spriteCount, drawPos + weaponOffset, pPlayer->flags.facingDir == ACTOR_FACING_LEFT, false);
-
-        return true;
-    }
-
-    static void DrawPlayerDead(Actor* pPlayer) {
+    static void AnimatePlayerDead(Actor* pPlayer) {
         u8 frameIdx = !pPlayer->flags.inAir;
 
         Rendering::Util::CopyChrTiles(
@@ -1651,10 +1716,9 @@ namespace Game {
 		pPlayer->drawState.pixelOffset = { 0, 0 };
 		pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
 		pPlayer->drawState.useCustomPalette = false;
-        DrawActor(pPlayer);
     }
 
-    static void DrawPlayerSitting(Actor* pPlayer) {
+    static void AnimatePlayerSitting(Actor* pPlayer) {
         u8 frameIdx = 1;
 
         // If in transition state
@@ -1687,19 +1751,18 @@ namespace Game {
 		pPlayer->drawState.pixelOffset = { 0, 0 };
 		pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
 		pPlayer->drawState.useCustomPalette = false;
-        DrawActor(pPlayer);
     }
 
-    static void DrawPlayer(Actor* pPlayer) {
+    static void AnimatePlayer(Actor* pPlayer) {
         PlayerState& playerState = pPlayer->playerState;
 
         if (playerHealth == 0) {
-            DrawPlayerDead(pPlayer);
+            AnimatePlayerDead(pPlayer);
             return;
         }
 
         if (playerState.flags.sitState != PLAYER_STANDING) {
-            DrawPlayerSitting(pPlayer);
+            AnimatePlayerSitting(pPlayer);
             return;
         }
 
@@ -1764,13 +1827,11 @@ namespace Game {
             vOffset = playerState.wingFrame > PLAYER_WINGS_FLAP_START ? -1 : 0;
         }
 
-        DrawPlayerGun(pPlayer, vOffset);
         pPlayer->drawState.animIndex = 0;
         pPlayer->drawState.frameIndex = playerState.flags.aimMode;
 		pPlayer->drawState.pixelOffset = { 0, vOffset };
 		pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
 		SetDamagePaletteOverride(pPlayer, playerState.damageCounter);
-        DrawActor(pPlayer);
     }
 
     static bool IsInteractable(const Actor* pActor) {
@@ -1848,7 +1909,7 @@ namespace Game {
             }
         }
 
-        DrawPlayer(pActor);
+        AnimatePlayer(pActor);
     }
 #pragma endregion
 
@@ -1901,7 +1962,6 @@ namespace Game {
         BulletCollision(pActor);
 
         GetAnimFrameFromDirection(pActor);
-        DrawActor(pActor);
     }
 
     static void BulletRicochet(glm::vec2& velocity, const glm::vec2& normal) {
@@ -1930,7 +1990,6 @@ namespace Game {
         BulletCollision(pActor);
 
         GetAnimFrameFromDirection(pActor);
-        DrawActor(pActor);
     }
 
     static void UpdateFireball(Actor* pActor) {
@@ -1953,8 +2012,6 @@ namespace Game {
         BulletCollision(pActor);
 
         AdvanceCurrentAnimation(pActor);
-
-        DrawActor(pActor);
     }
 #pragma endregion
 
@@ -2000,7 +2057,6 @@ namespace Game {
 
 		pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
         SetDamagePaletteOverride(pActor, pActor->npcState.damageCounter);
-        DrawActor(pActor);
     }
 
     static void UpdateSkullEnemy(Actor* pActor) {
@@ -2032,7 +2088,6 @@ namespace Game {
 
         pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
         SetDamagePaletteOverride(pActor, pActor->npcState.damageCounter);
-        DrawActor(pActor);
     }
 #pragma endregion
 
@@ -2082,7 +2137,6 @@ namespace Game {
 
         pActor->drawState.frameIndex = glm::floor((1.0f - glm::smoothstep(0.0f, animRadius, playerDist)) * currentAnim.frameCount);
 		pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
-        DrawActor(pActor);
     }
 
     static void UpdateExpRemnant(Actor* pActor) {
@@ -2102,8 +2156,6 @@ namespace Game {
 
             return;
         }
-
-        DrawActor(pActor);
     }
 #pragma endregion
 
@@ -2118,19 +2170,6 @@ namespace Game {
         UpdateDefaultEffect(pActor);
 
         AdvanceCurrentAnimation(pActor);
-        DrawActor(pActor);
-    }
-
-    // Calls itoa, but adds a plus sign if value is positive
-    static u32 ItoaSigned(s16 value, char* str) {
-        s32 i = 0;
-        if (value > 0) {
-            str[i++] = '+';
-        }
-
-        itoa(value, str + i, 10);
-
-        return strlen(str);
     }
 
     static void UpdateNumbers(Actor* pActor) {
@@ -2138,34 +2177,7 @@ namespace Game {
 
         pActor->position.y += pActor->velocity.y;
 
-        static char numberStr[16]{};
-        const u32 strLength = ItoaSigned(pActor->effectState.value, numberStr);
-
-        // Ascii character '*' = 0x2A
-        // There are a couple extra characters (star, comma, period) that could be used for special symbols
-        constexpr u8 chrOffset = 0x2A;
-
-        SpriteLayer& layer = spriteLayers[SPRITE_LAYER_FX];
-
-        const Animation& currentAnim = pActor->pPrototype->animations[0];
-        for (u32 c = 0; c < strLength; c++) {
-            // TODO: What about metasprite frames? Handle this more rigorously!
-            Sprite* outSprite = GetNextFreeSprite(&layer);
-            if (outSprite == nullptr) {
-                break;
-            }
-
-            const s32 frameIndex = (numberStr[c] - chrOffset) % currentAnim.frameCount;
-            const u8 tileId = Metasprites::GetMetasprite(currentAnim.metaspriteIndex)->spritesRelativePos[frameIndex].tileId;
-
-            const glm::ivec2 pixelPos = WorldPosToScreenPixels(pActor->position);
-            *outSprite = {
-                u16(pixelPos.y),
-                u16(pixelPos.x + c * 5),
-                tileId,
-                1
-            };
-        }
+        DrawNumbers(pActor);
     }
 
     static void UpdateFeather(Actor* pActor) {
@@ -2184,8 +2196,6 @@ namespace Game {
         pActor->velocity.x = pActor->initialVelocity.x * sineTime;
 
         pActor->position += pActor->velocity;
-
-        DrawActor(pActor);
     }
 #pragma endregion
     static void UpdatePlayer(Actor* pActor) {
@@ -2275,8 +2285,6 @@ namespace Game {
         else {
             pActor->drawState.animIndex = 0;
         }
-
-        DrawActor(pActor);
     }
 
     static void UpdateActors() {
@@ -2337,11 +2345,26 @@ namespace Game {
         }
     }
 
+    static void DrawActors() {
+		for (u32 i = 0; i < actors.Count(); i++)
+		{
+			Actor* pActor = actors.Get(actors.GetHandle(i));
+			if (pActor == nullptr || !pActor->flags.active) {
+				continue;
+			}
+
+			if (pActor->pDrawFn) {
+				pActor->pDrawFn(pActor);
+			}
+			else {
+				DrawActor(pActor);
+			}
+		}
+    }
+
     static void Step() {
         previousInput = currentInput;
         currentInput = Input::GetControllerState();
-
-        static char textBuffer[256]{};
 
         if (!paused) {
             gameplayFramesElapsed++;
@@ -2349,13 +2372,13 @@ namespace Game {
             StepCoroutines();
 
             if (!pauseGameplay) {
-                ClearSpriteLayers(spriteLayers);
-
                 UpdateActors();
                 UpdateViewport();
                 HandleLevelExit();
             }
 
+            ClearSpriteLayers(spriteLayers);
+            DrawActors();
             // Draw HUD
             DrawPlayerHealthBar();
             DrawExpCounter();
