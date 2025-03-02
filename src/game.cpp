@@ -16,19 +16,7 @@
 #include <gtc/constants.hpp>
 #include "random.h"
 #include "fixed_hash_map.h"
-
-// TODO: Move somewhere else?
-constexpr u32 MAX_COROUTINE_COUNT = 256;
-constexpr u32 MAX_COROUTINE_STATE_SIZE = 32;
-
-typedef bool (*CoroutineFunc)(void*);
-
-struct Coroutine {
-    CoroutineFunc func;
-    alignas(void*) u8 state[MAX_COROUTINE_STATE_SIZE];
-
-    void (*callback)() = nullptr;
-};
+#include "coroutines.h"
 
 // TODO: Move somewhere else?
 enum SpriteLayerType : u8 {
@@ -81,10 +69,6 @@ namespace Game {
 
     // 16ms Frames elapsed while not paused
     u32 gameplayFramesElapsed = 0;
-
-    // Coroutines
-    Pool<Coroutine, MAX_COROUTINE_COUNT> coroutines;
-    Pool<PoolHandle<Coroutine>, MAX_COROUTINE_COUNT> coroutineRemoveList;
 
     // Input
     u8 currentInput = BUTTON_NONE;
@@ -212,29 +196,6 @@ namespace Game {
     constexpr u32 playerLauncherGrenadeMetaspriteIndex = 12;
 
     constexpr glm::vec2 viewportScrollThreshold = { 4.0f, 3.0f };
-
-#pragma region Coroutines
-    static bool StepCoroutine(Coroutine* pCoroutine) {
-        return pCoroutine->func(pCoroutine->state);
-    }
-
-    template <typename S>
-    static PoolHandle<Coroutine> StartCoroutine(CoroutineFunc func, const S& state, void (*callback)() = nullptr) {
-        static_assert(sizeof(S) <= MAX_COROUTINE_STATE_SIZE);
-
-        auto handle = coroutines.Add();
-        Coroutine* pCoroutine = coroutines.Get(handle);
-
-        if (pCoroutine == nullptr) {
-            return PoolHandle<Coroutine>::Null();
-        }
-
-        pCoroutine->func = func;
-        memcpy(pCoroutine->state, &state, sizeof(S));
-        pCoroutine->callback = callback;
-        return handle;
-    }
-#pragma endregion
 
 #pragma region Input
     static bool AnyButtonDown() {
@@ -815,9 +776,7 @@ namespace Game {
         }
 
         // Stop the previous coroutine
-        if (coroutines.Get(dialogue.currentLineCoroutine)) {
-            coroutines.Remove(dialogue.currentLineCoroutine);
-        }
+		StopCoroutine(dialogue.currentLineCoroutine);
 
         if (dialogue.currentLine >= dialogue.lineCount) {
             // Close dialogue box, then end dialogue
@@ -2355,28 +2314,6 @@ namespace Game {
         }
     }
 
-    static void UpdateCoroutines() {
-        coroutineRemoveList.Clear();
-        
-        for (u32 i = 0; i < coroutines.Count(); i++) {
-            PoolHandle<Coroutine> handle = coroutines.GetHandle(i);
-            Coroutine* pCoroutine = coroutines.Get(handle);
-
-            if (!StepCoroutine(pCoroutine)) {
-                coroutineRemoveList.Add(handle);
-
-                if (pCoroutine->callback) {
-                    pCoroutine->callback();
-                }
-            }
-        }
-
-        for (u32 i = 0; i < coroutineRemoveList.Count(); i++) {
-            auto handle = *coroutineRemoveList.Get(coroutineRemoveList.GetHandle(i));
-            coroutines.Remove(handle);
-        }
-    }
-
     static void Step() {
         previousInput = currentInput;
         currentInput = Input::GetControllerState();
@@ -2386,7 +2323,7 @@ namespace Game {
         if (!paused) {
             gameplayFramesElapsed++;
 
-            UpdateCoroutines();
+            StepCoroutines();
 
             if (!pauseGameplay) {
                 ClearSpriteLayers(spriteLayers);

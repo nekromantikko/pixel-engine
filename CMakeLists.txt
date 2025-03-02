@@ -53,7 +53,8 @@ set(SOURCES
 		src/tiles.cpp
 		src/actors.cpp
 		src/audio.cpp
-		src/random.cpp)
+		src/random.cpp
+		src/coroutines.cpp)
 
 set(EDITOR_SOURCES
 		src/editor.cpp)

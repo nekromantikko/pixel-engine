@@ -125,21 +125,31 @@ public:
 		}
 		return handle;
 	}
-	bool Remove(const THandle handle) {
+    bool Remove(const THandle handle) {
 		const u32 arrayIndex = handle.Index();
 		const u32 handleIndex = erase[arrayIndex];
-		THandle h = handles[handleIndex];
+		const THandle h = handles[handleIndex];
+
 		if (h != handle) {
 			return false;
 		}
+
+		// Move the last handle to the current position
 		handles[handleIndex] = handles[--count];
+
+		// Update the generation of the moved handle
 		handles[count] = THandle(arrayIndex, h.Generation() + 1);
 
+		// Update the erase array
 		const u32 swapIndex = handles[handleIndex].Index();
-		const u32 swap = erase[arrayIndex];
 		erase[arrayIndex] = erase[swapIndex];
-		erase[swapIndex] = swap;
+		erase[swapIndex] = handleIndex;
+
 		return true;
+    }
+	bool Contains(const THandle handle) const {
+		u32 index;
+		return GetArrayIndex(handle, index);
 	}
 	u32 Count() const {
 		return count;
