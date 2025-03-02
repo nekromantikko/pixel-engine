@@ -221,50 +221,8 @@ namespace Rendering
 		}
 
 		// Sign-extend 9-bit unsigned sprite position
-		s32 SignExtendSpritePos(u16 spritePos) {
+		s16 SignExtendSpritePos(u16 spritePos) {
 			return (spritePos ^ 0x100) - 0x100;
-		}
-
-		void CopyMetasprite(const Sprite* src, Sprite* dst, u32 count, glm::i16vec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
-			for (int i = 0; i < count; i++) {
-				Sprite sprite = src[i];
-				if (hFlip) {
-					sprite.flipHorizontal = !sprite.flipHorizontal;
-					sprite.x = sprite.x * -1 - TILE_DIM_PIXELS;
-				}
-				if (vFlip) {
-					sprite.flipVertical = !sprite.flipVertical;
-					sprite.y = sprite.y * -1 - TILE_DIM_PIXELS;
-				}
-				if (paletteOverride != -1) {
-					sprite.palette = paletteOverride;
-				}
-
-				// Fix ugly wraparound
-				if (pos.x + SignExtendSpritePos(sprite.x) > VIEWPORT_WIDTH_PIXELS || pos.y + SignExtendSpritePos(sprite.y) > VIEWPORT_HEIGHT_PIXELS) {
-					sprite.x = 0;
-					sprite.y = 288;
-				}
-				else {
-					sprite.y += pos.y;
-					sprite.x += pos.x;
-				}
-
-				dst[i] = sprite;
-			}
-		}
-
-		void ClearSprites(Sprite* spr, u32 count) {
-			for (int i = 0; i < count; i++) {
-				Sprite& sprite = spr[i];
-
-				// Really just moves the sprites off screen (This is how the NES clears sprites as well)
-				sprite.y = 288;
-			}
-		}
-
-		void CopyChrTiles(const ChrTile* src, ChrTile* dst, u32 count) {
-			memcpy(dst, src, sizeof(ChrTile) * count);
 		}
 	}
 }

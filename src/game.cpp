@@ -3,9 +3,8 @@
 #include "game_input.h"
 #include <cstring>
 #include <cstdio>
-#include "rendering_util.h"
 #include "level.h"
-#include "viewport.h"
+#include "game_rendering.h"
 #include "collision.h"
 #include "metasprite.h"
 #include "tiles.h"
@@ -18,51 +17,6 @@
 #include "fixed_hash_map.h"
 #include "coroutines.h"
 #include "dialog.h"
-
-// TODO: Move somewhere else?
-enum SpriteLayerType : u8 {
-    SPRITE_LAYER_UI,
-    SPRITE_LAYER_FX,
-    SPRITE_LAYER_FG,
-    SPRITE_LAYER_BG,
-
-    SPRITE_LAYER_COUNT
-};
-
-struct SpriteLayer {
-    Sprite* pNextSprite = nullptr;
-    u32 spriteCount = 0;
-};
-
-constexpr u32 LAYER_SPRITE_COUNT = MAX_SPRITE_COUNT / SPRITE_LAYER_COUNT;
-
-static void ClearSpriteLayers(SpriteLayer* layers, bool fullClear = false) {
-    const Sprite* pSprites = Rendering::GetSpritesPtr(0);
-
-    for (u32 i = 0; i < SPRITE_LAYER_COUNT; i++) {
-        SpriteLayer& layer = layers[i];
-
-        u32 beginIndex = i << 10;
-        Sprite* pBeginSprite = Rendering::GetSpritesPtr(beginIndex);
-
-        const u32 spritesToClear = fullClear ? LAYER_SPRITE_COUNT : layer.spriteCount;
-        Rendering::Util::ClearSprites(pBeginSprite, spritesToClear);
-        layer.pNextSprite = pBeginSprite;
-        layer.spriteCount = 0;
-    }
-}
-
-static Sprite* GetNextFreeSprite(SpriteLayer* pLayer, u32 count = 1) {
-    if (pLayer->spriteCount + count > LAYER_SPRITE_COUNT) {
-        return nullptr;
-    }
-
-    Sprite* result = pLayer->pNextSprite;
-    pLayer->spriteCount += count;
-    pLayer->pNextSprite += count;
-
-    return result;
-}
 
 namespace Game {
     r64 secondsElapsed = 0.0f;
@@ -77,9 +31,6 @@ namespace Game {
     Nametable* pNametables;
     Scanline* pScanlines;
     Palette* pPalettes;
-
-    // Sprites
-    SpriteLayer spriteLayers[SPRITE_LAYER_COUNT];
 
     Level* pCurrentLevel = nullptr;
 
@@ -136,8 +87,6 @@ namespace Game {
     //Sound bgm;
     //bool musicPlaying = false;
 
-    u8 basePaletteColors[PALETTE_MEMORY_SIZE];
-
     // TODO: Try to eliminate as much of this as possible
     constexpr s32 playerPrototypeIndex = 0;
     constexpr s32 playerGrenadePrototypeIndex = 1;
@@ -189,7 +138,7 @@ namespace Game {
             return;
         }
 
-        const glm::vec2 viewportPos = GetViewportPos();
+        const glm::vec2 viewportPos = Rendering::GetViewportPos();
         const glm::vec2 viewportCenter = viewportPos + glm::vec2{ VIEWPORT_WIDTH_METATILES / 2.0f, VIEWPORT_HEIGHT_METATILES / 2.0f };
         const glm::vec2 targetOffset = pPlayer->position - viewportCenter;
 
@@ -208,7 +157,7 @@ namespace Game {
             delta.y = targetOffset.y + viewportScrollThreshold.y;
         }
 
-        SetViewportPos(viewportPos + delta);
+        Rendering::SetViewportPos(viewportPos + delta);
     }
 
 #pragma endregion
@@ -241,22 +190,10 @@ namespace Game {
     }
 #pragma endregion
 
-#pragma region Rendering
-    static bool DrawSprite(SpriteLayer* pLayer, const Sprite& sprite) {
-        Sprite* outSprite = GetNextFreeSprite(pLayer);
-        if (outSprite == nullptr) {
-            return false;
-        }
-        *outSprite = sprite;
-
-        return true;
-    }
-
+#pragma region UI
     static void DrawPlayerHealthBar() {
         const u16 xStart = 16;
         const u16 y = 16;
-
-        SpriteLayer& layer = spriteLayers[SPRITE_LAYER_UI];
 
         const u32 totalSegments = playerMaxHealth >> 2;
         const u32 fullRedSegments = playerDispRedHealth >> 2;
@@ -287,7 +224,7 @@ namespace Game {
             sprite.palette = 0x1;
             sprite.x = x;
             sprite.y = y;
-            DrawSprite(&layer, sprite);
+            Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
 
             x += 8;
         }
@@ -298,8 +235,6 @@ namespace Game {
         snprintf(buffer, sizeof(buffer), "%05u", playerDispExp);
         u32 length = strlen(buffer);
 
-        SpriteLayer& layer = spriteLayers[SPRITE_LAYER_UI];
-
         const u16 xStart = VIEWPORT_WIDTH_PIXELS - 16 - (length*8);
         const u16 y = 16;
 
@@ -309,7 +244,7 @@ namespace Game {
         sprite.palette = 0x0;
         sprite.x = xStart - 8;
         sprite.y = y;
-        DrawSprite(&layer, sprite);
+        Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
 
         // Draw counter
         u16 x = xStart;
@@ -319,7 +254,7 @@ namespace Game {
             sprite.palette = 0x1;
             sprite.x = x;
             sprite.y = y;
-            DrawSprite(&layer, sprite);
+            Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
 
             x += 8;
         }
@@ -329,39 +264,22 @@ namespace Game {
         const ActorDrawState& drawState = pActor->drawState;
 
         // Culling
-        if (!PositionInViewportBounds(pActor->position) || !drawState.visible) {
+        if (!Rendering::PositionInViewportBounds(pActor->position) || !drawState.visible) {
             return false;
         }
 
-        SpriteLayer& layer = spriteLayers[drawState.layer];
-
-        glm::i16vec2 drawPos = WorldPosToScreenPixels(pActor->position) + drawState.pixelOffset;
+        glm::i16vec2 drawPos = Rendering::WorldPosToScreenPixels(pActor->position) + drawState.pixelOffset;
         const u16 animIndex = drawState.animIndex % pActor->pPrototype->animCount;
         const Animation& currentAnim = pActor->pPrototype->animations[animIndex];
 		const s32 customPalette = drawState.useCustomPalette ? drawState.palette : -1;
 
         switch (currentAnim.type) {
         case ANIMATION_TYPE_SPRITES: {
-            Sprite* outSprite = GetNextFreeSprite(&layer);
-            if (outSprite == nullptr) {
-                return false;
-            }
-
-            const s32 metaspriteIndex = (s32)currentAnim.metaspriteIndex;
-            const Metasprite* pMetasprite = Metasprites::GetMetasprite(metaspriteIndex);
-            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos + drawState.frameIndex, outSprite, 1, drawPos, drawState.hFlip, drawState.vFlip, customPalette);
+			Rendering::DrawMetaspriteSprite(drawState.layer, currentAnim.metaspriteIndex, drawState.frameIndex, drawPos, drawState.hFlip, drawState.vFlip, customPalette);
             break;
         }
         case ANIMATION_TYPE_METASPRITES: {
-            const s32 metaspriteIndex = (s32)currentAnim.metaspriteIndex + drawState.frameIndex;
-            const Metasprite* pMetasprite = Metasprites::GetMetasprite(metaspriteIndex);
-
-            Sprite* outSprites = GetNextFreeSprite(&layer, pMetasprite->spriteCount);
-            if (outSprites == nullptr) {
-                return false;
-            }
-
-            Rendering::Util::CopyMetasprite(pMetasprite->spritesRelativePos, outSprites, pMetasprite->spriteCount, drawPos, drawState.hFlip, drawState.vFlip, customPalette);
+			Rendering::DrawMetasprite(drawState.layer, currentAnim.metaspriteIndex + drawState.frameIndex, drawPos, drawState.hFlip, drawState.vFlip, customPalette);
             break;
         }
         default:
@@ -417,7 +335,7 @@ namespace Game {
 #pragma region Custom draw functions
     static bool DrawPlayerGun(Actor* pPlayer) {
         const ActorDrawState& drawState = pPlayer->drawState;
-        glm::i16vec2 drawPos = WorldPosToScreenPixels(pPlayer->position) + drawState.pixelOffset;
+        glm::i16vec2 drawPos = Rendering::WorldPosToScreenPixels(pPlayer->position) + drawState.pixelOffset;
 
         // Draw weapon first
         glm::i16vec2 weaponOffset;
@@ -441,17 +359,8 @@ namespace Game {
         }
         weaponOffset.x *= pPlayer->flags.facingDir;
 
-        Rendering::Util::CopyChrTiles(playerBank.tiles + weaponFrameBankOffset, pChr[1].tiles + playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
-
-        const Metasprite* bowMetasprite = Metasprites::GetMetasprite(weaponMetaspriteIndex);
-
-        SpriteLayer& layer = spriteLayers[SPRITE_LAYER_FG];
-        Sprite* outSprites = GetNextFreeSprite(&layer, bowMetasprite->spriteCount);
-        if (outSprites == nullptr) {
-            return false;
-        }
-
-        Rendering::Util::CopyMetasprite(bowMetasprite->spritesRelativePos, outSprites, bowMetasprite->spriteCount, drawPos + weaponOffset, drawState.hFlip, drawState.vFlip);
+		Rendering::CopyBankTiles(PLAYER_BANK_INDEX, weaponFrameBankOffset, 1, playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
+		Rendering::DrawMetasprite(SPRITE_LAYER_FG, weaponMetaspriteIndex, drawPos + weaponOffset, drawState.hFlip, drawState.vFlip, -1);
 
         return true;
     }
@@ -487,26 +396,14 @@ namespace Game {
         // Ascii character '*' = 0x2A
         constexpr u8 chrOffset = 0x2A;
 
-        SpriteLayer& layer = spriteLayers[pActor->drawState.layer];
-
         const s32 frameCount = currentAnim.frameCount;
-        const glm::i16vec2 pixelPos = WorldPosToScreenPixels(pActor->position);
+        const glm::i16vec2 pixelPos = Rendering::WorldPosToScreenPixels(pActor->position);
 
         for (u32 c = 0; c < strLength; c++) {
-            Sprite* outSprite = GetNextFreeSprite(&layer);
-            if (outSprite == nullptr) {
-                break;
-            }
-
+			glm::i16vec2 drawPos = pixelPos + glm::i16vec2{ c * 5, 0 };
             const s32 frameIndex = (numberStr[c] - chrOffset) % frameCount;
-            const u8 tileId = Metasprites::GetMetasprite(currentAnim.metaspriteIndex)->spritesRelativePos[frameIndex].tileId;
 
-            *outSprite = {
-                u16(pixelPos.y),
-                u16(pixelPos.x + c * 5),
-                tileId,
-                1
-            };
+			Rendering::DrawMetaspriteSprite(pActor->drawState.layer, currentAnim.metaspriteIndex, frameIndex, drawPos, false, false, -1);
         }
     }
 #pragma endregion
@@ -919,22 +816,27 @@ namespace Game {
     static void UpdateFadeToBlack(r32 progress) {
         progress = glm::smoothstep(0.0f, 1.0f, progress);
 
-        for (u32 i = 0; i < PALETTE_MEMORY_SIZE; i++) {
-            u8 baseColor = ((u8*)basePaletteColors)[i];
+        u8 colors[PALETTE_COLOR_COUNT];
+        for (u32 i = 0; i < PALETTE_COUNT; i++) {
+            Rendering::GetPalettePresetColors(i, colors);
+			for (u32 j = 0; j < PALETTE_COLOR_COUNT; j++) {
+                u8 color = colors[j];
 
-            const s32 baseBrightness = (baseColor & 0b1110000) >> 4;
-            const s32 hue = baseColor & 0b0001111;
+                const s32 baseBrightness = (color & 0b1110000) >> 4;
+                const s32 hue = color & 0b0001111;
 
-            const s32 minBrightness = hue == 0 ? 0 : -1;
+                const s32 minBrightness = hue == 0 ? 0 : -1;
 
-            s32 newBrightness = glm::mix(minBrightness, baseBrightness, 1.0f - progress);
+                s32 newBrightness = glm::mix(minBrightness, baseBrightness, 1.0f - progress);
 
-            if (newBrightness >= 0) {
-                ((u8*)pPalettes)[i] = hue | (newBrightness << 4);
-            }
-            else {
-                ((u8*)pPalettes)[i] = 0x00;
-            }
+                if (newBrightness >= 0) {
+                    colors[j] = hue | (newBrightness << 4);
+                }
+                else {
+                    colors[j] = 0x00;
+                }
+			}
+            Rendering::WritePaletteColors(i, colors);
         }
     }
 
@@ -1097,7 +999,7 @@ namespace Game {
             return false;
         }
 
-        const glm::vec2 viewportPos = GetViewportPos();
+        const glm::vec2 viewportPos = Rendering::GetViewportPos();
         const Scanline scanline = {
             (s32)(viewportPos.x * METATILE_DIM_PIXELS) + Random::GenerateInt(-state.magnitude, state.magnitude),
             (s32)(viewportPos.y * METATILE_DIM_PIXELS) + Random::GenerateInt(-state.magnitude, state.magnitude)
@@ -1386,11 +1288,7 @@ namespace Game {
     static void AnimatePlayerDead(Actor* pPlayer) {
         u8 frameIdx = !pPlayer->flags.inAir;
 
-        Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerDeadBankOffsets[frameIdx],
-            pChr[1].tiles + playerHeadFrameChrOffset,
-            8
-        );
+        Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerDeadBankOffsets[frameIdx], 1, playerHeadFrameChrOffset, 8);
 
         pPlayer->drawState.animIndex = 2;
         pPlayer->drawState.frameIndex = frameIdx;
@@ -1407,11 +1305,7 @@ namespace Game {
             frameIdx = ((pPlayer->playerState.flags.sitState & 0b01) ^ (pPlayer->playerState.sitCounter >> 3)) & 1;
         }
 
-        Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerSitBankOffsets[frameIdx],
-            pChr[1].tiles + playerHeadFrameChrOffset,
-            8
-        );
+		Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerSitBankOffsets[frameIdx], 1, playerHeadFrameChrOffset, 8);
 
         // Get wings in sitting position
         const bool wingsInPosition = pPlayer->playerState.wingFrame == PLAYER_WINGS_FLAP_END;
@@ -1421,11 +1315,7 @@ namespace Game {
             AdvanceAnimation(pPlayer->playerState.wingCounter, pPlayer->playerState.wingFrame, PLAYER_WING_FRAME_COUNT, wingAnimFrameLength, 0);
         }
 
-        Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerWingFrameBankOffsets[pPlayer->playerState.wingFrame],
-            pChr[1].tiles + playerWingFrameChrOffset,
-            playerWingFrameTileCount
-        );
+        Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerWingFrameBankOffsets[pPlayer->playerState.wingFrame], 1, playerWingFrameChrOffset, playerWingFrameTileCount);
 
         pPlayer->drawState.animIndex = 1;
         pPlayer->drawState.frameIndex = 0;
@@ -1464,11 +1354,7 @@ namespace Game {
         else if (moving) {
             headFrameIndex = PLAYER_HEAD_FWD;
         }
-        Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerHeadFrameBankOffsets[playerState.flags.aimMode * 4 + headFrameIndex],
-            pChr[1].tiles + playerHeadFrameChrOffset,
-            playerHeadFrameTileCount
-        );
+		Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerHeadFrameBankOffsets[playerState.flags.aimMode * 4 + headFrameIndex], 1, playerHeadFrameChrOffset, playerHeadFrameTileCount);
 
         s32 legsFrameIndex = PLAYER_LEGS_IDLE;
         if (descending || takingDamage) {
@@ -1480,11 +1366,7 @@ namespace Game {
         else if (moving) {
             legsFrameIndex = PLAYER_LEGS_FWD;
         }
-        Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerLegsFrameBankOffsets[legsFrameIndex],
-            pChr[1].tiles + playerLegsFrameChrOffset,
-            playerLegsFrameTileCount
-        );
+		Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerLegsFrameBankOffsets[legsFrameIndex], 1, playerLegsFrameChrOffset, playerLegsFrameTileCount);
 
         // When jumping or falling, wings get into proper position and stay there for the duration of the jump/fall
         const bool wingsInPosition = (jumping && playerState.wingFrame == PLAYER_WINGS_ASCEND) || (falling && playerState.wingFrame == PLAYER_WINGS_DESCEND);
@@ -1496,11 +1378,7 @@ namespace Game {
             AdvanceAnimation(playerState.wingCounter, playerState.wingFrame, PLAYER_WING_FRAME_COUNT, wingAnimFrameLength, 0);
         }
 
-        Rendering::Util::CopyChrTiles(
-            playerBank.tiles + playerWingFrameBankOffsets[playerState.wingFrame],
-            pChr[1].tiles + playerWingFrameChrOffset,
-            playerWingFrameTileCount
-        );
+		Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerWingFrameBankOffsets[playerState.wingFrame], 1, playerWingFrameChrOffset, playerWingFrameTileCount);
 
         // Setup draw data
         s32 vOffset = 0;
@@ -2057,7 +1935,7 @@ namespace Game {
                 HandleLevelExit();
             }
 
-            ClearSpriteLayers(spriteLayers);
+            Rendering::ClearSpriteLayers();
             DrawActors();
             // Draw HUD
             DrawPlayerHealthBar();
@@ -2105,13 +1983,13 @@ namespace Game {
             return;
         }
 
-        SetViewportPos(glm::vec2(0.0f), false);
+        Rendering::SetViewportPos(glm::vec2(0.0f), false);
 
         // Clear actors
         actors.Clear();
 
         if (refresh) {
-            RefreshViewport();
+            Rendering::RefreshViewport();
         }
     }
 
@@ -2149,48 +2027,24 @@ namespace Game {
         gameplayFramesElapsed = 0;
 
         if (refresh) {
-            RefreshViewport();
+            Rendering::RefreshViewport();
         }
     }
 
     void Initialize() {
         // Rendering data
-        pRenderSettings = Rendering::GetSettingsPtr();
-        pChr = Rendering::GetChrPtr(0);
-        pPalettes = Rendering::GetPalettePtr(0);
-        pNametables = Rendering::GetNametablePtr(0);
-        pScanlines = Rendering::GetScanlinePtr(0);
+        pRenderSettings = ::Rendering::GetSettingsPtr();
+        pChr = ::Rendering::GetChrPtr(0);
+        pPalettes = ::Rendering::GetPalettePtr(0);
+        pNametables = ::Rendering::GetNametablePtr(0);
+        pScanlines = ::Rendering::GetScanlinePtr(0);
 
-        ClearSpriteLayers(spriteLayers, true);
-
-        // Init chr memory
-        // TODO: Pre-process these instead of loading from bitmap at runtime!
-        ChrSheet temp;
-        Rendering::Util::CreateChrSheet("assets/chr000.bmp", &temp);
-        Rendering::Util::CopyChrTiles(temp.tiles, pChr[0].tiles, CHR_SIZE_TILES);
-        Rendering::Util::CreateChrSheet("assets/chr001.bmp", &temp);
-        Rendering::Util::CopyChrTiles(temp.tiles, pChr[1].tiles, CHR_SIZE_TILES);
-
-        Rendering::Util::CreateChrSheet("assets/player.bmp", &playerBank);
-
-        //u8 paletteColors[8 * 8];
-        Rendering::Util::LoadPaletteColorsFromFile("assets/palette.dat", basePaletteColors);
-
-        for (u32 i = 0; i < PALETTE_MEMORY_SIZE; i++) {
-            memcpy(pPalettes, basePaletteColors, PALETTE_MEMORY_SIZE);
-        }
+        Rendering::Init();
 
         Tiles::LoadTileset("assets/forest.til");
         Metasprites::Load("assets/meta.spr");
         Levels::LoadLevels("assets/levels.lev");
         Actors::LoadPrototypes("assets/actors.prt");
-
-        // Initialize scanline state
-        for (int i = 0; i < SCANLINE_COUNT; i++) {
-            pScanlines[i] = { 0, 0 };
-        }
-
-        SetViewportPos(glm::vec2(0.0f), false);
 
         // TEMP SOUND STUFF
         jumpSfx = Audio::LoadSound("assets/jump.nsf");
@@ -2235,7 +2089,7 @@ namespace Game {
         return paused;
     }
     void SetPaused(bool p) {
-        ClearSpriteLayers(spriteLayers);
+        Rendering::ClearSpriteLayers();
         paused = p;
     }
 

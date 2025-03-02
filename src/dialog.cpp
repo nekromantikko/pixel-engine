@@ -2,7 +2,7 @@
 #include "rendering_util.h"
 #include "tiles.h"
 #include "game.h"
-#include "viewport.h"
+#include "game_rendering.h"
 #include "level.h"
 #define GLM_FORCE_RADIANS
 #include <glm.hpp>
@@ -55,7 +55,7 @@ static void CopyBoxTileToNametable(Nametable* pNametables, const glm::ivec2& wor
 }
 
 static void DrawBgBoxAnimated(const glm::ivec2& viewportOffset, const glm::ivec2& size, const glm::ivec2 maxSize, u8 palette) {
-    const glm::vec2 viewportPos = Game::GetViewportPos();
+    const glm::vec2 viewportPos = Game::Rendering::GetViewportPos();
     
     const glm::ivec2 worldPos = viewportOffset + glm::ivec2(viewportPos);
     const glm::ivec2 sizeTiles(size.x << 1, size.y << 1);
@@ -113,7 +113,7 @@ static bool AnimBgBoxCoroutine(void* userData) {
 }
 
 static void DrawBgText(const glm::ivec2& boxViewportOffset, const glm::ivec2& boxSize, const char* pText, u32 length) {
-    const glm::vec2 viewportPos = Game::GetViewportPos();
+    const glm::vec2 viewportPos = Game::Rendering::GetViewportPos();
     const glm::ivec2 worldPos = boxViewportOffset + glm::ivec2(viewportPos);
     const glm::ivec2 worldTilePos(worldPos.x * METATILE_DIM_TILES, worldPos.y * METATILE_DIM_TILES);
     const glm::ivec2 innerSizeTiles((boxSize.x << 1) - 2, (boxSize.y << 1) - 2);
@@ -163,7 +163,7 @@ static void DrawBgText(const glm::ivec2& boxViewportOffset, const glm::ivec2& bo
 }
 
 static void ClearBgText(const glm::ivec2& boxViewportOffset, const glm::ivec2& boxSize) {
-    const glm::vec2 viewportPos = Game::GetViewportPos();
+    const glm::vec2 viewportPos = Game::Rendering::GetViewportPos();
     const glm::ivec2 worldPos = boxViewportOffset + glm::ivec2(viewportPos);
     const glm::ivec2 worldTilePos(worldPos.x * METATILE_DIM_TILES, worldPos.y * METATILE_DIM_TILES);
     const glm::ivec2 innerSizeTiles((boxSize.x << 1) - 2, (boxSize.y << 1) - 2);

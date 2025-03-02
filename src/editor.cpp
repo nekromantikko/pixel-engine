@@ -11,7 +11,7 @@
 #include "metasprite.h"
 #include "game.h"
 #include "level.h"
-#include "viewport.h"
+#include "game_rendering.h"
 #include "actors.h"
 #include "audio.h"
 #include "random.h"
@@ -1406,7 +1406,7 @@ static PoolHandle<Actor> GetHoveredActorHandle(const Level* pLevel, const ImVec2
 }
 
 static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboard& clipboard, u32& selectedLevel, PoolHandle<Actor>& selectedActorHandle) {
-	glm::vec2 viewportPos = Game::GetViewportPos();
+	glm::vec2 viewportPos = Game::Rendering::GetViewportPos();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -1460,7 +1460,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 			newViewportPos.y -= (newDelta.y - dragDelta.y) / renderScale / METATILE_DIM_PIXELS;
 			dragDelta = newDelta;
 
-			viewportPos = Game::SetViewportPos(newViewportPos);
+			viewportPos = Game::Rendering::SetViewportPos(newViewportPos);
 			scrolling = true;
 		}
 
@@ -1650,7 +1650,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 	if (editing) {
 		ImGui::SameLine();
 		if (ImGui::Button("Refresh viewport")) {
-			Game::RefreshViewport();
+			Game::Rendering::RefreshViewport();
 		}
 	}
 
@@ -1841,7 +1841,7 @@ static void DrawGameWindow() {
 	ImGui::Begin("Level editor", &pContext->gameWindowOpen, ImGuiWindowFlags_MenuBar);
 
 	Level* pCurrentLevel = Game::GetCurrentLevel();
-	const glm::vec2 viewportPos = Game::GetViewportPos();
+	const glm::vec2 viewportPos = Game::Rendering::GetViewportPos();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
 
 	static u32 selectedLevel = 0;
@@ -1868,7 +1868,7 @@ static void DrawGameWindow() {
 			}
 			if (ImGui::MenuItem("Revert changes")) {
 				Levels::LoadLevels("assets/levels.lev");
-				Game::RefreshViewport();
+				Game::Rendering::RefreshViewport();
 			}
 			ImGui::EndMenu();
 		}

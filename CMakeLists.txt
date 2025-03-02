@@ -49,7 +49,7 @@ set(SOURCES
 		src/rendering_util.cpp
 		src/rendering_vulkan.cpp
 		src/system.cpp
-		src/viewport.cpp
+		src/game_rendering.cpp
 		src/tiles.cpp
 		src/actors.cpp
 		src/audio.cpp
@@ -71,7 +71,7 @@ set(HEADERS
 		src/rendering_util.h
 		src/system.h
 		src/typedef.h
-		src/viewport.h
+		src/game_rendering.h
 		src/collision.h
 		src/tiles.h
 		src/actors.h)
