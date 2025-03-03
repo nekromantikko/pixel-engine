@@ -60,21 +60,21 @@ bool Tiles::PointInMapBounds(const Tilemap* pTilemap, const glm::vec2& pos) {
 	return true;
 }
 
-static s32 GetScreenIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
+s32 Tiles::GetScreenIndex(const glm::ivec2& pos) {
     return (pos.x / VIEWPORT_WIDTH_METATILES) + (pos.y / VIEWPORT_HEIGHT_METATILES) * TILEMAP_MAX_DIM_SCREENS;
 }
 
-static s32 GetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
+s32 Tiles::GetTileIndex(const glm::ivec2& pos) {
     return (pos.x % VIEWPORT_WIDTH_METATILES) + (pos.y % VIEWPORT_HEIGHT_METATILES) * VIEWPORT_WIDTH_METATILES;
 }
 
-s32 Tiles::GetTilesetIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
+s32 Tiles::GetTilesetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
     if (!PointInMapBounds(pTilemap, pos)) {
         return -1;
     }
 
-    const s32 screenIndex = GetScreenIndex(pTilemap, pos);
-    const s32 i = GetTileIndex(pTilemap, pos);
+    const s32 screenIndex = GetScreenIndex(pos);
+    const s32 i = GetTileIndex(pos);
 
     return pTilemap->screens[screenIndex].tiles[i];
 }
@@ -88,7 +88,7 @@ const TilesetTile* Tiles::GetTilesetTile(const Tilemap* pTilemap, const s32& til
 }
 
 const TilesetTile* Tiles::GetTilesetTile(const Tilemap* pTilemap, const glm::ivec2& pos) {
-    s32 index = GetTilesetIndex(pTilemap, pos);
+    s32 index = GetTilesetTileIndex(pTilemap, pos);
     return GetTilesetTile(pTilemap, index);
 }
 
@@ -106,8 +106,8 @@ bool Tiles::SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& 
         return false;
     }
 
-    const s32 screenIndex = GetScreenIndex(pTilemap, pos);
-    const s32 i = GetTileIndex(pTilemap, pos);
+    const s32 screenIndex = GetScreenIndex(pos);
+    const s32 i = GetTileIndex(pos);
 
     return SetTilesetTile(pTilemap, screenIndex, i, tilesetIndex);
 }

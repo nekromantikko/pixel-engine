@@ -5,6 +5,8 @@
 #include "game.h"
 #include "input.h"
 #include "audio.h"
+#define GLM_FORCE_RADIANS
+#include <glm.hpp>
 
 #ifdef EDITOR
 #include "editor.h"

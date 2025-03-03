@@ -1,7 +1,7 @@
 #include "dialog.h"
 #include "rendering_util.h"
 #include "tiles.h"
-#include "game.h"
+#include "game_state.h"
 #include "game_rendering.h"
 #include "level.h"
 #define GLM_FORCE_RADIANS
@@ -32,7 +32,7 @@ static void CopyLevelTileToNametable(Nametable* pNametables, const Tilemap* pTil
     const u32 nametableIndex = Tiles::GetNametableIndex(worldPos);
     const glm::ivec2 nametableOffset = Tiles::GetNametableOffset(worldPos);
 
-    const s32 tilesetIndex = Tiles::GetTilesetIndex(pTilemap, worldPos);
+    const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, worldPos);
     const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
 
     const Metatile& metatile = tile->metatile;

@@ -1,4 +1,5 @@
 #include "game_rendering.h"
+#include "game_state.h"
 #include "level.h"
 #include "system.h"
 #include "tiles.h"
@@ -84,7 +85,7 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
                 continue;
             }
 
-            const s32 tilesetIndex = Tiles::GetTilesetIndex(pLevel->pTilemap, { x, y });
+            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pLevel->pTilemap, { x, y });
             const TilesetTile* tile = Tiles::GetTilesetTile(pLevel->pTilemap, tilesetIndex);
 
             if (!tile) {
@@ -192,7 +193,7 @@ void Game::Rendering::RefreshViewport() {
 
     for (s32 x = xStart; x < xEnd; x++) {
         for (s32 y = yStart; y < yEnd; y++) {
-            const s32 tilesetIndex = Tiles::GetTilesetIndex(pLevel->pTilemap, { x, y });
+            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pLevel->pTilemap, { x, y });
             const TilesetTile* tile = Tiles::GetTilesetTile(pLevel->pTilemap, tilesetIndex);
 
             if (!tile) {

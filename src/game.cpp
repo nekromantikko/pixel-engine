@@ -1,6 +1,7 @@
 #include "game.h"
 #include "system.h"
 #include "game_input.h"
+#include "game_state.h"
 #include <cstring>
 #include <cstdio>
 #include "level.h"
@@ -17,13 +18,11 @@
 #include "fixed_hash_map.h"
 #include "coroutines.h"
 #include "dialog.h"
+#include "game_ui.h"
 
 namespace Game {
     r64 secondsElapsed = 0.0f;
     u32 clockCounter = 0;
-
-    // 16ms Frames elapsed while not paused
-    u32 gameplayFramesElapsed = 0;
 
     // Rendering data
     RenderSettings* pRenderSettings;
@@ -31,49 +30,6 @@ namespace Game {
     Nametable* pNametables;
     Scanline* pScanlines;
     Palette* pPalettes;
-
-    Level* pCurrentLevel = nullptr;
-
-    Pool<Actor, MAX_DYNAMIC_ACTOR_COUNT> actors;
-    Pool<PoolHandle<Actor>, MAX_DYNAMIC_ACTOR_COUNT> actorRemoveList;
-
-    // Global player stuff
-    PoolHandle<Actor> playerHandle;
-    u16 playerMaxHealth = 96;
-    u16 playerHealth = 96;
-    u16 playerDispRedHealth = 96;
-    u16 playerDispYellowHealth = 96;
-    u16 playerExp = 0;
-    u16 playerDispExp = 0;
-    u8 playerWeapon = PLAYER_WEAPON_LAUNCHER;
-    u16 playerDeathCounter = 0;
-
-    PoolHandle<Actor> interactableHandle;
-
-    struct Checkpoint {
-        u16 levelIndex;
-        u8 screenIndex;
-    };
-    Checkpoint lastCheckpoint;
-
-    struct ExpRemnant {
-        s32 levelIndex = -1;
-        glm::vec2 position;
-        u16 value;
-    };
-    ExpRemnant expRemnant;
-
-    struct PersistedActorState {
-        bool dead : 1 = false;
-        bool permaDead : 1 = false;
-        bool activated : 1 = false;
-    };
-
-    FixedHashMap<PersistedActorState> persistedActorStates;
-
-    bool pauseGameplay = false;
-
-    ChrSheet playerBank;
 
     bool paused = false;
 
@@ -133,7 +89,7 @@ namespace Game {
 
 #pragma region Viewport
     static void UpdateViewport() {
-        Actor* pPlayer = actors.Get(playerHandle);
+        Actor* pPlayer = GetPlayer();
         if (!pPlayer) {
             return;
         }
@@ -175,124 +131,15 @@ namespace Game {
 
         return true;
     }
-
-    static u8 GetScreenIndex(const glm::vec2 position) {
-        const u32 xScreen = position.x / VIEWPORT_WIDTH_TILES;
-        const u32 yScreen = position.y / VIEWPORT_HEIGHT_TILES;
-
-        return xScreen + yScreen * TILEMAP_MAX_DIM_SCREENS;
-    }
-#pragma endregion
-
-#pragma region Callbacks
-    static void ReviveKilledEnemy(u64 id, PersistedActorState& persistedState) {
-        persistedState.dead = false;
-    }
 #pragma endregion
 
 #pragma region UI
-    static void DrawPlayerHealthBar() {
-        const u16 xStart = 16;
-        const u16 y = 16;
-
-        const u32 totalSegments = playerMaxHealth >> 2;
-        const u32 fullRedSegments = playerDispRedHealth >> 2;
-        const u32 fullYellowSegments = playerDispYellowHealth >> 2;
-
-        u16 x = xStart;
-        for (u32 i = 0; i < totalSegments; i++) {
-            const u16 healthDrawn = (i * 4);
-            const u16 remainingRedHealth = healthDrawn > playerDispRedHealth ? 0 : playerDispRedHealth - healthDrawn;
-            const u16 remainingYellowHealth = healthDrawn > playerDispYellowHealth ? 0 : playerDispYellowHealth - healthDrawn;
-
-            u8 tileId;
-            if (i < fullRedSegments) {
-                tileId = 0xe4;
-            }
-            else if (i < fullYellowSegments) {
-                tileId = 0xe5 + (remainingRedHealth & 3);
-            }
-            else {
-                if (remainingYellowHealth != remainingRedHealth) {
-                    tileId = 0xe8 + (remainingYellowHealth & 3);
-                }
-                else tileId = 0xe0 + (remainingRedHealth & 3);
-            }
-
-            Sprite sprite{};
-            sprite.tileId = tileId;
-            sprite.palette = 0x1;
-            sprite.x = x;
-            sprite.y = y;
-            Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
-
-            x += 8;
-        }
-    }
-
-    static void DrawExpCounter() {
-        static char buffer[10];
-        snprintf(buffer, sizeof(buffer), "%05u", playerDispExp);
-        u32 length = strlen(buffer);
-
-        const u16 xStart = VIEWPORT_WIDTH_PIXELS - 16 - (length*8);
-        const u16 y = 16;
-
-        // Draw halo indicator
-        Sprite sprite{};
-        sprite.tileId = 0x68;
-        sprite.palette = 0x0;
-        sprite.x = xStart - 8;
-        sprite.y = y;
-        Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
-
-        // Draw counter
-        u16 x = xStart;
-        for (u32 i = 0; i < length; i++) {
-            Sprite sprite{};
-            sprite.tileId = 0xd6 + buffer[i] - '0';
-            sprite.palette = 0x1;
-            sprite.x = x;
-            sprite.y = y;
-            Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
-
-            x += 8;
-        }
-    }
-
-    static bool DrawActor(const Actor* pActor) {
-        const ActorDrawState& drawState = pActor->drawState;
-
-        // Culling
-        if (!Rendering::PositionInViewportBounds(pActor->position) || !drawState.visible) {
-            return false;
-        }
-
-        glm::i16vec2 drawPos = Rendering::WorldPosToScreenPixels(pActor->position) + drawState.pixelOffset;
-        const u16 animIndex = drawState.animIndex % pActor->pPrototype->animCount;
-        const Animation& currentAnim = pActor->pPrototype->animations[animIndex];
-		const s32 customPalette = drawState.useCustomPalette ? drawState.palette : -1;
-
-        switch (currentAnim.type) {
-        case ANIMATION_TYPE_SPRITES: {
-			Rendering::DrawMetaspriteSprite(drawState.layer, currentAnim.metaspriteIndex, drawState.frameIndex, drawPos, drawState.hFlip, drawState.vFlip, customPalette);
-            break;
-        }
-        case ANIMATION_TYPE_METASPRITES: {
-			Rendering::DrawMetasprite(drawState.layer, currentAnim.metaspriteIndex + drawState.frameIndex, drawPos, drawState.hFlip, drawState.vFlip, customPalette);
-            break;
-        }
-        default:
-            break;
-        }
-
-        return true;
-    }
+    
 
     static void SetDamagePaletteOverride(Actor* pActor, u16 damageCounter) {
 		if (damageCounter > 0) {
 			pActor->drawState.useCustomPalette = true;
-			pActor->drawState.palette = (gameplayFramesElapsed / 3) % 4;
+			pActor->drawState.palette = (GetFramesElapsed() / 3) % 4;
 		}
 		else {
 			pActor->drawState.useCustomPalette = false;
@@ -341,6 +188,7 @@ namespace Game {
         glm::i16vec2 weaponOffset;
         u8 weaponFrameBankOffset;
         u32 weaponMetaspriteIndex;
+        const u16 playerWeapon = GetPlayerWeapon();
         switch (playerWeapon) {
         case PLAYER_WEAPON_BOW: {
             weaponOffset = playerBowOffsets[pPlayer->playerState.flags.aimMode];
@@ -366,10 +214,10 @@ namespace Game {
     }
 
     static void DrawPlayer(Actor* pPlayer) {
-        if (playerHealth != 0 && pPlayer->playerState.flags.sitState == PLAYER_STANDING) {
+        if (GetPlayerHealth() != 0 && pPlayer->playerState.flags.sitState == PLAYER_STANDING) {
             DrawPlayerGun(pPlayer);
         }
-        DrawActor(pPlayer);
+        DrawActorDefault(pPlayer);
     }
 
     // Calls itoa, but adds a plus sign if value is positive
@@ -408,153 +256,10 @@ namespace Game {
     }
 #pragma endregion
 
-#pragma region Actor initialization
-    static void InitializeActor(Actor* pActor) {
-        const ActorPrototype* pPrototype = pActor->pPrototype;
-
-        pActor->flags.facingDir = ACTOR_FACING_RIGHT;
-        pActor->flags.inAir = true;
-        pActor->flags.active = true;
-        pActor->flags.pendingRemoval = false;
-
-        pActor->initialPosition = pActor->position;
-        pActor->initialVelocity = pActor->velocity;
-
-        pActor->drawState = ActorDrawState{};
-
-        pActor->pUpdateFn = nullptr;
-        pActor->pDrawFn = nullptr;
-
-        switch (pPrototype->type) {
-        case ACTOR_TYPE_PLAYER: {
-            pActor->playerState.damageCounter = 0;
-            pActor->playerState.sitCounter = 0;
-            pActor->playerState.flags.aimMode = PLAYER_AIM_FWD;
-            pActor->playerState.flags.doubleJumped = false;
-            pActor->playerState.flags.sitState = PLAYER_STANDING;
-            pActor->playerState.flags.slowFall = false;
-            pActor->drawState.layer = SPRITE_LAYER_FG;
-            pActor->pDrawFn = DrawPlayer;
-            break;
-        }
-        case ACTOR_TYPE_NPC: {
-            pActor->npcState.health = pPrototype->npcData.health;
-            pActor->npcState.damageCounter = 0;
-            pActor->drawState.layer = SPRITE_LAYER_FG;
-            break;
-        }
-        case ACTOR_TYPE_BULLET: {
-            pActor->bulletState.lifetime = pPrototype->bulletData.lifetime;
-            pActor->bulletState.lifetimeCounter = pPrototype->bulletData.lifetime;
-            pActor->drawState.layer = SPRITE_LAYER_FG;
-            break;
-        }
-        case ACTOR_TYPE_PICKUP: {
-            pActor->drawState.layer = SPRITE_LAYER_FG;
-            break;
-        }
-        case ACTOR_TYPE_EFFECT: {
-            pActor->effectState.lifetime = pPrototype->effectData.lifetime;
-            pActor->effectState.lifetimeCounter = pPrototype->effectData.lifetime;
-            pActor->drawState.layer = SPRITE_LAYER_FX;
-
-            if (pPrototype->subtype == EFFECT_SUBTYPE_NUMBERS) {
-                pActor->pDrawFn = DrawNumbers;
-            }
-
-            break;
-        }
-        case ACTOR_TYPE_CHECKPOINT: {
-            const PersistedActorState* pPersistState = persistedActorStates.Get(pActor->id);
-            if (pPersistState && pPersistState->activated) {
-                pActor->checkpointState.activated = true;
-            }
-            pActor->drawState.layer = SPRITE_LAYER_BG;
-            break;
-        }
-        default:
-            break;
-        }
-    }
-
-    static Actor* SpawnActor(const Actor* pTemplate) {
-        auto handle = actors.Add(*pTemplate);
-
-        if (handle == PoolHandle<Actor>::Null()) {
-            return nullptr;
-        }
-
-        if (pTemplate->pPrototype->type == ACTOR_TYPE_PLAYER) {
-            playerHandle = handle;
-        }
-
-        Actor* pActor = actors.Get(handle);
-        pActor->velocity = glm::vec2{};
-        InitializeActor(pActor);
-
-        return pActor;
-    }
-
-    static Actor* SpawnActor(u32 presetIndex, const glm::vec2& position, const glm::vec2& velocity = glm::vec2{}) {
-        auto handle = actors.Add();
-
-        if (handle == PoolHandle<Actor>::Null()) {
-            return nullptr;
-        }
-
-        Actor* pActor = actors.Get(handle);
-        // Clear previous data
-        *pActor = Actor{};
-
-        const ActorPrototype* pPrototype = Actors::GetPrototype(presetIndex);
-        pActor->id = Random::GenerateUUID();
-        pActor->pPrototype = pPrototype;
-        if (pPrototype->type == ACTOR_TYPE_PLAYER) {
-            playerHandle = handle;
-        }
-
-        pActor->position = position;
-        pActor->velocity = velocity;
-        InitializeActor(pActor);
-
-        return pActor;
-    }
-#pragma endregion
-
 #pragma region Collision
-    static bool ActorsColliding(const Actor* pActor, const Actor* pOther) {
-        const AABB& hitbox = pActor->pPrototype->hitbox;
-        const AABB& hitboxOther = pOther->pPrototype->hitbox;
-        if (Collision::BoxesOverlap(hitbox, pActor->position, hitboxOther, pOther->position)) {
-            return true;
-        }
-
-        return false;
-    }
-
-    // TODO: Actor collisions could use HitResult as well...
-    static void ForEachActorCollision(Actor* pActor, u16 type, u8 alignment, void (*callback)(Actor*, Actor*)) {
-        if (!pActor->flags.active || pActor->flags.pendingRemoval) {
-            return;
-        }
-        
-        for (u32 i = 0; i < actors.Count(); i++)
-        {
-            PoolHandle<Actor> handle = actors.GetHandle(i);
-            Actor* pOther = actors.Get(handle);
-
-            if (pOther == nullptr || pOther->pPrototype->type != type || pOther->pPrototype->alignment != alignment || pOther->flags.pendingRemoval || !pOther->flags.active) {
-                continue;
-            }
-
-            if (ActorsColliding(pActor, pOther)) {
-                callback(pActor, pOther);
-            }
-        }
-    }
-
+    
     static bool ActorCollidesWithPlayer(Actor* pActor, Actor* pPlayer) {
-        if (pPlayer == nullptr || playerHealth == 0) {
+        if (pPlayer == nullptr || GetPlayerHealth() == 0) {
             return false;
         }
 
@@ -566,7 +271,7 @@ namespace Game {
     static void ActorFacePlayer(Actor* pActor) {
         pActor->flags.facingDir = ACTOR_FACING_RIGHT;
 
-        Actor* pPlayer = actors.Get(playerHandle);
+        Actor* pPlayer = GetPlayer();
         if (pPlayer == nullptr) {
             return;
         }
@@ -581,7 +286,7 @@ namespace Game {
 
         const r32 dx = pActor->velocity.x;
 
-        Collision::SweepBoxHorizontal(pCurrentLevel->pTilemap, hitbox, pActor->position, dx, outHit);
+        Collision::SweepBoxHorizontal(GetCurrentLevel()->pTilemap, hitbox, pActor->position, dx, outHit);
         pActor->position.x = outHit.location.x;
         return outHit.blockingHit;
     }
@@ -591,7 +296,7 @@ namespace Game {
 
         const r32 dy = pActor->velocity.y;
 
-        Collision::SweepBoxVertical(pCurrentLevel->pTilemap, hitbox, pActor->position, dy, outHit);
+        Collision::SweepBoxVertical(GetCurrentLevel()->pTilemap, hitbox, pActor->position, dy, outHit);
         pActor->position.y = outHit.location.y;
         return outHit.blockingHit;
     }
@@ -602,31 +307,6 @@ namespace Game {
 #pragma endregion
 
 #pragma region Damage
-    struct ExpAnimState {
-        const u16& targetExp;
-        u16& currentExp;
-
-        r32 progress = 0.0f;
-    };
-
-    static bool AnimateExpCoroutine(void* userData) {
-        ExpAnimState& state = *(ExpAnimState*)userData;
-
-        state.progress += 0.05f;
-        const r32 t = glm::smoothstep(0.0f, 1.0f, state.progress);
-        state.currentExp = glm::mix(state.currentExp, state.targetExp, t);
-
-        return state.currentExp != state.targetExp;
-    }
-
-    static void AnimatePlayerExp() {
-        ExpAnimState state = {
-                .targetExp = playerExp,
-                .currentExp = playerDispExp,
-        };
-        StartCoroutine(AnimateExpCoroutine, state);
-    }
-
     // TODO: Where to get this info properly?
     constexpr u16 largeExpValue = 500;
     constexpr u16 smallExpValue = 10;
@@ -665,15 +345,9 @@ namespace Game {
     static void NPCDie(Actor* pActor) {
         pActor->flags.pendingRemoval = true;
 
-        PersistedActorState* persistState = persistedActorStates.Get(pActor->id);
-        if (persistState) {
-            persistState->dead = true;
-        }
-        else {
-            persistedActorStates.Add(pActor->id, {
-                .dead = true,
-                });
-        }
+        PersistedActorData persistData = GetPersistedActorData(pActor->id);
+        persistData.dead = true;
+        SetPersistedActorData(pActor->id, persistData);
 
         Audio::PlaySFX(&enemyDieSfx, CHAN_ID_NOISE);
         SpawnActor(pActor->pPrototype->npcData.spawnOnDeath, pActor->position);
@@ -689,13 +363,14 @@ namespace Game {
         }
     }
 
-    static bool ActorTakeDamage(Actor* pActor, u32 dmgValue, u16& health, u16& damageCounter) {
+    static u16 ActorTakeDamage(Actor* pActor, u32 dmgValue, u16 currentHealth, u16& damageCounter) {
         constexpr s32 damageDelay = 30;
 
-        if (dmgValue > health) {
-            health = 0;
+        u16 newHealth = currentHealth;
+        if (dmgValue > newHealth) {
+            newHealth = 0;
         }
-        else health -= dmgValue;
+        else newHealth -= dmgValue;
         damageCounter = damageDelay;
 
         // Spawn damage numbers
@@ -713,11 +388,7 @@ namespace Game {
             pDmg->effectState.value = -dmgValue;
         }
 
-        if (health <= 0) {
-            return false;
-        }
-
-        return true;
+        return newHealth;
     }
 #pragma endregion
 
@@ -735,24 +406,12 @@ namespace Game {
         pPlayer->position = hit.location;
     }
 
+    static bool ActorIsCheckpoint(const Actor* pActor) {
+		return pActor->pPrototype->type == ACTOR_TYPE_CHECKPOINT;
+    }
+
     static bool SpawnPlayerAtCheckpoint() {
-        Actor* pCheckpoint = nullptr;
-
-        for (u32 i = 0; i < actors.Count(); i++)
-        {
-            PoolHandle<Actor> handle = actors.GetHandle(i);
-            Actor* pActor = actors.Get(handle);
-
-            if (pActor == nullptr) {
-                continue;
-            }
-
-            if (pActor->pPrototype->type == ACTOR_TYPE_CHECKPOINT) {
-                pCheckpoint = pActor;
-                break;
-            }
-        }
-
+        Actor* pCheckpoint = GetFirstActor(ActorIsCheckpoint);
         if (pCheckpoint == nullptr) {
             return false;
         }
@@ -877,7 +536,7 @@ namespace Game {
             }
             LoadLevel(state->nextLevelIndex, state->nextScreenIndex, state->nextDirection);
             state->status = TRANSITION_FADE_IN;
-            pauseGameplay = false;
+            UnfreezeGameplay();
             break;
         }
         case TRANSITION_FADE_IN: {
@@ -895,10 +554,15 @@ namespace Game {
     }
 
     static void HandleLevelExit() {
-        const Actor* pPlayer = actors.Get(playerHandle);
+        const Actor* pPlayer = GetPlayer();
         if (pPlayer == nullptr) {
             return;
         }
+
+		Level* pCurrentLevel = GetCurrentLevel();
+		if (pCurrentLevel == nullptr) {
+			return;
+		}
 
         bool shouldExit = false;
         u8 exitDirection = 0;
@@ -949,41 +613,8 @@ namespace Game {
                 .nextDirection = enterDirection,
             };
             StartCoroutine(LevelTransitionCoroutine, state);
-            pauseGameplay = true;
+            FreezeGameplay();
         }
-    }
-
-    struct HealthAnimState {
-        const u16& targetHealth;
-        u16& currentHealth;
-
-        u16 delay = 12;
-        r32 progress = 0.0f;
-    };
-
-    static bool AnimateHealthCoroutine(void* userData) {
-        HealthAnimState& state = *(HealthAnimState*)userData;
-
-        if (state.delay > 0) {
-            state.delay--;
-            return true;
-        }
-
-        state.progress += 0.01f;
-        const r32 t = glm::smoothstep(0.0f, 1.0f, state.progress);
-        state.currentHealth = glm::mix(state.currentHealth, state.targetHealth, t);
-
-        return state.currentHealth != state.targetHealth;
-    }
-
-    static void AnimatePlayerHealth(u16 previousHealth) {
-        playerDispYellowHealth = previousHealth;
-        playerDispRedHealth = playerHealth;
-        HealthAnimState state = {
-            .targetHealth = playerHealth,
-            .currentHealth = playerDispYellowHealth
-        };
-        StartCoroutine(AnimateHealthCoroutine, state);
     }
 
     struct ScreenShakeState {
@@ -995,7 +626,7 @@ namespace Game {
         ScreenShakeState& state = *(ScreenShakeState*)userData;
 
         if (state.length == 0) {
-            pauseGameplay = false;
+            UnfreezeGameplay();
             return false;
         }
 
@@ -1016,27 +647,24 @@ namespace Game {
         // TODO: Animate standing up
 
         // Restore life
-        playerHealth = playerMaxHealth;
-        AnimatePlayerHealth(0);
+        SetPlayerHealth(GetPlayerMaxHealth());
     }
 
     static void PlayerDie(Actor* pPlayer) {
-        expRemnant = {
-            .levelIndex = Levels::GetIndex(pCurrentLevel),
-            .position = pPlayer->position,
-            .value = playerExp
-        };
-        playerExp = 0;
-        AnimatePlayerExp();
+		Level* pCurrentLevel = GetCurrentLevel();
+
+        SetExpRemnant(Levels::GetIndex(pCurrentLevel), pPlayer->position, GetPlayerExp());
+		SetPlayerExp(0);
 
         // Transition to checkpoint
+        const Checkpoint checkpoint = GetCheckpoint();
         LevelTransitionState state = {
-                .nextLevelIndex = lastCheckpoint.levelIndex,
-                .nextScreenIndex = lastCheckpoint.screenIndex,
+                .nextLevelIndex = checkpoint.levelIndex,
+                .nextScreenIndex = checkpoint.screenIndex,
                 .nextDirection = SCREEN_EXIT_DIR_DEATH_WARP,
         };
         StartCoroutine(LevelTransitionCoroutine, state, PlayerRevive);
-        pauseGameplay = true;
+        FreezeGameplay();
     }
 
     static void SpawnFeathers(Actor* pPlayer, u32 count) {
@@ -1053,19 +681,21 @@ namespace Game {
     }
 
     static void PlayerMortalHit(Actor* pPlayer) {
-        pauseGameplay = true;
+        FreezeGameplay();
         ScreenShakeState state = {
             .magnitude = 2,
             .length = 30
         };
         StartCoroutine(ShakeScreenCoroutine, state);
         pPlayer->velocity.y = -0.25f;
-        playerDeathCounter = 240;
+        pPlayer->playerState.deathCounter = 240;
     }
 
     static void HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
+        u16 health = GetPlayerHealth();
+
         // If invulnerable, or dead
-        if (pPlayer->playerState.damageCounter != 0 || playerHealth == 0) {
+        if (pPlayer->playerState.damageCounter != 0 || health == 0) {
             return;
         }
 
@@ -1074,14 +704,14 @@ namespace Game {
 
         u32 featherCount = Random::GenerateInt(1, 4);
 
-        const u16 prevHealth = playerHealth;
-        if (!ActorTakeDamage(pPlayer, damage, playerHealth, pPlayer->playerState.damageCounter)) {
+        health = ActorTakeDamage(pPlayer, damage, health, pPlayer->playerState.damageCounter);
+        if (health == 0) {
             PlayerMortalHit(pPlayer);
             featherCount = 8;
         }
 
         SpawnFeathers(pPlayer, featherCount);
-        AnimatePlayerHealth(prevHealth);
+        SetPlayerHealth(health);
 
         // Recoil
         constexpr r32 recoilSpeed = 0.046875f; // Recoil speed from Zelda 2
@@ -1106,12 +736,7 @@ namespace Game {
         pPlayer->playerState.sitCounter = 15;
     }
 
-    static void TriggerInteraction(Actor* pPlayer) {
-        if (interactableHandle == PoolHandle<Actor>::Null()) {
-            return;
-        }
-
-        Actor* pInteractable = actors.Get(interactableHandle);
+    static void TriggerInteraction(Actor* pPlayer, Actor* pInteractable) {
         if (pInteractable == nullptr) {
             return;
         }
@@ -1119,23 +744,7 @@ namespace Game {
         if (pInteractable->pPrototype->type == ACTOR_TYPE_CHECKPOINT) {
             pInteractable->checkpointState.activated = true;
 
-            PersistedActorState* persistState = persistedActorStates.Get(pInteractable->id);
-            if (persistState) {
-                persistState->activated = true;
-            }
-            else {
-                persistedActorStates.Add(pInteractable->id, {
-                    .activated = true,
-                    });
-            }
-
-            lastCheckpoint = {
-                .levelIndex = u16(Levels::GetIndex(pCurrentLevel)),
-                .screenIndex = GetScreenIndex(pInteractable->position)
-            };
-
-            // Revive enemies
-            persistedActorStates.ForEach(ReviveKilledEnemy);
+            ActivateCheckpoint(pInteractable);
 
             // Sit down
             PlayerSitDown(pPlayer);
@@ -1160,6 +769,7 @@ namespace Game {
         if (Input::ButtonDown(BUTTON_B) && playerState.shootCounter == 0) {
             playerState.shootCounter = shootDelay;
 
+            const u16 playerWeapon = GetPlayerWeapon();
             const s32 prototypeIndex = playerWeapon == PLAYER_WEAPON_LAUNCHER ? playerGrenadePrototypeIndex : playerArrowPrototypeIndex;
             Actor* pBullet = SpawnActor(prototypeIndex, pPlayer->position);
             if (pBullet == nullptr) {
@@ -1191,11 +801,23 @@ namespace Game {
         }
     }
 
+    static bool IsInteractable(const Actor* pActor) {
+        if (pActor->pPrototype->type == ACTOR_TYPE_NPC && pActor->pPrototype->alignment == ACTOR_ALIGNMENT_FRIENDLY) {
+            return true;
+        }
+
+        if (pActor->pPrototype->type == ACTOR_TYPE_CHECKPOINT) {
+            return true;
+        }
+
+        return false;
+    }
+
     static void PlayerInput(Actor* pPlayer) {
         constexpr r32 maxSpeed = 0.09375f; // Actual movement speed from Zelda 2
         constexpr r32 acceleration = maxSpeed / 24.f; // Acceleration from Zelda 2
 
-        const bool dead = playerHealth == 0;
+        const bool dead = GetPlayerHealth() == 0;
         const bool enteringLevel = pPlayer->playerState.entryDelayCounter > 0;
         const bool stunned = pPlayer->playerState.damageCounter > 0;
         const bool sitting = pPlayer->playerState.flags.sitState != PLAYER_STANDING;
@@ -1230,8 +852,9 @@ namespace Game {
             Game::AdvanceDialogText();
         }
         else if (!inputDisabled) {
-            if (interactableHandle != PoolHandle<Actor>::Null() && Input::ButtonPressed(BUTTON_B)) {
-            TriggerInteraction(pPlayer);
+			Actor* pInteractable = GetFirstActorCollision(pPlayer, IsInteractable);
+            if (pInteractable && Input::ButtonPressed(BUTTON_B)) {
+            TriggerInteraction(pPlayer, pInteractable);
             }
             else PlayerShoot(pPlayer);
         }
@@ -1278,10 +901,11 @@ namespace Game {
         }
 
         if (Input::ButtonPressed(BUTTON_SELECT)) {
+            u16 playerWeapon = GetPlayerWeapon();
             if (playerWeapon == PLAYER_WEAPON_LAUNCHER) {
-                playerWeapon = PLAYER_WEAPON_BOW;
+                SetPlayerWeapon(PLAYER_WEAPON_BOW);
             }
-            else playerWeapon = PLAYER_WEAPON_LAUNCHER;
+            else SetPlayerWeapon(PLAYER_WEAPON_LAUNCHER);
         }
     }
 
@@ -1327,7 +951,7 @@ namespace Game {
     static void AnimatePlayer(Actor* pPlayer) {
         PlayerState& playerState = pPlayer->playerState;
 
-        if (playerHealth == 0) {
+        if (GetPlayerHealth() == 0) {
             AnimatePlayerDead(pPlayer);
             return;
         }
@@ -1393,37 +1017,6 @@ namespace Game {
 		SetDamagePaletteOverride(pPlayer, playerState.damageCounter);
     }
 
-    static bool IsInteractable(const Actor* pActor) {
-        if (pActor->pPrototype->type == ACTOR_TYPE_NPC && pActor->pPrototype->alignment == ACTOR_ALIGNMENT_FRIENDLY) {
-            return true;
-        }
-
-        if (pActor->pPrototype->type == ACTOR_TYPE_CHECKPOINT) {
-            return true;
-        }
-
-        return false;
-    }
-
-    static void FindPlayerInteractableActor(Actor* pPlayer) {
-        for (u32 i = 0; i < actors.Count(); i++)
-        {
-            PoolHandle<Actor> handle = actors.GetHandle(i);
-            Actor* pOther = actors.Get(handle);
-
-            if (pOther == nullptr || pOther->flags.pendingRemoval || !pOther->flags.active) {
-                continue;
-            }
-
-            if (IsInteractable(pOther) && ActorsColliding(pPlayer, pOther)) {
-                interactableHandle = handle;
-                return;
-            }
-        }
-
-        interactableHandle = PoolHandle<Actor>::Null();
-    }
-
     static void UpdatePlayerSidescroller(Actor* pActor) {
         UpdateCounter(pActor->playerState.entryDelayCounter);
         UpdateCounter(pActor->playerState.damageCounter);
@@ -1432,16 +1025,14 @@ namespace Game {
             pActor->playerState.flags.sitState &= 1;
         }
         
-        if (playerDeathCounter != 0) {
-            if (!UpdateCounter(playerDeathCounter)) {
+        if (pActor->playerState.deathCounter != 0) {
+            if (!UpdateCounter(pActor->playerState.deathCounter)) {
                 PlayerDie(pActor);
             }
         }
         
         // Reset slow fall
         pActor->playerState.flags.slowFall = false;
-
-        FindPlayerInteractableActor(pActor);
 
         PlayerInput(pActor);
 
@@ -1482,17 +1073,23 @@ namespace Game {
         BulletDie(pBullet, pBullet->position);
 
         const u32 damage = Random::GenerateInt(1, 2);
-        if (!ActorTakeDamage(pEnemy, damage, pEnemy->npcState.health, pEnemy->npcState.damageCounter)) {
+        const u16 newHealth = ActorTakeDamage(pEnemy, damage, pEnemy->npcState.health, pEnemy->npcState.damageCounter);
+        if (newHealth == 0) {
             NPCDie(pEnemy);
         }
+        pEnemy->npcState.health = newHealth;
     }
+
+	static bool ActorIsHostileNPC(const Actor* pActor) {
+		return pActor->pPrototype->type == ACTOR_TYPE_NPC && pActor->pPrototype->alignment == ACTOR_ALIGNMENT_HOSTILE;
+	}
 
     static void BulletCollision(Actor* pActor) {
         if (pActor->pPrototype->alignment == ACTOR_ALIGNMENT_FRIENDLY) {
-            ForEachActorCollision(pActor, ACTOR_TYPE_NPC, ACTOR_ALIGNMENT_HOSTILE, HandleBulletEnemyCollision);
+            ForEachActorCollision(pActor, HandleBulletEnemyCollision, ActorIsHostileNPC);
         }
         else if (pActor->pPrototype->alignment == ACTOR_ALIGNMENT_HOSTILE) {
-            Actor* pPlayer = actors.Get(playerHandle);
+            Actor* pPlayer = GetPlayer();
             if (ActorCollidesWithPlayer(pActor, pPlayer)) {
                 HandlePlayerEnemyCollision(pPlayer, pActor);
                 BulletDie(pActor, pActor->position);
@@ -1609,7 +1206,7 @@ namespace Game {
             }
         }
 
-        Actor* pPlayer = actors.Get(playerHandle);
+        Actor* pPlayer = GetPlayer();
         if (ActorCollidesWithPlayer(pActor, pPlayer)) {
             HandlePlayerEnemyCollision(pPlayer, pActor);
         }
@@ -1624,14 +1221,14 @@ namespace Game {
         ActorFacePlayer(pActor);
 
         static const r32 amplitude = 4.0f;
-        const r32 sineTime = glm::sin(gameplayFramesElapsed / 60.f);
+        const r32 sineTime = glm::sin(GetFramesElapsed() / 60.f);
         pActor->position.y = pActor->initialPosition.y + sineTime * amplitude;
 
         // Shoot fireballs
         const bool shouldFire = Random::GenerateInt(0, 127) == 0;
         if (shouldFire) {
 
-            Actor* pPlayer = actors.Get(playerHandle);
+            Actor* pPlayer = GetPlayer();
             if (pPlayer != nullptr) {
                 const glm::vec2 playerDir = glm::normalize(pPlayer->position - pActor->position);
                 const glm::vec2 velocity = playerDir * 0.0625f;
@@ -1640,7 +1237,7 @@ namespace Game {
             }
         }
 
-        Actor* pPlayer = actors.Get(playerHandle);
+        Actor* pPlayer = GetPlayer();
         if (ActorCollidesWithPlayer(pActor, pPlayer)) {
             HandlePlayerEnemyCollision(pPlayer, pActor);
         }
@@ -1652,7 +1249,7 @@ namespace Game {
 
 #pragma region Pickups
     static void UpdateExpHalo(Actor* pActor) {
-        Actor* pPlayer = actors.Get(playerHandle);
+        Actor* pPlayer = GetPlayer();
 
         const glm::vec2 playerVec = pPlayer->position - pActor->position;
         const glm::vec2 playerDir = glm::normalize(playerVec);
@@ -1684,8 +1281,7 @@ namespace Game {
             Audio::PlaySFX(&expSfx, CHAN_ID_PULSE0);
             pActor->flags.pendingRemoval = true;
 
-            playerExp += pActor->pickupState.value;
-            AnimatePlayerExp();
+            AddPlayerExp(pActor->pickupState.value);
 
             return;
         }
@@ -1699,19 +1295,13 @@ namespace Game {
     }
 
     static void UpdateExpRemnant(Actor* pActor) {
-        Actor* pPlayer = actors.Get(playerHandle);
+        Actor* pPlayer = GetPlayer();
         if (ActorCollidesWithPlayer(pActor, pPlayer)) {
             Audio::PlaySFX(&expSfx, CHAN_ID_PULSE0);
             pActor->flags.pendingRemoval = true;
 
-            expRemnant.levelIndex = -1;
-
-            playerExp += pActor->pickupState.value;
-            ExpAnimState state = {
-                .targetExp = playerExp,
-                .currentExp = playerDispExp,
-            };
-            StartCoroutine(AnimateExpCoroutine, state);
+            ClearExpRemnant();
+			AddPlayerExp(pActor->pickupState.value);
 
             return;
         }
@@ -1766,6 +1356,9 @@ namespace Game {
         default:
             break;
         }
+
+        HandleLevelExit();
+        UpdateViewport();
     }
 
     static void UpdateNPC(Actor* pActor) {
@@ -1846,100 +1439,40 @@ namespace Game {
         }
     }
 
-    static void UpdateActors() {
-        
-        actorRemoveList.Clear();
-
-        for (u32 i = 0; i < actors.Count(); i++)
-        {
-            PoolHandle<Actor> handle = actors.GetHandle(i);
-            Actor* pActor = actors.Get(handle);
-
-            if (pActor == nullptr) {
-                continue;
-            }
-
-            if (pActor->flags.pendingRemoval) {
-                actorRemoveList.Add(handle);
-                continue;
-            }
-
-            if (!pActor->flags.active) {
-                continue;
-            }
-
-            switch (pActor->pPrototype->type) {
-            case ACTOR_TYPE_PLAYER: {
-                UpdatePlayer(pActor);
-                break;
-            }
-            case ACTOR_TYPE_NPC: {
-                UpdateNPC(pActor);
-                break;
-            }
-            case ACTOR_TYPE_BULLET: {
-                UpdateBullet(pActor);
-                break;
-            }
-            case ACTOR_TYPE_PICKUP: {
-                UpdatePickup(pActor);
-                break;
-            }
-            case ACTOR_TYPE_EFFECT: {
-                UpdateEffect(pActor);
-                break;
-            }
-            case ACTOR_TYPE_CHECKPOINT: {
-                UpdateCheckpoint(pActor);
-                break;
-            }
-            default:
-                break;
-            }
+    static void TempActorUpdateCallback(Actor* pActor) {
+        switch (pActor->pPrototype->type) {
+        case ACTOR_TYPE_PLAYER: {
+            UpdatePlayer(pActor);
+            break;
         }
-
-        for (u32 i = 0; i < actorRemoveList.Count(); i++) {
-            auto handle = *actorRemoveList.Get(actorRemoveList.GetHandle(i));
-            actors.Remove(handle);
+        case ACTOR_TYPE_NPC: {
+            UpdateNPC(pActor);
+            break;
         }
-    }
-
-    static void DrawActors() {
-		for (u32 i = 0; i < actors.Count(); i++)
-		{
-			Actor* pActor = actors.Get(actors.GetHandle(i));
-			if (pActor == nullptr || !pActor->flags.active) {
-				continue;
-			}
-
-			if (pActor->pDrawFn) {
-				pActor->pDrawFn(pActor);
-			}
-			else {
-				DrawActor(pActor);
-			}
-		}
+        case ACTOR_TYPE_BULLET: {
+            UpdateBullet(pActor);
+            break;
+        }
+        case ACTOR_TYPE_PICKUP: {
+            UpdatePickup(pActor);
+            break;
+        }
+        case ACTOR_TYPE_EFFECT: {
+            UpdateEffect(pActor);
+            break;
+        }
+        case ACTOR_TYPE_CHECKPOINT: {
+            UpdateCheckpoint(pActor);
+            break;
+        }
+        default:
+            break;
+        }
     }
 
     static void Step() {
-		Input::Update();
-
         if (!paused) {
-            gameplayFramesElapsed++;
-
-            StepCoroutines();
-
-            if (!pauseGameplay) {
-                UpdateActors();
-                UpdateViewport();
-                HandleLevelExit();
-            }
-
-            Rendering::ClearSpriteLayers();
-            DrawActors();
-            // Draw HUD
-            DrawPlayerHealthBar();
-            DrawExpCounter();
+            StepFrame(TempActorUpdateCallback);
         }
 
         /*if (ButtonPressed(BUTTON_START)) {
@@ -1968,69 +1501,6 @@ namespace Game {
     }
 
 #pragma region Public API
-    void LoadLevel(u32 index, s32 screenIndex, u8 direction, bool refresh) {
-        if (index >= MAX_LEVEL_COUNT) {
-            DEBUG_ERROR("Level count exceeded!");
-        }
-
-        pCurrentLevel = Levels::GetLevelsPtr() + index;
-
-        ReloadLevel(screenIndex, direction, refresh);
-    }
-
-    void UnloadLevel(bool refresh) {
-        if (pCurrentLevel == nullptr) {
-            return;
-        }
-
-        Rendering::SetViewportPos(glm::vec2(0.0f), false);
-
-        // Clear actors
-        actors.Clear();
-
-        if (refresh) {
-            Rendering::RefreshViewport();
-        }
-    }
-
-    void ReloadLevel(s32 screenIndex, u8 direction, bool refresh) {
-        if (pCurrentLevel == nullptr) {
-            return;
-        }
-
-        UnloadLevel(refresh);
-
-        for (u32 i = 0; i < pCurrentLevel->actors.Count(); i++)
-        {
-            auto handle = pCurrentLevel->actors.GetHandle(i);
-            const Actor* pActor = pCurrentLevel->actors.Get(handle);
-
-            const PersistedActorState* pPersistState = persistedActorStates.Get(pActor->id);
-            if (!pPersistState || !(pPersistState->dead || pPersistState->permaDead)) {
-                SpawnActor(pActor);
-            }
-
-        }
-
-        // Spawn player in sidescrolling level
-        if (pCurrentLevel->flags.type == LEVEL_TYPE_SIDESCROLLER) {
-            SpawnPlayerAtEntrance(pCurrentLevel, screenIndex, direction);
-            UpdateViewport();
-        }
-
-        // Spawn xp remnant
-        if (expRemnant.levelIndex == Levels::GetIndex(pCurrentLevel)) {
-            Actor* pRemnant = SpawnActor(xpRemnantPrototypeIndex, expRemnant.position);
-            pRemnant->pickupState.value = expRemnant.value;
-        }
-
-        gameplayFramesElapsed = 0;
-
-        if (refresh) {
-            Rendering::RefreshViewport();
-        }
-    }
-
     void Initialize() {
         // Rendering data
         pRenderSettings = ::Rendering::GetSettingsPtr();
@@ -2054,6 +1524,9 @@ namespace Game {
         expSfx = Audio::LoadSound("assets/exp.nsf");
         enemyDieSfx = Audio::LoadSound("assets/enemydie.nsf");
         //bgm = Audio::LoadSound("assets/music.nsf");
+
+		InitGameData();
+        InitGameState(GAME_STATE_PLAYING);
 
         // TODO: Level should load palettes and tileset?
         LoadLevel(0);
@@ -2091,13 +1564,6 @@ namespace Game {
     void SetPaused(bool p) {
         Rendering::ClearSpriteLayers();
         paused = p;
-    }
-
-    Level* GetCurrentLevel() {
-        return pCurrentLevel;
-    }
-    DynamicActorPool* GetActors() {
-        return &actors;
     }
 #pragma endregion
 }

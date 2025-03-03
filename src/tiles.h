@@ -80,7 +80,9 @@ namespace Tiles {
 
 	// New API
 	bool PointInMapBounds(const Tilemap* pTilemap, const glm::vec2& pos);
-	s32 GetTilesetIndex(const Tilemap* pTilemap, const glm::ivec2& pos);
+	s32 GetScreenIndex(const glm::ivec2& pos);
+	s32 GetTileIndex(const glm::ivec2& pos);
+	s32 GetTilesetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos);
 	const TilesetTile* GetTilesetTile(const Tilemap* pTilemap, const s32& tilesetIndex);
 	const TilesetTile* GetTilesetTile(const Tilemap* pTilemap, const glm::ivec2& pos);
 	bool SetTilesetTile(Tilemap* pTilemap, s32 screenIndex, s32 tileIndex, const s32& tilesetIndex);

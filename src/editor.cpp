@@ -12,6 +12,7 @@
 #include "game.h"
 #include "level.h"
 #include "game_rendering.h"
+#include "game_state.h"
 #include "actors.h"
 #include "audio.h"
 #include "random.h"
@@ -1582,7 +1583,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 							u32 clipboardIndex = y * selectionWidth + x;
 
 							const glm::ivec2 metatileWorldPos = { selectionTopLeft.x + x, selectionTopLeft.y + y };
-							const s32 tilesetIndex = Tiles::GetTilesetIndex(pTilemap, metatileWorldPos);
+							const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, metatileWorldPos);
 							clipboard.clipboard[clipboardIndex] = tilesetIndex;
 						}
 					}

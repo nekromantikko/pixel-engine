@@ -2,6 +2,7 @@
 #include "typedef.h"
 #include "collision.h"
 #include "metasprite.h"
+#include "memory_pool.h"
 
 static constexpr u32 MAX_ACTOR_PROTOTYPE_COUNT = 256;
 static constexpr u32 ACTOR_PROTOTYPE_MAX_NAME_LENGTH = 256;
@@ -117,6 +118,7 @@ struct PlayerState {
 	u16 sitCounter;
 
 	u16 entryDelayCounter;
+	u16 deathCounter;
 };
 
 #ifdef EDITOR
@@ -327,6 +329,10 @@ struct Actor {
 	ActorDrawFn pDrawFn;
 };
 
+typedef PoolHandle<Actor> ActorHandle;
+static constexpr u32 MAX_DYNAMIC_ACTOR_COUNT = 512;
+typedef Pool<Actor, MAX_DYNAMIC_ACTOR_COUNT> DynamicActorPool;
+
 namespace Actors {
 
 	// Prototypes
@@ -339,4 +345,24 @@ namespace Actors {
 	void ClearPrototypes();
 	void LoadPrototypes(const char* fname);
 	void SavePrototypes(const char* fname);
+}
+
+namespace Game {
+	Actor* SpawnActor(const Actor* pTemplate);
+	Actor* SpawnActor(const s32 prototypeIndex, const glm::vec2& position, const glm::vec2& velocity = {0.0f, 0.0f});
+	void ClearActors();
+
+	bool ActorValid(const Actor* pActor);
+	bool ActorsColliding(const Actor* pActor, const Actor* pOther);
+	void ForEachActorCollision(Actor* pActor, void (*callback)(Actor*, Actor*), bool (*filter)(const Actor*) = nullptr);
+	Actor* GetFirstActorCollision(Actor* pActor, bool (*filter)(const Actor*) = nullptr);
+	void ForEachActor(void (*callback)(Actor* pActor), bool (*filter)(const Actor*) = nullptr);
+	Actor* GetFirstActor(bool (*filter)(const Actor*) = nullptr);
+
+	Actor* GetPlayer();
+
+	DynamicActorPool* GetActors(); // TEMP
+	void UpdateActors(void (*tempCallback)(Actor* pActor));
+	bool DrawActorDefault(const Actor* pActor);
+	void DrawActors();
 }

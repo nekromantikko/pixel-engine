@@ -1,14 +1,10 @@
 #pragma once
 #include "typedef.h"
+#include "rendering.h"
 #define GLM_FORCE_RADIANS
 #include <glm.hpp>
 
 constexpr u32 PLAYER_BANK_INDEX = 2;
-
-struct Nametable;
-struct Tilemap;
-struct Sprite;
-struct ChrSheet;
 
 enum SpriteLayerType : u8 {
 	SPRITE_LAYER_UI,
