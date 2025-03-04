@@ -511,7 +511,7 @@ static bool DrawPlayerGun(const Actor* pPlayer) {
 }
 
 #pragma region Public API
-void Game::InitializePlayer(Actor* pPlayer) {
+void Game::InitializePlayer(Actor* pPlayer, const PersistedActorData& persistData) {
     pPlayer->state.playerState.entryDelayCounter = 0;
     pPlayer->state.playerState.deathCounter = 0;
     pPlayer->state.playerState.damageCounter = 0;

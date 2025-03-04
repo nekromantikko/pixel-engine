@@ -136,11 +136,11 @@ static void ViewportFollowPlayer() {
     Game::Rendering::SetViewportPos(viewportPos + delta);
 }
 
-static void StepGameplayFrame(void (*tempCallback)(Actor* pActor)) {
+static void StepGameplayFrame() {
 	if (!freezeGameplay) {
         gameplayFramesElapsed++;
 		
-        Game::UpdateActors(tempCallback);
+        Game::UpdateActors();
         ViewportFollowPlayer();
 	}
 
@@ -449,7 +449,7 @@ void Game::InitGameState(GameState initialState) {
     state = initialState;
 }
 
-void Game::StepFrame(void (*tempCallback)(Actor* pActor)) {
+void Game::StepFrame() {
     Input::Update();
     StepCoroutines();
 
@@ -457,7 +457,7 @@ void Game::StepFrame(void (*tempCallback)(Actor* pActor)) {
 	case GAME_STATE_TITLE:
 		break;
 	case GAME_STATE_PLAYING:
-		StepGameplayFrame(tempCallback);
+		StepGameplayFrame();
         break;
 	case GAME_STATE_PAUSED:
 		break;

@@ -34,41 +34,27 @@ static void InitializeActor(Actor* pActor) {
 
 	switch (pPrototype->type) {
 	case ACTOR_TYPE_PLAYER: {
-		Game::InitializePlayer(pActor);
+		Game::InitializePlayer(pActor, persistData);
 		break;
 	}
 	case ACTOR_TYPE_NPC: {
-		pActor->state.npcState.health = pPrototype->data.npcData.health;
-		pActor->state.npcState.damageCounter = 0;
-		pActor->drawState.layer = SPRITE_LAYER_FG;
+		Game::InitializeNPC(pActor, persistData);
 		break;
 	}
 	case ACTOR_TYPE_BULLET: {
-		pActor->state.bulletState.lifetime = pPrototype->data.bulletData.lifetime;
-		pActor->state.bulletState.lifetimeCounter = pPrototype->data.bulletData.lifetime;
-		pActor->drawState.layer = SPRITE_LAYER_FG;
+		Game::InitializeBullet(pActor, persistData);
 		break;
 	}
 	case ACTOR_TYPE_PICKUP: {
-		pActor->drawState.layer = SPRITE_LAYER_FG;
+		Game::InitializePickup(pActor, persistData);
 		break;
 	}
 	case ACTOR_TYPE_EFFECT: {
-		pActor->state.effectState.lifetime = pPrototype->data.effectData.lifetime;
-		pActor->state.effectState.lifetimeCounter = pPrototype->data.effectData.lifetime;
-		pActor->drawState.layer = SPRITE_LAYER_FX;
-
-		if (pPrototype->subtype == EFFECT_SUBTYPE_NUMBERS) {
-			//pActor->pDrawFn = DrawNumbers;
-		}
-
+		Game::InitializeEffect(pActor, persistData);
 		break;
 	}
 	case ACTOR_TYPE_CHECKPOINT: {
-		if (persistData.activated) {
-			pActor->state.checkpointState.activated = true;
-		}
-		pActor->drawState.layer = SPRITE_LAYER_BG;
+		Game::InitializeCheckpoint(pActor, persistData);
 		break;
 	}
 	default:
@@ -361,7 +347,7 @@ DynamicActorPool* Game::GetActors() {
 	return &actors;
 }
 
-void Game::UpdateActors(void (*tempCallback)(Actor* pActor)) {
+void Game::UpdateActors() {
 	for (u32 i = 0; i < actors.Count(); i++)
 	{
 		PoolHandle<Actor> handle = actors.GetHandle(i);
@@ -380,7 +366,9 @@ void Game::UpdateActors(void (*tempCallback)(Actor* pActor)) {
 			continue;
 		}
 
-		tempCallback(pActor);
+		if (pActor->pUpdateFn) {
+			pActor->pUpdateFn(pActor);
+		}
 	}
 
 	for (u32 i = 0; i < actorRemoveList.Count(); i++) {

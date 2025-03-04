@@ -76,7 +76,7 @@ namespace Game {
 	u32 GetFramesElapsed();
 
     void InitGameState(GameState initialState);
-    void StepFrame(void (*tempCallback)(Actor* pActor));
+    void StepFrame();
 
     void TriggerScreenShake(s16 magnitude, u16 duration, bool freezeGameplay);
     void TriggerLevelTransition(u16 targetLevelIndex, u16 targetScreenIndex, u8 enterDirection, void (*callback)() = nullptr);

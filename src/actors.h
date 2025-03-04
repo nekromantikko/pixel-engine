@@ -93,7 +93,7 @@ namespace Game {
 	u16 ActorTakeDamage(Actor* pActor, u32 dmgValue, u16 currentHealth, u16& damageCounter);
 
 	DynamicActorPool* GetActors(); // TEMP
-	void UpdateActors(void (*tempCallback)(Actor* pActor));
+	void UpdateActors();
 	bool DrawActorDefault(const Actor* pActor);
 	void DrawActors();
 }

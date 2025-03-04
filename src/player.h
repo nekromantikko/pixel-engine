@@ -80,9 +80,10 @@ constexpr const char* PLAYER_SUBTYPE_NAMES[PLAYER_SUBTYPE_COUNT] = { "Sidescroll
 #pragma endregion
 
 struct Actor;
+struct PersistedActorData;
 
 namespace Game {
-	void InitializePlayer(Actor* pPlayer);
+	void InitializePlayer(Actor* pPlayer, const PersistedActorData& persistData);
 	void UpdatePlayer(Actor* pPlayer);
 	void DrawPlayer(const Actor* pPlayer);
 
