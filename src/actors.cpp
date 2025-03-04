@@ -2,7 +2,12 @@
 #include "actor_prototypes.h"
 #include "game_rendering.h"
 #include "game_state.h"
+#include "level.h"
 #include "random.h"
+#include <gtc/constants.hpp>
+
+// TODO: Define in editor in game settings or similar
+constexpr s32 dmgNumberPrototypeIndex = 5;
 
 static Pool<Actor, MAX_DYNAMIC_ACTOR_COUNT> actors;
 static Pool<ActorHandle, MAX_DYNAMIC_ACTOR_COUNT> actorRemoveList;
@@ -29,16 +34,7 @@ static void InitializeActor(Actor* pActor) {
 
 	switch (pPrototype->type) {
 	case ACTOR_TYPE_PLAYER: {
-		pActor->state.playerState.entryDelayCounter = 0;
-		pActor->state.playerState.deathCounter = 0;
-		pActor->state.playerState.damageCounter = 0;
-		pActor->state.playerState.sitCounter = 0;
-		pActor->state.playerState.flags.aimMode = PLAYER_AIM_FWD;
-		pActor->state.playerState.flags.doubleJumped = false;
-		pActor->state.playerState.flags.sitState = PLAYER_STANDING;
-		pActor->state.playerState.flags.slowFall = false;
-		pActor->drawState.layer = SPRITE_LAYER_FG;
-		//pActor->pDrawFn = DrawPlayer;
+		Game::InitializePlayer(pActor);
 		break;
 	}
 	case ACTOR_TYPE_NPC: {
@@ -234,6 +230,132 @@ Actor* Game::GetFirstActor(bool (*filter)(const Actor*)) {
 Actor* Game::GetPlayer() {
 	return actors.Get(playerHandle);
 }
+
+#pragma region Actor utils
+// Returns false if counter stops, true if keeps running
+bool Game::UpdateCounter(u16& counter) {
+	if (counter == 0) {
+		return false;
+	}
+
+	if (--counter == 0) {
+		return false;
+	}
+
+	return true;
+}
+
+void Game::SetDamagePaletteOverride(Actor* pActor, u16 damageCounter) {
+	if (damageCounter > 0) {
+		pActor->drawState.useCustomPalette = true;
+		pActor->drawState.palette = (GetFramesElapsed() / 3) % 4;
+	}
+	else {
+		pActor->drawState.useCustomPalette = false;
+	}
+}
+
+void Game::GetAnimFrameFromDirection(Actor* pActor) {
+	const glm::vec2 dir = glm::normalize(pActor->velocity);
+	const r32 angle = glm::atan(dir.y, dir.x);
+
+	const Animation& currentAnim = pActor->pPrototype->animations[0];
+	pActor->drawState.frameIndex = (s32)glm::roundEven(((angle + glm::pi<r32>()) / (glm::pi<r32>() * 2)) * currentAnim.frameCount) % currentAnim.frameCount;
+}
+
+void Game::AdvanceAnimation(u16& animCounter, u16& frameIndex, u16 frameCount, u8 frameLength, s16 loopPoint) {
+	const bool loop = loopPoint != -1;
+	if (animCounter == 0) {
+		// End of anim reached
+		if (frameIndex == frameCount - 1) {
+			if (loop) {
+				frameIndex = loopPoint;
+			}
+			else return;
+		}
+		else frameIndex++;
+
+		animCounter = frameLength;
+		return;
+	}
+	animCounter--;
+}
+
+void Game::AdvanceCurrentAnimation(Actor* pActor) {
+	const Animation& currentAnim = pActor->pPrototype->animations[0];
+	AdvanceAnimation(pActor->drawState.animCounter, pActor->drawState.frameIndex, currentAnim.frameCount, currentAnim.frameLength, currentAnim.loopPoint);
+}
+#pragma endregion
+
+#pragma region Movement
+void Game::ActorFacePlayer(Actor* pActor) {
+	pActor->flags.facingDir = ACTOR_FACING_RIGHT;
+
+	Actor* pPlayer = GetPlayer();
+	if (pPlayer == nullptr) {
+		return;
+	}
+
+	if (pPlayer->position.x < pActor->position.x) {
+		pActor->flags.facingDir = ACTOR_FACING_LEFT;
+	}
+}
+
+bool Game::ActorMoveHorizontal(Actor* pActor, HitResult& outHit) {
+	const AABB& hitbox = pActor->pPrototype->hitbox;
+
+	const r32 dx = pActor->velocity.x;
+
+	Collision::SweepBoxHorizontal(GetCurrentLevel()->pTilemap, hitbox, pActor->position, dx, outHit);
+	pActor->position.x = outHit.location.x;
+	return outHit.blockingHit;
+}
+
+bool Game::ActorMoveVertical(Actor* pActor, HitResult& outHit) {
+	const AABB& hitbox = pActor->pPrototype->hitbox;
+
+	const r32 dy = pActor->velocity.y;
+
+	Collision::SweepBoxVertical(GetCurrentLevel()->pTilemap, hitbox, pActor->position, dy, outHit);
+	pActor->position.y = outHit.location.y;
+	return outHit.blockingHit;
+}
+
+void Game::ApplyGravity(Actor* pActor, r32 gravity) {
+	pActor->velocity.y += gravity;
+}
+#pragma endregion
+
+#pragma region Damage
+// Returns new health after taking damage
+u16 Game::ActorTakeDamage(Actor* pActor, u32 dmgValue, u16 currentHealth, u16& damageCounter) {
+	constexpr s32 damageDelay = 30;
+
+	u16 newHealth = currentHealth;
+	if (dmgValue > newHealth) {
+		newHealth = 0;
+	}
+	else newHealth -= dmgValue;
+	damageCounter = damageDelay;
+
+	// Spawn damage numbers
+	const AABB& hitbox = pActor->pPrototype->hitbox;
+	// Random point inside hitbox
+	const glm::vec2 randomPointInsideHitbox = {
+		Random::GenerateReal(hitbox.x1, hitbox.x2),
+		Random::GenerateReal(hitbox.y1, hitbox.y2)
+	};
+	const glm::vec2 spawnPos = pActor->position + randomPointInsideHitbox;
+
+	constexpr glm::vec2 velocity = { 0, -0.03125f };
+	Actor* pDmg = SpawnActor(dmgNumberPrototypeIndex, spawnPos, velocity);
+	if (pDmg != nullptr) {
+		pDmg->state.effectState.value = -dmgValue;
+	}
+
+	return newHealth;
+}
+#pragma endregion
 
 DynamicActorPool* Game::GetActors() {
 	return &actors;

@@ -35,7 +35,7 @@ struct ActorDrawState {
 struct Actor;
 
 typedef void (*ActorUpdateFn)(Actor* pActor);
-typedef void (*ActorDrawFn)(Actor* pActor);
+typedef void (*ActorDrawFn)(const Actor* pActor);
 
 struct ActorPrototype;
 
@@ -63,6 +63,8 @@ typedef PoolHandle<Actor> ActorHandle;
 static constexpr u32 MAX_DYNAMIC_ACTOR_COUNT = 512;
 typedef Pool<Actor, MAX_DYNAMIC_ACTOR_COUNT> DynamicActorPool;
 
+struct HitResult;
+
 namespace Game {
 	Actor* SpawnActor(const Actor* pTemplate);
 	Actor* SpawnActor(const s32 prototypeIndex, const glm::vec2& position, const glm::vec2& velocity = {0.0f, 0.0f});
@@ -76,6 +78,19 @@ namespace Game {
 	Actor* GetFirstActor(bool (*filter)(const Actor*) = nullptr);
 
 	Actor* GetPlayer();
+
+	bool UpdateCounter(u16& counter);
+	void SetDamagePaletteOverride(Actor* pActor, u16 damageCounter);
+	void GetAnimFrameFromDirection(Actor* pActor);
+	void AdvanceAnimation(u16& animCounter, u16& frameIndex, u16 frameCount, u8 frameLength, s16 loopPoint);
+	void AdvanceCurrentAnimation(Actor* pActor);
+
+	void ActorFacePlayer(Actor* pActor);
+	bool ActorMoveHorizontal(Actor* pActor, HitResult& outHit);
+	bool ActorMoveVertical(Actor* pActor, HitResult& outHit);
+	void ApplyGravity(Actor* pActor, r32 gravity = 0.01f);
+
+	u16 ActorTakeDamage(Actor* pActor, u32 dmgValue, u16 currentHealth, u16& damageCounter);
 
 	DynamicActorPool* GetActors(); // TEMP
 	void UpdateActors(void (*tempCallback)(Actor* pActor));

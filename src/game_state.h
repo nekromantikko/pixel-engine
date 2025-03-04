@@ -78,6 +78,6 @@ namespace Game {
     void InitGameState(GameState initialState);
     void StepFrame(void (*tempCallback)(Actor* pActor));
 
-    void FreezeGameplay();
-    void UnfreezeGameplay();
+    void TriggerScreenShake(s16 magnitude, u16 duration, bool freezeGameplay);
+    void TriggerLevelTransition(u16 targetLevelIndex, u16 targetScreenIndex, u8 enterDirection, void (*callback)() = nullptr);
 }
