@@ -14,6 +14,7 @@
 #include "game_rendering.h"
 #include "game_state.h"
 #include "actors.h"
+#include "actor_prototypes.h"
 #include "audio.h"
 #include "random.h"
 #define GLM_ENABLE_EXPERIMENTAL
@@ -1525,7 +1526,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 				else if (ImGui::MenuItem("Add actor")) {
 					PoolHandle<Actor> handle = pLevel->actors.Add();
 					Actor* pNewActor = pLevel->actors.Get(handle);
-					pNewActor->pPrototype = Actors::GetPrototype(0);
+					pNewActor->pPrototype = Assets::GetActorPrototype(0);
 					pNewActor->id = Random::GenerateUUID();
 					pNewActor->position = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
 				}
@@ -1766,14 +1767,14 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 
 				ImGui::Text("UUID: %llu", pActor->id);
 
-				if (ImGui::BeginCombo("Prototype", Actors::GetPrototypeName(pActor->pPrototype))) {
+				if (ImGui::BeginCombo("Prototype", Assets::GetActorPrototypeName(pActor->pPrototype))) {
 					for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++) {
 						ImGui::PushID(i);
 
-						const ActorPrototype* pPrototype = Actors::GetPrototype(i);
+						const ActorPrototype* pPrototype = Assets::GetActorPrototype(i);
 						const bool selected = pActor->pPrototype == pPrototype;
 
-						if (ImGui::Selectable(Actors::GetPrototypeName(pPrototype), selected)) {
+						if (ImGui::Selectable(Assets::GetActorPrototypeName(pPrototype), selected)) {
 							pActor->pPrototype = pPrototype;
 						}
 
@@ -2013,12 +2014,12 @@ static void DrawActorPrototypeList(s32& selection) {
 	static constexpr u32 maxLabelNameLength = ACTOR_PROTOTYPE_MAX_NAME_LENGTH + 8;
 	char label[maxLabelNameLength];
 
-	ActorPrototype* pPrototypes = Actors::GetPrototype(0);
+	ActorPrototype* pPrototypes = Assets::GetActorPrototype(0);
 	for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++)
 	{
 		ImGui::PushID(i);
 
-		snprintf(label, maxLabelNameLength, "0x%02x: %s", i, Actors::GetPrototypeName(i));
+		snprintf(label, maxLabelNameLength, "0x%02x: %s", i, Assets::GetActorPrototypeName(i));
 
 		const bool selected = selection == i;
 		if (ImGui::Selectable(label, selected)) {
@@ -2073,10 +2074,10 @@ static void DrawActorWindow() {
 		if (ImGui::BeginMenu("File"))
 		{
 			if (ImGui::MenuItem("Save")) {
-				Actors::SavePrototypes("assets/actors.prt");
+				Assets::SaveActorPrototypes("assets/actors.prt");
 			}
 			if (ImGui::MenuItem("Revert changes")) {
-				Actors::LoadPrototypes("assets/actors.prt");
+				Assets::LoadActorPrototypes("assets/actors.prt");
 			}
 			ImGui::EndMenu();
 		}
@@ -2099,8 +2100,8 @@ static void DrawActorWindow() {
 	ImGui::SameLine();
 	ImGui::BeginChild("Prototype editor");
 	{
-		ActorPrototype* pPrototype = Actors::GetPrototype(selection);
-		char* prototypeName = Actors::GetPrototypeName(selection);
+		ActorPrototype* pPrototype = Assets::GetActorPrototype(selection);
+		char* prototypeName = Assets::GetActorPrototypeName(selection);
 
 		ImGui::SeparatorText(prototypeName);
 
@@ -2220,7 +2221,7 @@ static void DrawActorWindow() {
 				ImGui::SeparatorText("Type data");
 
 				const char* prototypeNames[MAX_ACTOR_PROTOTYPE_COUNT]{};
-				Actors::GetPrototypeNames(prototypeNames);
+				Assets::GetActorPrototypeNames(prototypeNames);
 
 				// TODO: Split into many functions?
 				switch (pPrototype->type) {
@@ -2229,24 +2230,24 @@ static void DrawActorWindow() {
 					break;
 				}
 				case ACTOR_TYPE_NPC: {
-					ImGui::InputScalar("Health", ImGuiDataType_U16, &pPrototype->npcData.health);
-					ImGui::InputScalar("Exp value", ImGuiDataType_U16, &pPrototype->npcData.expValue);
+					ImGui::InputScalar("Health", ImGuiDataType_U16, &pPrototype->data.npcData.health);
+					ImGui::InputScalar("Exp value", ImGuiDataType_U16, &pPrototype->data.npcData.expValue);
 					// TODO: loot type
-					DrawTypeSelectionCombo("Spawn on death", prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, pPrototype->npcData.spawnOnDeath);
+					DrawTypeSelectionCombo("Spawn on death", prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, pPrototype->data.npcData.spawnOnDeath);
 
 					break;
 				}
 				case ACTOR_TYPE_BULLET: {
-					ImGui::InputScalar("Lifetime", ImGuiDataType_U16, &pPrototype->bulletData.lifetime);
-					DrawTypeSelectionCombo("Spawn on death", prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, pPrototype->bulletData.spawnOnDeath);
+					ImGui::InputScalar("Lifetime", ImGuiDataType_U16, &pPrototype->data.bulletData.lifetime);
+					DrawTypeSelectionCombo("Spawn on death", prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, pPrototype->data.bulletData.spawnOnDeath);
 					break;
 				}
 				case ACTOR_TYPE_PICKUP: {
-					ImGui::InputScalar("Value", ImGuiDataType_U16, &pPrototype->pickupData.value);
+					ImGui::InputScalar("Value", ImGuiDataType_U16, &pPrototype->data.pickupData.value);
 					break;
 				}
 				case ACTOR_TYPE_EFFECT: {
-					ImGui::InputScalar("Lifetime", ImGuiDataType_U16, &pPrototype->effectData.lifetime);
+					ImGui::InputScalar("Lifetime", ImGuiDataType_U16, &pPrototype->data.effectData.lifetime);
 					break;
 				}
 				default:

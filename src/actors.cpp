@@ -1,9 +1,8 @@
 #include "actors.h"
+#include "actor_prototypes.h"
 #include "game_rendering.h"
 #include "game_state.h"
 #include "random.h"
-#include "system.h"
-#include <cassert>
 
 static Pool<Actor, MAX_DYNAMIC_ACTOR_COUNT> actors;
 static Pool<ActorHandle, MAX_DYNAMIC_ACTOR_COUNT> actorRemoveList;
@@ -30,27 +29,27 @@ static void InitializeActor(Actor* pActor) {
 
 	switch (pPrototype->type) {
 	case ACTOR_TYPE_PLAYER: {
-		pActor->playerState.entryDelayCounter = 0;
-		pActor->playerState.deathCounter = 0;
-		pActor->playerState.damageCounter = 0;
-		pActor->playerState.sitCounter = 0;
-		pActor->playerState.flags.aimMode = PLAYER_AIM_FWD;
-		pActor->playerState.flags.doubleJumped = false;
-		pActor->playerState.flags.sitState = PLAYER_STANDING;
-		pActor->playerState.flags.slowFall = false;
+		pActor->state.playerState.entryDelayCounter = 0;
+		pActor->state.playerState.deathCounter = 0;
+		pActor->state.playerState.damageCounter = 0;
+		pActor->state.playerState.sitCounter = 0;
+		pActor->state.playerState.flags.aimMode = PLAYER_AIM_FWD;
+		pActor->state.playerState.flags.doubleJumped = false;
+		pActor->state.playerState.flags.sitState = PLAYER_STANDING;
+		pActor->state.playerState.flags.slowFall = false;
 		pActor->drawState.layer = SPRITE_LAYER_FG;
 		//pActor->pDrawFn = DrawPlayer;
 		break;
 	}
 	case ACTOR_TYPE_NPC: {
-		pActor->npcState.health = pPrototype->npcData.health;
-		pActor->npcState.damageCounter = 0;
+		pActor->state.npcState.health = pPrototype->data.npcData.health;
+		pActor->state.npcState.damageCounter = 0;
 		pActor->drawState.layer = SPRITE_LAYER_FG;
 		break;
 	}
 	case ACTOR_TYPE_BULLET: {
-		pActor->bulletState.lifetime = pPrototype->bulletData.lifetime;
-		pActor->bulletState.lifetimeCounter = pPrototype->bulletData.lifetime;
+		pActor->state.bulletState.lifetime = pPrototype->data.bulletData.lifetime;
+		pActor->state.bulletState.lifetimeCounter = pPrototype->data.bulletData.lifetime;
 		pActor->drawState.layer = SPRITE_LAYER_FG;
 		break;
 	}
@@ -59,8 +58,8 @@ static void InitializeActor(Actor* pActor) {
 		break;
 	}
 	case ACTOR_TYPE_EFFECT: {
-		pActor->effectState.lifetime = pPrototype->effectData.lifetime;
-		pActor->effectState.lifetimeCounter = pPrototype->effectData.lifetime;
+		pActor->state.effectState.lifetime = pPrototype->data.effectData.lifetime;
+		pActor->state.effectState.lifetimeCounter = pPrototype->data.effectData.lifetime;
 		pActor->drawState.layer = SPRITE_LAYER_FX;
 
 		if (pPrototype->subtype == EFFECT_SUBTYPE_NUMBERS) {
@@ -71,7 +70,7 @@ static void InitializeActor(Actor* pActor) {
 	}
 	case ACTOR_TYPE_CHECKPOINT: {
 		if (persistData.activated) {
-			pActor->checkpointState.activated = true;
+			pActor->state.checkpointState.activated = true;
 		}
 		pActor->drawState.layer = SPRITE_LAYER_BG;
 		break;
@@ -106,7 +105,7 @@ Actor* Game::SpawnActor(const s32 prototypeIndex, const glm::vec2& position, con
 		return nullptr;
 	}
 
-	const ActorPrototype* pPrototype = Actors::GetPrototype(prototypeIndex);
+	const ActorPrototype* pPrototype = Assets::GetActorPrototype(prototypeIndex);
 	if (pPrototype == nullptr) {
 		return nullptr;
 	}
@@ -315,104 +314,4 @@ void Game::DrawActors() {
 		}
 	}
 }
-
-static ActorPrototype prototypes[MAX_ACTOR_PROTOTYPE_COUNT];
-static char prototypeNames[MAX_ACTOR_PROTOTYPE_COUNT][ACTOR_PROTOTYPE_MAX_NAME_LENGTH];
-
-#pragma region Presets
-ActorPrototype* Actors::GetPrototype(s32 index) {
-	if (index < 0 || index >= MAX_ACTOR_PROTOTYPE_COUNT) {
-		return nullptr;
-	}
-
-	return &prototypes[index];
-}
-
-s32 Actors::GetPrototypeIndex(const ActorPrototype* pPrototype) {
-	s32 index = pPrototype - prototypes;
-	if (index < 0 || index >= MAX_ACTOR_PROTOTYPE_COUNT) {
-		return -1;
-	}
-
-	return index;
-}
-
-char* Actors::GetPrototypeName(s32 index) {
-	return prototypeNames[index];
-}
-
-char* Actors::GetPrototypeName(const ActorPrototype* pPrototype) {
-	return GetPrototypeName(GetPrototypeIndex(pPrototype));
-}
-
-void Actors::GetPrototypeNames(const char** pOutNames) {
-	for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++) {
-		pOutNames[i] = prototypeNames[i];
-	}
-}
-
-void Actors::ClearPrototypes() {
-	for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++) {
-		prototypes[i].animCount = 1;
-	}
-	memset(prototypeNames, 0, MAX_ACTOR_PROTOTYPE_COUNT * ACTOR_PROTOTYPE_MAX_NAME_LENGTH);
-}
-
-void Actors::LoadPrototypes(const char* fname) {
-	FILE* pFile;
-	fopen_s(&pFile, fname, "rb");
-
-	if (pFile == NULL) {
-		DEBUG_ERROR("Failed to load actor preset file\n");
-	}
-
-	const char signature[4]{};
-	fread((void*)signature, sizeof(u8), 4, pFile);
-
-	//static old old_prototypes[MAX_ACTOR_PROTOTYPE_COUNT];
-	//fread(old_prototypes, sizeof(old), MAX_ACTOR_PROTOTYPE_COUNT, pFile);
-
-	/*for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++) {
-		const old& p = old_prototypes[i];
-		ActorPrototype& prototype = prototypes[i];
-
-		prototype.type = 0;
-		prototype.subtype = 0;
-		prototype.hitbox = p.hitbox;
-		prototype.animCount = 1;
-		prototype.animations[0] = {
-			.type = (u8)(p.animMode - 1),
-			.frameLength = 6,
-			.frameCount = (u16)p.frameCount,
-			.loopPoint = 0,
-			.metaspriteIndex = (s16)p.frames[0].metaspriteIndex,
-		};
-		strcpy(prototypeNames[i], p.name);
-	}*/
-
-	fread(prototypes, sizeof(ActorPrototype), MAX_ACTOR_PROTOTYPE_COUNT, pFile);
-	fread(prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, ACTOR_PROTOTYPE_MAX_NAME_LENGTH, pFile);
-
-	fclose(pFile);
-
-
-}
-
-void Actors::SavePrototypes(const char* fname) {
-	FILE* pFile;
-	fopen_s(&pFile, fname, "wb");
-
-	if (pFile == NULL) {
-		DEBUG_ERROR("Failed to write actor preset file\n");
-	}
-
-	const char signature[4] = "PRT";
-	fwrite(signature, sizeof(u8), 4, pFile);
-
-	fwrite(prototypes, sizeof(ActorPrototype), MAX_ACTOR_PROTOTYPE_COUNT, pFile);
-	fwrite(prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, ACTOR_PROTOTYPE_MAX_NAME_LENGTH, pFile);
-
-	fclose(pFile);
-}
-#pragma endregion
 

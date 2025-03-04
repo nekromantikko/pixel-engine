@@ -3,6 +3,7 @@
 #include "level.h"
 #include "system.h"
 #include "tiles.h"
+#include "metasprite.h"
 #include "rendering_util.h"
 #include "game.h"
 

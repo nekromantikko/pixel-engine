@@ -19,6 +19,7 @@
 #include "coroutines.h"
 #include "dialog.h"
 #include "game_ui.h"
+#include "actor_prototypes.h"
 
 namespace Game {
     r64 secondsElapsed = 0.0f;
@@ -191,15 +192,15 @@ namespace Game {
         const u16 playerWeapon = GetPlayerWeapon();
         switch (playerWeapon) {
         case PLAYER_WEAPON_BOW: {
-            weaponOffset = playerBowOffsets[pPlayer->playerState.flags.aimMode];
-            weaponFrameBankOffset = playerBowFrameBankOffsets[pPlayer->playerState.flags.aimMode];
-            weaponMetaspriteIndex = pPlayer->playerState.flags.aimMode == PLAYER_AIM_FWD ? playerBowFwdMetaspriteIndex : playerBowDiagMetaspriteIndex;
+            weaponOffset = playerBowOffsets[pPlayer->state.playerState.flags.aimMode];
+            weaponFrameBankOffset = playerBowFrameBankOffsets[pPlayer->state.playerState.flags.aimMode];
+            weaponMetaspriteIndex = pPlayer->state.playerState.flags.aimMode == PLAYER_AIM_FWD ? playerBowFwdMetaspriteIndex : playerBowDiagMetaspriteIndex;
             break;
         }
         case PLAYER_WEAPON_LAUNCHER: {
-            weaponOffset = playerLauncherOffsets[pPlayer->playerState.flags.aimMode];
-            weaponFrameBankOffset = playerLauncherFrameBankOffsets[pPlayer->playerState.flags.aimMode];
-            weaponMetaspriteIndex = pPlayer->playerState.flags.aimMode == PLAYER_AIM_FWD ? playerLauncherFwdMetaspriteIndex : playerLauncherDiagMetaspriteIndex;
+            weaponOffset = playerLauncherOffsets[pPlayer->state.playerState.flags.aimMode];
+            weaponFrameBankOffset = playerLauncherFrameBankOffsets[pPlayer->state.playerState.flags.aimMode];
+            weaponMetaspriteIndex = pPlayer->state.playerState.flags.aimMode == PLAYER_AIM_FWD ? playerLauncherFwdMetaspriteIndex : playerLauncherDiagMetaspriteIndex;
             break;
         }
         default:
@@ -214,7 +215,7 @@ namespace Game {
     }
 
     static void DrawPlayer(Actor* pPlayer) {
-        if (GetPlayerHealth() != 0 && pPlayer->playerState.flags.sitState == PLAYER_STANDING) {
+        if (GetPlayerHealth() != 0 && pPlayer->state.playerState.flags.sitState == PLAYER_STANDING) {
             DrawPlayerGun(pPlayer);
         }
         DrawActorDefault(pPlayer);
@@ -239,7 +240,7 @@ namespace Game {
         }
 
         static char numberStr[16]{};
-        const u32 strLength = ItoaSigned(pActor->effectState.value, numberStr);
+        const u32 strLength = ItoaSigned(pActor->state.effectState.value, numberStr);
 
         // Ascii character '*' = 0x2A
         constexpr u8 chrOffset = 0x2A;
@@ -328,9 +329,9 @@ namespace Game {
 
             Actor* pSpawned = SpawnActor(prototypeIndex, state.position, velocity);
 
-            pSpawned->pickupState.lingerCounter = 30;
+            pSpawned->state.pickupState.lingerCounter = 30;
             pSpawned->flags.facingDir = (s8)Random::GenerateInt(-1, 1);
-            pSpawned->pickupState.value = pSpawned->pPrototype->pickupData.value;
+            pSpawned->state.pickupState.value = pSpawned->pPrototype->data.pickupData.value;
 
             if (state.remainingValue < spawnedValue) {
                 state.remainingValue = 0;
@@ -350,10 +351,10 @@ namespace Game {
         SetPersistedActorData(pActor->id, persistData);
 
         Audio::PlaySFX(&enemyDieSfx, CHAN_ID_NOISE);
-        SpawnActor(pActor->pPrototype->npcData.spawnOnDeath, pActor->position);
+        SpawnActor(pActor->pPrototype->data.npcData.spawnOnDeath, pActor->position);
 
         // Spawn exp halos
-        const u16 totalExpValue = pActor->pPrototype->npcData.expValue;
+        const u16 totalExpValue = pActor->pPrototype->data.npcData.expValue;
         if (totalExpValue > 0) {
             SpawnExpState coroutineState = {
                 .position = pActor->position,
@@ -385,7 +386,7 @@ namespace Game {
         constexpr glm::vec2 velocity = { 0, -0.03125f };
         Actor* pDmg = SpawnActor(dmgNumberPrototypeIndex, spawnPos, velocity);
         if (pDmg != nullptr) {
-            pDmg->effectState.value = -dmgValue;
+            pDmg->state.effectState.value = -dmgValue;
         }
 
         return newHealth;
@@ -469,7 +470,7 @@ namespace Game {
             break;
         }
 
-        pPlayer->playerState.entryDelayCounter = 15;
+        pPlayer->state.playerState.entryDelayCounter = 15;
     }
 
     static void UpdateFadeToBlack(r32 progress) {
@@ -688,14 +689,14 @@ namespace Game {
         };
         StartCoroutine(ShakeScreenCoroutine, state);
         pPlayer->velocity.y = -0.25f;
-        pPlayer->playerState.deathCounter = 240;
+        pPlayer->state.playerState.deathCounter = 240;
     }
 
     static void HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
         u16 health = GetPlayerHealth();
 
         // If invulnerable, or dead
-        if (pPlayer->playerState.damageCounter != 0 || health == 0) {
+        if (pPlayer->state.playerState.damageCounter != 0 || health == 0) {
             return;
         }
 
@@ -704,7 +705,7 @@ namespace Game {
 
         u32 featherCount = Random::GenerateInt(1, 4);
 
-        health = ActorTakeDamage(pPlayer, damage, health, pPlayer->playerState.damageCounter);
+        health = ActorTakeDamage(pPlayer, damage, health, pPlayer->state.playerState.damageCounter);
         if (health == 0) {
             PlayerMortalHit(pPlayer);
             featherCount = 8;
@@ -727,13 +728,13 @@ namespace Game {
     }
 
     static void PlayerSitDown(Actor* pPlayer) {
-        pPlayer->playerState.flags.sitState = PLAYER_STAND_TO_SIT;
-        pPlayer->playerState.sitCounter = 15;
+        pPlayer->state.playerState.flags.sitState = PLAYER_STAND_TO_SIT;
+        pPlayer->state.playerState.sitCounter = 15;
     }
 
     static void PlayerStandUp(Actor* pPlayer) {
-        pPlayer->playerState.flags.sitState = PLAYER_SIT_TO_STAND;
-        pPlayer->playerState.sitCounter = 15;
+        pPlayer->state.playerState.flags.sitState = PLAYER_SIT_TO_STAND;
+        pPlayer->state.playerState.sitCounter = 15;
     }
 
     static void TriggerInteraction(Actor* pPlayer, Actor* pInteractable) {
@@ -742,7 +743,7 @@ namespace Game {
         }
 
         if (pInteractable->pPrototype->type == ACTOR_TYPE_CHECKPOINT) {
-            pInteractable->checkpointState.activated = true;
+            pInteractable->state.checkpointState.activated = true;
 
             ActivateCheckpoint(pInteractable);
 
@@ -763,7 +764,7 @@ namespace Game {
     static void PlayerShoot(Actor* pPlayer) {
         constexpr s32 shootDelay = 10;
 
-        PlayerState& playerState = pPlayer->playerState;
+        PlayerState& playerState = pPlayer->state.playerState;
         UpdateCounter(playerState.shootCounter);
 
         if (Input::ButtonDown(BUTTON_B) && playerState.shootCounter == 0) {
@@ -818,13 +819,13 @@ namespace Game {
         constexpr r32 acceleration = maxSpeed / 24.f; // Acceleration from Zelda 2
 
         const bool dead = GetPlayerHealth() == 0;
-        const bool enteringLevel = pPlayer->playerState.entryDelayCounter > 0;
-        const bool stunned = pPlayer->playerState.damageCounter > 0;
-        const bool sitting = pPlayer->playerState.flags.sitState != PLAYER_STANDING;
+        const bool enteringLevel = pPlayer->state.playerState.entryDelayCounter > 0;
+        const bool stunned = pPlayer->state.playerState.damageCounter > 0;
+        const bool sitting = pPlayer->state.playerState.flags.sitState != PLAYER_STANDING;
 
         const bool inputDisabled = dead || enteringLevel || stunned || sitting || Game::IsDialogActive();
 
-        PlayerState& playerState = pPlayer->playerState;
+        PlayerState& playerState = pPlayer->state.playerState;
         if (!inputDisabled && Input::ButtonDown(BUTTON_DPAD_LEFT)) {
             pPlayer->velocity.x -= acceleration;
             if (pPlayer->flags.facingDir != ACTOR_FACING_LEFT) {
@@ -860,7 +861,7 @@ namespace Game {
         }
 
         if (inputDisabled) {
-            if (!Game::IsDialogActive() && pPlayer->playerState.flags.sitState == PLAYER_SITTING && Input::AnyButtonDown()) {
+            if (!Game::IsDialogActive() && pPlayer->state.playerState.flags.sitState == PLAYER_SITTING && Input::AnyButtonDown()) {
                 PlayerStandUp(pPlayer);
             }
 
@@ -925,21 +926,21 @@ namespace Game {
         u8 frameIdx = 1;
 
         // If in transition state
-        if (pPlayer->playerState.flags.sitState & 0b10) {
-            frameIdx = ((pPlayer->playerState.flags.sitState & 0b01) ^ (pPlayer->playerState.sitCounter >> 3)) & 1;
+        if (pPlayer->state.playerState.flags.sitState & 0b10) {
+            frameIdx = ((pPlayer->state.playerState.flags.sitState & 0b01) ^ (pPlayer->state.playerState.sitCounter >> 3)) & 1;
         }
 
 		Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerSitBankOffsets[frameIdx], 1, playerHeadFrameChrOffset, 8);
 
         // Get wings in sitting position
-        const bool wingsInPosition = pPlayer->playerState.wingFrame == PLAYER_WINGS_FLAP_END;
+        const bool wingsInPosition = pPlayer->state.playerState.wingFrame == PLAYER_WINGS_FLAP_END;
         const u16 wingAnimFrameLength = 6;
 
         if (!wingsInPosition) {
-            AdvanceAnimation(pPlayer->playerState.wingCounter, pPlayer->playerState.wingFrame, PLAYER_WING_FRAME_COUNT, wingAnimFrameLength, 0);
+            AdvanceAnimation(pPlayer->state.playerState.wingCounter, pPlayer->state.playerState.wingFrame, PLAYER_WING_FRAME_COUNT, wingAnimFrameLength, 0);
         }
 
-        Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerWingFrameBankOffsets[pPlayer->playerState.wingFrame], 1, playerWingFrameChrOffset, playerWingFrameTileCount);
+        Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerWingFrameBankOffsets[pPlayer->state.playerState.wingFrame], 1, playerWingFrameChrOffset, playerWingFrameTileCount);
 
         pPlayer->drawState.animIndex = 1;
         pPlayer->drawState.frameIndex = 0;
@@ -949,7 +950,7 @@ namespace Game {
     }
 
     static void AnimatePlayer(Actor* pPlayer) {
-        PlayerState& playerState = pPlayer->playerState;
+        PlayerState& playerState = pPlayer->state.playerState;
 
         if (GetPlayerHealth() == 0) {
             AnimatePlayerDead(pPlayer);
@@ -1018,21 +1019,21 @@ namespace Game {
     }
 
     static void UpdatePlayerSidescroller(Actor* pActor) {
-        UpdateCounter(pActor->playerState.entryDelayCounter);
-        UpdateCounter(pActor->playerState.damageCounter);
+        UpdateCounter(pActor->state.playerState.entryDelayCounter);
+        UpdateCounter(pActor->state.playerState.damageCounter);
 
-        if (!UpdateCounter(pActor->playerState.sitCounter)) {
-            pActor->playerState.flags.sitState &= 1;
+        if (!UpdateCounter(pActor->state.playerState.sitCounter)) {
+            pActor->state.playerState.flags.sitState &= 1;
         }
         
-        if (pActor->playerState.deathCounter != 0) {
-            if (!UpdateCounter(pActor->playerState.deathCounter)) {
+        if (pActor->state.playerState.deathCounter != 0) {
+            if (!UpdateCounter(pActor->state.playerState.deathCounter)) {
                 PlayerDie(pActor);
             }
         }
         
         // Reset slow fall
-        pActor->playerState.flags.slowFall = false;
+        pActor->state.playerState.flags.slowFall = false;
 
         PlayerInput(pActor);
 
@@ -1044,7 +1045,7 @@ namespace Game {
         constexpr r32 playerGravity = 0.01f;
         constexpr r32 playerSlowGravity = playerGravity / 4;
 
-        const r32 gravity = pActor->playerState.flags.slowFall ? playerSlowGravity : playerGravity;
+        const r32 gravity = pActor->state.playerState.flags.slowFall ? playerSlowGravity : playerGravity;
         ApplyGravity(pActor, gravity);
 
         // Reset in air flag
@@ -1055,7 +1056,7 @@ namespace Game {
 
             if (hit.impactNormal.y < 0.0f) {
                 pActor->flags.inAir = false;
-                pActor->playerState.flags.doubleJumped = false;
+                pActor->state.playerState.flags.doubleJumped = false;
             }
         }
 
@@ -1066,18 +1067,18 @@ namespace Game {
 #pragma region Bullets
     static void BulletDie(Actor* pBullet, const glm::vec2& effectPos) {
         pBullet->flags.pendingRemoval = true;
-        SpawnActor(pBullet->pPrototype->bulletData.spawnOnDeath, effectPos);
+        SpawnActor(pBullet->pPrototype->data.bulletData.spawnOnDeath, effectPos);
     }
 
     static void HandleBulletEnemyCollision(Actor* pBullet, Actor* pEnemy) {
         BulletDie(pBullet, pBullet->position);
 
         const u32 damage = Random::GenerateInt(1, 2);
-        const u16 newHealth = ActorTakeDamage(pEnemy, damage, pEnemy->npcState.health, pEnemy->npcState.damageCounter);
+        const u16 newHealth = ActorTakeDamage(pEnemy, damage, pEnemy->state.npcState.health, pEnemy->state.npcState.damageCounter);
         if (newHealth == 0) {
             NPCDie(pEnemy);
         }
-        pEnemy->npcState.health = newHealth;
+        pEnemy->state.npcState.health = newHealth;
     }
 
 	static bool ActorIsHostileNPC(const Actor* pActor) {
@@ -1099,7 +1100,7 @@ namespace Game {
     }
 
     static void UpdateDefaultBullet(Actor* pActor) {
-        if (!UpdateCounter(pActor->bulletState.lifetimeCounter)) {
+        if (!UpdateCounter(pActor->state.bulletState.lifetimeCounter)) {
             BulletDie(pActor, pActor->position);
             return;
         }
@@ -1126,7 +1127,7 @@ namespace Game {
     }
 
     static void UpdateGrenade(Actor* pActor) {
-        if (!UpdateCounter(pActor->bulletState.lifetimeCounter)) {
+        if (!UpdateCounter(pActor->state.bulletState.lifetimeCounter)) {
             BulletDie(pActor, pActor->position);
             return;
         }
@@ -1149,7 +1150,7 @@ namespace Game {
     }
 
     static void UpdateFireball(Actor* pActor) {
-        if (!UpdateCounter(pActor->bulletState.lifetimeCounter)) {
+        if (!UpdateCounter(pActor->state.bulletState.lifetimeCounter)) {
             BulletDie(pActor, pActor->position);
             return;
         }
@@ -1173,7 +1174,7 @@ namespace Game {
 
 #pragma region NPC
     static void UpdateSlimeEnemy(Actor* pActor) {
-        UpdateCounter(pActor->npcState.damageCounter);
+        UpdateCounter(pActor->state.npcState.damageCounter);
 
         if (!pActor->flags.inAir) {
             const bool shouldJump = Random::GenerateInt(0, 127) == 0;
@@ -1212,11 +1213,11 @@ namespace Game {
         }
 
 		pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
-        SetDamagePaletteOverride(pActor, pActor->npcState.damageCounter);
+        SetDamagePaletteOverride(pActor, pActor->state.npcState.damageCounter);
     }
 
     static void UpdateSkullEnemy(Actor* pActor) {
-        UpdateCounter(pActor->npcState.damageCounter);
+        UpdateCounter(pActor->state.npcState.damageCounter);
 
         ActorFacePlayer(pActor);
 
@@ -1243,7 +1244,7 @@ namespace Game {
         }
 
         pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
-        SetDamagePaletteOverride(pActor, pActor->npcState.damageCounter);
+        SetDamagePaletteOverride(pActor, pActor->state.npcState.damageCounter);
     }
 #pragma endregion
 
@@ -1256,7 +1257,7 @@ namespace Game {
         const r32 playerDist = glm::length(playerVec);
 
         // Wait for a while before homing towards player
-        if (!UpdateCounter(pActor->pickupState.lingerCounter)) {
+        if (!UpdateCounter(pActor->state.pickupState.lingerCounter)) {
             constexpr r32 trackingFactor = 0.1f; // Adjust to control homing strength
 
             glm::vec2 desiredVelocity = (playerVec * trackingFactor) + pPlayer->velocity;
@@ -1281,7 +1282,7 @@ namespace Game {
             Audio::PlaySFX(&expSfx, CHAN_ID_PULSE0);
             pActor->flags.pendingRemoval = true;
 
-            AddPlayerExp(pActor->pickupState.value);
+            AddPlayerExp(pActor->state.pickupState.value);
 
             return;
         }
@@ -1301,7 +1302,7 @@ namespace Game {
             pActor->flags.pendingRemoval = true;
 
             ClearExpRemnant();
-			AddPlayerExp(pActor->pickupState.value);
+			AddPlayerExp(pActor->state.pickupState.value);
 
             return;
         }
@@ -1310,7 +1311,7 @@ namespace Game {
 
 #pragma region Effects
     static void UpdateDefaultEffect(Actor* pActor) {
-        if (!UpdateCounter(pActor->effectState.lifetimeCounter)) {
+        if (!UpdateCounter(pActor->state.effectState.lifetimeCounter)) {
             pActor->flags.pendingRemoval = true;
         }
     }
@@ -1340,7 +1341,7 @@ namespace Game {
 
         constexpr r32 amplitude = 2.0f;
         constexpr r32 timeMultiplier = 1 / 30.f;
-        const u16 time = pActor->effectState.lifetimeCounter - pActor->effectState.lifetime;
+        const u16 time = pActor->state.effectState.lifetimeCounter - pActor->state.effectState.lifetime;
         const r32 sineTime = glm::sin(time * timeMultiplier);
         pActor->velocity.x = pActor->initialVelocity.x * sineTime;
 
@@ -1431,7 +1432,7 @@ namespace Game {
     }
 
     static void UpdateCheckpoint(Actor* pActor) {
-        if (pActor->checkpointState.activated) {
+        if (pActor->state.checkpointState.activated) {
             pActor->drawState.animIndex = 1;
         }
         else {
@@ -1514,7 +1515,7 @@ namespace Game {
         Tiles::LoadTileset("assets/forest.til");
         Metasprites::Load("assets/meta.spr");
         Levels::LoadLevels("assets/levels.lev");
-        Actors::LoadPrototypes("assets/actors.prt");
+        Assets::LoadActorPrototypes("assets/actors.prt");
 
         // TEMP SOUND STUFF
         jumpSfx = Audio::LoadSound("assets/jump.nsf");

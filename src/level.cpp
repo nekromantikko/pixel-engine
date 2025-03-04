@@ -1,4 +1,5 @@
 #include "level.h"
+#include "actor_prototypes.h"
 #include "system.h"
 #include <cstdio>
 #include <cstring>
@@ -112,7 +113,7 @@ void Levels::LoadLevels(const char* fname) {
             fread(&actor.id, sizeof(u64), 1, pFile);
             u32 prototypeIndex;
             fread(&prototypeIndex, sizeof(u32), 1, pFile);
-            actor.pPrototype = Actors::GetPrototype(prototypeIndex);
+            actor.pPrototype = Assets::GetActorPrototype(prototypeIndex);
             fread(&actor.position, sizeof(glm::vec2), 1, pFile);
 
             level.actors.Add(actor);
@@ -174,7 +175,7 @@ void Levels::SaveLevels(const char* fname) {
             const Actor* pActor = level.actors.Get(level.actors.GetHandle(a));
 
             fwrite(&pActor->id, sizeof(u64), 1, pFile);
-            const u32 prototypeIndex = Actors::GetPrototypeIndex(pActor->pPrototype);
+            const u32 prototypeIndex = Assets::GetActorPrototypeIndex(pActor->pPrototype);
             fwrite(&prototypeIndex, sizeof(u32), 1, pFile);
             fwrite(&pActor->position, sizeof(glm::vec2), 1, pFile);
         }

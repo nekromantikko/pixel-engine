@@ -58,7 +58,8 @@ set(SOURCES
 		src/dialog.cpp
 		src/game_input.cpp
 		src/game_state.cpp
-		src/game_ui.cpp)
+		src/game_ui.cpp
+		src/actor_prototypes.cpp)
 
 set(EDITOR_SOURCES
 		src/editor.cpp)
