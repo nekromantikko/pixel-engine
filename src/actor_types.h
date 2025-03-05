@@ -6,6 +6,7 @@
 #include "pickup.h"
 #include "effect.h"
 #include "interactable.h"
+#include "spawner.h"
 
 enum ActorType : TActorType {
 	ACTOR_TYPE_PLAYER,
@@ -14,9 +15,12 @@ enum ActorType : TActorType {
 	ACTOR_TYPE_PICKUP,
 	ACTOR_TYPE_EFFECT,
 	ACTOR_TYPE_INTERACTABLE,
+	ACTOR_TYPE_SPAWNER,
 
 	ACTOR_TYPE_COUNT
 };
+
+constexpr u32 ACTOR_PROTOTYPE_DATA_SIZE = 32;
 
 union ActorPrototypeData {
 	EnemyData enemyData;
@@ -25,7 +29,12 @@ union ActorPrototypeData {
 	PickupData pickupData;
 	EffectData effectData;
 	CheckpointData checkpointData;
+	ExpSpawnerData expSpawner;
+
+	u8 raw[ACTOR_PROTOTYPE_DATA_SIZE];
 };
+
+constexpr u32 ACTOR_STATE_SIZE = 32;
 
 union ActorState {
 	PlayerState playerState;
@@ -36,6 +45,9 @@ union ActorState {
 	EffectState effectState;
 	DamageNumberState dmgNumberState;
 	CheckpointState checkpointState;
+	ExpSpawnerState expSpawner;
+
+	u8 raw[ACTOR_STATE_SIZE];
 };
 
 namespace Game {
@@ -46,6 +58,7 @@ namespace Game {
 		pickupInitTable,
 		effectInitTable,
 		interactableInitTable,
+		spawnerInitTable,
 	};
 
 	constexpr ActorUpdateFn const* actorUpdateTable[ACTOR_TYPE_COUNT] = {
@@ -55,6 +68,7 @@ namespace Game {
 		pickupUpdateTable,
 		effectUpdateTable,
 		interactableUpdateTable,
+		spawnerUpdateTable,
 	};
 
 	constexpr ActorDrawFn const* actorDrawTable[ACTOR_TYPE_COUNT] = {
@@ -64,6 +78,7 @@ namespace Game {
 		pickupDrawTable,
 		effectDrawTable,
 		interactableDrawTable,
+		spawnerDrawTable,
 	};
 }
 
@@ -71,7 +86,7 @@ namespace Game {
 #include "editor_actor.h"
 
 namespace Editor {
-	constexpr const char* actorTypeNames[ACTOR_TYPE_COUNT] = { "Player", "Enemy", "Bullet", "Pickup", "Effect", "Interactable" };
+	constexpr const char* actorTypeNames[ACTOR_TYPE_COUNT] = { "Player", "Enemy", "Bullet", "Pickup", "Effect", "Interactable", "Spawner" };
 
 	const ActorEditorData actorEditorData[ACTOR_TYPE_COUNT] = {
 		playerEditorData,
@@ -80,6 +95,7 @@ namespace Editor {
 		pickupEditorData,
 		effectEditorData,
 		interactableEditorData,
+		spawnerEditorData,
 	};
 }
 

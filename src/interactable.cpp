@@ -17,7 +17,7 @@ static void UpdateNPC(Actor* pActor) {
 }
 
 static void InitCheckpoint(Actor* pActor, const PersistedActorData* pPersistData) {
-	if (pPersistData->activated) {
+	if (pPersistData && pPersistData->activated) {
 		pActor->state.checkpointState.activated = true;
 	}
 	pActor->drawState.layer = SPRITE_LAYER_BG;

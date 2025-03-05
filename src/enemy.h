@@ -16,6 +16,8 @@ struct EnemyData {
 	u16 expValue;
 	u16 lootType;
 	TActorPrototypeIndex deathEffect;
+	TActorPrototypeIndex projectile;
+	TActorPrototypeIndex expSpawner;
 };
 
 struct FireballData {

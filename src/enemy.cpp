@@ -5,9 +5,6 @@
 #include "game_state.h"
 #include "random.h"
 
-// TODO: Define in prototype data
-constexpr s32 enemyFireballPrototypeIndex = 8;
-
 static void UpdateSlimeEnemy(Actor* pActor) {
     Game::UpdateCounter(pActor->state.enemyState.damageCounter);
 
@@ -69,7 +66,7 @@ static void UpdateSkullEnemy(Actor* pActor) {
             const glm::vec2 playerDir = glm::normalize(pPlayer->position - pActor->position);
             const glm::vec2 velocity = playerDir * 0.0625f;
 
-            Game::SpawnActor(enemyFireballPrototypeIndex, pActor->position, velocity);
+            Game::SpawnActor(pActor->pPrototype->data.enemyData.projectile, pActor->position, velocity);
         }
     }
 
@@ -89,24 +86,23 @@ static void FireballDie(Actor* pActor, const glm::vec2& effectPos) {
 
 static void UpdateFireball(Actor* pActor) {
     if (!Game::UpdateCounter(pActor->state.fireballState.lifetimeCounter)) {
-        FireballDie(pActor, pActor->position);
-        return;
+        return FireballDie(pActor, pActor->position);
     }
 
     HitResult hit{};
     if (Game::ActorMoveHorizontal(pActor, hit)) {
-        FireballDie(pActor, hit.impactPoint);
-        return;
+        return FireballDie(pActor, hit.impactPoint);
+
     }
 
     if (Game::ActorMoveVertical(pActor, hit)) {
-        FireballDie(pActor, hit.impactPoint);
-        return;
+        return FireballDie(pActor, hit.impactPoint);
     }
 
     Actor* pPlayer = Game::GetPlayer();
     if (pPlayer && Game::GetPlayerHealth() != 0 && Game::ActorsColliding(pActor, pPlayer)) {
         Game::HandlePlayerEnemyCollision(pPlayer, pActor);
+        return FireballDie(pActor, pActor->position);
     }
 
     Game::AdvanceCurrentAnimation(pActor);
@@ -132,14 +128,9 @@ void Game::EnemyDie(Actor* pActor) {
     SpawnActor(pActor->pPrototype->data.enemyData.deathEffect, pActor->position);
 
     // Spawn exp halos
-    /*const u16 totalExpValue = pActor->pPrototype->data.npcData.expValue;
-    if (totalExpValue > 0) {
-        SpawnExpState coroutineState = {
-            .position = pActor->position,
-            .remainingValue = totalExpValue
-        };
-        StartCoroutine(SpawnExpCoroutine, coroutineState);
-    }*/
+    const u16 totalExpValue = pActor->pPrototype->data.enemyData.expValue;
+    Actor* pSpawner = SpawnActor(pActor->pPrototype->data.enemyData.expSpawner, pActor->position);
+    pSpawner->state.expSpawner.remainingValue = totalExpValue;
 }
 #pragma endregion
 
@@ -164,7 +155,10 @@ static const std::initializer_list<ActorEditorProperty> defaultProps = {
     { .name = "Health", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(EnemyData, health) },
     { .name = "Exp value", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(EnemyData, expValue) },
     { .name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(EnemyData, deathEffect) },
+    { .name = "Projectile", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(EnemyData, projectile) },
+    { .name = "Exp spawner", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(EnemyData, expSpawner) },
 };
+
 static const std::initializer_list<ActorEditorProperty> fireballProps = {
     {.name = "Lifetime", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(FireballData, lifetime) },
     {.name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(FireballData, deathEffect) },

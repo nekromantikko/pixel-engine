@@ -11,7 +11,7 @@ static void BulletDie(Actor* pBullet, const glm::vec2& effectPos) {
 }
 
 static void HandleBulletEnemyCollision(Actor* pBullet, Actor* pEnemy) {
-    if (pEnemy == nullptr) {
+    if (pEnemy == nullptr || pEnemy->pPrototype->subtype == ENEMY_TYPE_FIREBALL) {
         return;
     }
 

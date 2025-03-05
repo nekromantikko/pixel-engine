@@ -66,7 +66,8 @@ set(SOURCES
 		src/pickup.cpp
 		src/effect.cpp
 		src/interactable.cpp
-		src/actor_types.cpp)
+		src/actor_types.cpp
+		src/spawner.cpp)
 
 set(EDITOR_SOURCES
 		src/editor.cpp)

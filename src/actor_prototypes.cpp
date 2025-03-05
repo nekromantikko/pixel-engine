@@ -53,27 +53,6 @@ void Assets::LoadActorPrototypes(const char* fname) {
 	const char signature[4]{};
 	fread((void*)signature, sizeof(u8), 4, pFile);
 
-	//static old old_prototypes[MAX_ACTOR_PROTOTYPE_COUNT];
-	//fread(old_prototypes, sizeof(old), MAX_ACTOR_PROTOTYPE_COUNT, pFile);
-
-	/*for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++) {
-		const old& p = old_prototypes[i];
-		ActorPrototype& prototype = prototypes[i];
-
-		prototype.type = 0;
-		prototype.subtype = 0;
-		prototype.hitbox = p.hitbox;
-		prototype.animCount = 1;
-		prototype.animations[0] = {
-			.type = (u8)(p.animMode - 1),
-			.frameLength = 6,
-			.frameCount = (u16)p.frameCount,
-			.loopPoint = 0,
-			.metaspriteIndex = (s16)p.frames[0].metaspriteIndex,
-		};
-		strcpy(prototypeNames[i], p.name);
-	}*/
-
 	fread(prototypes, sizeof(ActorPrototype), MAX_ACTOR_PROTOTYPE_COUNT, pFile);
 	fread(prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, ACTOR_PROTOTYPE_MAX_NAME_LENGTH, pFile);
 

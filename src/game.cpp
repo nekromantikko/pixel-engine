@@ -44,49 +44,6 @@ namespace Game {
     //Sound bgm;
     //bool musicPlaying = false;
 
-    // TODO: Try to eliminate as much of this as possible
-    
-    constexpr s32 haloSmallPrototypeIndex = 0x0a;
-    constexpr s32 haloLargePrototypeIndex = 0x0b;
-    
-#pragma region Damage
-    // TODO: Where to get this info properly?
-    constexpr u16 largeExpValue = 500;
-    constexpr u16 smallExpValue = 10;
-
-    struct SpawnExpState {
-        glm::vec2 position;
-        u16 remainingValue;
-    };
-
-    static bool SpawnExpCoroutine(void* s) {
-        SpawnExpState& state = *(SpawnExpState*)s;
-
-        if (state.remainingValue > 0) {
-            u16 spawnedValue = state.remainingValue >= largeExpValue ? largeExpValue : smallExpValue;
-            s32 prototypeIndex = spawnedValue >= largeExpValue ? haloLargePrototypeIndex : haloSmallPrototypeIndex;
-
-            const r32 speed = Random::GenerateReal(0.1f, 0.3f);
-            const glm::vec2 velocity = Random::GenerateDirection() * speed;
-
-            Actor* pSpawned = SpawnActor(prototypeIndex, state.position, velocity);
-
-            pSpawned->state.pickupState.lingerCounter = 30;
-            pSpawned->flags.facingDir = (s8)Random::GenerateInt(-1, 1);
-            pSpawned->state.pickupState.value = pSpawned->pPrototype->data.pickupData.value;
-
-            if (state.remainingValue < spawnedValue) {
-                state.remainingValue = 0;
-            }
-            else state.remainingValue -= spawnedValue;
-
-            return true;
-        }
-        return false;
-    }
-
-#pragma endregion
-
     static void Step() {
         if (!paused) {
             StepFrame();
