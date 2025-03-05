@@ -41,7 +41,7 @@ static void CorrectPlayerSpawnY(const Level* pLevel, Actor* pPlayer) {
 }
 
 static bool ActorIsCheckpoint(const Actor* pActor) {
-    return pActor->pPrototype->type == ACTOR_TYPE_CHECKPOINT;
+    return pActor->pPrototype->type == ACTOR_TYPE_INTERACTABLE && pActor->pPrototype->subtype == INTERACTABLE_TYPE_CHECKPOINT;
 }
 
 static bool SpawnPlayerAtCheckpoint() {
@@ -257,6 +257,8 @@ static bool LevelTransitionCoroutine(void* userData) {
     default:
         return false;
     }
+
+    return true;
 }
 #pragma endregion
 
@@ -338,9 +340,11 @@ void Game::ActivateCheckpoint(const Actor* pCheckpoint) {
     }
 
     // Set checkpoint active
-    PersistedActorData data = GetPersistedActorData(pCheckpoint->id);
-    data.activated = true;
-    SetPersistedActorData(pCheckpoint->id, data);
+    PersistedActorData* pData = GetPersistedActorData(pCheckpoint->persistId);
+    if (pData) {
+        pData->activated = true;
+    }
+    else SetPersistedActorData(pCheckpoint->persistId, { .activated = true });
 
     Level* pCurrentLevel = GetCurrentLevel();
     // Set checkpoint data
@@ -355,14 +359,19 @@ void Game::ActivateCheckpoint(const Actor* pCheckpoint) {
 #pragma endregion
 
 #pragma region Persisted actor data
-PersistedActorData Game::GetPersistedActorData(u64 id) {
-    PersistedActorData* pPersistData = gameData.persistedActorData.Get(id);
-    if (pPersistData == nullptr) {
-        return PersistedActorData{};
+PersistedActorData* Game::GetPersistedActorData(u64 id) {
+    if (id == UUID_NULL) {
+        return nullptr;
     }
-    return *pPersistData;
+
+    PersistedActorData* pPersistData = gameData.persistedActorData.Get(id);
+    return pPersistData;
 }
 void Game::SetPersistedActorData(u64 id, const PersistedActorData& data) {
+    if (id == UUID_NULL) {
+        return;
+    }
+
     PersistedActorData* pPersistData = gameData.persistedActorData.Get(id);
     if (pPersistData) {
         *pPersistData = data;
@@ -382,7 +391,7 @@ bool Game::LoadLevel(u32 index, s32 screenIndex, u8 direction, bool refresh) {
 
     pCurrentLevel = pLevel;
 
-    ReloadLevel(screenIndex, direction, refresh);
+    return ReloadLevel(screenIndex, direction, refresh);
 }
 
 void Game::UnloadLevel(bool refresh) {
@@ -399,9 +408,9 @@ void Game::UnloadLevel(bool refresh) {
     }
 }
 
-void Game::ReloadLevel(s32 screenIndex, u8 direction, bool refresh) {
+bool Game::ReloadLevel(s32 screenIndex, u8 direction, bool refresh) {
     if (pCurrentLevel == nullptr) {
-        return;
+        return false;
     }
 
     UnloadLevel(refresh);
@@ -411,7 +420,7 @@ void Game::ReloadLevel(s32 screenIndex, u8 direction, bool refresh) {
         auto handle = pCurrentLevel->actors.GetHandle(i);
         const Actor* pActor = pCurrentLevel->actors.Get(handle);
 
-        const PersistedActorData* pPersistData = gameData.persistedActorData.Get(pActor->id);
+        const PersistedActorData* pPersistData = gameData.persistedActorData.Get(pActor->persistId);
         if (!pPersistData || !(pPersistData->dead || pPersistData->permaDead)) {
             SpawnActor(pActor);
         }
@@ -434,6 +443,8 @@ void Game::ReloadLevel(s32 screenIndex, u8 direction, bool refresh) {
     if (refresh) {
         Rendering::RefreshViewport();
     }
+
+    return true;
 }
 
 Level* Game::GetCurrentLevel() {

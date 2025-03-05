@@ -1,4 +1,4 @@
-#include "npc.h"
+#include "enemy.h"
 #include "actors.h"
 #include "actor_prototypes.h"
 #include "game_rendering.h"
@@ -82,36 +82,51 @@ static void UpdateSkullEnemy(Actor* pActor) {
     Game::SetDamagePaletteOverride(pActor, pActor->state.npcState.damageCounter);
 }
 
-#pragma region Public API
-void Game::InitializeNPC(Actor* pActor, const PersistedActorData& persistData) {
-	pActor->state.npcState.health = pActor->pPrototype->data.npcData.health;
-	pActor->state.npcState.damageCounter = 0;
-	pActor->drawState.layer = SPRITE_LAYER_FG;
-
-    switch (pActor->pPrototype->subtype) {
-        // Enemies
-    case NPC_SUBTYPE_ENEMY_SLIME: {
-        pActor->pUpdateFn = UpdateSlimeEnemy;
-        break;
-    }
-    case NPC_SUBTYPE_ENEMY_SKULL: {
-        pActor->pUpdateFn = UpdateSkullEnemy;
-        break;
-    }
-    default:
-        pActor->pUpdateFn = nullptr;
-        break;
-    }
-
-	pActor->pDrawFn = nullptr;
+static void FireballDie(Actor* pActor, const glm::vec2& effectPos) {
+    pActor->flags.pendingRemoval = true;
+    Game::SpawnActor(pActor->pPrototype->data.npcData.spawnOnDeath, effectPos);
 }
 
-void Game::NPCDie(Actor* pActor) {
+static void UpdateFireball(Actor* pActor) {
+    if (!Game::UpdateCounter(pActor->state.bulletState.lifetimeCounter)) {
+        FireballDie(pActor, pActor->position);
+        return;
+    }
+
+    HitResult hit{};
+    if (Game::ActorMoveHorizontal(pActor, hit)) {
+        FireballDie(pActor, hit.impactPoint);
+        return;
+    }
+
+    if (Game::ActorMoveVertical(pActor, hit)) {
+        FireballDie(pActor, hit.impactPoint);
+        return;
+    }
+
+    Actor* pPlayer = Game::GetPlayer();
+    if (pPlayer && Game::GetPlayerHealth() != 0 && Game::ActorsColliding(pActor, pPlayer)) {
+        Game::HandlePlayerEnemyCollision(pPlayer, pActor);
+    }
+
+    Game::AdvanceCurrentAnimation(pActor);
+}
+
+static void InitEnemy(Actor* pActor, const PersistedActorData* pPersistData) {
+    pActor->state.npcState.health = pActor->pPrototype->data.npcData.health;
+    pActor->state.npcState.damageCounter = 0;
+    pActor->drawState.layer = SPRITE_LAYER_FG;
+}
+
+#pragma region Public API
+void Game::EnemyDie(Actor* pActor) {
     pActor->flags.pendingRemoval = true;
 
-    PersistedActorData persistData = GetPersistedActorData(pActor->id);
-    persistData.dead = true;
-    SetPersistedActorData(pActor->id, persistData);
+    PersistedActorData* pPersistData = GetPersistedActorData(pActor->persistId);
+    if (pPersistData) {
+        pPersistData->dead = true;
+    }
+    else SetPersistedActorData(pActor->persistId, { .dead = true });
 
     //Audio::PlaySFX(&enemyDieSfx, CHAN_ID_NOISE);
     SpawnActor(pActor->pPrototype->data.npcData.spawnOnDeath, pActor->position);
@@ -127,3 +142,19 @@ void Game::NPCDie(Actor* pActor) {
     }*/
 }
 #pragma endregion
+
+constexpr ActorInitFn Game::enemyInitTable[ENEMY_TYPE_COUNT] = {
+    InitEnemy,
+    InitEnemy,
+    InitEnemy,
+};
+constexpr ActorUpdateFn Game::enemyUpdateTable[ENEMY_TYPE_COUNT] = {
+    UpdateSlimeEnemy,
+    UpdateSkullEnemy,
+    UpdateFireball,
+};
+constexpr ActorDrawFn Game::enemyDrawTable[ENEMY_TYPE_COUNT] = {
+    Game::DrawActorDefault,
+    Game::DrawActorDefault,
+    Game::DrawActorDefault,
+};

@@ -1527,7 +1527,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 					PoolHandle<Actor> handle = pLevel->actors.Add();
 					Actor* pNewActor = pLevel->actors.Get(handle);
 					pNewActor->pPrototype = Assets::GetActorPrototype(0);
-					pNewActor->id = Random::GenerateUUID();
+					pNewActor->persistId = Random::GenerateUUID();
 					pNewActor->position = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
 				}
 				ImGui::EndPopup();
@@ -1765,7 +1765,7 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 				ImGui::PushID(selectedActorHandle.Raw());
 				ImGui::BeginDisabled(!editing);
 
-				ImGui::Text("UUID: %llu", pActor->id);
+				ImGui::Text("UUID: %llu", pActor->persistId);
 
 				if (ImGui::BeginCombo("Prototype", Assets::GetActorPrototypeName(pActor->pPrototype))) {
 					for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++) {
@@ -2182,33 +2182,34 @@ static void DrawActorWindow() {
 				u32 subtypeCount = 0;
 				switch (pPrototype->type) {
 				case ACTOR_TYPE_PLAYER: {
-					subtypeNames = PLAYER_SUBTYPE_NAMES;
-					subtypeCount = PLAYER_SUBTYPE_COUNT;
+					subtypeNames = PLAYER_TYPE_NAMES;
+					subtypeCount = PLAYER_TYPE_COUNT;
 					break;
 				}
-				case ACTOR_TYPE_NPC: {
-					subtypeNames = NPC_SUBTYPE_NAMES;
-					subtypeCount = NPC_SUBTYPE_COUNT;
+				case ACTOR_TYPE_ENEMY: {
+					subtypeNames = ENEMY_TYPE_NAMES;
+					subtypeCount = ENEMY_TYPE_COUNT;
 					break;
 				}
 				case ACTOR_TYPE_BULLET: {
-					subtypeNames = BULLET_SUBTYPE_NAMES;
-					subtypeCount = BULLET_SUBTYPE_COUNT;
+					subtypeNames = BULLET_TYPE_NAMES;
+					subtypeCount = BULLET_TYPE_COUNT;
 					break;
 				}
 				case ACTOR_TYPE_PICKUP: {
-					subtypeNames = PICKUP_SUBTYPE_NAMES;
-					subtypeCount = PICKUP_SUBTYPE_COUNT;
+					subtypeNames = PICKUP_TYPE_NAMES;
+					subtypeCount = PICKUP_TYPE_COUNT;
 					break;
 				}
 				case ACTOR_TYPE_EFFECT: {
-					subtypeNames = EFFECT_SUBTYPE_NAMES;
-					subtypeCount = EFFECT_SUBTYPE_COUNT;
+					subtypeNames = EFFECT_TYPE_NAMES;
+					subtypeCount = EFFECT_TYPE_COUNT;
 					break;
 				}
-				case ACTOR_TYPE_CHECKPOINT: {
-					subtypeNames = CHECKPOINT_SUBTYPE_NAMES;
-					subtypeCount = CHECKPOINT_SUBTYPE_COUNT;
+				case ACTOR_TYPE_INTERACTABLE: {
+					subtypeNames = INTERACTABLE_TYPE_NAMES;
+					subtypeCount = INTERACTABLE_TYPE_COUNT;
+					break;
 				}
 				default:
 					break;
@@ -2216,7 +2217,6 @@ static void DrawActorWindow() {
 
 				pPrototype->subtype = glm::clamp(pPrototype->subtype, u16(0), u16(subtypeCount - 1));
 				DrawTypeSelectionCombo("Subtype", subtypeNames, subtypeCount, pPrototype->subtype);
-				DrawTypeSelectionCombo("Alignment", ACTOR_ALIGNMENT_NAMES, ACTOR_ALIGNMENT_COUNT, pPrototype->alignment);
 
 				ImGui::SeparatorText("Type data");
 
@@ -2229,7 +2229,7 @@ static void DrawActorWindow() {
 					
 					break;
 				}
-				case ACTOR_TYPE_NPC: {
+				case ACTOR_TYPE_ENEMY: {
 					ImGui::InputScalar("Health", ImGuiDataType_U16, &pPrototype->data.npcData.health);
 					ImGui::InputScalar("Exp value", ImGuiDataType_U16, &pPrototype->data.npcData.expValue);
 					// TODO: loot type

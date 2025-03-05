@@ -65,12 +65,12 @@ namespace Game {
     void SetCheckpoint(const Checkpoint& checkpoint);
     void ActivateCheckpoint(const Actor* pCheckpoint);
 
-    PersistedActorData GetPersistedActorData(u64 id);
+    PersistedActorData* GetPersistedActorData(u64 id);
     void SetPersistedActorData(u64 id, const PersistedActorData& data);
 
     bool LoadLevel(u32 index, s32 screenIndex = 0, u8 direction = 0, bool refresh = true);
     void UnloadLevel(bool refresh = true);
-    void ReloadLevel(s32 screenIndex = 0, u8 direction = 0, bool refresh = true);
+    bool ReloadLevel(s32 screenIndex = 0, u8 direction = 0, bool refresh = true);
 	Level* GetCurrentLevel();
 
 	u32 GetFramesElapsed();

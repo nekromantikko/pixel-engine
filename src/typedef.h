@@ -37,3 +37,13 @@ typedef uint64 u64;
 
 typedef real32 r32;
 typedef real64 r64;
+
+struct Actor;
+struct PersistedActorData;
+
+typedef void (*ActorInitFn)(Actor*, const PersistedActorData*);
+typedef void (*ActorUpdateFn)(Actor*);
+typedef bool (*ActorDrawFn)(const Actor*);
+
+typedef u16 TActorType;
+typedef u16 TActorSubtype;

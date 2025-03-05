@@ -27,39 +27,9 @@ static void InitializeActor(Actor* pActor) {
 
 	pActor->drawState = ActorDrawState{};
 
-	pActor->pUpdateFn = nullptr;
-	pActor->pDrawFn = nullptr;
+	const PersistedActorData* pPersistData = Game::GetPersistedActorData(pActor->persistId);
 
-	const PersistedActorData persistData = Game::GetPersistedActorData(pActor->id);
-
-	switch (pPrototype->type) {
-	case ACTOR_TYPE_PLAYER: {
-		Game::InitializePlayer(pActor, persistData);
-		break;
-	}
-	case ACTOR_TYPE_NPC: {
-		Game::InitializeNPC(pActor, persistData);
-		break;
-	}
-	case ACTOR_TYPE_BULLET: {
-		Game::InitializeBullet(pActor, persistData);
-		break;
-	}
-	case ACTOR_TYPE_PICKUP: {
-		Game::InitializePickup(pActor, persistData);
-		break;
-	}
-	case ACTOR_TYPE_EFFECT: {
-		Game::InitializeEffect(pActor, persistData);
-		break;
-	}
-	case ACTOR_TYPE_CHECKPOINT: {
-		Game::InitializeCheckpoint(pActor, persistData);
-		break;
-	}
-	default:
-		break;
-	}
+	Game::actorInitTable[pActor->pPrototype->type][pActor->pPrototype->subtype](pActor, pPersistData);
 }
 
 Actor* Game::SpawnActor(const Actor* pTemplate) {
@@ -93,7 +63,7 @@ Actor* Game::SpawnActor(const s32 prototypeIndex, const glm::vec2& position, con
 	}
 
 	Actor actor{};
-	actor.id = Random::GenerateUUID();
+	actor.persistId = UUID_NULL;
 	actor.pPrototype = pPrototype;
 	actor.position = position;
 	actor.velocity = velocity;
@@ -125,7 +95,30 @@ bool Game::ActorsColliding(const Actor* pActor, const Actor* pOther) {
 	return Collision::BoxesOverlap(hitbox, pActor->position, hitboxOther, pOther->position);
 }
 
-void Game::ForEachActorCollision(Actor* pActor, void (*callback)(Actor*, Actor*), bool (*filter)(const Actor*)) {
+void Game::ForEachActorCollision(Actor* pActor, TActorType type, ActorCollisionCallbackFn callback) {
+	if (!ActorValid(pActor)) {
+		return;
+	}
+
+	for (u32 i = 0; i < actors.Count(); i++)
+	{
+		ActorHandle handle = actors.GetHandle(i);
+		Actor* pOther = actors.Get(handle);
+
+		if (!ActorValid(pOther)) {
+			continue;
+		}
+
+		if (pOther->pPrototype->type != type) {
+			continue;
+		}
+
+		if (ActorsColliding(pActor, pOther)) {
+			callback(pActor, pOther);
+		}
+	}
+}
+void Game::ForEachActorCollision(Actor* pActor, ActorFilterFn filter, ActorCollisionCallbackFn callback) {
 	if (!ActorValid(pActor)) {
 		return;
 	}
@@ -148,7 +141,32 @@ void Game::ForEachActorCollision(Actor* pActor, void (*callback)(Actor*, Actor*)
 		}
 	}
 }
-Actor* Game::GetFirstActorCollision(Actor* pActor, bool (*filter)(const Actor*)) {
+Actor* Game::GetFirstActorCollision(const Actor* pActor, TActorType type) {
+	if (!ActorValid(pActor)) {
+		return nullptr;
+	}
+
+	for (u32 i = 0; i < actors.Count(); i++)
+	{
+		ActorHandle handle = actors.GetHandle(i);
+		Actor* pOther = actors.Get(handle);
+
+		if (!ActorValid(pOther)) {
+			continue;
+		}
+
+		if (pOther->pPrototype->type != type) {
+			continue;
+		}
+
+		if (ActorsColliding(pActor, pOther)) {
+			return pOther;
+		}
+	}
+
+	return nullptr;
+}
+Actor* Game::GetFirstActorCollision(const Actor* pActor, ActorFilterFn filter) {
 	if (!ActorValid(pActor)) {
 		return nullptr;
 	}
@@ -173,8 +191,24 @@ Actor* Game::GetFirstActorCollision(Actor* pActor, bool (*filter)(const Actor*))
 
 	return nullptr;
 }
+void Game::ForEachActor(TActorType type, ActorCallbackFn callback) {
+	for (u32 i = 0; i < actors.Count(); i++)
+	{
+		ActorHandle handle = actors.GetHandle(i);
+		Actor* pActor = actors.Get(handle);
 
-void Game::ForEachActor(void (*callback)(Actor* pActor), bool (*filter)(const Actor*)) {
+		if (!ActorValid(pActor)) {
+			continue;
+		}
+
+		if (pActor->pPrototype->type != type) {
+			continue;
+		}
+
+		callback(pActor);
+	}
+}
+void Game::ForEachActor(ActorFilterFn filter, ActorCallbackFn callback) {
 	for (u32 i = 0; i < actors.Count(); i++)
 	{
 		ActorHandle handle = actors.GetHandle(i);
@@ -190,9 +224,27 @@ void Game::ForEachActor(void (*callback)(Actor* pActor), bool (*filter)(const Ac
 
 		callback(pActor);
 	}
-
 }
-Actor* Game::GetFirstActor(bool (*filter)(const Actor*)) {
+Actor* Game::GetFirstActor(TActorType type) {
+	for (u32 i = 0; i < actors.Count(); i++)
+	{
+		ActorHandle handle = actors.GetHandle(i);
+		Actor* pActor = actors.Get(handle);
+
+		if (!ActorValid(pActor)) {
+			continue;
+		}
+
+		if (pActor->pPrototype->type != type) {
+			continue;
+		}
+
+		return pActor;
+	}
+
+	return nullptr;
+}
+Actor* Game::GetFirstActor(ActorFilterFn filter) {
 	for (u32 i = 0; i < actors.Count(); i++)
 	{
 		ActorHandle handle = actors.GetHandle(i);
@@ -210,7 +262,6 @@ Actor* Game::GetFirstActor(bool (*filter)(const Actor*)) {
 	}
 
 	return nullptr;
-
 }
 
 Actor* Game::GetPlayer() {
@@ -366,9 +417,7 @@ void Game::UpdateActors() {
 			continue;
 		}
 
-		if (pActor->pUpdateFn) {
-			pActor->pUpdateFn(pActor);
-		}
+		actorUpdateTable[pActor->pPrototype->type][pActor->pPrototype->subtype](pActor);
 	}
 
 	for (u32 i = 0; i < actorRemoveList.Count(); i++) {
@@ -394,18 +443,14 @@ bool Game::DrawActorDefault(const Actor* pActor) {
 
 	switch (currentAnim.type) {
 	case ANIMATION_TYPE_SPRITES: {
-		Game::Rendering::DrawMetaspriteSprite(drawState.layer, currentAnim.metaspriteIndex, drawState.frameIndex, drawPos, drawState.hFlip, drawState.vFlip, customPalette);
-		break;
+		return Game::Rendering::DrawMetaspriteSprite(drawState.layer, currentAnim.metaspriteIndex, drawState.frameIndex, drawPos, drawState.hFlip, drawState.vFlip, customPalette);
 	}
 	case ANIMATION_TYPE_METASPRITES: {
-		Game::Rendering::DrawMetasprite(drawState.layer, currentAnim.metaspriteIndex + drawState.frameIndex, drawPos, drawState.hFlip, drawState.vFlip, customPalette);
-		break;
+		return Game::Rendering::DrawMetasprite(drawState.layer, currentAnim.metaspriteIndex + drawState.frameIndex, drawPos, drawState.hFlip, drawState.vFlip, customPalette);
 	}
 	default:
-		break;
+		return false;
 	}
-
-	return true;
 }
 
 void Game::DrawActors() {
@@ -416,12 +461,7 @@ void Game::DrawActors() {
 			continue;
 		}
 
-		if (pActor->pDrawFn) {
-			pActor->pDrawFn(pActor);
-		}
-		else {
-			DrawActorDefault(pActor);
-		}
+		actorDrawTable[pActor->pPrototype->type][pActor->pPrototype->subtype](pActor);
 	}
 }
 

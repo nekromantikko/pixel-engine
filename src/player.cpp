@@ -7,6 +7,42 @@
 #include "dialog.h"
 #include "level.h"
 
+enum PlayerHeadFrame : u8 {
+    PLAYER_HEAD_IDLE,
+    PLAYER_HEAD_FWD,
+    PLAYER_HEAD_FALL,
+    PLAYER_HEAD_DMG
+};
+
+enum PlayerLegsFrame : u8 {
+    PLAYER_LEGS_IDLE,
+    PLAYER_LEGS_FWD,
+    PLAYER_LEGS_JUMP,
+    PLAYER_LEGS_FALL
+};
+
+enum PlayerWingsFrame : u8 {
+    PLAYER_WINGS_DESCEND,
+    PLAYER_WINGS_FLAP_START,
+    PLAYER_WINGS_ASCEND,
+    PLAYER_WINGS_FLAP_END,
+
+    PLAYER_WING_FRAME_COUNT
+};
+
+enum PlayerAimFrame : u8 {
+    PLAYER_AIM_FWD,
+    PLAYER_AIM_UP,
+    PLAYER_AIM_DOWN
+};
+
+enum PlayerSitDownState : u8 {
+    PLAYER_STANDING = 0b00,
+    PLAYER_SITTING = 0b01,
+    PLAYER_SIT_TO_STAND = 0b10,
+    PLAYER_STAND_TO_SIT = 0b11
+};
+
 // TODO: These should be set in editor somehow
 constexpr s32 playerGrenadePrototypeIndex = 1;
 constexpr s32 playerArrowPrototypeIndex = 4;
@@ -154,7 +190,7 @@ static void TriggerInteraction(Actor* pPlayer, Actor* pInteractable) {
         return;
     }
 
-    if (pInteractable->pPrototype->type == ACTOR_TYPE_CHECKPOINT) {
+    if (pInteractable->pPrototype->subtype == INTERACTABLE_TYPE_CHECKPOINT) {
         pInteractable->state.checkpointState.activated = true;
 
         Game::ActivateCheckpoint(pInteractable);
@@ -214,18 +250,6 @@ static void PlayerShoot(Actor* pPlayer) {
     }
 }
 
-static bool IsInteractable(const Actor* pActor) {
-    if (pActor->pPrototype->type == ACTOR_TYPE_NPC && pActor->pPrototype->alignment == ACTOR_ALIGNMENT_FRIENDLY) {
-        return true;
-    }
-
-    if (pActor->pPrototype->type == ACTOR_TYPE_CHECKPOINT) {
-        return true;
-    }
-
-    return false;
-}
-
 static void PlayerInput(Actor* pPlayer) {
     constexpr r32 maxSpeed = 0.09375f; // Actual movement speed from Zelda 2
     constexpr r32 acceleration = maxSpeed / 24.f; // Acceleration from Zelda 2
@@ -265,7 +289,7 @@ static void PlayerInput(Actor* pPlayer) {
         Game::AdvanceDialogText();
     }
     else if (!inputDisabled) {
-        Actor* pInteractable = Game::GetFirstActorCollision(pPlayer, IsInteractable);
+        Actor* pInteractable = Game::GetFirstActorCollision(pPlayer, ACTOR_TYPE_INTERACTABLE);
         if (pInteractable && Game::Input::ButtonPressed(BUTTON_B)) {
             TriggerInteraction(pPlayer, pInteractable);
         }
@@ -477,12 +501,16 @@ static void UpdatePlayerSidescroller(Actor* pActor) {
     HandleLevelExit(pActor);
 }
 
+static void UpdatePlayerOverworld(Actor* pPlayer) {
+
+}
+
 static bool DrawPlayerGun(const Actor* pPlayer) {
     const ActorDrawState& drawState = pPlayer->drawState;
     glm::i16vec2 drawPos = Game::Rendering::WorldPosToScreenPixels(pPlayer->position) + drawState.pixelOffset;
 
     // Draw weapon first
-    glm::i16vec2 weaponOffset;
+    glm::i16vec2 weaponOffset{};
     u8 weaponFrameBankOffset;
     u32 weaponMetaspriteIndex;
     const u16 playerWeapon = Game::GetPlayerWeapon();
@@ -505,13 +533,21 @@ static bool DrawPlayerGun(const Actor* pPlayer) {
     weaponOffset.x *= pPlayer->flags.facingDir;
 
     Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, weaponFrameBankOffset, 1, playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
-    Game::Rendering::DrawMetasprite(SPRITE_LAYER_FG, weaponMetaspriteIndex, drawPos + weaponOffset, drawState.hFlip, drawState.vFlip, -1);
-
-    return true;
+    return Game::Rendering::DrawMetasprite(SPRITE_LAYER_FG, weaponMetaspriteIndex, drawPos + weaponOffset, drawState.hFlip, drawState.vFlip, -1);
 }
 
-#pragma region Public API
-void Game::InitializePlayer(Actor* pPlayer, const PersistedActorData& persistData) {
+static bool DrawPlayerSidescroller(const Actor* pPlayer) {
+    if (Game::GetPlayerHealth() != 0 && pPlayer->state.playerState.flags.sitState == PLAYER_STANDING) {
+        DrawPlayerGun(pPlayer);
+    }
+    return Game::DrawActorDefault(pPlayer);
+}
+
+static bool DrawPlayerOverworld(const Actor* pPlayer) {
+    return false;
+}
+
+void InitPlayerSidescroller(Actor* pPlayer, const PersistedActorData* pPersistData) {
     pPlayer->state.playerState.entryDelayCounter = 0;
     pPlayer->state.playerState.deathCounter = 0;
     pPlayer->state.playerState.damageCounter = 0;
@@ -521,28 +557,13 @@ void Game::InitializePlayer(Actor* pPlayer, const PersistedActorData& persistDat
     pPlayer->state.playerState.flags.sitState = PLAYER_STANDING;
     pPlayer->state.playerState.flags.slowFall = false;
     pPlayer->drawState.layer = SPRITE_LAYER_FG;
-
-    pPlayer->pUpdateFn = UpdatePlayer;
-    pPlayer->pDrawFn = DrawPlayer;
 }
 
-void Game::UpdatePlayer(Actor* pPlayer) {
-    switch (pPlayer->pPrototype->subtype) {
-    case PLAYER_SUBTYPE_SIDESCROLLER: {
-        UpdatePlayerSidescroller(pPlayer);
-        break;
-    }
-    default:
-        break;
-    }
-}
-void Game::DrawPlayer(const Actor* pPlayer) {
-    if (GetPlayerHealth() != 0 && pPlayer->state.playerState.flags.sitState == PLAYER_STANDING) {
-        DrawPlayerGun(pPlayer);
-    }
-    DrawActorDefault(pPlayer);
+static void InitPlayerOverworld(Actor* pPlayer, const PersistedActorData* pPersistData) {
+
 }
 
+#pragma region Public API
 void Game::HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
     u16 health = GetPlayerHealth();
 
@@ -578,3 +599,18 @@ void Game::HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
 
 }
 #pragma endregion
+
+constexpr ActorInitFn Game::playerInitTable[PLAYER_TYPE_COUNT] = {
+    InitPlayerSidescroller,
+    InitPlayerOverworld
+};
+
+constexpr ActorUpdateFn Game::playerUpdateTable[PLAYER_TYPE_COUNT] = {
+    UpdatePlayerSidescroller,
+    UpdatePlayerOverworld
+};
+
+constexpr ActorDrawFn Game::playerDrawTable[PLAYER_TYPE_COUNT] = {
+    DrawPlayerSidescroller,
+    DrawPlayerOverworld
+};

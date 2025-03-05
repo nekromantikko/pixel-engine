@@ -1,4 +1,4 @@
-#include "pickups.h"
+#include "pickup.h"
 #include "actors.h"
 #include "actor_prototypes.h"
 #include "game_rendering.h"
@@ -63,22 +63,21 @@ static void UpdateExpRemnant(Actor* pActor) {
     }
 }
 
-#pragma region Public API
-void Game::InitializePickup(Actor* pActor, const PersistedActorData& persistData) {
-	pActor->drawState.layer = SPRITE_LAYER_FG;
-
-    switch (pActor->pPrototype->subtype) {
-    case PICKUP_SUBTYPE_HALO: {
-        pActor->pUpdateFn = UpdateExpHalo;
-        break;
-    }
-    case PICKUP_SUBTYPE_XP_REMNANT: {
-        pActor->pUpdateFn = UpdateExpRemnant;
-        break;
-    }
-    default:
-        pActor->pUpdateFn = nullptr;
-        break;
-    }
+static void InitializePickup(Actor* pActor, const PersistedActorData* pPersistData) {
+    pActor->drawState.layer = SPRITE_LAYER_FG;
 }
-#pragma endregion
+
+constexpr ActorInitFn Game::pickupInitTable[PICKUP_TYPE_COUNT] = {
+    InitializePickup,
+    InitializePickup,
+};
+
+constexpr ActorUpdateFn Game::pickupUpdateTable[PICKUP_TYPE_COUNT] = {
+    UpdateExpHalo,
+    UpdateExpRemnant,
+};
+
+constexpr ActorDrawFn Game::pickupDrawTable[PICKUP_TYPE_COUNT] = {
+    Game::DrawActorDefault,
+    Game::DrawActorDefault,
+};

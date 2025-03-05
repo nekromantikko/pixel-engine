@@ -27,9 +27,9 @@ constexpr const char* ANIMATION_TYPE_NAMES[ANIMATION_TYPE_COUNT] = { "Sprites", 
 #endif
 
 struct ActorPrototype {
-	u16 type;
-	u16 subtype;
-	u8 alignment;
+	TActorType type;
+	TActorSubtype subtype;
+	u8 unused;
 
 	AABB hitbox;
 

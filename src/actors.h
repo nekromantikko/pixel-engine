@@ -32,15 +32,10 @@ struct ActorDrawState {
 	bool useCustomPalette : 1 = false;
 };
 
-struct Actor;
-
-typedef void (*ActorUpdateFn)(Actor* pActor);
-typedef void (*ActorDrawFn)(const Actor* pActor);
-
 struct ActorPrototype;
 
 struct Actor {
-	u64 id;
+	u64 persistId;
 
 	ActorFlags flags;
 
@@ -54,9 +49,6 @@ struct Actor {
 	ActorState state;
 
 	const ActorPrototype* pPrototype;
-
-	ActorUpdateFn pUpdateFn;
-	ActorDrawFn pDrawFn;
 };
 
 typedef PoolHandle<Actor> ActorHandle;
@@ -65,6 +57,10 @@ typedef Pool<Actor, MAX_DYNAMIC_ACTOR_COUNT> DynamicActorPool;
 
 struct HitResult;
 
+typedef void (*ActorCallbackFn)(Actor*);
+typedef void (*ActorCollisionCallbackFn)(Actor*, Actor*);
+typedef bool (*ActorFilterFn)(const Actor*);
+
 namespace Game {
 	Actor* SpawnActor(const Actor* pTemplate);
 	Actor* SpawnActor(const s32 prototypeIndex, const glm::vec2& position, const glm::vec2& velocity = {0.0f, 0.0f});
@@ -72,10 +68,14 @@ namespace Game {
 
 	bool ActorValid(const Actor* pActor);
 	bool ActorsColliding(const Actor* pActor, const Actor* pOther);
-	void ForEachActorCollision(Actor* pActor, void (*callback)(Actor*, Actor*), bool (*filter)(const Actor*) = nullptr);
-	Actor* GetFirstActorCollision(Actor* pActor, bool (*filter)(const Actor*) = nullptr);
-	void ForEachActor(void (*callback)(Actor* pActor), bool (*filter)(const Actor*) = nullptr);
-	Actor* GetFirstActor(bool (*filter)(const Actor*) = nullptr);
+	void ForEachActorCollision(Actor* pActor, TActorType type, ActorCollisionCallbackFn callback);
+	void ForEachActorCollision(Actor* pActor, ActorFilterFn filter, ActorCollisionCallbackFn callback);
+	Actor* GetFirstActorCollision(const Actor* pActor, TActorType type);
+	Actor* GetFirstActorCollision(const Actor* pActor, ActorFilterFn filter);
+	void ForEachActor(TActorType type, ActorCallbackFn callback);
+	void ForEachActor(ActorFilterFn filter, ActorCallbackFn callback);
+	Actor* GetFirstActor(TActorType type);
+	Actor* GetFirstActor(ActorFilterFn filter);
 
 	Actor* GetPlayer();
 

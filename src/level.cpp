@@ -110,7 +110,7 @@ void Levels::LoadLevels(const char* fname) {
         for (u32 a = 0; a < actorCount; a++) {
             Actor actor{};
 
-            fread(&actor.id, sizeof(u64), 1, pFile);
+            fread(&actor.persistId, sizeof(u64), 1, pFile);
             u32 prototypeIndex;
             fread(&prototypeIndex, sizeof(u32), 1, pFile);
             actor.pPrototype = Assets::GetActorPrototype(prototypeIndex);
@@ -174,7 +174,7 @@ void Levels::SaveLevels(const char* fname) {
             // TODO: what if there's a null actor somehow?
             const Actor* pActor = level.actors.Get(level.actors.GetHandle(a));
 
-            fwrite(&pActor->id, sizeof(u64), 1, pFile);
+            fwrite(&pActor->persistId, sizeof(u64), 1, pFile);
             const u32 prototypeIndex = Assets::GetActorPrototypeIndex(pActor->pPrototype);
             fwrite(&prototypeIndex, sizeof(u32), 1, pFile);
             fwrite(&pActor->position, sizeof(glm::vec2), 1, pFile);

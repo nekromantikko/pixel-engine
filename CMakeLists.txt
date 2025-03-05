@@ -61,11 +61,12 @@ set(SOURCES
 		src/game_ui.cpp
 		src/actor_prototypes.cpp
 		src/player.cpp
-		src/npc.cpp
-		src/bullets.cpp
-		src/pickups.cpp
-		src/effects.cpp
-		src/checkpoint.cpp)
+		src/enemy.cpp
+		src/bullet.cpp
+		src/pickup.cpp
+		src/effect.cpp
+		src/interactable.cpp
+		src/actor_types.cpp)
 
 set(EDITOR_SOURCES
 		src/editor.cpp)
