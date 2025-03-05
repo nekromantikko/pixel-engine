@@ -34,11 +34,6 @@ struct PlayerState {
 	u16 deathCounter;
 };
 
-#ifdef EDITOR
-constexpr const char* PLAYER_TYPE_NAMES[PLAYER_TYPE_COUNT] = { "Sidescroller", "Overworld" };
-#endif
-#pragma endregion
-
 struct Actor;
 
 namespace Game {
@@ -48,3 +43,11 @@ namespace Game {
 
 	void HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy);
 }
+
+#ifdef EDITOR
+#include "editor_actor.h"
+
+namespace Editor {
+	extern const ActorEditorData playerEditorData;
+}
+#endif

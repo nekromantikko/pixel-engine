@@ -387,7 +387,7 @@ u16 Game::ActorTakeDamage(Actor* pActor, u32 dmgValue, u16 currentHealth, u16& d
 	constexpr glm::vec2 velocity = { 0, -0.03125f };
 	Actor* pDmg = SpawnActor(dmgNumberPrototypeIndex, spawnPos, velocity);
 	if (pDmg != nullptr) {
-		pDmg->state.effectState.value = -dmgValue;
+		pDmg->state.dmgNumberState.value = -dmgValue;
 	}
 
 	return newHealth;

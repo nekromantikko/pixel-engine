@@ -47,3 +47,5 @@ typedef bool (*ActorDrawFn)(const Actor*);
 
 typedef u16 TActorType;
 typedef u16 TActorSubtype;
+
+typedef u16 TActorPrototypeIndex;

@@ -10,20 +10,23 @@ enum BulletType : TActorSubtype {
 
 struct BulletData {
 	u16 lifetime;
-	u16 spawnOnDeath;
+	TActorPrototypeIndex deathEffect;
 };
 
 struct BulletState {
-	u16 lifetime;
 	u16 lifetimeCounter;
 };
-
-#ifdef EDITOR
-constexpr const char* BULLET_TYPE_NAMES[BULLET_TYPE_COUNT] = { "Default", "Grenade" };
-#endif
 
 namespace Game {
 	extern const ActorInitFn bulletInitTable[BULLET_TYPE_COUNT];
 	extern const ActorUpdateFn bulletUpdateTable[BULLET_TYPE_COUNT];
 	extern const ActorDrawFn bulletDrawTable[BULLET_TYPE_COUNT];
 }
+
+#ifdef EDITOR
+#include "editor_actor.h"
+
+namespace Editor {
+	extern const ActorEditorData bulletEditorData;
+}
+#endif

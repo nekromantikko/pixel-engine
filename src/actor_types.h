@@ -7,7 +7,6 @@
 #include "effect.h"
 #include "interactable.h"
 
-#pragma region Common
 enum ActorType : TActorType {
 	ACTOR_TYPE_PLAYER,
 	ACTOR_TYPE_ENEMY,
@@ -19,13 +18,9 @@ enum ActorType : TActorType {
 	ACTOR_TYPE_COUNT
 };
 
-#ifdef EDITOR
-constexpr const char* ACTOR_TYPE_NAMES[ACTOR_TYPE_COUNT] = { "Player", "Enemy", "Bullet", "Pickup", "Effect", "Interactable" };
-#endif
-#pragma endregion
-
 union ActorPrototypeData {
-	EnemyData npcData;
+	EnemyData enemyData;
+	FireballData fireballData;
 	BulletData bulletData;
 	PickupData pickupData;
 	EffectData effectData;
@@ -34,10 +29,12 @@ union ActorPrototypeData {
 
 union ActorState {
 	PlayerState playerState;
-	EnemyState npcState;
+	EnemyState enemyState;
+	FireballState fireballState;
 	BulletState bulletState;
 	PickupState pickupState;
 	EffectState effectState;
+	DamageNumberState dmgNumberState;
 	CheckpointState checkpointState;
 };
 
@@ -69,3 +66,21 @@ namespace Game {
 		interactableDrawTable,
 	};
 }
+
+#ifdef EDITOR
+#include "editor_actor.h"
+
+namespace Editor {
+	constexpr const char* actorTypeNames[ACTOR_TYPE_COUNT] = { "Player", "Enemy", "Bullet", "Pickup", "Effect", "Interactable" };
+
+	const ActorEditorData actorEditorData[ACTOR_TYPE_COUNT] = {
+		playerEditorData,
+		enemyEditorData,
+		bulletEditorData,
+		pickupEditorData,
+		effectEditorData,
+		interactableEditorData,
+	};
+}
+
+#endif

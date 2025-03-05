@@ -22,7 +22,7 @@ static bool DrawNumbers(const Actor* pActor) {
     }
 
     static char numberStr[16]{};
-    const u32 strLength = ItoaSigned(pActor->state.effectState.value, numberStr);
+    const u32 strLength = ItoaSigned(pActor->state.dmgNumberState.value, numberStr);
 
     // Ascii character '*' = 0x2A
     constexpr u8 chrOffset = 0x2A;
@@ -41,26 +41,26 @@ static bool DrawNumbers(const Actor* pActor) {
     return result;
 }
 
-static void UpdateDefaultEffect(Actor* pActor) {
+static void UpdateExplosion(Actor* pActor) {
     if (!Game::UpdateCounter(pActor->state.effectState.lifetimeCounter)) {
         pActor->flags.pendingRemoval = true;
     }
-}
-
-static void UpdateExplosion(Actor* pActor) {
-    UpdateDefaultEffect(pActor);
 
     Game::AdvanceCurrentAnimation(pActor);
 }
 
 static void UpdateNumbers(Actor* pActor) {
-    UpdateDefaultEffect(pActor);
+    if (!Game::UpdateCounter(pActor->state.dmgNumberState.lifetimeCounter)) {
+        pActor->flags.pendingRemoval = true;
+    }
 
     pActor->position.y += pActor->velocity.y;
 }
 
 static void UpdateFeather(Actor* pActor) {
-    UpdateDefaultEffect(pActor);
+    if (!Game::UpdateCounter(pActor->state.effectState.lifetimeCounter)) {
+        pActor->flags.pendingRemoval = true;
+    }
 
     constexpr r32 maxFallSpeed = 0.03125f;
     Game::ApplyGravity(pActor, 0.005f);
@@ -70,7 +70,7 @@ static void UpdateFeather(Actor* pActor) {
 
     constexpr r32 amplitude = 2.0f;
     constexpr r32 timeMultiplier = 1 / 30.f;
-    const u16 time = pActor->state.effectState.lifetimeCounter - pActor->state.effectState.lifetime;
+    const u16 time = pActor->state.effectState.lifetimeCounter - pActor->state.effectState.initialLifetime;
     const r32 sineTime = glm::sin(time * timeMultiplier);
     pActor->velocity.x = pActor->initialVelocity.x * sineTime;
 
@@ -78,7 +78,7 @@ static void UpdateFeather(Actor* pActor) {
 }
 
 static void InitializeEffect(Actor* pActor, const PersistedActorData* pPersistData) {
-	pActor->state.effectState.lifetime = pActor->pPrototype->data.effectData.lifetime;
+	pActor->state.effectState.initialLifetime = pActor->pPrototype->data.effectData.lifetime;
 	pActor->state.effectState.lifetimeCounter = pActor->pPrototype->data.effectData.lifetime;
 	pActor->drawState.layer = SPRITE_LAYER_FX;
 }
@@ -98,3 +98,14 @@ constexpr ActorDrawFn Game::effectDrawTable[EFFECT_TYPE_COUNT] = {
     Game::DrawActorDefault,
     Game::DrawActorDefault,
 };
+
+#ifdef EDITOR
+static const std::initializer_list<ActorEditorProperty> defaultProps = {
+    {.name = "Lifetime", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(EffectData, lifetime) },
+};
+
+const ActorEditorData Editor::effectEditorData = {
+    { "Damage numbers", "Explosion", "Feather" },
+    { defaultProps, defaultProps, defaultProps }
+};
+#endif

@@ -81,3 +81,14 @@ constexpr ActorDrawFn Game::pickupDrawTable[PICKUP_TYPE_COUNT] = {
     Game::DrawActorDefault,
     Game::DrawActorDefault,
 };
+
+#ifdef EDITOR
+static const std::initializer_list<ActorEditorProperty> defaultProps = {
+    {.name = "Value", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(PickupData, value) }
+};
+
+const ActorEditorData Editor::pickupEditorData = {
+    { "Exp", "Exp remnant" },
+    { defaultProps, defaultProps }
+};
+#endif

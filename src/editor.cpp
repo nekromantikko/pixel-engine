@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "editor_actor.h"
 #include <cassert>
 #include <limits>
 #include <type_traits>
@@ -2061,6 +2062,25 @@ static void DrawActorPrototypeList(s32& selection) {
 	}
 }
 
+static void DrawActorPrototypeProperty(const ActorEditorProperty& property, ActorPrototypeData& data, const char* const* prototypeNames) {
+	void* propertyData = (u8*)&data + property.offset;
+
+	switch (property.type) {
+	case ACTOR_EDITOR_PROPERTY_SCALAR: {
+		ImGui::InputScalarN(property.name, property.dataType, propertyData, property.components);
+		break;
+	}
+	case ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX: {
+		TActorPrototypeIndex& prototypeIndex = *(TActorPrototypeIndex*)propertyData;
+		DrawTypeSelectionCombo(property.name, prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, prototypeIndex);
+		break;
+	}
+	default: {
+		break;
+	}
+	}
+}
+
 static void DrawActorWindow() {
 	ImGui::Begin("Actor prototypes", &pContext->actorWindowOpen, ImGuiWindowFlags_MenuBar);
 
@@ -2176,82 +2196,21 @@ static void DrawActorWindow() {
 		if (ImGui::BeginTabBar("Actor editor tabs")) {
 			if (ImGui::BeginTabItem("Behaviour")) {
 
-				DrawTypeSelectionCombo("Type", ACTOR_TYPE_NAMES, ACTOR_TYPE_COUNT, pPrototype->type);
+				DrawTypeSelectionCombo("Type", Editor::actorTypeNames, ACTOR_TYPE_COUNT, pPrototype->type);
+				const auto& editorData = Editor::actorEditorData[pPrototype->type];
 
-				const char* const* subtypeNames = nullptr;
-				u32 subtypeCount = 0;
-				switch (pPrototype->type) {
-				case ACTOR_TYPE_PLAYER: {
-					subtypeNames = PLAYER_TYPE_NAMES;
-					subtypeCount = PLAYER_TYPE_COUNT;
-					break;
-				}
-				case ACTOR_TYPE_ENEMY: {
-					subtypeNames = ENEMY_TYPE_NAMES;
-					subtypeCount = ENEMY_TYPE_COUNT;
-					break;
-				}
-				case ACTOR_TYPE_BULLET: {
-					subtypeNames = BULLET_TYPE_NAMES;
-					subtypeCount = BULLET_TYPE_COUNT;
-					break;
-				}
-				case ACTOR_TYPE_PICKUP: {
-					subtypeNames = PICKUP_TYPE_NAMES;
-					subtypeCount = PICKUP_TYPE_COUNT;
-					break;
-				}
-				case ACTOR_TYPE_EFFECT: {
-					subtypeNames = EFFECT_TYPE_NAMES;
-					subtypeCount = EFFECT_TYPE_COUNT;
-					break;
-				}
-				case ACTOR_TYPE_INTERACTABLE: {
-					subtypeNames = INTERACTABLE_TYPE_NAMES;
-					subtypeCount = INTERACTABLE_TYPE_COUNT;
-					break;
-				}
-				default:
-					break;
-				}
-
+				u32 subtypeCount = editorData.GetSubtypeCount();
 				pPrototype->subtype = glm::clamp(pPrototype->subtype, u16(0), u16(subtypeCount - 1));
-				DrawTypeSelectionCombo("Subtype", subtypeNames, subtypeCount, pPrototype->subtype);
+				DrawTypeSelectionCombo("Subtype", editorData.GetSubtypeNames(), subtypeCount, pPrototype->subtype);
 
 				ImGui::SeparatorText("Type data");
 
 				const char* prototypeNames[MAX_ACTOR_PROTOTYPE_COUNT]{};
 				Assets::GetActorPrototypeNames(prototypeNames);
 
-				// TODO: Split into many functions?
-				switch (pPrototype->type) {
-				case ACTOR_TYPE_PLAYER: {
-					
-					break;
-				}
-				case ACTOR_TYPE_ENEMY: {
-					ImGui::InputScalar("Health", ImGuiDataType_U16, &pPrototype->data.npcData.health);
-					ImGui::InputScalar("Exp value", ImGuiDataType_U16, &pPrototype->data.npcData.expValue);
-					// TODO: loot type
-					DrawTypeSelectionCombo("Spawn on death", prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, pPrototype->data.npcData.spawnOnDeath);
-
-					break;
-				}
-				case ACTOR_TYPE_BULLET: {
-					ImGui::InputScalar("Lifetime", ImGuiDataType_U16, &pPrototype->data.bulletData.lifetime);
-					DrawTypeSelectionCombo("Spawn on death", prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, pPrototype->data.bulletData.spawnOnDeath);
-					break;
-				}
-				case ACTOR_TYPE_PICKUP: {
-					ImGui::InputScalar("Value", ImGuiDataType_U16, &pPrototype->data.pickupData.value);
-					break;
-				}
-				case ACTOR_TYPE_EFFECT: {
-					ImGui::InputScalar("Lifetime", ImGuiDataType_U16, &pPrototype->data.effectData.lifetime);
-					break;
-				}
-				default:
-					break;
+				u32 propCount = editorData.GetPropertyCount(pPrototype->subtype);
+				for (u32 i = 0; i < propCount; i++) {
+					DrawActorPrototypeProperty(editorData.GetProperty(pPrototype->subtype, i), pPrototype->data, prototypeNames);
 				}
 
 				ImGui::EndTabItem();

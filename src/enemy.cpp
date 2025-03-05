@@ -9,7 +9,7 @@
 constexpr s32 enemyFireballPrototypeIndex = 8;
 
 static void UpdateSlimeEnemy(Actor* pActor) {
-    Game::UpdateCounter(pActor->state.npcState.damageCounter);
+    Game::UpdateCounter(pActor->state.enemyState.damageCounter);
 
     if (!pActor->flags.inAir) {
         const bool shouldJump = Random::GenerateInt(0, 127) == 0;
@@ -48,11 +48,11 @@ static void UpdateSlimeEnemy(Actor* pActor) {
     }
 
     pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
-    Game::SetDamagePaletteOverride(pActor, pActor->state.npcState.damageCounter);
+    Game::SetDamagePaletteOverride(pActor, pActor->state.enemyState.damageCounter);
 }
 
 static void UpdateSkullEnemy(Actor* pActor) {
-    Game::UpdateCounter(pActor->state.npcState.damageCounter);
+    Game::UpdateCounter(pActor->state.enemyState.damageCounter);
 
     Game::ActorFacePlayer(pActor);
 
@@ -79,16 +79,16 @@ static void UpdateSkullEnemy(Actor* pActor) {
     }
 
     pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
-    Game::SetDamagePaletteOverride(pActor, pActor->state.npcState.damageCounter);
+    Game::SetDamagePaletteOverride(pActor, pActor->state.enemyState.damageCounter);
 }
 
 static void FireballDie(Actor* pActor, const glm::vec2& effectPos) {
     pActor->flags.pendingRemoval = true;
-    Game::SpawnActor(pActor->pPrototype->data.npcData.spawnOnDeath, effectPos);
+    Game::SpawnActor(pActor->pPrototype->data.fireballData.deathEffect, effectPos);
 }
 
 static void UpdateFireball(Actor* pActor) {
-    if (!Game::UpdateCounter(pActor->state.bulletState.lifetimeCounter)) {
+    if (!Game::UpdateCounter(pActor->state.fireballState.lifetimeCounter)) {
         FireballDie(pActor, pActor->position);
         return;
     }
@@ -113,8 +113,8 @@ static void UpdateFireball(Actor* pActor) {
 }
 
 static void InitEnemy(Actor* pActor, const PersistedActorData* pPersistData) {
-    pActor->state.npcState.health = pActor->pPrototype->data.npcData.health;
-    pActor->state.npcState.damageCounter = 0;
+    pActor->state.enemyState.health = pActor->pPrototype->data.enemyData.health;
+    pActor->state.enemyState.damageCounter = 0;
     pActor->drawState.layer = SPRITE_LAYER_FG;
 }
 
@@ -129,7 +129,7 @@ void Game::EnemyDie(Actor* pActor) {
     else SetPersistedActorData(pActor->persistId, { .dead = true });
 
     //Audio::PlaySFX(&enemyDieSfx, CHAN_ID_NOISE);
-    SpawnActor(pActor->pPrototype->data.npcData.spawnOnDeath, pActor->position);
+    SpawnActor(pActor->pPrototype->data.enemyData.deathEffect, pActor->position);
 
     // Spawn exp halos
     /*const u16 totalExpValue = pActor->pPrototype->data.npcData.expValue;
@@ -158,3 +158,20 @@ constexpr ActorDrawFn Game::enemyDrawTable[ENEMY_TYPE_COUNT] = {
     Game::DrawActorDefault,
     Game::DrawActorDefault,
 };
+
+#ifdef EDITOR
+static const std::initializer_list<ActorEditorProperty> defaultProps = {
+    { .name = "Health", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(EnemyData, health) },
+    { .name = "Exp value", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(EnemyData, expValue) },
+    { .name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(EnemyData, deathEffect) },
+};
+static const std::initializer_list<ActorEditorProperty> fireballProps = {
+    {.name = "Lifetime", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(FireballData, lifetime) },
+    {.name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(FireballData, deathEffect) },
+};
+
+const ActorEditorData Editor::enemyEditorData(
+    { "Enemy Slime", "Enemy Skull", "Fireball" },
+    { defaultProps, defaultProps, fireballProps }
+);
+#endif

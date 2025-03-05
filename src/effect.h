@@ -14,13 +14,17 @@ struct EffectData {
 };
 
 struct EffectState {
-	u16 lifetime;
+	u16 initialLifetime;
 	u16 lifetimeCounter;
+};
+
+struct DamageNumberState {
 	s16 value;
+	u16 lifetimeCounter;
 };
 
 #ifdef EDITOR
-constexpr const char* EFFECT_TYPE_NAMES[EFFECT_TYPE_COUNT] = { "Numbers", "Explosion", "Feather" };
+constexpr const char* EFFECT_TYPE_NAMES[EFFECT_TYPE_COUNT] = { "Damage numbers", "Explosion", "Feather" };
 #endif
 
 namespace Game {
@@ -28,3 +32,11 @@ namespace Game {
 	extern const ActorUpdateFn effectUpdateTable[EFFECT_TYPE_COUNT];
 	extern const ActorDrawFn effectDrawTable[EFFECT_TYPE_COUNT];
 }
+
+#ifdef EDITOR
+#include "editor_actor.h"
+
+namespace Editor {
+	extern const ActorEditorData effectEditorData;
+}
+#endif

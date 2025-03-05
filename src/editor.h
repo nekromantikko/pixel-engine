@@ -4,10 +4,6 @@
 struct SDL_Window;
 union SDL_Event;
 
-namespace Audio {
-	struct AudioContext;
-}
-
 namespace Editor {
 	void CreateContext();
 	void Init(SDL_Window* pWindow);

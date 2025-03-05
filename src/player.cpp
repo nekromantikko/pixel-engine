@@ -614,3 +614,10 @@ constexpr ActorDrawFn Game::playerDrawTable[PLAYER_TYPE_COUNT] = {
     DrawPlayerSidescroller,
     DrawPlayerOverworld
 };
+
+#ifdef EDITOR
+const ActorEditorData Editor::playerEditorData(
+    { "Sidescroller", "Overworld" },
+    { {},{} }
+);
+#endif

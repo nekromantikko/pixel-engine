@@ -1,5 +1,6 @@
 #pragma once
 #include "typedef.h"
+#include <cstddef>
 
 enum NPCSubtype : TActorSubtype {
 	ENEMY_TYPE_SLIME,
@@ -14,7 +15,12 @@ struct EnemyData {
 
 	u16 expValue;
 	u16 lootType;
-	u16 spawnOnDeath;
+	TActorPrototypeIndex deathEffect;
+};
+
+struct FireballData {
+	u16 lifetime;
+	TActorPrototypeIndex deathEffect;
 };
 
 struct EnemyState {
@@ -22,9 +28,9 @@ struct EnemyState {
 	u16 damageCounter;
 };
 
-#ifdef EDITOR
-constexpr const char* ENEMY_TYPE_NAMES[ENEMY_TYPE_COUNT] = { "Enemy Slime", "Enemy Skull", "Fireball" };
-#endif
+struct FireballState {
+	u16 lifetimeCounter;
+};
 
 struct Actor;
 
@@ -35,3 +41,11 @@ namespace Game {
 
 	void EnemyDie(Actor* pActor);
 }
+
+#ifdef EDITOR
+#include "editor_actor.h"
+
+namespace Editor {
+	extern const ActorEditorData enemyEditorData;
+}
+#endif

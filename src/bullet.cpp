@@ -7,7 +7,7 @@
 
 static void BulletDie(Actor* pBullet, const glm::vec2& effectPos) {
     pBullet->flags.pendingRemoval = true;
-    Game::SpawnActor(pBullet->pPrototype->data.bulletData.spawnOnDeath, effectPos);
+    Game::SpawnActor(pBullet->pPrototype->data.bulletData.deathEffect, effectPos);
 }
 
 static void HandleBulletEnemyCollision(Actor* pBullet, Actor* pEnemy) {
@@ -18,11 +18,11 @@ static void HandleBulletEnemyCollision(Actor* pBullet, Actor* pEnemy) {
     BulletDie(pBullet, pBullet->position);
 
     const u32 damage = Random::GenerateInt(1, 2);
-    const u16 newHealth = Game::ActorTakeDamage(pEnemy, damage, pEnemy->state.npcState.health, pEnemy->state.npcState.damageCounter);
+    const u16 newHealth = Game::ActorTakeDamage(pEnemy, damage, pEnemy->state.enemyState.health, pEnemy->state.enemyState.damageCounter);
     if (newHealth == 0) {
         Game::EnemyDie(pEnemy);
     }
-    pEnemy->state.npcState.health = newHealth;
+    pEnemy->state.enemyState.health = newHealth;
 }
 
 static void UpdateDefaultBullet(Actor* pActor) {
@@ -78,7 +78,6 @@ static void UpdateGrenade(Actor* pActor) {
 }
 
 static void InitializeBullet(Actor* pActor, const PersistedActorData* pPersistData) {
-    pActor->state.bulletState.lifetime = pActor->pPrototype->data.bulletData.lifetime;
     pActor->state.bulletState.lifetimeCounter = pActor->pPrototype->data.bulletData.lifetime;
     pActor->drawState.layer = SPRITE_LAYER_FG;;
 }
@@ -97,3 +96,15 @@ constexpr ActorDrawFn Game::bulletDrawTable[BULLET_TYPE_COUNT] = {
     Game::DrawActorDefault,
     Game::DrawActorDefault,
 };
+
+#ifdef EDITOR
+static const std::initializer_list<ActorEditorProperty> defaultProps = {
+    {.name = "Lifetime", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(BulletData, lifetime) },
+    {.name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(BulletData, deathEffect) }
+};
+
+const ActorEditorData Editor::bulletEditorData = {
+    { "Default", "Grenade" },
+    { defaultProps, defaultProps },
+};
+#endif

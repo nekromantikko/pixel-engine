@@ -17,12 +17,16 @@ struct PickupState {
 	u16 lingerCounter;
 };
 
-#ifdef EDITOR
-constexpr const char* PICKUP_TYPE_NAMES[PICKUP_TYPE_COUNT] = { "Exp", "Exp remnant" };
-#endif
-
 namespace Game {
 	extern const ActorInitFn pickupInitTable[PICKUP_TYPE_COUNT];
 	extern const ActorUpdateFn pickupUpdateTable[PICKUP_TYPE_COUNT];
 	extern const ActorDrawFn pickupDrawTable[PICKUP_TYPE_COUNT];
 }
+
+#ifdef EDITOR
+#include "editor_actor.h"
+
+namespace Editor {
+	extern const ActorEditorData pickupEditorData;
+}
+#endif

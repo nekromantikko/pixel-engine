@@ -25,3 +25,11 @@ namespace Game {
 	extern const ActorUpdateFn interactableUpdateTable[INTERACTABLE_TYPE_COUNT];
 	extern const ActorDrawFn interactableDrawTable[INTERACTABLE_TYPE_COUNT];
 }
+
+#ifdef EDITOR
+#include "editor_actor.h"
+
+namespace Editor {
+	extern const ActorEditorData interactableEditorData;
+}
+#endif
