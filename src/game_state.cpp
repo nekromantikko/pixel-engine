@@ -149,6 +149,7 @@ static void StepGameplayFrame() {
 
     // Draw HUD
     Game::UI::DrawPlayerHealthBar(gameData.playerMaxHealth);
+    Game::UI::DrawPlayerStaminaBar(gameData.playerMaxStamina);
     Game::UI::DrawExpCounter();
 }
 #pragma endregion
@@ -268,6 +269,8 @@ void Game::InitGameData() {
     // TODO: Come up with actual values
 	gameData.playerMaxHealth = 96;
     SetPlayerHealth(gameData.playerMaxHealth);
+    gameData.playerMaxStamina = 64;
+    SetPlayerStamina(gameData.playerMaxStamina);
     SetPlayerExp(0);
     SetPlayerWeapon(PLAYER_WEAPON_LAUNCHER);
 
@@ -299,6 +302,23 @@ void Game::AddPlayerHealth(s32 health) {
 void Game::SetPlayerHealth(u16 health) {
     gameData.playerCurrentHealth = health;
 	Game::UI::SetPlayerDisplayHealth(gameData.playerCurrentHealth);
+}
+u16 Game::GetPlayerStamina() {
+    return gameData.playerCurrentStamina;
+}
+
+u16 Game::GetPlayerMaxStamina() {
+    return gameData.playerMaxStamina;
+}
+
+void Game::AddPlayerStamina(s32 stamina) {
+    gameData.playerCurrentStamina += stamina;
+    Game::UI::SetPlayerDisplayStamina(gameData.playerCurrentStamina);
+}
+
+void Game::SetPlayerStamina(u16 stamina) {
+    gameData.playerCurrentStamina = stamina;
+    Game::UI::SetPlayerDisplayStamina(gameData.playerCurrentStamina);
 }
 u16 Game::GetPlayerExp() {
     return gameData.playerExperience;

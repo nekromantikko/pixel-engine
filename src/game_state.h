@@ -22,6 +22,10 @@ struct PersistedActorData {
 struct GameData {
     u16 playerCurrentHealth;
     u16 playerMaxHealth;
+
+    u16 playerCurrentStamina;
+    u16 playerMaxStamina;
+
     u16 playerExperience;
     u16 playerWeapon;
 
@@ -52,6 +56,10 @@ namespace Game {
 	u16 GetPlayerMaxHealth();
 	void AddPlayerHealth(s32 health);
 	void SetPlayerHealth(u16 health);
+    u16 GetPlayerStamina();
+    u16 GetPlayerMaxStamina();
+    void AddPlayerStamina(s32 stamina);
+    void SetPlayerStamina(u16 stamina);
     u16 GetPlayerExp();
 	void AddPlayerExp(s32 exp);
 	void SetPlayerExp(u16 exp);

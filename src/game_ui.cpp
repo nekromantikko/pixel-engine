@@ -2,24 +2,26 @@
 #include "game_rendering.h"
 #include "coroutines.h"
 
-static HealthBarState playerHealthBarState{};
+static BarState playerHealthBarState{};
+static BarState playerStaminaBarState{};
 static ExpCounterState playerExpCounterState{};
 
 static CoroutineHandle playerHealthCoroutine = CoroutineHandle::Null();
+static CoroutineHandle playerStaminaCoroutine = CoroutineHandle::Null();
 static CoroutineHandle playerExpCoroutine = CoroutineHandle::Null();
 
 #pragma region Animation
-struct HealthBarAnimState {
-	const HealthBarState initialState;
-    const HealthBarState targetState;
-    HealthBarState& currentState;
+struct BarAnimState {
+	const BarState initialState;
+    const BarState targetState;
+    BarState& currentState;
     u16 delay;
     u16 duration;
     u16 progress;
 };
 
-static bool AnimateHealthCoroutine(void* userData) {
-    HealthBarAnimState& state = *(HealthBarAnimState*)userData;
+static bool AnimateBarCoroutine(void* userData) {
+    BarAnimState& state = *(BarAnimState*)userData;
 
     if (state.delay > 0) {
         state.delay--;
@@ -53,19 +55,46 @@ static bool AnimateExpCoroutine(void* userData) {
 }
 #pragma endregion
 
-void Game::UI::DrawPlayerHealthBar(u16 maxHealth) {
-    const u16 xStart = 16;
-    const u16 y = 16;
+static void AnimateBar(BarState& bar, u16 targetValue, CoroutineHandle& coroutineHandle) {
+    Game::StopCoroutine(coroutineHandle);
 
-    const u32 totalSegments = maxHealth >> 2;
-    const u32 fullRedSegments = playerHealthBarState.red >> 2;
-    const u32 fullYellowSegments = playerHealthBarState.yellow >> 2;
+    // Set yellow health to previous red health
+    bar.yellow = bar.red;
+
+    // If taking damage, immediately set red health to new value
+    if (targetValue < bar.red) {
+        bar.red = targetValue;
+    }
+
+    BarState targetState = {
+        .red = targetValue,
+        .yellow = targetValue
+    };
+
+    BarAnimState state = {
+        .initialState = bar,
+        .targetState = targetState,
+        .currentState = bar,
+        .delay = 16,
+        .duration = 20,
+        .progress = 0
+    };
+    coroutineHandle = Game::StartCoroutine(AnimateBarCoroutine, state);
+}
+
+static void DrawBar(const glm::i16vec2 pixelPos, const BarState& bar, u16 maxValue, u8 palette) {
+    const u16 xStart = pixelPos.x;
+    const u16 y = pixelPos.y;
+
+    const u32 totalSegments = maxValue >> 2;
+    const u32 fullRedSegments = bar.red >> 2;
+    const u32 fullYellowSegments = bar.yellow >> 2;
 
     u16 x = xStart;
     for (u32 i = 0; i < totalSegments; i++) {
         const u16 healthDrawn = (i * 4);
-        const u16 remainingRedHealth = healthDrawn > playerHealthBarState.red ? 0 : playerHealthBarState.red - healthDrawn;
-        const u16 remainingYellowHealth = healthDrawn > playerHealthBarState.yellow ? 0 : playerHealthBarState.yellow - healthDrawn;
+        const u16 remainingRedHealth = healthDrawn > bar.red ? 0 : bar.red - healthDrawn;
+        const u16 remainingYellowHealth = healthDrawn > bar.yellow ? 0 : bar.yellow - healthDrawn;
         const u16 redRemainder = remainingRedHealth & 3;
         const u16 yellowRemainder = remainingYellowHealth & 3;
 
@@ -89,13 +118,21 @@ void Game::UI::DrawPlayerHealthBar(u16 maxHealth) {
 
         Sprite sprite{};
         sprite.tileId = tileId;
-        sprite.palette = 0x1;
+        sprite.palette = palette;
         sprite.x = x;
         sprite.y = y;
-        Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
 
         x += 8;
     }
+}
+
+void Game::UI::DrawPlayerHealthBar(u16 maxHealth) {
+    DrawBar({ 16, 16 }, playerHealthBarState, maxHealth, 0x1);
+}
+
+void Game::UI::DrawPlayerStaminaBar(u16 maxStamina) {
+    DrawBar({ 16, 24 }, playerStaminaBarState, maxStamina, 0x3);
 }
 
 void Game::UI::DrawExpCounter() {
@@ -129,30 +166,10 @@ void Game::UI::DrawExpCounter() {
 }
 
 void Game::UI::SetPlayerDisplayHealth(u16 health) {
-    StopCoroutine(playerHealthCoroutine);
-
-    // Set yellow health to previous red health
-    playerHealthBarState.yellow = playerHealthBarState.red;
-
-    // If taking damage, immediately set red health to new value
-    if (health < playerHealthBarState.red) {
-        playerHealthBarState.red = health;
-    }
-
-    HealthBarState targetState = {
-        .red = health,
-        .yellow = health
-    };
-
-    HealthBarAnimState state = {
-        .initialState = playerHealthBarState,
-        .targetState = targetState,
-        .currentState = playerHealthBarState,
-        .delay = 16,
-        .duration = 20,
-        .progress = 0
-    };
-    playerHealthCoroutine = Game::StartCoroutine(AnimateHealthCoroutine, state);
+    AnimateBar(playerHealthBarState, health, playerHealthCoroutine);
+}
+void Game::UI::SetPlayerDisplayStamina(u16 stamina) {
+    AnimateBar(playerStaminaBarState, stamina, playerStaminaCoroutine);
 }
 void Game::UI::SetPlayerDisplayExp(u16 exp) {
     StopCoroutine(playerExpCoroutine);
