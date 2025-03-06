@@ -63,6 +63,22 @@ static void UpdateExpRemnant(Actor* pActor) {
     }
 }
 
+static void UpdateHealing(Actor* pActor) {
+    Game::ApplyGravity(pActor);
+    HitResult hit{};
+    Game::ActorMoveVertical(pActor, hit);
+
+    Actor* pPlayer = Game::GetPlayer();
+    if (pPlayer && Game::ActorsColliding(pActor, pPlayer)) {
+        pActor->flags.pendingRemoval = true;
+
+        const u16 newHealth = Game::ActorHeal(pPlayer, pActor->pPrototype->data.pickupData.value, Game::GetPlayerHealth(), Game::GetPlayerMaxHealth());
+        Game::SetPlayerHealth(newHealth);
+
+        return;
+    }
+}
+
 static void InitializePickup(Actor* pActor, const PersistedActorData* pPersistData) {
     pActor->drawState.layer = SPRITE_LAYER_FG;
 }
@@ -70,14 +86,17 @@ static void InitializePickup(Actor* pActor, const PersistedActorData* pPersistDa
 constexpr ActorInitFn Game::pickupInitTable[PICKUP_TYPE_COUNT] = {
     InitializePickup,
     InitializePickup,
+    InitializePickup,
 };
 
 constexpr ActorUpdateFn Game::pickupUpdateTable[PICKUP_TYPE_COUNT] = {
     UpdateExpHalo,
     UpdateExpRemnant,
+    UpdateHealing,
 };
 
 constexpr ActorDrawFn Game::pickupDrawTable[PICKUP_TYPE_COUNT] = {
+    Game::DrawActorDefault,
     Game::DrawActorDefault,
     Game::DrawActorDefault,
 };
@@ -88,7 +107,7 @@ static const std::initializer_list<ActorEditorProperty> defaultProps = {
 };
 
 const ActorEditorData Editor::pickupEditorData = {
-    { "Exp", "Exp remnant" },
-    { defaultProps, defaultProps }
+    { "Exp", "Exp remnant", "Healing"},
+    { defaultProps, defaultProps, defaultProps }
 };
 #endif

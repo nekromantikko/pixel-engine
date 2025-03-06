@@ -382,6 +382,21 @@ Damage Game::CalculateDamage(Actor* pActor, u16 baseDamage) {
 	return result;
 }
 
+static void SpawnDamageNumber(Actor* pActor, const Damage& damage) {
+	const AABB& hitbox = pActor->pPrototype->hitbox;
+	const glm::vec2 randomPointInsideHitbox = {
+		Random::GenerateReal(hitbox.x1, hitbox.x2),
+		Random::GenerateReal(hitbox.y1, hitbox.y2)
+	};
+	const glm::vec2 spawnPos = pActor->position + randomPointInsideHitbox;
+
+	constexpr glm::vec2 velocity = { 0, -0.03125f };
+	Actor* pDmg = Game::SpawnActor(dmgNumberPrototypeIndex, spawnPos, velocity);
+	if (pDmg != nullptr) {
+		pDmg->state.dmgNumberState.damage = damage;
+	}
+}
+
 // Returns new health after taking damage
 u16 Game::ActorTakeDamage(Actor* pActor, const Damage& damage, u16 currentHealth, u16& damageCounter) {
 	constexpr s32 damageDelay = 30;
@@ -393,23 +408,27 @@ u16 Game::ActorTakeDamage(Actor* pActor, const Damage& damage, u16 currentHealth
 	else newHealth -= damage.value;
 	damageCounter = damageDelay;
 
-	// Spawn damage numbers
-	const AABB& hitbox = pActor->pPrototype->hitbox;
-	// Random point inside hitbox
-	const glm::vec2 randomPointInsideHitbox = {
-		Random::GenerateReal(hitbox.x1, hitbox.x2),
-		Random::GenerateReal(hitbox.y1, hitbox.y2)
-	};
-	const glm::vec2 spawnPos = pActor->position + randomPointInsideHitbox;
-
-	constexpr glm::vec2 velocity = { 0, -0.03125f };
-	Actor* pDmg = SpawnActor(dmgNumberPrototypeIndex, spawnPos, velocity);
-	if (pDmg != nullptr) {
-		pDmg->state.dmgNumberState.damage = damage;
-	}
+	SpawnDamageNumber(pActor, damage);
 
 	return newHealth;
 }
+
+// Returns new health after healing
+u16 Game::ActorHeal(Actor* pActor, u16 value, u16 currentHealth, u16 maxHealth) {
+	u16 newHealth = currentHealth + value;
+	if (newHealth > maxHealth) {
+		newHealth = maxHealth; // Cap health at maximum
+	}
+
+	Damage healing{};
+	healing.value = value;
+	healing.flags.healing = true;
+
+	SpawnDamageNumber(pActor, healing);
+
+	return newHealth;
+}
+
 #pragma endregion
 
 DynamicActorPool* Game::GetActors() {

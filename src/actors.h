@@ -92,6 +92,7 @@ namespace Game {
 
 	Damage CalculateDamage(Actor* pActor, u16 baseDamage);
 	u16 ActorTakeDamage(Actor* pActor, const Damage& damage, u16 currentHealth, u16& damageCounter);
+	u16 ActorHeal(Actor* pActor, u16 value, u16 currentHealth, u16 maxHealth);
 
 	DynamicActorPool* GetActors(); // TEMP
 	void UpdateActors();

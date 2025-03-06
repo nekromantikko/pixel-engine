@@ -4,6 +4,7 @@
 enum PickupType : TActorSubtype {
 	PICKUP_TYPE_EXP,
 	PICKUP_TYPE_EXP_REMNANT,
+	PICKUP_TYPE_HEAL,
 
 	PICKUP_TYPE_COUNT
 };
