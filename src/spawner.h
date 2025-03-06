@@ -4,6 +4,7 @@
 enum SpawnerType : TActorSubtype {
 	SPAWNER_TYPE_EXP,
 	SPAWNER_TYPE_ENEMY,
+	SPAWNER_TYPE_LOOT,
 
 	SPAWNER_TYPE_COUNT
 };
@@ -15,6 +16,12 @@ struct ExpSpawnerData {
 
 struct ExpSpawnerState {
 	u16 remainingValue;
+};
+
+struct LootSpawnerData {
+	u8 typeCount;
+	u8 spawnRates[4];
+	TActorPrototypeIndex types[4];
 };
 
 namespace Game {

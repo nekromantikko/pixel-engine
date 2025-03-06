@@ -33,20 +33,22 @@ static bool DrawDmgNumbers(const Actor* pActor) {
 
     const glm::i16vec2 pixelPos = Game::Rendering::WorldPosToScreenPixels(pActor->position);
 
+    const s16 widthPx = strLength * chrWidth;
+    const s16 xStart = pixelPos.x - widthPx / 2;
+
     bool result = true;
     for (u32 i = 0; i < strLength; i++) {
         Sprite sprite{};
         sprite.tileId = 0xe0 + numberStr[i] - chrOffset;
         sprite.palette = palette;
-        sprite.x = pixelPos.x + i * chrWidth;
+        sprite.x = xStart + i * chrWidth;
         sprite.y = pixelPos.y;
         result &= Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
     }
 
 	if (damage.flags.crit) {
-		const s16 xCenter = pixelPos.x + (strLength * chrWidth) / 2;
-        const s16 xCrit = xCenter - chrWidth * 2;
-		const s16 yCrit = pixelPos.y - 8;
+        const s16 xCrit = pixelPos.x - chrWidth * 2;
+		const s16 yCrit = pixelPos.y - TILE_DIM_PIXELS;
 		for (u32 i = 0; i < 4; i++) {
 			Sprite sprite{};
 			sprite.tileId = 0xf0 + i;

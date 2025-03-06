@@ -14,7 +14,7 @@ struct EnemyData {
 	u16 health;
 
 	u16 expValue;
-	u16 lootType;
+	TActorPrototypeIndex lootSpawner;
 	TActorPrototypeIndex deathEffect;
 	TActorPrototypeIndex projectile;
 	TActorPrototypeIndex expSpawner;

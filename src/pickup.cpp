@@ -66,7 +66,27 @@ static void UpdateExpRemnant(Actor* pActor) {
 static void UpdateHealing(Actor* pActor) {
     Game::ApplyGravity(pActor);
     HitResult hit{};
-    Game::ActorMoveVertical(pActor, hit);
+    if (Game::ActorMoveHorizontal(pActor, hit)) {
+        pActor->velocity = glm::reflect(pActor->velocity, hit.impactNormal);
+        pActor->velocity *= 0.5f; // Apply damping
+    }
+
+    // Reset in air flag
+    pActor->flags.inAir = true;
+
+    if (Game::ActorMoveVertical(pActor, hit)) {
+        pActor->velocity = glm::reflect(pActor->velocity, hit.impactNormal);
+        pActor->velocity *= 0.5f; // Apply damping
+
+        if (hit.impactNormal.y < 0.0f) {
+            pActor->flags.inAir = false;
+        }
+    }
+
+    constexpr r32 deceleration = 0.001953125f;
+    if (!pActor->flags.inAir && pActor->velocity.x != 0.0f) { // Decelerate
+        pActor->velocity.x -= deceleration * glm::sign(pActor->velocity.x);
+    }
 
     Actor* pPlayer = Game::GetPlayer();
     if (pPlayer && Game::ActorsColliding(pActor, pPlayer)) {

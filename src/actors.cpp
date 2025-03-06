@@ -53,7 +53,7 @@ Actor* Game::SpawnActor(const Actor* pTemplate) {
 	return actors.Get(handle);
 }
 Actor* Game::SpawnActor(const s32 prototypeIndex, const glm::vec2& position, const glm::vec2& velocity) {
-	if (actors.Count() >= MAX_DYNAMIC_ACTOR_COUNT) {
+	if (actors.Count() >= MAX_DYNAMIC_ACTOR_COUNT || prototypeIndex < 0) {
 		return nullptr;
 	}
 

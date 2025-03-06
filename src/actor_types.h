@@ -30,6 +30,7 @@ union ActorPrototypeData {
 	EffectData effectData;
 	CheckpointData checkpointData;
 	ExpSpawnerData expSpawner;
+	LootSpawnerData lootSpawner;
 
 	u8 raw[ACTOR_PROTOTYPE_DATA_SIZE];
 };

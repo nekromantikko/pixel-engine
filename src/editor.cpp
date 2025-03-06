@@ -798,9 +798,15 @@ template <typename T>
 static void DrawTypeSelectionCombo(const char* label, const char* const* const typeNames, u32 typeCount, T& selection) {
 	static_assert(std::is_integral<T>::value);
 
-	const char* selectedLabel = typeCount > 0 ? typeNames[selection] : "NO ITEMS";
+	const char* noSelectionLabel = "NONE";
+	const char* noItemsLabel = "NO ITEMS";
+	const char* selectedLabel = typeCount > 0 ? (selection >= 0 ? typeNames[selection] : noSelectionLabel) : noItemsLabel;
 
 	if (ImGui::BeginCombo(label, selectedLabel)) {
+		if (ImGui::Selectable(noSelectionLabel, selection < 0)) {
+			selection = -1;
+		}
+
 		for (u32 i = 0; i < typeCount; i++) {
 			ImGui::PushID(i);
 
@@ -2020,7 +2026,8 @@ static void DrawActorPrototypeList(s32& selection) {
 	{
 		ImGui::PushID(i);
 
-		snprintf(label, maxLabelNameLength, "0x%02x: %s", i, Assets::GetActorPrototypeName(i));
+		const auto name = Assets::GetActorPrototypeName(i);
+		snprintf(label, maxLabelNameLength, "0x%02x: %s", i, name);
 
 		const bool selected = selection == i;
 		if (ImGui::Selectable(label, selected)) {
@@ -2031,34 +2038,27 @@ static void DrawActorPrototypeList(s32& selection) {
 			ImGui::SetItemDefaultFocus();
 		}
 
-		/*if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+		if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
 		{
-			ImGui::SetDragDropPayload("dd_actors", &i, sizeof(u32));
+			const TActorPrototypeIndex index = TActorPrototypeIndex(i);
+			ImGui::SetDragDropPayload("dd_actor_prototype", &index, sizeof(TActorPrototypeIndex));
 			ImGui::Text("%s", name);
 
 			ImGui::EndDragDropSource();
 		}
-		if (ImGui::BeginDragDropTarget())
-		{
-			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dd_metasprites"))
-			{
-				int sourceIndex = *(const u32*)payload->Data;
-
-				s32 step = i - sourceIndex;
-
-				ImVector<s32> vec;
-				vec.push_back(sourceIndex);
-
-				const bool canMove = CanMoveElements(MAX_METASPRITE_COUNT, vec, step);
-
-				if (canMove) {
-					MoveElements<Metasprite>(pMetasprites, vec, step);
-					selection = vec[0];
-				}
-			}
-			ImGui::EndDragDropTarget();
-		}*/
 		ImGui::PopID();
+	}
+}
+
+static void DrawActorPrototypeSelector(const char* label, const char* const* prototypeNames, TActorPrototypeIndex& selection) {
+	DrawTypeSelectionCombo(label, prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, selection);
+	if (ImGui::BeginDragDropTarget()) {
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dd_actor_prototype"))
+		{
+			const TActorPrototypeIndex sourceIndex = *(const TActorPrototypeIndex*)payload->Data;
+			selection = sourceIndex;
+		}
+		ImGui::EndDragDropTarget();
 	}
 }
 
@@ -2072,7 +2072,7 @@ static void DrawActorPrototypeProperty(const ActorEditorProperty& property, Acto
 	}
 	case ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX: {
 		TActorPrototypeIndex& prototypeIndex = *(TActorPrototypeIndex*)propertyData;
-		DrawTypeSelectionCombo(property.name, prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, prototypeIndex);
+		DrawActorPrototypeSelector(property.name, prototypeNames, prototypeIndex);
 		break;
 	}
 	default: {

@@ -129,8 +129,11 @@ void Game::EnemyDie(Actor* pActor) {
 
     // Spawn exp halos
     const u16 totalExpValue = pActor->pPrototype->data.enemyData.expValue;
-    Actor* pSpawner = SpawnActor(pActor->pPrototype->data.enemyData.expSpawner, pActor->position);
-    pSpawner->state.expSpawner.remainingValue = totalExpValue;
+    Actor* pExpSpawner = SpawnActor(pActor->pPrototype->data.enemyData.expSpawner, pActor->position);
+    pExpSpawner->state.expSpawner.remainingValue = totalExpValue;
+
+    // Spawn loot
+    SpawnActor(pActor->pPrototype->data.enemyData.lootSpawner, pActor->position);
 }
 #pragma endregion
 
@@ -157,6 +160,7 @@ static const std::initializer_list<ActorEditorProperty> defaultProps = {
     { .name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(EnemyData, deathEffect) },
     { .name = "Projectile", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(EnemyData, projectile) },
     { .name = "Exp spawner", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(EnemyData, expSpawner) },
+    { .name = "Loot spawner", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(EnemyData, lootSpawner) },
 };
 
 static const std::initializer_list<ActorEditorProperty> fireballProps = {
