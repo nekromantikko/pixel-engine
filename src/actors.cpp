@@ -364,15 +364,33 @@ void Game::ApplyGravity(Actor* pActor, r32 gravity) {
 #pragma endregion
 
 #pragma region Damage
+Damage Game::CalculateDamage(Actor* pActor, u16 baseDamage) {
+	const r32 damageMultiplier = Random::GenerateReal(0.95f, 1.05f); // 5% variation
+
+	// TODO: Take actor stats into account
+	Damage result{};
+
+	result.value = glm::roundEven(baseDamage * damageMultiplier);
+
+	constexpr u16 critRate = 8;
+	constexpr u16 critMultiplier = 2;
+	result.flags.crit = Random::GenerateInt(0, 127) < critRate;
+	if (result.flags.crit) {
+		result.value *= critMultiplier;
+	}
+
+	return result;
+}
+
 // Returns new health after taking damage
-u16 Game::ActorTakeDamage(Actor* pActor, u32 dmgValue, u16 currentHealth, u16& damageCounter) {
+u16 Game::ActorTakeDamage(Actor* pActor, const Damage& damage, u16 currentHealth, u16& damageCounter) {
 	constexpr s32 damageDelay = 30;
 
 	u16 newHealth = currentHealth;
-	if (dmgValue > newHealth) {
+	if (damage.value > newHealth) {
 		newHealth = 0;
 	}
-	else newHealth -= dmgValue;
+	else newHealth -= damage.value;
 	damageCounter = damageDelay;
 
 	// Spawn damage numbers
@@ -387,7 +405,7 @@ u16 Game::ActorTakeDamage(Actor* pActor, u32 dmgValue, u16 currentHealth, u16& d
 	constexpr glm::vec2 velocity = { 0, -0.03125f };
 	Actor* pDmg = SpawnActor(dmgNumberPrototypeIndex, spawnPos, velocity);
 	if (pDmg != nullptr) {
-		pDmg->state.dmgNumberState.value = -dmgValue;
+		pDmg->state.dmgNumberState.damage = damage;
 	}
 
 	return newHealth;

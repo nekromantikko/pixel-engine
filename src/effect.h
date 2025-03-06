@@ -18,9 +18,21 @@ struct EffectState {
 	u16 lifetimeCounter;
 };
 
+struct DamageFlags {
+	bool healing : 1;
+	bool crit : 1;
+	u8 type : 3; // TODO: Add damage types?
+};
+
+struct Damage {
+	u16 value;
+	DamageFlags flags;
+};
+
+// Can be treated as EffectState
 struct DamageNumberState {
-	s16 value;
-	u16 lifetimeCounter;
+	EffectState base;
+	Damage damage;
 };
 
 #ifdef EDITOR

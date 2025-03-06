@@ -15,28 +15,47 @@ static u32 ItoaSigned(s16 value, char* str) {
     return strlen(str);
 }
 
-static bool DrawNumbers(const Actor* pActor) {
-    const Animation& currentAnim = pActor->pPrototype->animations[pActor->drawState.animIndex];
-    if (currentAnim.type != ANIMATION_TYPE_SPRITES) {
-        return false;
-    }
+static bool DrawDmgNumbers(const Actor* pActor) {
+    const Damage& damage = pActor->state.dmgNumberState.damage;
 
     static char numberStr[16]{};
-    const u32 strLength = ItoaSigned(pActor->state.dmgNumberState.value, numberStr);
+
+    s16 value = damage.value;
+    if (!damage.flags.healing) {
+        value *= -1;
+    }
+    const u32 strLength = ItoaSigned(value, numberStr);
 
     // Ascii character '*' = 0x2A
     constexpr u8 chrOffset = 0x2A;
+	constexpr u16 chrWidth = 6;
+    const u8 palette = damage.flags.healing ? 0x3 : 0x1;
 
-    const s32 frameCount = currentAnim.frameCount;
     const glm::i16vec2 pixelPos = Game::Rendering::WorldPosToScreenPixels(pActor->position);
 
     bool result = true;
-    for (u32 c = 0; c < strLength; c++) {
-        glm::i16vec2 drawPos = pixelPos + glm::i16vec2{ c * 5, 0 };
-        const s32 frameIndex = (numberStr[c] - chrOffset) % frameCount;
-
-        result &= Game::Rendering::DrawMetaspriteSprite(pActor->drawState.layer, currentAnim.metaspriteIndex, frameIndex, drawPos, false, false, -1);
+    for (u32 i = 0; i < strLength; i++) {
+        Sprite sprite{};
+        sprite.tileId = 0xe0 + numberStr[i] - chrOffset;
+        sprite.palette = palette;
+        sprite.x = pixelPos.x + i * chrWidth;
+        sprite.y = pixelPos.y;
+        result &= Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
     }
+
+	if (damage.flags.crit) {
+		const s16 xCenter = pixelPos.x + (strLength * chrWidth) / 2;
+        const s16 xCrit = xCenter - chrWidth * 2;
+		const s16 yCrit = pixelPos.y - 8;
+		for (u32 i = 0; i < 4; i++) {
+			Sprite sprite{};
+			sprite.tileId = 0xf0 + i;
+			sprite.palette = palette;
+			sprite.x = xCrit + i * chrWidth;
+			sprite.y = yCrit;
+			result &= Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+		}
+	}
 
     return result;
 }
@@ -49,8 +68,8 @@ static void UpdateExplosion(Actor* pActor) {
     Game::AdvanceCurrentAnimation(pActor);
 }
 
-static void UpdateNumbers(Actor* pActor) {
-    if (!Game::UpdateCounter(pActor->state.dmgNumberState.lifetimeCounter)) {
+static void UpdateDmgNumbers(Actor* pActor) {
+    if (!Game::UpdateCounter(pActor->state.dmgNumberState.base.lifetimeCounter)) {
         pActor->flags.pendingRemoval = true;
     }
 
@@ -77,24 +96,32 @@ static void UpdateFeather(Actor* pActor) {
     pActor->position += pActor->velocity;
 }
 
-static void InitializeEffect(Actor* pActor, const PersistedActorData* pPersistData) {
-	pActor->state.effectState.initialLifetime = pActor->pPrototype->data.effectData.lifetime;
-	pActor->state.effectState.lifetimeCounter = pActor->pPrototype->data.effectData.lifetime;
+static void InitEffectState(EffectState& state, const EffectData& data) {
+    state.initialLifetime = data.lifetime;
+    state.lifetimeCounter = data.lifetime;
+}
+
+static void InitDmgNumbers(Actor* pActor, const PersistedActorData* pPersistData) {
+    return InitEffectState(pActor->state.dmgNumberState.base, pActor->pPrototype->data.effectData);
+}
+
+static void InitBaseEffect(Actor* pActor, const PersistedActorData* pPersistData) {
 	pActor->drawState.layer = SPRITE_LAYER_FX;
+    return InitEffectState(pActor->state.effectState, pActor->pPrototype->data.effectData);
 }
 
 constexpr ActorInitFn Game::effectInitTable[EFFECT_TYPE_COUNT] = {
-    InitializeEffect,
-    InitializeEffect,
-    InitializeEffect
+    InitDmgNumbers,
+    InitBaseEffect,
+    InitBaseEffect
 };
 constexpr ActorUpdateFn Game::effectUpdateTable[EFFECT_TYPE_COUNT] = {
-    UpdateNumbers,
+    UpdateDmgNumbers,
     UpdateExplosion,
     UpdateFeather,
 };
 constexpr ActorDrawFn Game::effectDrawTable[EFFECT_TYPE_COUNT] = {
-    DrawNumbers,
+    DrawDmgNumbers,
     Game::DrawActorDefault,
     Game::DrawActorDefault,
 };

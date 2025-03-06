@@ -90,7 +90,8 @@ namespace Game {
 	bool ActorMoveVertical(Actor* pActor, HitResult& outHit);
 	void ApplyGravity(Actor* pActor, r32 gravity = 0.01f);
 
-	u16 ActorTakeDamage(Actor* pActor, u32 dmgValue, u16 currentHealth, u16& damageCounter);
+	Damage CalculateDamage(Actor* pActor, u16 baseDamage);
+	u16 ActorTakeDamage(Actor* pActor, const Damage& damage, u16 currentHealth, u16& damageCounter);
 
 	DynamicActorPool* GetActors(); // TEMP
 	void UpdateActors();

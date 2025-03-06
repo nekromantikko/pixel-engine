@@ -572,7 +572,10 @@ void Game::HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
         return;
     }
 
-    const u32 damage = Random::GenerateInt(1, 20);
+    // TODO: Should be determined by enemy stats
+    constexpr u16 baseDamage = 10;
+    const Damage damage = Game::CalculateDamage(pPlayer, baseDamage);
+
     //Audio::PlaySFX(&damageSfx, CHAN_ID_PULSE0);
 
     u32 featherCount = Random::GenerateInt(1, 4);

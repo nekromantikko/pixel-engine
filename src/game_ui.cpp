@@ -71,19 +71,19 @@ void Game::UI::DrawPlayerHealthBar(u16 maxHealth) {
 
         u8 tileId;
         if (i < fullRedSegments) {
-            tileId = 0xe4;
+            tileId = 0xd4;
         }
         else if (i < fullYellowSegments) {
-            tileId = 0xe5 + redRemainder;
+            tileId = 0xd5 + redRemainder;
         }
         else {
             // Only red left to draw
             if (redRemainder >= yellowRemainder) {
-                tileId = 0xe0 + redRemainder;
+                tileId = 0xd0 + redRemainder;
             }
             else {
                 const u8 offset = redRemainder != 0 ? redRemainder + 1 : 0;
-                tileId = 0xe8 + yellowRemainder + offset;
+                tileId = 0xd8 + yellowRemainder + offset;
             }
         }
 
@@ -118,7 +118,7 @@ void Game::UI::DrawExpCounter() {
     u16 x = xStart;
     for (u32 i = 0; i < length; i++) {
         Sprite sprite{};
-        sprite.tileId = 0xd6 + buffer[i] - '0';
+        sprite.tileId = 0xc6 + buffer[i] - '0';
         sprite.palette = 0x1;
         sprite.x = x;
         sprite.y = y;

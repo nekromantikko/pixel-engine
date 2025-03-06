@@ -17,7 +17,10 @@ static void HandleBulletEnemyCollision(Actor* pBullet, Actor* pEnemy) {
 
     BulletDie(pBullet, pBullet->position);
 
-    const u32 damage = Random::GenerateInt(1, 2);
+    // TODO: Use value from weapon data
+    constexpr u16 baseDamage = 1;
+	const Damage damage = Game::CalculateDamage(pEnemy, baseDamage);
+
     const u16 newHealth = Game::ActorTakeDamage(pEnemy, damage, pEnemy->state.enemyState.health, pEnemy->state.enemyState.damageCounter);
     if (newHealth == 0) {
         Game::EnemyDie(pEnemy);
