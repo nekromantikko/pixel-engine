@@ -39,6 +39,7 @@ struct PlayerState {
 	u16 shootCounter;
 	
 	u16 modeTransitionCounter;
+	u16 staminaRecoveryCounter;
 };
 
 struct Actor;

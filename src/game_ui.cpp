@@ -1,88 +1,87 @@
 #include "game_ui.h"
 #include "game_rendering.h"
-#include "coroutines.h"
+
+constexpr u16 animDuration = 20;
+constexpr u16 barAnimDelay = 16;
+
+struct BarState {
+    s16 red;
+    s16 yellow;
+
+    s16 targetValue;
+
+    u16 delay;
+};
+
+struct ExpCounterState {
+    s16 exp;
+
+    s16 targetValue;
+};
 
 static BarState playerHealthBarState{};
 static BarState playerStaminaBarState{};
 static ExpCounterState playerExpCounterState{};
 
-static CoroutineHandle playerHealthCoroutine = CoroutineHandle::Null();
-static CoroutineHandle playerStaminaCoroutine = CoroutineHandle::Null();
-static CoroutineHandle playerExpCoroutine = CoroutineHandle::Null();
-
 #pragma region Animation
-struct BarAnimState {
-	const BarState initialState;
-    const BarState targetState;
-    BarState& currentState;
-    u16 delay;
-    u16 duration;
-    u16 progress;
-};
-
-static bool AnimateBarCoroutine(void* userData) {
-    BarAnimState& state = *(BarAnimState*)userData;
-
-    if (state.delay > 0) {
-        state.delay--;
-        return true;
+static void UpdateBar(BarState& bar) {
+    if (bar.delay > 0) {
+        bar.delay--;
+        return;
     }
 
-    state.progress++;
-    const r32 t = glm::smoothstep(0.0f, 1.0f, r32(state.progress) / state.duration);
-    state.currentState.red = glm::mix(state.initialState.red, state.targetState.red, t);
-    state.currentState.yellow = glm::mix(state.initialState.yellow, state.targetState.yellow, t);
+    if (bar.targetValue > bar.red) {
+        bar.red++;
+    }
+    else if (bar.targetValue < bar.red) {
+        bar.red--;
+    }
 
-	return state.progress < state.duration;
+    if (bar.targetValue > bar.yellow) {
+        bar.yellow++;
+    }
+    else if (bar.targetValue < bar.yellow) {
+        bar.yellow--;
+    }
 }
 
-struct ExpCounterAnimState {
-    const u16 initialExp;
-	const u16 targetExp;
+static void AnimateBar(BarState& bar, u16 targetValue) {
+    bar.targetValue = targetValue;
 
-    u16 duration;
-    u16 progress;
-};
-
-static bool AnimateExpCoroutine(void* userData) {
-    ExpCounterAnimState& state = *(ExpCounterAnimState*)userData;
-
-    state.progress++;
-    const r32 t = glm::smoothstep(0.0f, 1.0f, r32(state.progress) / state.duration);
-    playerExpCounterState.exp = glm::mix(state.initialExp, state.targetExp, t);
-
-    return state.progress < state.duration;
-}
-#pragma endregion
-
-static void AnimateBar(BarState& bar, u16 targetValue, CoroutineHandle& coroutineHandle) {
-    Game::StopCoroutine(coroutineHandle);
-
-    // Set yellow health to previous red health
-    bar.yellow = bar.red;
+    if (bar.yellow < bar.red) {
+        bar.yellow = bar.red;
+    }
 
     // If taking damage, immediately set red health to new value
     if (targetValue < bar.red) {
         bar.red = targetValue;
+        bar.delay = barAnimDelay;
     }
-
-    BarState targetState = {
-        .red = targetValue,
-        .yellow = targetValue
-    };
-
-    BarAnimState state = {
-        .initialState = bar,
-        .targetState = targetState,
-        .currentState = bar,
-        .delay = 16,
-        .duration = 20,
-        .progress = 0
-    };
-    coroutineHandle = Game::StartCoroutine(AnimateBarCoroutine, state);
+    else {
+        bar.delay = 0;
+    }
 }
 
-static void DrawBar(const glm::i16vec2 pixelPos, const BarState& bar, u16 maxValue, u8 palette) {
+static void UpdateExpCounter() {
+    const s16 difference = playerExpCounterState.targetValue - playerExpCounterState.exp;
+    const s16 step = glm::max(1, glm::abs(difference) / 10); // Increase step based on difference
+
+    if (difference > 0) {
+        playerExpCounterState.exp += step;
+        if (playerExpCounterState.exp > playerExpCounterState.targetValue) {
+            playerExpCounterState.exp = playerExpCounterState.targetValue; // Clamp to target
+        }
+    }
+    else if (difference < 0) {
+        playerExpCounterState.exp -= step;
+        if (playerExpCounterState.exp < playerExpCounterState.targetValue) {
+            playerExpCounterState.exp = playerExpCounterState.targetValue; // Clamp to target
+        }
+    }
+}
+#pragma endregion
+
+static void DrawBar(const glm::i16vec2 pixelPos, const BarState& bar, s16 maxValue, u8 palette) {
     const u16 xStart = pixelPos.x;
     const u16 y = pixelPos.y;
 
@@ -127,11 +126,11 @@ static void DrawBar(const glm::i16vec2 pixelPos, const BarState& bar, u16 maxVal
     }
 }
 
-void Game::UI::DrawPlayerHealthBar(u16 maxHealth) {
+void Game::UI::DrawPlayerHealthBar(s16 maxHealth) {
     DrawBar({ 16, 16 }, playerHealthBarState, maxHealth, 0x1);
 }
 
-void Game::UI::DrawPlayerStaminaBar(u16 maxStamina) {
+void Game::UI::DrawPlayerStaminaBar(s16 maxStamina) {
     DrawBar({ 16, 24 }, playerStaminaBarState, maxStamina, 0x3);
 }
 
@@ -165,20 +164,18 @@ void Game::UI::DrawExpCounter() {
     }
 }
 
-void Game::UI::SetPlayerDisplayHealth(u16 health) {
-    AnimateBar(playerHealthBarState, health, playerHealthCoroutine);
+void Game::UI::SetPlayerDisplayHealth(s16 health) {
+    AnimateBar(playerHealthBarState, health);
 }
-void Game::UI::SetPlayerDisplayStamina(u16 stamina) {
-    AnimateBar(playerStaminaBarState, stamina, playerStaminaCoroutine);
+void Game::UI::SetPlayerDisplayStamina(s16 stamina) {
+    AnimateBar(playerStaminaBarState, stamina);
 }
-void Game::UI::SetPlayerDisplayExp(u16 exp) {
-    StopCoroutine(playerExpCoroutine);
+void Game::UI::SetPlayerDisplayExp(s16 exp) {
+    playerExpCounterState.targetValue = exp;
+}
 
-    ExpCounterAnimState state = {
-            .initialExp = playerExpCounterState.exp,
-            .targetExp = exp,
-            .duration = 20,
-            .progress = 0
-    };
-    playerExpCoroutine = Game::StartCoroutine(AnimateExpCoroutine, state);
+void Game::UI::Update() {
+    UpdateBar(playerHealthBarState);
+    UpdateBar(playerStaminaBarState);
+    UpdateExpCounter();
 }

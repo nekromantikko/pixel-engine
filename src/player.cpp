@@ -43,6 +43,7 @@ constexpr u16 wingFrameLength = 12;
 constexpr u16 wingFrameLengthFast = 6;
 constexpr u16 deathDelay = 240;
 constexpr u16 sitDelay = 12;
+constexpr u16 staminaRecoveryDelay = 120;
 
 constexpr u16 standAnimIndex = 0;
 constexpr u16 sitAnimIndex = 1;
@@ -351,6 +352,16 @@ static void PlayerDecelerate(Actor* pPlayer) {
     }
 }
 
+static void PlayerJump(Actor* pPlayer) {
+    pPlayer->velocity.y = -0.25f;
+
+    // Trigger new flap by taking wings out of the jumping position by advancing the frame index
+    if (pPlayer->state.playerState.wingFrame == PLAYER_WINGS_ASCEND) {
+        SetWingFrame(pPlayer, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
+    }
+    //Audio::PlaySFX(&jumpSfx, CHAN_ID_PULSE0);
+}
+
 static void PlayerInput(Actor* pPlayer) {
     PlayerState& playerState = pPlayer->state.playerState;
     if (Game::Input::ButtonDown(BUTTON_DPAD_LEFT)) {
@@ -392,24 +403,24 @@ static void PlayerInput(Actor* pPlayer) {
     else playerState.flags.aimMode = PLAYER_AIM_FWD;
 
     if (Game::Input::ButtonPressed(BUTTON_A) && (!pPlayer->flags.inAir || !playerState.flags.doubleJumped)) {
-        pPlayer->velocity.y = -0.25f;
+        PlayerJump(pPlayer);
+
         if (pPlayer->flags.inAir) {
             playerState.flags.doubleJumped = true;
         }
-
-        // Trigger new flap by taking wings out of the jumping position by advancing the frame index
-        if (playerState.wingFrame == PLAYER_WINGS_ASCEND) {
-            SetWingFrame(pPlayer, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
-        }
-        //Audio::PlaySFX(&jumpSfx, CHAN_ID_PULSE0);
     }
 
     if (pPlayer->velocity.y < 0 && Game::Input::ButtonReleased(BUTTON_A)) {
         pPlayer->velocity.y /= 2;
     }
 
-    if (Game::Input::ButtonDown(BUTTON_A) && pPlayer->velocity.y > 0) {
-        playerState.flags.slowFall = true;
+    if (Game::Input::ButtonDown(BUTTON_A) && pPlayer->velocity.y > 0.0f) {
+        const u16 currentStamina = Game::GetPlayerStamina();
+        if (currentStamina > 0) {
+            Game::AddPlayerStamina(-1);
+            pPlayer->state.playerState.staminaRecoveryCounter = staminaRecoveryDelay;
+            playerState.flags.slowFall = true;
+        }
     }
 
     if (Game::Input::ButtonReleased(BUTTON_B)) {
@@ -521,6 +532,10 @@ static void UpdatePlayerSidescroller(Actor* pActor) {
     // Reset slow fall
     pActor->state.playerState.flags.slowFall = false;
 
+    if (!Game::UpdateCounter(pActor->state.playerState.staminaRecoveryCounter)) {
+        Game::AddPlayerStamina(1);
+    }
+
     UpdateSidescrollerMode(pActor);
 
     HitResult hit{};
@@ -601,6 +616,8 @@ static bool DrawPlayerOverworld(const Actor* pPlayer) {
 
 static void InitPlayerSidescroller(Actor* pPlayer, const PersistedActorData* pPersistData) {
     pPlayer->state.playerState.modeTransitionCounter = 0;
+    pPlayer->state.playerState.staminaRecoveryCounter = 0;
+
     pPlayer->state.playerState.flags.aimMode = PLAYER_AIM_FWD;
     pPlayer->state.playerState.flags.doubleJumped = false;
     pPlayer->state.playerState.flags.mode = PLAYER_MODE_NORMAL;

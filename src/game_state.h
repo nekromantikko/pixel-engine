@@ -20,14 +20,14 @@ struct PersistedActorData {
 };
 
 struct GameData {
-    u16 playerCurrentHealth;
-    u16 playerMaxHealth;
+    s16 playerCurrentHealth;
+    s16 playerMaxHealth;
 
-    u16 playerCurrentStamina;
-    u16 playerMaxStamina;
+    s16 playerCurrentStamina;
+    s16 playerMaxStamina;
 
-    u16 playerExperience;
-    u16 playerWeapon;
+    s16 playerExperience;
+    s16 playerWeapon;
 
 	Checkpoint checkpoint;
     ExpRemnant expRemnant;
@@ -52,17 +52,17 @@ namespace Game {
     void LoadGameData(u32 saveSlot);
 	void SaveGameData(u32 saveSlot);
 
-    u16 GetPlayerHealth();
-	u16 GetPlayerMaxHealth();
-	void AddPlayerHealth(s32 health);
-	void SetPlayerHealth(u16 health);
-    u16 GetPlayerStamina();
-    u16 GetPlayerMaxStamina();
-    void AddPlayerStamina(s32 stamina);
-    void SetPlayerStamina(u16 stamina);
-    u16 GetPlayerExp();
-	void AddPlayerExp(s32 exp);
-	void SetPlayerExp(u16 exp);
+    s16 GetPlayerHealth();
+	s16 GetPlayerMaxHealth();
+	void AddPlayerHealth(s16 health);
+	void SetPlayerHealth(s16 health);
+    s16 GetPlayerStamina();
+    s16 GetPlayerMaxStamina();
+    void AddPlayerStamina(s16 stamina);
+    void SetPlayerStamina(s16 stamina);
+    s16 GetPlayerExp();
+	void AddPlayerExp(s16 exp);
+	void SetPlayerExp(s16 exp);
     u16 GetPlayerWeapon();
     void SetPlayerWeapon(u16 weapon);
 

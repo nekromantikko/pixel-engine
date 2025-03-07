@@ -153,6 +153,7 @@ static void StepGameplayFrame() {
 		
         Game::UpdateActors();
         ViewportFollowPlayer();
+        Game::UI::Update();
 	}
 
     Game::Rendering::ClearSpriteLayers();
@@ -300,45 +301,50 @@ void Game::SaveGameData(u32 saveSlot) {
 #pragma endregion
 
 #pragma region Player
-u16 Game::GetPlayerHealth() {
+s16 Game::GetPlayerHealth() {
     return gameData.playerCurrentHealth;
 }
-u16 Game::GetPlayerMaxHealth() {
+s16 Game::GetPlayerMaxHealth() {
 	return gameData.playerMaxHealth;
 }
-void Game::AddPlayerHealth(s32 health) {
+void Game::AddPlayerHealth(s16 health) {
     gameData.playerCurrentHealth += health;
+    gameData.playerCurrentHealth = glm::clamp(gameData.playerCurrentHealth, s16(0), gameData.playerMaxHealth);
 	Game::UI::SetPlayerDisplayHealth(gameData.playerCurrentHealth);
 }
-void Game::SetPlayerHealth(u16 health) {
+void Game::SetPlayerHealth(s16 health) {
     gameData.playerCurrentHealth = health;
+    gameData.playerCurrentHealth = glm::clamp(gameData.playerCurrentHealth, s16(0), gameData.playerMaxHealth);
 	Game::UI::SetPlayerDisplayHealth(gameData.playerCurrentHealth);
 }
-u16 Game::GetPlayerStamina() {
+s16 Game::GetPlayerStamina() {
     return gameData.playerCurrentStamina;
 }
 
-u16 Game::GetPlayerMaxStamina() {
+s16 Game::GetPlayerMaxStamina() {
     return gameData.playerMaxStamina;
 }
 
-void Game::AddPlayerStamina(s32 stamina) {
+void Game::AddPlayerStamina(s16 stamina) {
     gameData.playerCurrentStamina += stamina;
+    gameData.playerCurrentStamina = glm::clamp(gameData.playerCurrentStamina, s16(0), gameData.playerMaxStamina);
     Game::UI::SetPlayerDisplayStamina(gameData.playerCurrentStamina);
 }
 
-void Game::SetPlayerStamina(u16 stamina) {
+void Game::SetPlayerStamina(s16 stamina) {
     gameData.playerCurrentStamina = stamina;
+    gameData.playerCurrentStamina = glm::clamp(gameData.playerCurrentStamina, s16(0), gameData.playerMaxStamina);
     Game::UI::SetPlayerDisplayStamina(gameData.playerCurrentStamina);
 }
-u16 Game::GetPlayerExp() {
+s16 Game::GetPlayerExp() {
     return gameData.playerExperience;
 }
-void Game::AddPlayerExp(s32 exp) {
+void Game::AddPlayerExp(s16 exp) {
 	gameData.playerExperience += exp;
+    gameData.playerExperience = glm::clamp(gameData.playerExperience, s16(0), s16(SHRT_MAX));
 	Game::UI::SetPlayerDisplayExp(gameData.playerExperience);
 }
-void Game::SetPlayerExp(u16 exp) {
+void Game::SetPlayerExp(s16 exp) {
 	gameData.playerExperience = exp;
 	Game::UI::SetPlayerDisplayExp(gameData.playerExperience);
 }
