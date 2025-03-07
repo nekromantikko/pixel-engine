@@ -11,8 +11,7 @@ struct DialogState {
 
 namespace Game {
 	void OpenDialog(const char* const* pDialogueLines, u32 lineCount);
-	void AdvanceDialogText();
-	void CloseDialog();
+	void UpdateDialog();
 	bool IsDialogActive();
 	DialogState* GetDialogState();
 }

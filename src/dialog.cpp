@@ -3,6 +3,7 @@
 #include "tiles.h"
 #include "game_state.h"
 #include "game_rendering.h"
+#include "game_input.h"
 #include "level.h"
 #define GLM_FORCE_RADIANS
 #include <glm.hpp>
@@ -208,6 +209,45 @@ static bool AnimTextCoroutine(void* userData) {
     return false;
 }
 
+static void CloseDialog() {
+    dialogState.active = false;
+}
+
+static void AdvanceDialogText() {
+    if (!dialogState.active) {
+        return;
+    }
+
+    // Stop the previous coroutine
+    Game::StopCoroutine(dialogState.currentLineCoroutine);
+
+    if (dialogState.currentLine >= dialogState.lineCount) {
+        // Close dialogue box, then end dialogue
+        BgBoxAnimState state{
+                .viewportPos = glm::ivec2(8,3),
+                .width = 16,
+                .maxHeight = 4,
+                .palette = 3,
+                .direction = -1,
+
+                .height = 4
+        };
+        Game::StartCoroutine(AnimBgBoxCoroutine, state, CloseDialog);
+        return;
+    }
+    else {
+        ClearBgText(glm::ivec2(8, 3), glm::ivec2(16, 4));
+        AnimTextState state{
+            .pText = dialogState.pDialogueLines[dialogState.currentLine],
+            .boxViewportPos = glm::ivec2(8,3),
+            .boxSize = glm::ivec2(16,4),
+        };
+        dialogState.currentLineCoroutine = Game::StartCoroutine(AnimTextCoroutine, state);
+    }
+
+    dialogState.currentLine++;
+}
+
 void Game::OpenDialog(const char* const* pDialogueLines, u32 lineCount) {
     if (dialogState.active) {
         return;
@@ -227,42 +267,13 @@ void Game::OpenDialog(const char* const* pDialogueLines, u32 lineCount) {
     };
     StartCoroutine(AnimBgBoxCoroutine, state, AdvanceDialogText);
 }
-void Game::AdvanceDialogText() {
-    if (!dialogState.active) {
-        return;
+void Game::UpdateDialog() {
+    // TODO: Handle different types of dialogs
+    if (dialogState.active) {
+        if (Input::ButtonPressed(BUTTON_B)) {
+            AdvanceDialogText();
+        }
     }
-
-    // Stop the previous coroutine
-    StopCoroutine(dialogState.currentLineCoroutine);
-
-    if (dialogState.currentLine >= dialogState.lineCount) {
-        // Close dialogue box, then end dialogue
-        BgBoxAnimState state{
-                .viewportPos = glm::ivec2(8,3),
-                .width = 16,
-                .maxHeight = 4,
-                .palette = 3,
-                .direction = -1,
-
-                .height = 4
-        };
-        StartCoroutine(AnimBgBoxCoroutine, state, CloseDialog);
-        return;
-    }
-    else {
-        ClearBgText(glm::ivec2(8, 3), glm::ivec2(16, 4));
-        AnimTextState state{
-            .pText = dialogState.pDialogueLines[dialogState.currentLine],
-            .boxViewportPos = glm::ivec2(8,3),
-            .boxSize = glm::ivec2(16,4),
-        };
-        dialogState.currentLineCoroutine = StartCoroutine(AnimTextCoroutine, state);
-    }
-
-    dialogState.currentLine++;
-}
-void Game::CloseDialog() {
-	dialogState.active = false;
 }
 bool Game::IsDialogActive() {
 	return dialogState.active;

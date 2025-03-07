@@ -3,6 +3,7 @@
 #include "game_input.h"
 #include "game_ui.h"
 #include "coroutines.h"
+#include "dialog.h"
 #include "level.h"
 #include "collision.h"
 #include "actor_prototypes.h"
@@ -51,13 +52,20 @@ static bool SpawnPlayerAtCheckpoint() {
     }
 
     Actor* pPlayer = Game::SpawnActor(playerPrototypeIndex, pCheckpoint->position);
+    if (pPlayer) {
+        pPlayer->state.playerState.flags.mode = PLAYER_MODE_SITTING;
+        return true;
+    }
 
-    return true;
+    return false;
 }
 
-static void SpawnPlayerAtEntrance(const Level* pLevel, u8 screenIndex, u8 direction) {
-    if (direction == SCREEN_EXIT_DIR_DEATH_WARP && SpawnPlayerAtCheckpoint()) {
-        return;
+static bool SpawnPlayerAtEntrance(const Level* pLevel, u8 screenIndex, u8 direction) {
+    if (direction == SCREEN_EXIT_DIR_DEATH_WARP) {
+        // Restore life
+        Game::SetPlayerHealth(Game::GetPlayerMaxHealth());
+
+        return SpawnPlayerAtCheckpoint();
     }
 
     r32 x = (screenIndex % TILEMAP_MAX_DIM_SCREENS) * VIEWPORT_WIDTH_METATILES;
@@ -65,7 +73,7 @@ static void SpawnPlayerAtEntrance(const Level* pLevel, u8 screenIndex, u8 direct
 
     Actor* pPlayer = Game::SpawnActor(playerPrototypeIndex, glm::vec2(x, y));
     if (pPlayer == nullptr) {
-        return;
+        return false;
     }
 
     constexpr r32 initialHSpeed = 0.0625f;
@@ -103,7 +111,10 @@ static void SpawnPlayerAtEntrance(const Level* pLevel, u8 screenIndex, u8 direct
         break;
     }
 
-    pPlayer->state.playerState.entryDelayCounter = 15;
+    pPlayer->state.playerState.flags.mode = PLAYER_MODE_ENTERING;
+    pPlayer->state.playerState.modeTransitionCounter = 15;
+
+    return true;
 }
 
 static void ViewportFollowPlayer() {
@@ -483,6 +494,7 @@ void Game::InitGameState(GameState initialState) {
 void Game::StepFrame() {
     Input::Update();
     StepCoroutines();
+    UpdateDialog();
 
 	switch (state) {
 	case GAME_STATE_TITLE:

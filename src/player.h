@@ -14,11 +14,21 @@ enum PlayerWeaponType : u8 {
 	PLAYER_WEAPON_LAUNCHER
 };
 
+enum PlayerModeBits : u8 {
+	PLAYER_MODE_NORMAL,
+	PLAYER_MODE_STAND_TO_SIT,
+	PLAYER_MODE_SITTING,
+	PLAYER_MODE_SIT_TO_STAND,
+	PLAYER_MODE_DYING,
+	PLAYER_MODE_DAMAGED,
+	PLAYER_MODE_ENTERING,
+};
+
 struct PlayerFlags {
 	u8 aimMode : 2;
 	bool slowFall : 1;
 	bool doubleJumped : 1;
-	u8 sitState : 2;
+	u8 mode : 4;
 };
 
 struct PlayerState {
@@ -27,11 +37,8 @@ struct PlayerState {
 	u16 wingCounter;
 	u16 wingFrame;
 	u16 shootCounter;
-	u16 damageCounter;
-	u16 sitCounter;
-
-	u16 entryDelayCounter;
-	u16 deathCounter;
+	
+	u16 modeTransitionCounter;
 };
 
 struct Actor;

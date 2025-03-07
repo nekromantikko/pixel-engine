@@ -36,12 +36,17 @@ enum PlayerAimFrame : u8 {
     PLAYER_AIM_DOWN
 };
 
-enum PlayerSitDownState : u8 {
-    PLAYER_STANDING = 0b00,
-    PLAYER_SITTING = 0b01,
-    PLAYER_SIT_TO_STAND = 0b10,
-    PLAYER_STAND_TO_SIT = 0b11
-};
+// Constants
+constexpr r32 maxSpeed = 0.09375f; // Actual movement speed from Zelda 2
+constexpr r32 acceleration = maxSpeed / 24.f; // Acceleration from Zelda 2
+constexpr u16 wingFrameLength = 12;
+constexpr u16 wingFrameLengthFast = 6;
+constexpr u16 deathDelay = 240;
+constexpr u16 sitDelay = 12;
+
+constexpr u16 standAnimIndex = 0;
+constexpr u16 sitAnimIndex = 1;
+constexpr u16 deathAnimIndex = 2;
 
 // TODO: These should be set in editor somehow
 constexpr s32 playerGrenadePrototypeIndex = 1;
@@ -78,6 +83,102 @@ constexpr glm::ivec2 playerLauncherOffsets[3] = { { 5, -5 }, { 7, -12 }, { 8, 1 
 constexpr u32 playerLauncherFwdMetaspriteIndex = 10;
 constexpr u32 playerLauncherDiagMetaspriteIndex = 11;
 constexpr u32 playerLauncherGrenadeMetaspriteIndex = 12;
+
+static void AnimateWings(Actor* pPlayer, u16 frameLength) {
+    pPlayer->state.playerState.wingCounter = glm::clamp(pPlayer->state.playerState.wingCounter, u16(0), frameLength);
+
+    Game::AdvanceAnimation(pPlayer->state.playerState.wingCounter, pPlayer->state.playerState.wingFrame, PLAYER_WING_FRAME_COUNT, frameLength, 0);
+    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerWingFrameBankOffsets[pPlayer->state.playerState.wingFrame], 1, playerWingFrameChrOffset, playerWingFrameTileCount);
+}
+
+static void AnimateWingsToTargetPosition(Actor* pPlayer, u8 targetFrame, u16 frameLength) {
+    if (pPlayer->state.playerState.wingFrame != targetFrame) {
+        return AnimateWings(pPlayer, frameLength);
+    }
+}
+
+static void SetWingFrame(Actor* pPlayer, u16 frame, u16 frameLength) {
+    pPlayer->state.playerState.wingCounter = frameLength;
+    pPlayer->state.playerState.wingFrame = frame;
+    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerWingFrameBankOffsets[pPlayer->state.playerState.wingFrame], 1, playerWingFrameChrOffset, playerWingFrameTileCount);
+}
+
+static void AnimateSitting(Actor* pPlayer, u16 frameIdx) {
+    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerSitBankOffsets[frameIdx], 1, playerHeadFrameChrOffset, 8);
+
+    // TODO: Custom wing graphics for sitting?
+    AnimateWingsToTargetPosition(pPlayer, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
+
+    pPlayer->drawState.animIndex = sitAnimIndex;
+    pPlayer->drawState.frameIndex = 0;
+    pPlayer->drawState.pixelOffset = { 0, 0 };
+    pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
+    pPlayer->drawState.useCustomPalette = false;
+}
+
+static void AnimateDeath(Actor* pPlayer) {
+    u8 frameIdx = !pPlayer->flags.inAir;
+
+    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerDeadBankOffsets[frameIdx], 1, playerHeadFrameChrOffset, 8);
+
+    pPlayer->drawState.animIndex = deathAnimIndex;
+    pPlayer->drawState.frameIndex = frameIdx;
+    pPlayer->drawState.pixelOffset = { 0, 0 };
+    pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
+    pPlayer->drawState.useCustomPalette = false;
+}
+
+static void AnimateStanding(Actor* pPlayer, u8 headFrameIndex, u8 legsFrameIndex, s16 vOffset) {
+    const u16 aimFrameIndex = pPlayer->state.playerState.flags.aimMode;
+
+    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerHeadFrameBankOffsets[aimFrameIndex * playerHeadFrameTileCount + headFrameIndex], 1, playerHeadFrameChrOffset, playerHeadFrameTileCount);
+    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerLegsFrameBankOffsets[legsFrameIndex], 1, playerLegsFrameChrOffset, playerLegsFrameTileCount);
+
+    pPlayer->drawState.animIndex = 0;
+    pPlayer->drawState.frameIndex = aimFrameIndex;
+    pPlayer->drawState.pixelOffset = { 0, vOffset };
+    pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
+    pPlayer->drawState.useCustomPalette = false;
+}
+
+static void AnimatePlayer(Actor* pPlayer) {
+    const bool jumping = pPlayer->velocity.y < 0;
+    const bool descending = !jumping && pPlayer->velocity.y > 0;
+    const bool falling = descending && !pPlayer->state.playerState.flags.slowFall;
+    const bool moving = pPlayer->velocity.x != 0; // NOTE: Floating point comparison!
+
+    // When jumping or falling, wings get into proper position and stay there for the duration of the jump/fall
+    if (jumping || falling) {
+        const u16 targetWingFrame = jumping ? PLAYER_WINGS_ASCEND : PLAYER_WINGS_DESCEND;
+        AnimateWingsToTargetPosition(pPlayer, targetWingFrame, wingFrameLengthFast);
+    }
+    else {
+        AnimateWings(pPlayer, wingFrameLength);
+    }
+
+    u8 headFrameIndex = PLAYER_HEAD_IDLE;
+    if (falling) {
+        headFrameIndex = PLAYER_HEAD_FALL;
+    }
+    else if (moving) {
+        headFrameIndex = PLAYER_HEAD_FWD;
+    }
+
+    u8 legsFrameIndex = PLAYER_LEGS_IDLE;
+    if (descending) {
+        legsFrameIndex = PLAYER_LEGS_FALL;
+    }
+    else if (jumping) {
+        legsFrameIndex = PLAYER_LEGS_JUMP;
+    }
+    else if (moving) {
+        legsFrameIndex = PLAYER_LEGS_FWD;
+    }
+
+    // If grounded, bob up and down based on wing frame
+    const s16 vOffset = (pPlayer->flags.inAir || pPlayer->state.playerState.wingFrame <= PLAYER_WINGS_FLAP_START) ? 0 : -1;
+    AnimateStanding(pPlayer, headFrameIndex, legsFrameIndex, vOffset);
+}
 
 static void HandleLevelExit(const Actor* pPlayer) {
     if (pPlayer == nullptr) {
@@ -136,13 +237,6 @@ static void HandleLevelExit(const Actor* pPlayer) {
     }
 }
 
-static void PlayerRevive() {
-    // TODO: Animate standing up
-
-    // Restore life
-    Game::SetPlayerHealth(Game::GetPlayerMaxHealth());
-}
-
 static void PlayerDie(Actor* pPlayer) {
     Level* pCurrentLevel = Game::GetCurrentLevel();
 
@@ -151,7 +245,7 @@ static void PlayerDie(Actor* pPlayer) {
 
     // Transition to checkpoint
     const Checkpoint checkpoint = Game::GetCheckpoint();
-    Game::TriggerLevelTransition(checkpoint.levelIndex, checkpoint.screenIndex, SCREEN_EXIT_DIR_DEATH_WARP, PlayerRevive);
+    Game::TriggerLevelTransition(checkpoint.levelIndex, checkpoint.screenIndex, SCREEN_EXIT_DIR_DEATH_WARP);
 }
 
 static void SpawnFeathers(Actor* pPlayer, u32 count) {
@@ -170,19 +264,19 @@ static void SpawnFeathers(Actor* pPlayer, u32 count) {
 static void PlayerMortalHit(Actor* pPlayer) {
     Game::TriggerScreenShake(2, 30, true);
     pPlayer->velocity.y = -0.25f;
-    pPlayer->state.playerState.deathCounter = 240;
+    pPlayer->state.playerState.flags.mode = PLAYER_MODE_DYING;
+    pPlayer->state.playerState.modeTransitionCounter = deathDelay;
 }
 
-
-
 static void PlayerSitDown(Actor* pPlayer) {
-    pPlayer->state.playerState.flags.sitState = PLAYER_STAND_TO_SIT;
-    pPlayer->state.playerState.sitCounter = 15;
+    pPlayer->state.playerState.flags.mode = PLAYER_MODE_STAND_TO_SIT;
+    pPlayer->state.playerState.modeTransitionCounter = sitDelay;
+    pPlayer->velocity.x = 0.0f;
 }
 
 static void PlayerStandUp(Actor* pPlayer) {
-    pPlayer->state.playerState.flags.sitState = PLAYER_SIT_TO_STAND;
-    pPlayer->state.playerState.sitCounter = 15;
+    pPlayer->state.playerState.flags.mode = PLAYER_MODE_SIT_TO_STAND;
+    pPlayer->state.playerState.modeTransitionCounter = sitDelay;
 }
 
 static void TriggerInteraction(Actor* pPlayer, Actor* pInteractable) {
@@ -197,6 +291,7 @@ static void TriggerInteraction(Actor* pPlayer, Actor* pInteractable) {
 
         // Sit down
         PlayerSitDown(pPlayer);
+        Game::SetPlayerHealth(Game::GetPlayerMaxHealth());
 
         // Add dialogue
         static constexpr const char* lines[] = {
@@ -250,19 +345,15 @@ static void PlayerShoot(Actor* pPlayer) {
     }
 }
 
+static void PlayerDecelerate(Actor* pPlayer) {
+    if (!pPlayer->flags.inAir && pPlayer->velocity.x != 0.0f) {
+        pPlayer->velocity.x -= acceleration * glm::sign(pPlayer->velocity.x);
+    }
+}
+
 static void PlayerInput(Actor* pPlayer) {
-    constexpr r32 maxSpeed = 0.09375f; // Actual movement speed from Zelda 2
-    constexpr r32 acceleration = maxSpeed / 24.f; // Acceleration from Zelda 2
-
-    const bool dead = Game::GetPlayerHealth() == 0;
-    const bool enteringLevel = pPlayer->state.playerState.entryDelayCounter > 0;
-    const bool stunned = pPlayer->state.playerState.damageCounter > 0;
-    const bool sitting = pPlayer->state.playerState.flags.sitState != PLAYER_STANDING;
-
-    const bool inputDisabled = dead || enteringLevel || stunned || sitting || Game::IsDialogActive();
-
     PlayerState& playerState = pPlayer->state.playerState;
-    if (!inputDisabled && Game::Input::ButtonDown(BUTTON_DPAD_LEFT)) {
+    if (Game::Input::ButtonDown(BUTTON_DPAD_LEFT)) {
         pPlayer->velocity.x -= acceleration;
         if (pPlayer->flags.facingDir != ACTOR_FACING_LEFT) {
             pPlayer->velocity.x -= acceleration;
@@ -271,7 +362,7 @@ static void PlayerInput(Actor* pPlayer) {
         pPlayer->velocity.x = glm::clamp(pPlayer->velocity.x, -maxSpeed, maxSpeed);
         pPlayer->flags.facingDir = ACTOR_FACING_LEFT;
     }
-    else if (!inputDisabled && Game::Input::ButtonDown(BUTTON_DPAD_RIGHT)) {
+    else if (Game::Input::ButtonDown(BUTTON_DPAD_RIGHT)) {
         pPlayer->velocity.x += acceleration;
         if (pPlayer->flags.facingDir != ACTOR_FACING_RIGHT) {
             pPlayer->velocity.x += acceleration;
@@ -280,29 +371,16 @@ static void PlayerInput(Actor* pPlayer) {
         pPlayer->velocity.x = glm::clamp(pPlayer->velocity.x, -maxSpeed, maxSpeed);
         pPlayer->flags.facingDir = ACTOR_FACING_RIGHT;
     }
-    else if (!enteringLevel && !pPlayer->flags.inAir && pPlayer->velocity.x != 0.0f) { // Decelerate
-        pPlayer->velocity.x -= acceleration * glm::sign(pPlayer->velocity.x);
+    else {
+        PlayerDecelerate(pPlayer);
     }
 
     // Interaction / Shooting
-    if (Game::IsDialogActive() && Game::Input::ButtonPressed(BUTTON_B)) {
-        Game::AdvanceDialogText();
+    Actor* pInteractable = Game::GetFirstActorCollision(pPlayer, ACTOR_TYPE_INTERACTABLE);
+    if (pInteractable && !pPlayer->flags.inAir && Game::Input::ButtonPressed(BUTTON_B)) {
+        TriggerInteraction(pPlayer, pInteractable);
     }
-    else if (!inputDisabled) {
-        Actor* pInteractable = Game::GetFirstActorCollision(pPlayer, ACTOR_TYPE_INTERACTABLE);
-        if (pInteractable && Game::Input::ButtonPressed(BUTTON_B)) {
-            TriggerInteraction(pPlayer, pInteractable);
-        }
-        else PlayerShoot(pPlayer);
-    }
-
-    if (inputDisabled) {
-        if (!Game::IsDialogActive() && pPlayer->state.playerState.flags.sitState == PLAYER_SITTING && Game::Input::AnyButtonDown()) {
-            PlayerStandUp(pPlayer);
-        }
-
-        return;
-    }
+    else PlayerShoot(pPlayer);
 
     // Aim mode
     if (Game::Input::ButtonDown(BUTTON_DPAD_UP)) {
@@ -319,9 +397,10 @@ static void PlayerInput(Actor* pPlayer) {
             playerState.flags.doubleJumped = true;
         }
 
-        // Trigger new flap by taking wings out of falling position by advancing the frame index
-        playerState.wingFrame = ++playerState.wingFrame % PLAYER_WING_FRAME_COUNT;
-
+        // Trigger new flap by taking wings out of the jumping position by advancing the frame index
+        if (playerState.wingFrame == PLAYER_WINGS_ASCEND) {
+            SetWingFrame(pPlayer, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
+        }
         //Audio::PlaySFX(&jumpSfx, CHAN_ID_PULSE0);
     }
 
@@ -346,132 +425,103 @@ static void PlayerInput(Actor* pPlayer) {
     }
 }
 
-static void AnimatePlayerDead(Actor* pPlayer) {
-    u8 frameIdx = !pPlayer->flags.inAir;
+static void TriggerModeTransition(Actor* pActor) {
+    PlayerState& state = pActor->state.playerState;
 
-    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerDeadBankOffsets[frameIdx], 1, playerHeadFrameChrOffset, 8);
-
-    pPlayer->drawState.animIndex = 2;
-    pPlayer->drawState.frameIndex = frameIdx;
-    pPlayer->drawState.pixelOffset = { 0, 0 };
-    pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
-    pPlayer->drawState.useCustomPalette = false;
+    switch (state.flags.mode) {
+    case PLAYER_MODE_STAND_TO_SIT: {
+        state.flags.mode = PLAYER_MODE_SITTING;
+        break;
+    }
+    case PLAYER_MODE_SIT_TO_STAND: {
+        state.flags.mode = PLAYER_MODE_NORMAL;
+        break;
+    }
+    case PLAYER_MODE_DAMAGED: {
+        state.flags.mode = PLAYER_MODE_NORMAL;
+        break;
+    }
+    case PLAYER_MODE_DYING: {
+        PlayerDie(pActor);
+        break;
+    }
+    case PLAYER_MODE_ENTERING: {
+        state.flags.mode = PLAYER_MODE_NORMAL;
+        break;
+    }
+    default:
+        break;
+    }
 }
 
-static void AnimatePlayerSitting(Actor* pPlayer) {
-    u8 frameIdx = 1;
+static void UpdateSidescrollerMode(Actor* pActor) {
+    PlayerState& state = pActor->state.playerState;
 
-    // If in transition state
-    if (pPlayer->state.playerState.flags.sitState & 0b10) {
-        frameIdx = ((pPlayer->state.playerState.flags.sitState & 0b01) ^ (pPlayer->state.playerState.sitCounter >> 3)) & 1;
+    if (state.modeTransitionCounter != 0 && !Game::UpdateCounter(state.modeTransitionCounter)) {
+        TriggerModeTransition(pActor);
     }
 
-    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerSitBankOffsets[frameIdx], 1, playerHeadFrameChrOffset, 8);
+    const bool inputDisabled = Game::IsDialogActive();
 
-    // Get wings in sitting position
-    const bool wingsInPosition = pPlayer->state.playerState.wingFrame == PLAYER_WINGS_FLAP_END;
-    const u16 wingAnimFrameLength = 6;
+    switch (state.flags.mode) {
+    case PLAYER_MODE_NORMAL: {
+        if (!inputDisabled) {
+            PlayerInput(pActor);
+        }
+        else {
+            PlayerDecelerate(pActor);
+        }
 
-    if (!wingsInPosition) {
-        Game::AdvanceAnimation(pPlayer->state.playerState.wingCounter, pPlayer->state.playerState.wingFrame, PLAYER_WING_FRAME_COUNT, wingAnimFrameLength, 0);
+        AnimatePlayer(pActor);
+
+        break;
     }
+    case PLAYER_MODE_STAND_TO_SIT: {
+        const r32 animProgress = r32(state.modeTransitionCounter) / sitDelay;
+        const u8 frameIdx = glm::mix(0, 1, animProgress);
 
-    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerWingFrameBankOffsets[pPlayer->state.playerState.wingFrame], 1, playerWingFrameChrOffset, playerWingFrameTileCount);
-
-    pPlayer->drawState.animIndex = 1;
-    pPlayer->drawState.frameIndex = 0;
-    pPlayer->drawState.pixelOffset = { 0, 0 };
-    pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
-    pPlayer->drawState.useCustomPalette = false;
-}
-
-static void AnimatePlayer(Actor* pPlayer) {
-    PlayerState& playerState = pPlayer->state.playerState;
-
-    if (Game::GetPlayerHealth() == 0) {
-        AnimatePlayerDead(pPlayer);
-        return;
+        AnimateSitting(pActor, frameIdx);
+        break;
     }
+    case PLAYER_MODE_SITTING: {
+        if (!inputDisabled && Game::Input::AnyButtonPressed()) {
+            PlayerStandUp(pActor);
+        }
 
-    if (playerState.flags.sitState != PLAYER_STANDING) {
-        AnimatePlayerSitting(pPlayer);
-        return;
+        AnimateSitting(pActor, 1);
+        break;
     }
-
-    // Animate chr sheet using player bank
-    const bool jumping = pPlayer->velocity.y < 0;
-    const bool descending = !jumping && pPlayer->velocity.y > 0;
-    const bool falling = descending && !playerState.flags.slowFall;
-    const bool moving = glm::abs(pPlayer->velocity.x) > 0;
-    const bool takingDamage = playerState.damageCounter > 0;
-
-    s32 headFrameIndex = PLAYER_HEAD_IDLE;
-    if (takingDamage) {
-        headFrameIndex = PLAYER_HEAD_DMG;
+    case PLAYER_MODE_SIT_TO_STAND: {
+        const r32 animProgress = r32(state.modeTransitionCounter) / sitDelay;
+        const u8 frameIdx = glm::mix(1, 0, animProgress);
+        AnimateSitting(pActor, frameIdx);
+        break;
     }
-    else if (falling) {
-        headFrameIndex = PLAYER_HEAD_FALL;
+    case PLAYER_MODE_DAMAGED: {
+        PlayerDecelerate(pActor);
+        AnimateStanding(pActor, PLAYER_HEAD_DMG, PLAYER_LEGS_FALL, 0);
+        Game::SetDamagePaletteOverride(pActor, state.modeTransitionCounter);
+        break;
     }
-    else if (moving) {
-        headFrameIndex = PLAYER_HEAD_FWD;
+    case PLAYER_MODE_DYING: {
+        PlayerDecelerate(pActor);
+        AnimateDeath(pActor);
+        break;
     }
-    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerHeadFrameBankOffsets[playerState.flags.aimMode * 4 + headFrameIndex], 1, playerHeadFrameChrOffset, playerHeadFrameTileCount);
-
-    s32 legsFrameIndex = PLAYER_LEGS_IDLE;
-    if (descending || takingDamage) {
-        legsFrameIndex = PLAYER_LEGS_FALL;
+    case PLAYER_MODE_ENTERING: {
+        AnimatePlayer(pActor);
+        break;
     }
-    else if (jumping) {
-        legsFrameIndex = PLAYER_LEGS_JUMP;
+    default:
+        break;
     }
-    else if (moving) {
-        legsFrameIndex = PLAYER_LEGS_FWD;
-    }
-    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerLegsFrameBankOffsets[legsFrameIndex], 1, playerLegsFrameChrOffset, playerLegsFrameTileCount);
-
-    // When jumping or falling, wings get into proper position and stay there for the duration of the jump/fall
-    const bool wingsInPosition = (jumping && playerState.wingFrame == PLAYER_WINGS_ASCEND) || (falling && playerState.wingFrame == PLAYER_WINGS_DESCEND);
-
-    // Wings flap faster to get into proper position
-    const u16 wingAnimFrameLength = (jumping || falling) ? 6 : 12;
-
-    if (!wingsInPosition) {
-        Game::AdvanceAnimation(playerState.wingCounter, playerState.wingFrame, PLAYER_WING_FRAME_COUNT, wingAnimFrameLength, 0);
-    }
-
-    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerWingFrameBankOffsets[playerState.wingFrame], 1, playerWingFrameChrOffset, playerWingFrameTileCount);
-
-    // Setup draw data
-    s32 vOffset = 0;
-    if (pPlayer->velocity.y == 0) {
-        vOffset = playerState.wingFrame > PLAYER_WINGS_FLAP_START ? -1 : 0;
-    }
-
-    pPlayer->drawState.animIndex = 0;
-    pPlayer->drawState.frameIndex = playerState.flags.aimMode;
-    pPlayer->drawState.pixelOffset = { 0, vOffset };
-    pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
-    Game::SetDamagePaletteOverride(pPlayer, playerState.damageCounter);
 }
 
 static void UpdatePlayerSidescroller(Actor* pActor) {
-    Game::UpdateCounter(pActor->state.playerState.entryDelayCounter);
-    Game::UpdateCounter(pActor->state.playerState.damageCounter);
-
-    if (!Game::UpdateCounter(pActor->state.playerState.sitCounter)) {
-        pActor->state.playerState.flags.sitState &= 1;
-    }
-
-    if (pActor->state.playerState.deathCounter != 0) {
-        if (!Game::UpdateCounter(pActor->state.playerState.deathCounter)) {
-            PlayerDie(pActor);
-        }
-    }
-
     // Reset slow fall
     pActor->state.playerState.flags.slowFall = false;
 
-    PlayerInput(pActor);
+    UpdateSidescrollerMode(pActor);
 
     HitResult hit{};
     if (Game::ActorMoveHorizontal(pActor, hit)) {
@@ -496,9 +546,9 @@ static void UpdatePlayerSidescroller(Actor* pActor) {
         }
     }
 
-    AnimatePlayer(pActor);
-
-    HandleLevelExit(pActor);
+    if (pActor->state.playerState.flags.mode != PLAYER_MODE_DYING) {
+        HandleLevelExit(pActor);
+    }
 }
 
 static void UpdatePlayerOverworld(Actor* pPlayer) {
@@ -537,7 +587,9 @@ static bool DrawPlayerGun(const Actor* pPlayer) {
 }
 
 static bool DrawPlayerSidescroller(const Actor* pPlayer) {
-    if (Game::GetPlayerHealth() != 0 && pPlayer->state.playerState.flags.sitState == PLAYER_STANDING) {
+    if (pPlayer->state.playerState.flags.mode == PLAYER_MODE_NORMAL || 
+        pPlayer->state.playerState.flags.mode == PLAYER_MODE_DAMAGED ||
+        pPlayer->state.playerState.flags.mode == PLAYER_MODE_ENTERING) {
         DrawPlayerGun(pPlayer);
     }
     return Game::DrawActorDefault(pPlayer);
@@ -547,14 +599,11 @@ static bool DrawPlayerOverworld(const Actor* pPlayer) {
     return false;
 }
 
-void InitPlayerSidescroller(Actor* pPlayer, const PersistedActorData* pPersistData) {
-    pPlayer->state.playerState.entryDelayCounter = 0;
-    pPlayer->state.playerState.deathCounter = 0;
-    pPlayer->state.playerState.damageCounter = 0;
-    pPlayer->state.playerState.sitCounter = 0;
+static void InitPlayerSidescroller(Actor* pPlayer, const PersistedActorData* pPersistData) {
+    pPlayer->state.playerState.modeTransitionCounter = 0;
     pPlayer->state.playerState.flags.aimMode = PLAYER_AIM_FWD;
     pPlayer->state.playerState.flags.doubleJumped = false;
-    pPlayer->state.playerState.flags.sitState = PLAYER_STANDING;
+    pPlayer->state.playerState.flags.mode = PLAYER_MODE_NORMAL;
     pPlayer->state.playerState.flags.slowFall = false;
     pPlayer->drawState.layer = SPRITE_LAYER_FG;
 }
@@ -568,7 +617,7 @@ void Game::HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
     u16 health = GetPlayerHealth();
 
     // If invulnerable, or dead
-    if (pPlayer->state.playerState.damageCounter != 0 || health == 0) {
+    if (pPlayer->state.playerState.flags.mode == PLAYER_MODE_DAMAGED || pPlayer->state.playerState.flags.mode == PLAYER_MODE_DYING) {
         return;
     }
 
@@ -580,10 +629,13 @@ void Game::HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
 
     u32 featherCount = Random::GenerateInt(1, 4);
 
-    health = ActorTakeDamage(pPlayer, damage, health, pPlayer->state.playerState.damageCounter);
+    health = ActorTakeDamage(pPlayer, damage, health, pPlayer->state.playerState.modeTransitionCounter);
     if (health == 0) {
         PlayerMortalHit(pPlayer);
         featherCount = 8;
+    }
+    else {
+        pPlayer->state.playerState.flags.mode = PLAYER_MODE_DAMAGED;
     }
 
     SpawnFeathers(pPlayer, featherCount);
