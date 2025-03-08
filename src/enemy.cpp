@@ -5,6 +5,9 @@
 #include "game_state.h"
 #include "random.h"
 
+// TODO: Should be determined by enemy stats
+constexpr u16 baseDamage = 10;
+
 static void UpdateSlimeEnemy(Actor* pActor) {
     Game::UpdateCounter(pActor->state.enemyState.damageCounter);
 
@@ -40,8 +43,9 @@ static void UpdateSlimeEnemy(Actor* pActor) {
     }
 
     Actor* pPlayer = Game::GetPlayer();
-    if (pPlayer && Game::GetPlayerHealth() != 0 && Game::ActorsColliding(pActor, pPlayer)) {
-        Game::HandlePlayerEnemyCollision(pPlayer, pActor);
+    const Damage damage = Game::CalculateDamage(pPlayer, baseDamage);
+    if (pPlayer && !Game::PlayerInvulnerable(pPlayer) && Game::ActorsColliding(pActor, pPlayer)) {
+        Game::PlayerTakeDamage(pPlayer, damage, pActor->position);
     }
 
     pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
@@ -70,9 +74,11 @@ static void UpdateSkullEnemy(Actor* pActor) {
         }
     }
 
+
     Actor* pPlayer = Game::GetPlayer();
-    if (pPlayer && Game::GetPlayerHealth() != 0 && Game::ActorsColliding(pActor, pPlayer)) {
-        Game::HandlePlayerEnemyCollision(pPlayer, pActor);
+    const Damage damage = Game::CalculateDamage(pPlayer, baseDamage);
+    if (pPlayer && !Game::PlayerInvulnerable(pPlayer) && Game::ActorsColliding(pActor, pPlayer)) {
+        Game::PlayerTakeDamage(pPlayer, damage, pActor->position);
     }
 
     pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
@@ -100,8 +106,9 @@ static void UpdateFireball(Actor* pActor) {
     }
 
     Actor* pPlayer = Game::GetPlayer();
-    if (pPlayer && Game::GetPlayerHealth() != 0 && Game::ActorsColliding(pActor, pPlayer)) {
-        Game::HandlePlayerEnemyCollision(pPlayer, pActor);
+    const Damage damage = Game::CalculateDamage(pPlayer, baseDamage);
+    if (pPlayer && !Game::PlayerInvulnerable(pPlayer) && Game::ActorsColliding(pActor, pPlayer)) {
+        Game::PlayerTakeDamage(pPlayer, damage, pActor->position);
         return FireballDie(pActor, pActor->position);
     }
 

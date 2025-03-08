@@ -36,6 +36,12 @@ enum PlayerAimFrame : u8 {
     PLAYER_AIM_DOWN
 };
 
+// Input mapping
+// TODO: Define in settings
+u16 jumpButton = BUTTON_A;
+u16 interactButton = BUTTON_X;
+u16 dodgeButton = BUTTON_B;
+
 // Constants
 constexpr r32 maxSpeed = 0.09375f; // Actual movement speed from Zelda 2
 constexpr r32 acceleration = maxSpeed / 24.f; // Acceleration from Zelda 2
@@ -44,6 +50,10 @@ constexpr u16 wingFrameLengthFast = 6;
 constexpr u16 deathDelay = 240;
 constexpr u16 sitDelay = 12;
 constexpr u16 staminaRecoveryDelay = 120;
+constexpr r32 jumpSpeed = 0.25f;
+constexpr r32 dodgeSpeed = maxSpeed * 2;
+constexpr u16 dodgeDuration = 16;
+constexpr u16 dodgeStaminaCost = 16;
 
 constexpr u16 standAnimIndex = 0;
 constexpr u16 sitAnimIndex = 1;
@@ -311,7 +321,7 @@ static void PlayerShoot(Actor* pPlayer) {
     PlayerState& playerState = pPlayer->state.playerState;
     Game::UpdateCounter(playerState.shootCounter);
 
-    if (Game::Input::ButtonDown(BUTTON_B) && playerState.shootCounter == 0) {
+    if (Game::Input::ButtonDown(interactButton) && playerState.shootCounter == 0) {
         playerState.shootCounter = shootDelay;
 
         const u16 playerWeapon = Game::GetPlayerWeapon();
@@ -352,14 +362,44 @@ static void PlayerDecelerate(Actor* pPlayer) {
     }
 }
 
-static void PlayerJump(Actor* pPlayer) {
-    pPlayer->velocity.y = -0.25f;
+static bool PlayerJump(Actor* pPlayer) {
+    if (Game::Input::ButtonPressed(jumpButton) && (!pPlayer->flags.inAir || !pPlayer->state.playerState.flags.doubleJumped)) {
+        pPlayer->velocity.y = -0.25f;
 
-    // Trigger new flap by taking wings out of the jumping position by advancing the frame index
-    if (pPlayer->state.playerState.wingFrame == PLAYER_WINGS_ASCEND) {
-        SetWingFrame(pPlayer, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
+        // Trigger new flap by taking wings out of the jumping position by advancing the frame index
+        if (pPlayer->state.playerState.wingFrame == PLAYER_WINGS_ASCEND) {
+            SetWingFrame(pPlayer, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
+        }
+        //Audio::PlaySFX(&jumpSfx, CHAN_ID_PULSE0);
+
+        if (pPlayer->flags.inAir) {
+            pPlayer->state.playerState.flags.doubleJumped = true;
+        }
+
+        return true;
     }
-    //Audio::PlaySFX(&jumpSfx, CHAN_ID_PULSE0);
+
+    return false;
+}
+
+static bool PlayerDodge(Actor* pPlayer) {
+    if (Game::Input::ButtonPressed(dodgeButton) && Game::GetPlayerStamina() > 0 && (!pPlayer->flags.inAir || !pPlayer->state.playerState.flags.airDodged)) {
+        Game::AddPlayerStamina(-dodgeStaminaCost);
+        pPlayer->state.playerState.staminaRecoveryCounter = staminaRecoveryDelay;
+        pPlayer->state.playerState.flags.mode = PLAYER_MODE_DODGE;
+        pPlayer->state.playerState.modeTransitionCounter = dodgeDuration;
+
+        pPlayer->velocity.x += (pPlayer->flags.facingDir == ACTOR_FACING_LEFT) ? -dodgeSpeed : dodgeSpeed;
+        pPlayer->velocity.y = 0.0f;
+
+        if (pPlayer->flags.inAir) {
+            pPlayer->state.playerState.flags.airDodged = true;
+        }
+
+        return true;
+    }
+
+    return false;
 }
 
 static void PlayerInput(Actor* pPlayer) {
@@ -386,9 +426,12 @@ static void PlayerInput(Actor* pPlayer) {
         PlayerDecelerate(pPlayer);
     }
 
+    // Dodge
+    PlayerDodge(pPlayer);
+
     // Interaction / Shooting
     Actor* pInteractable = Game::GetFirstActorCollision(pPlayer, ACTOR_TYPE_INTERACTABLE);
-    if (pInteractable && !pPlayer->flags.inAir && Game::Input::ButtonPressed(BUTTON_B)) {
+    if (pInteractable && !pPlayer->flags.inAir && Game::Input::ButtonPressed(interactButton)) {
         TriggerInteraction(pPlayer, pInteractable);
     }
     else PlayerShoot(pPlayer);
@@ -402,19 +445,13 @@ static void PlayerInput(Actor* pPlayer) {
     }
     else playerState.flags.aimMode = PLAYER_AIM_FWD;
 
-    if (Game::Input::ButtonPressed(BUTTON_A) && (!pPlayer->flags.inAir || !playerState.flags.doubleJumped)) {
-        PlayerJump(pPlayer);
+    PlayerJump(pPlayer);
 
-        if (pPlayer->flags.inAir) {
-            playerState.flags.doubleJumped = true;
-        }
+    if (pPlayer->velocity.y < 0 && Game::Input::ButtonReleased(jumpButton)) {
+        pPlayer->velocity.y *= 0.5f;
     }
 
-    if (pPlayer->velocity.y < 0 && Game::Input::ButtonReleased(BUTTON_A)) {
-        pPlayer->velocity.y /= 2;
-    }
-
-    if (Game::Input::ButtonDown(BUTTON_A) && pPlayer->velocity.y > 0.0f) {
+    if (Game::Input::ButtonDown(jumpButton) && pPlayer->velocity.y > 0.0f) {
         const u16 currentStamina = Game::GetPlayerStamina();
         if (currentStamina > 0) {
             Game::AddPlayerStamina(-1);
@@ -423,7 +460,7 @@ static void PlayerInput(Actor* pPlayer) {
         }
     }
 
-    if (Game::Input::ButtonReleased(BUTTON_B)) {
+    if (Game::Input::ButtonReleased(interactButton)) {
         playerState.shootCounter = 0.0f;
     }
 
@@ -458,6 +495,11 @@ static void TriggerModeTransition(Actor* pActor) {
     }
     case PLAYER_MODE_ENTERING: {
         state.flags.mode = PLAYER_MODE_NORMAL;
+        break;
+    }
+    case PLAYER_MODE_DODGE: {
+        state.flags.mode = PLAYER_MODE_NORMAL;
+        pActor->velocity.x = glm::clamp(pActor->velocity.x, -maxSpeed, maxSpeed);
         break;
     }
     default:
@@ -523,6 +565,16 @@ static void UpdateSidescrollerMode(Actor* pActor) {
         AnimatePlayer(pActor);
         break;
     }
+    case PLAYER_MODE_DODGE: {
+        // Dash cancel
+        if (PlayerJump(pActor)) {
+            state.flags.mode = PLAYER_MODE_NORMAL;
+            state.modeTransitionCounter = 0;
+            pActor->velocity.x = glm::clamp(pActor->velocity.x, -maxSpeed, maxSpeed);
+        }
+
+        break;
+    }
     default:
         break;
     }
@@ -546,8 +598,10 @@ static void UpdatePlayerSidescroller(Actor* pActor) {
     constexpr r32 playerGravity = 0.01f;
     constexpr r32 playerSlowGravity = playerGravity / 4;
 
-    const r32 gravity = pActor->state.playerState.flags.slowFall ? playerSlowGravity : playerGravity;
-    Game::ApplyGravity(pActor, gravity);
+    if (pActor->state.playerState.flags.mode != PLAYER_MODE_DODGE) {
+        const r32 gravity = pActor->state.playerState.flags.slowFall ? playerSlowGravity : playerGravity;
+        Game::ApplyGravity(pActor, gravity);
+    }
 
     // Reset in air flag
     pActor->flags.inAir = true;
@@ -558,6 +612,7 @@ static void UpdatePlayerSidescroller(Actor* pActor) {
         if (hit.impactNormal.y < 0.0f) {
             pActor->flags.inAir = false;
             pActor->state.playerState.flags.doubleJumped = false;
+            pActor->state.playerState.flags.airDodged = false;
         }
     }
 
@@ -620,6 +675,7 @@ static void InitPlayerSidescroller(Actor* pPlayer, const PersistedActorData* pPe
 
     pPlayer->state.playerState.flags.aimMode = PLAYER_AIM_FWD;
     pPlayer->state.playerState.flags.doubleJumped = false;
+    pPlayer->state.playerState.flags.airDodged = false;
     pPlayer->state.playerState.flags.mode = PLAYER_MODE_NORMAL;
     pPlayer->state.playerState.flags.slowFall = false;
     pPlayer->drawState.layer = SPRITE_LAYER_FG;
@@ -630,17 +686,14 @@ static void InitPlayerOverworld(Actor* pPlayer, const PersistedActorData* pPersi
 }
 
 #pragma region Public API
-void Game::HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
+bool Game::PlayerInvulnerable(Actor* pPlayer) {
+    return (pPlayer->state.playerState.flags.mode == PLAYER_MODE_DAMAGED ||
+        pPlayer->state.playerState.flags.mode == PLAYER_MODE_DYING ||
+        pPlayer->state.playerState.flags.mode == PLAYER_MODE_DODGE);
+}
+
+void Game::PlayerTakeDamage(Actor* pPlayer, const Damage& damage, const glm::vec2& enemyPos) {
     u16 health = GetPlayerHealth();
-
-    // If invulnerable, or dead
-    if (pPlayer->state.playerState.flags.mode == PLAYER_MODE_DAMAGED || pPlayer->state.playerState.flags.mode == PLAYER_MODE_DYING) {
-        return;
-    }
-
-    // TODO: Should be determined by enemy stats
-    constexpr u16 baseDamage = 10;
-    const Damage damage = Game::CalculateDamage(pPlayer, baseDamage);
 
     //Audio::PlaySFX(&damageSfx, CHAN_ID_PULSE0);
 
@@ -660,7 +713,7 @@ void Game::HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy) {
 
     // Recoil
     constexpr r32 recoilSpeed = 0.046875f; // Recoil speed from Zelda 2
-    if (pEnemy->position.x > pPlayer->position.x) {
+    if (enemyPos.x > pPlayer->position.x) {
         pPlayer->flags.facingDir = 1;
         pPlayer->velocity.x = -recoilSpeed;
     }

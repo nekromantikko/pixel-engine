@@ -1,5 +1,7 @@
 #pragma once
 #include "typedef.h"
+#define GLM_FORCE_RADIANS
+#include <glm.hpp>
 
 #pragma region Player
 enum PlayerType : TActorSubtype {
@@ -22,12 +24,14 @@ enum PlayerModeBits : u8 {
 	PLAYER_MODE_DYING,
 	PLAYER_MODE_DAMAGED,
 	PLAYER_MODE_ENTERING,
+	PLAYER_MODE_DODGE,
 };
 
 struct PlayerFlags {
 	u8 aimMode : 2;
 	bool slowFall : 1;
 	bool doubleJumped : 1;
+	bool airDodged : 1;
 	u8 mode : 4;
 };
 
@@ -43,13 +47,15 @@ struct PlayerState {
 };
 
 struct Actor;
+struct Damage;
 
 namespace Game {
 	extern const ActorInitFn playerInitTable[PLAYER_TYPE_COUNT];
 	extern const ActorUpdateFn playerUpdateTable[PLAYER_TYPE_COUNT];
 	extern const ActorDrawFn playerDrawTable[PLAYER_TYPE_COUNT];
 
-	void HandlePlayerEnemyCollision(Actor* pPlayer, Actor* pEnemy);
+	bool PlayerInvulnerable(Actor* pPlayer);
+	void PlayerTakeDamage(Actor* pPlayer, const Damage& damage, const glm::vec2& enemyPos);
 }
 
 #ifdef EDITOR
