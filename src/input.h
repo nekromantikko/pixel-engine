@@ -6,5 +6,5 @@ union SDL_Event;
 namespace Input {
     void ProcessEvent(const SDL_Event* event);
 
-    u8 GetControllerState();
+    u16 GetControllerState();
 }
