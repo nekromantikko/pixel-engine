@@ -15,6 +15,15 @@ u64 Random::GenerateUUID() {
     return result;
 }
 
+u32 Random::GenerateUUID32() {
+    u32 result = UUID_NULL;
+    while (result == UUID_NULL) {
+        std::uniform_int_distribution<u32> dist;
+        result = dist(gen32);
+    }
+    return result;
+}
+
 s32 Random::GenerateInt(s32 min, s32 max) {
     std::uniform_int_distribution<s32> dist(min, max);
     return dist(gen32);

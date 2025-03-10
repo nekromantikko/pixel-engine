@@ -7,6 +7,7 @@ constexpr u64 UUID_NULL = 0;
 
 namespace Random {
 	u64 GenerateUUID();
+	u32 GenerateUUID32();
 
 	s32 GenerateInt(s32 min, s32 max);
 	r32 GenerateReal(r32 min, r32 max);

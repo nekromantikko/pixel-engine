@@ -129,9 +129,9 @@ namespace Collision {
 		const AABB bAbs = AABB(b.min + bPos, b.max + bPos);
 
 		return (aAbs.x1 < bAbs.x2 &&
-			aAbs.x2 >= bAbs.x1 &&
+			aAbs.x2 > bAbs.x1 &&
 			aAbs.y1 < bAbs.y2 &&
-			aAbs.y2 >= bAbs.y1);
+			aAbs.y2 > bAbs.y1);
 	}
 
 	bool PointInsideBox(const glm::vec2& point, const AABB& hitbox, const glm::vec2& boxPos) {

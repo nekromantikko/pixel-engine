@@ -20,7 +20,7 @@ Level* Levels::GetLevel(u32 index) {
 	return &levels[index];
 }
 
-s32 Levels::GetIndex(Level* pLevel) {
+s32 Levels::GetIndex(const Level* pLevel) {
 	if (pLevel == nullptr) {
 		return -1;
 	}

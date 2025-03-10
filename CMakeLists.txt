@@ -67,7 +67,8 @@ set(SOURCES
 		src/effect.cpp
 		src/interactable.cpp
 		src/actor_types.cpp
-		src/spawner.cpp)
+		src/spawner.cpp
+		src/dungeon.cpp)
 
 set(EDITOR_SOURCES
 		src/editor.cpp)
