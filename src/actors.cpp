@@ -3,6 +3,7 @@
 #include "game_rendering.h"
 #include "game_state.h"
 #include "level.h"
+#include "dungeon.h"
 #include "random.h"
 #include <gtc/constants.hpp>
 
@@ -32,7 +33,7 @@ static void InitializeActor(Actor* pActor) {
 	Game::actorInitTable[pActor->pPrototype->type][pActor->pPrototype->subtype](pActor, pPersistData);
 }
 
-Actor* Game::SpawnActor(const Actor* pTemplate) {
+Actor* Game::SpawnActor(const Actor* pTemplate, u32 roomId) {
 	if (actors.Count() >= MAX_DYNAMIC_ACTOR_COUNT) {
 		return nullptr;
 	}
@@ -42,6 +43,7 @@ Actor* Game::SpawnActor(const Actor* pTemplate) {
 	}
 
 	Actor actor = *pTemplate;
+	actor.persistId |= u64(roomId) << 32;
 	InitializeActor(&actor);
 
 	const ActorHandle handle = actors.Add(actor);
@@ -343,7 +345,7 @@ bool Game::ActorMoveHorizontal(Actor* pActor, HitResult& outHit) {
 
 	const r32 dx = pActor->velocity.x;
 
-	Collision::SweepBoxHorizontal(GetCurrentLevel()->pTilemap, hitbox, pActor->position, dx, outHit);
+	Collision::SweepBoxHorizontal(Game::GetCurrentRoomTemplate()->pTilemap, hitbox, pActor->position, dx, outHit);
 	pActor->position.x = outHit.location.x;
 	return outHit.blockingHit;
 }
@@ -353,7 +355,7 @@ bool Game::ActorMoveVertical(Actor* pActor, HitResult& outHit) {
 
 	const r32 dy = pActor->velocity.y;
 
-	Collision::SweepBoxVertical(GetCurrentLevel()->pTilemap, hitbox, pActor->position, dy, outHit);
+	Collision::SweepBoxVertical(Game::GetCurrentRoomTemplate()->pTilemap, hitbox, pActor->position, dy, outHit);
 	pActor->position.y = outHit.location.y;
 	return outHit.blockingHit;
 }

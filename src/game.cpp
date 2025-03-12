@@ -20,17 +20,11 @@
 #include "dialog.h"
 #include "game_ui.h"
 #include "actor_prototypes.h"
+#include "dungeon.h"
 
 namespace Game {
     r64 secondsElapsed = 0.0f;
     u32 clockCounter = 0;
-
-    // Rendering data
-    RenderSettings* pRenderSettings;
-    ChrSheet* pChr;
-    Nametable* pNametables;
-    Scanline* pScanlines;
-    Palette* pPalettes;
 
     bool paused = false;
 
@@ -76,19 +70,13 @@ namespace Game {
 
 #pragma region Public API
     void Initialize() {
-        // Rendering data
-        pRenderSettings = ::Rendering::GetSettingsPtr();
-        pChr = ::Rendering::GetChrPtr(0);
-        pPalettes = ::Rendering::GetPalettePtr(0);
-        pNametables = ::Rendering::GetNametablePtr(0);
-        pScanlines = ::Rendering::GetScanlinePtr(0);
-
         Rendering::Init();
 
         Tiles::LoadTileset("assets/forest.til");
         Metasprites::Load("assets/meta.spr");
         Levels::LoadLevels("assets/levels.lev");
         Assets::LoadActorPrototypes("assets/actors.prt");
+        Assets::LoadDungeons("assets/test.dng");
 
         // TEMP SOUND STUFF
         jumpSfx = Audio::LoadSound("assets/jump.nsf");
@@ -103,7 +91,7 @@ namespace Game {
         InitGameState(GAME_STATE_PLAYING);
 
         // TODO: Level should load palettes and tileset?
-        LoadLevel(0);
+        LoadRoom(0, { 0,0 });
     }
 
     void Free() {

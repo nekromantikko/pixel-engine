@@ -1,6 +1,7 @@
 #include "game_rendering.h"
 #include "game_state.h"
 #include "level.h"
+#include "dungeon.h"
 #include "system.h"
 #include "tiles.h"
 #include "metasprite.h"
@@ -41,9 +42,9 @@ static void UpdateScreenScroll() {
 
 static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
     Nametable* pNametables = Rendering::GetNametablePtr(0);
-    const Level* pLevel = Game::GetCurrentLevel();
+    const Tilemap* pTilemap = Game::GetCurrentRoomTemplate()->pTilemap;
 
-	if (pLevel == nullptr || pLevel->pTilemap == nullptr) {
+	if (pTilemap == nullptr) {
 		return;
 	}
 
@@ -51,8 +52,8 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
 	viewportPos += delta;
 
 	const glm::vec2 max = { 
-        (pLevel->pTilemap->width - 1) * VIEWPORT_WIDTH_METATILES,
-        (pLevel->pTilemap->height - 1) * VIEWPORT_HEIGHT_METATILES };
+        (pTilemap->width - 1) * VIEWPORT_WIDTH_METATILES,
+        (pTilemap->height - 1) * VIEWPORT_HEIGHT_METATILES };
 
     viewportPos = glm::clamp(viewportPos, glm::vec2(0), max);
     
@@ -86,8 +87,8 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
                 continue;
             }
 
-            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pLevel->pTilemap, { x, y });
-            const TilesetTile* tile = Tiles::GetTilesetTile(pLevel->pTilemap, tilesetIndex);
+            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, { x, y });
+            const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
 
             if (!tile) {
                 continue;
@@ -97,7 +98,7 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
             const glm::ivec2 nametableOffset = Tiles::GetNametableOffset({ x, y });
 
             const Metatile& metatile = tile->metatile;
-            const s32 palette = Tiles::GetTilesetPalette(pLevel->pTilemap->pTileset, tilesetIndex);
+            const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, tilesetIndex);
             Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
         }
     }
@@ -180,9 +181,9 @@ glm::vec2 Game::Rendering::SetViewportPos(const glm::vec2& pos, bool loadTiles) 
 
 void Game::Rendering::RefreshViewport() {
     Nametable* pNametables = ::Rendering::GetNametablePtr(0);
-    const Level* pLevel = Game::GetCurrentLevel();
+    const Tilemap* pTilemap = Game::GetCurrentRoomTemplate()->pTilemap;
 
-    if (pLevel == nullptr || pLevel->pTilemap == nullptr) {
+    if (pTilemap == nullptr) {
         return;
     }
 
@@ -194,8 +195,8 @@ void Game::Rendering::RefreshViewport() {
 
     for (s32 x = xStart; x < xEnd; x++) {
         for (s32 y = yStart; y < yEnd; y++) {
-            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pLevel->pTilemap, { x, y });
-            const TilesetTile* tile = Tiles::GetTilesetTile(pLevel->pTilemap, tilesetIndex);
+            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, { x, y });
+            const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
 
             if (!tile) {
                 continue;
@@ -205,7 +206,7 @@ void Game::Rendering::RefreshViewport() {
             const glm::ivec2 nametableOffset = Tiles::GetNametableOffset({ x, y });
 
             const Metatile& metatile = tile->metatile;
-            const s32 palette = Tiles::GetTilesetPalette(pLevel->pTilemap->pTileset, tilesetIndex);
+            const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, tilesetIndex);
             ::Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
         }
     }

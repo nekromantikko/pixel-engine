@@ -7,6 +7,7 @@
 #include "level.h"
 #include "collision.h"
 #include "actor_prototypes.h"
+#include "dungeon.h"
 
 // TODO: Define in editor in game settings 
 constexpr s32 playerPrototypeIndex = 0;
@@ -15,7 +16,9 @@ constexpr s32 xpRemnantPrototypeIndex = 0x0c;
 static GameData gameData;
 static GameState state;
 
-static Level* pCurrentLevel = nullptr;
+static s32 currentDungeonIndex;
+static glm::i8vec2 currentRoomOffset;
+static const RoomInstance* pCurrentRoom;
 
 // 16ms Frames elapsed while not paused
 static u32 gameplayFramesElapsed = 0;
@@ -24,6 +27,60 @@ static bool freezeGameplay = false;
 #pragma region Callbacks
 static void ReviveDeadActor(u64 id, PersistedActorData& persistedData) {
     persistedData.dead = false;
+}
+#pragma endregion
+
+// TODO: Move somewhere else
+#pragma region Dungeon utils
+static const DungeonCell* GetDungeonCell(const Dungeon* pDungeon, const glm::i8vec2 offset) {
+    if (offset.x < 0 || offset.x >= DUNGEON_GRID_DIM || offset.y < 0 || offset.y >= DUNGEON_GRID_DIM) {
+        return nullptr;
+    }
+    
+    const u32 cellIndex = offset.x + offset.y * DUNGEON_GRID_DIM;
+    return &pDungeon->grid[cellIndex];
+}
+
+static const DungeonCell* GetDungeonCell(s32 dungeonIndex, const glm::i8vec2 offset) {
+    const Dungeon* pDungeon = Assets::GetDungeon(dungeonIndex);
+    if (!pDungeon) {
+        return nullptr;
+    }
+
+    return GetDungeonCell(pDungeon, offset);
+}
+
+static const RoomInstance* GetDungeonRoom(s32 dungeonIndex, const glm::i8vec2 offset, glm::i8vec2* pOutRoomOffset = nullptr) {
+    const Dungeon* pDungeon = Assets::GetDungeon(dungeonIndex);
+    if (!pDungeon) {
+        return nullptr;
+    }
+
+    const DungeonCell* pCell = GetDungeonCell(pDungeon, offset);
+    if (!pCell) {
+        return nullptr;
+    }
+
+    if (pCell->roomIndex < 0 || pCell->roomIndex >= MAX_DUNGEON_ROOM_COUNT) {
+        return nullptr;
+    }
+
+    const RoomInstance& result = pDungeon->rooms[pCell->roomIndex];
+
+    if (pOutRoomOffset) {
+        const s8 xScreen = pCell->screenIndex % TILEMAP_MAX_DIM_SCREENS;
+        const s8 yScreen = pCell->screenIndex / TILEMAP_MAX_DIM_SCREENS;
+        *pOutRoomOffset = glm::i8vec2(offset.x - xScreen, offset.y - yScreen);
+    }
+
+    return &result;
+}
+
+static const glm::i8vec2 RoomPosToDungeonGridOffset(const glm::i8vec2& roomOffset, const glm::vec2 pos) {
+    glm::i8vec2 gridOffset;
+    gridOffset.x = roomOffset.x + s32(pos.x / VIEWPORT_WIDTH_METATILES);
+    gridOffset.y = roomOffset.y + s32(pos.y / VIEWPORT_HEIGHT_METATILES);
+    return gridOffset;
 }
 #pragma endregion
 
@@ -60,12 +117,18 @@ static bool SpawnPlayerAtCheckpoint() {
     return false;
 }
 
-static bool SpawnPlayerAtEntrance(const Level* pLevel, u8 screenIndex, u8 direction) {
+static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) {
     if (direction == SCREEN_EXIT_DIR_DEATH_WARP) {
         // Restore life
         Game::SetPlayerHealth(Game::GetPlayerMaxHealth());
 
         return SpawnPlayerAtCheckpoint();
+    }
+
+    u8 screenIndex = 0;
+    const DungeonCell* pCell = GetDungeonCell(currentDungeonIndex, currentRoomOffset + screenOffset);
+    if (pCell) {
+        screenIndex = pCell->screenIndex;
     }
 
     r32 x = (screenIndex % TILEMAP_MAX_DIM_SCREENS) * VIEWPORT_WIDTH_METATILES;
@@ -77,6 +140,7 @@ static bool SpawnPlayerAtEntrance(const Level* pLevel, u8 screenIndex, u8 direct
     }
 
     constexpr r32 initialHSpeed = 0.0625f;
+    const Level* pLevel = Game::GetCurrentRoomTemplate();
 
     switch (direction) {
     case SCREEN_EXIT_DIR_LEFT: {
@@ -199,8 +263,7 @@ enum LevelTransitionStatus : u8 {
 };
 
 struct LevelTransitionState {
-    u16 nextLevelIndex;
-    u16 nextScreenIndex;
+    glm::i8vec2 nextGridCell;
     u8 nextDirection;
 
     r32 progress = 0.0f;
@@ -253,7 +316,7 @@ static bool LevelTransitionCoroutine(void* userData) {
             state->holdTimer--;
             return true;
         }
-        Game::LoadLevel(state->nextLevelIndex, state->nextScreenIndex, state->nextDirection);
+        Game::LoadRoom(0, state->nextGridCell, state->nextDirection);
         state->status = TRANSITION_FADE_IN;
         freezeGameplay = false;
         break;
@@ -288,7 +351,7 @@ void Game::InitGameData() {
 
 	// TODO: Initialize first checkpoint
 
-	gameData.expRemnant.levelIndex = -1;
+	gameData.expRemnant.dungeonIndex = -1;
 
 	gameData.persistedActorData.Clear();
 }
@@ -358,10 +421,11 @@ void Game::SetPlayerWeapon(u16 weapon) {
 
 #pragma region ExpRemnant
 void Game::ClearExpRemnant() {
-	gameData.expRemnant.levelIndex = -1;
+    gameData.expRemnant.dungeonIndex = -1;
 }
-void Game::SetExpRemnant(s32 levelIndex, const glm::vec2& position, u16 value) {
-	gameData.expRemnant.levelIndex = levelIndex;
+void Game::SetExpRemnant(const glm::vec2& position, u16 value) {
+    gameData.expRemnant.dungeonIndex = currentDungeonIndex;
+    gameData.expRemnant.gridOffset = RoomPosToDungeonGridOffset(currentRoomOffset, position);
 	gameData.expRemnant.position = position;
 	gameData.expRemnant.value = value;
 }
@@ -383,11 +447,10 @@ void Game::ActivateCheckpoint(const Actor* pCheckpoint) {
     }
     else SetPersistedActorData(pCheckpoint->persistId, { .activated = true });
 
-    Level* pCurrentLevel = GetCurrentLevel();
     // Set checkpoint data
     gameData.checkpoint = {
-        .levelIndex = u16(Levels::GetIndex(pCurrentLevel)),
-        .screenIndex = u8(Tiles::GetScreenIndex(pCheckpoint->position))
+        .dungeonIndex = currentDungeonIndex,
+        .gridOffset = RoomPosToDungeonGridOffset(currentRoomOffset, pCheckpoint->position)
     };
 
     // Revive dead actors
@@ -397,7 +460,7 @@ void Game::ActivateCheckpoint(const Actor* pCheckpoint) {
 
 #pragma region Persisted actor data
 PersistedActorData* Game::GetPersistedActorData(u64 id) {
-    if (id == UUID_NULL) {
+    if (id == UUID_NULL || (id & (u64(0xFFFFFFFF) << 32)) == UUID_NULL) {
         return nullptr;
     }
 
@@ -405,7 +468,7 @@ PersistedActorData* Game::GetPersistedActorData(u64 id) {
     return pPersistData;
 }
 void Game::SetPersistedActorData(u64 id, const PersistedActorData& data) {
-    if (id == UUID_NULL) {
+    if (id == UUID_NULL || (id & (u64(0xFFFFFFFF) << 32)) == UUID_NULL) {
         return;
     }
 
@@ -420,72 +483,91 @@ void Game::SetPersistedActorData(u64 id, const PersistedActorData& data) {
 #pragma endregion
 
 #pragma region Level
-bool Game::LoadLevel(u32 index, s32 screenIndex, u8 direction, bool refresh) {
-	Level* pLevel = Levels::GetLevel(index);
-    if (pLevel == nullptr) {
-        return false;
-    }
+bool Game::LoadRoom(const RoomInstance* pRoom, const glm::i8vec2 screenOffset, u8 direction) {
+    currentDungeonIndex = -1;
+    currentRoomOffset = { 0,0 };
 
-    pCurrentLevel = pLevel;
+    pCurrentRoom = pRoom;
 
-    return ReloadLevel(screenIndex, direction, refresh);
+    return ReloadRoom(screenOffset, direction);
 }
 
-void Game::UnloadLevel(bool refresh) {
-    if (pCurrentLevel == nullptr) {
-        return;
+bool Game::LoadRoom(s32 dungeonIndex, const glm::i8vec2 gridCell, u8 direction) {
+    glm::i8vec2 roomOffset;
+    const RoomInstance* pNextRoom = GetDungeonRoom(dungeonIndex, gridCell, &roomOffset);
+    if (!pNextRoom) {
+        return ReloadRoom({ 0, 0 }, direction);
     }
 
+    currentDungeonIndex = dungeonIndex;
+    pCurrentRoom = pNextRoom;
+    currentRoomOffset = roomOffset;
+
+    const glm::i8vec2 screenOffset = gridCell - currentRoomOffset;
+    return ReloadRoom(screenOffset, direction);
+}
+
+void Game::UnloadRoom() {
     Rendering::SetViewportPos(glm::vec2(0.0f), false);
 
 	ClearActors();
 
-    if (refresh) {
-        Rendering::RefreshViewport();
-    }
+    Rendering::RefreshViewport();
 }
 
-bool Game::ReloadLevel(s32 screenIndex, u8 direction, bool refresh) {
-    if (pCurrentLevel == nullptr) {
-        return false;
-    }
+bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
+    UnloadRoom();
 
-    UnloadLevel(refresh);
+    const Level* pTemplate = Levels::GetLevel(pCurrentRoom->templateIndex);
 
-    for (u32 i = 0; i < pCurrentLevel->actors.Count(); i++)
+    for (u32 i = 0; i < pTemplate->actors.Count(); i++)
     {
-        auto handle = pCurrentLevel->actors.GetHandle(i);
-        const Actor* pActor = pCurrentLevel->actors.Get(handle);
+        auto handle = pTemplate->actors.GetHandle(i);
+        const Actor* pActor = pTemplate->actors.Get(handle);
 
-        const PersistedActorData* pPersistData = gameData.persistedActorData.Get(pActor->persistId);
+        const u64 combinedId = pActor->persistId | (u64(pCurrentRoom->id) << 32);
+        const PersistedActorData* pPersistData = gameData.persistedActorData.Get(combinedId);
         if (!pPersistData || !(pPersistData->dead || pPersistData->permaDead)) {
-            SpawnActor(pActor);
+            SpawnActor(pActor, pCurrentRoom->id);
         }
     }
 
     // Spawn player in sidescrolling level
-    if (pCurrentLevel->flags.type == LEVEL_TYPE_SIDESCROLLER) {
-        SpawnPlayerAtEntrance(pCurrentLevel, screenIndex, direction);
+    if (pTemplate->flags.type == LEVEL_TYPE_SIDESCROLLER) {
+        SpawnPlayerAtEntrance(screenOffset, direction);
         ViewportFollowPlayer();
     }
 
-    // Spawn xp remnant
-    if (gameData.expRemnant.levelIndex == Levels::GetIndex(pCurrentLevel)) {
-        Actor* pRemnant = SpawnActor(xpRemnantPrototypeIndex, gameData.expRemnant.position);
-        pRemnant->state.pickupState.value = gameData.expRemnant.value;
+    // Spawn xp remnant, if it belongs in this room
+    if (gameData.expRemnant.dungeonIndex == currentDungeonIndex && currentDungeonIndex >= 0) {
+        const RoomInstance* pRoom = GetDungeonRoom(currentDungeonIndex, gameData.expRemnant.gridOffset);
+        if (pRoom->id == pCurrentRoom->id) {
+            Actor* pRemnant = SpawnActor(xpRemnantPrototypeIndex, gameData.expRemnant.position);
+            pRemnant->state.pickupState.value = gameData.expRemnant.value;
+        }
     }
 
     gameplayFramesElapsed = 0;
 
-    if (refresh) {
-        Rendering::RefreshViewport();
-    }
+    Rendering::RefreshViewport();
 
     return true;
 }
 
-Level* Game::GetCurrentLevel() {
-    return pCurrentLevel;
+glm::i8vec2 Game::GetCurrentRoomOffset() {
+    return currentRoomOffset;
+}
+
+const RoomInstance* Game::GetCurrentRoom() {
+    return pCurrentRoom;
+}
+
+const Level* Game::GetCurrentRoomTemplate() {
+    if (!pCurrentRoom) {
+        return nullptr;
+    }
+
+    return Levels::GetLevel(pCurrentRoom->templateIndex);
 }
 
 u32 Game::GetFramesElapsed() {
@@ -530,10 +612,9 @@ void Game::TriggerScreenShake(s16 magnitude, u16 duration, bool freeze) {
     StartCoroutine(ShakeScreenCoroutine, state);
 }
 
-void Game::TriggerLevelTransition(u16 targetLevelIndex, u16 targetScreenIndex, u8 enterDirection, void(*callback)()) {
+void Game::TriggerLevelTransition(const glm::i8vec2& targetGridCell, u8 enterDirection, void(*callback)()) {
     LevelTransitionState state = {
-            .nextLevelIndex = targetLevelIndex,
-            .nextScreenIndex = targetScreenIndex,
+            .nextGridCell = targetGridCell,
             .nextDirection = enterDirection,
     };
     StartCoroutine(LevelTransitionCoroutine, state, callback);

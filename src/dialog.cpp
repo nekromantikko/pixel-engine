@@ -62,7 +62,7 @@ static void DrawBgBoxAnimated(const glm::ivec2& viewportOffset, const glm::ivec2
     const glm::ivec2 sizeTiles(size.x << 1, size.y << 1);
 
     Nametable* pNametables = Rendering::GetNametablePtr(0);
-	const Level* pLevel = Game::GetCurrentLevel();
+    const Tilemap* pTilemap = Game::GetCurrentRoomTemplate()->pTilemap;
 
     for (u32 y = 0; y < maxSize.y; y++) {
         for (u32 x = 0; x < maxSize.x; x++) {
@@ -74,7 +74,7 @@ static void DrawBgBoxAnimated(const glm::ivec2& viewportOffset, const glm::ivec2
                 CopyBoxTileToNametable(pNametables, worldPos + offset, tileOffset, sizeTiles, palette);
             }
             else {
-                CopyLevelTileToNametable(pNametables, pLevel->pTilemap, worldPos + offset);
+                CopyLevelTileToNametable(pNametables, pTilemap, worldPos + offset);
             }
         }
     }

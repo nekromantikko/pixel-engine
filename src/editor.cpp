@@ -1538,7 +1538,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 					PoolHandle<Actor> handle = pLevel->actors.Add();
 					Actor* pNewActor = pLevel->actors.Get(handle);
 					pNewActor->pPrototype = Assets::GetActorPrototype(0);
-					pNewActor->persistId = Random::GenerateUUID();
+					pNewActor->persistId = u64(Random::GenerateUUID32());
 					pNewActor->position = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
 				}
 				ImGui::EndPopup();
@@ -1651,10 +1651,10 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 			u32 loadedLevelIndex = pLevel - Levels::GetLevelsPtr();
 			selectedLevel = loadedLevelIndex;
 
-			Game::UnloadLevel();
+			Game::UnloadRoom();
 		}
 		else {
-			Game::ReloadLevel();
+			Game::ReloadRoom();
 		}
 
 		Game::SetPaused(!editing);
@@ -1853,7 +1853,14 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 static void DrawGameWindow() {
 	ImGui::Begin("Level editor", &pContext->gameWindowOpen, ImGuiWindowFlags_MenuBar);
 
-	Level* pCurrentLevel = Game::GetCurrentLevel();
+	// TODO: Clean up this hacky mess later
+	static RoomInstance editorRoomInstance{
+		.id = UUID_NULL,
+		.templateIndex = 0,
+	};
+	u32 currentRoomTemplateIndex = Game::GetCurrentRoom()->templateIndex;
+	Level* pCurrentLevel = Levels::GetLevel(currentRoomTemplateIndex);
+
 	const glm::vec2 viewportPos = Game::Rendering::GetViewportPos();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
 
@@ -1955,7 +1962,7 @@ static void DrawGameWindow() {
 					if (canMove) {
 						MoveElements<Level>(pLevels, vec, step);
 
-						Game::ReloadLevel();
+						Game::ReloadRoom();
 						selectedLevel = editing ? (pCurrentLevel - pLevels) : vec[0];
 					}
 				}
@@ -1967,7 +1974,8 @@ static void DrawGameWindow() {
 			if (ImGui::BeginPopupContextItem())
 			{
 				if (ImGui::Selectable("Load level")) {
-					Game::LoadLevel(i);
+					editorRoomInstance.templateIndex = i;
+					Game::LoadRoom(&editorRoomInstance);
 					Game::SetPaused(true);
 					selectedActorHandle = PoolHandle<Actor>::Null();
 				}
@@ -2521,13 +2529,14 @@ struct EditorRoomInstance {
 };
 
 struct EditorDungeon {
+	//char* name;
 	std::unordered_map<u32, EditorRoomInstance> rooms;
 };
 
-static void LoadDungeon(const char* fname, EditorDungeon& outDungeon) {
-	outDungeon = EditorDungeon{};
-	Dungeon dungeon{};
-	Assets::LoadDungeon(fname, &dungeon);
+static EditorDungeon ConvertFromDungeon(u32 dungeonIndex) {
+	EditorDungeon outDungeon{};
+	const Dungeon& dungeon = *Assets::GetDungeon(dungeonIndex);
+	//outDungeon.name = dungeon.name;
 
 	for (u32 i = 0; i < DUNGEON_GRID_SIZE; i++) {
 		const DungeonCell& cell = dungeon.grid[i];
@@ -2538,22 +2547,23 @@ static void LoadDungeon(const char* fname, EditorDungeon& outDungeon) {
 
 			outDungeon.rooms.emplace(room.id, EditorRoomInstance{
 				.id = room.id,
-				.pTemplate = room.pTemplate,
+				.pTemplate = Levels::GetLevel(room.templateIndex),
 				.gridPos = pos
 				});
 		}
 	}
+
+	return outDungeon;
 }
 
-static void SaveDungeon(const char* fname, const EditorDungeon& dungeon) {
-	Dungeon outDungeon{};
-	outDungeon.roomCount = dungeon.rooms.size();
+static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon) {
+	pOutDungeon->roomCount = dungeon.rooms.size();
 
 	s8 roomIndex = 0;
 	for (auto& [id, room] : dungeon.rooms) {
-		outDungeon.rooms[roomIndex] = RoomInstance{
+		pOutDungeon->rooms[roomIndex] = RoomInstance{
 			.id = id,
-			.pTemplate = room.pTemplate
+			.templateIndex = Levels::GetIndex(room.pTemplate)
 		};
 
 		const u32 width = room.pTemplate->pTilemap->width;
@@ -2563,7 +2573,7 @@ static void SaveDungeon(const char* fname, const EditorDungeon& dungeon) {
 			for (u32 x = 0; x < width; x++) {
 				const u8 screenIndex = x + y * TILEMAP_MAX_DIM_SCREENS;
 				const u32 gridIndex = (room.gridPos.x + x) + (room.gridPos.y + y) * DUNGEON_GRID_DIM;
-				outDungeon.grid[gridIndex] = {
+				pOutDungeon->grid[gridIndex] = {
 					.roomIndex = roomIndex,
 					.screenIndex = screenIndex,
 				};
@@ -2572,8 +2582,6 @@ static void SaveDungeon(const char* fname, const EditorDungeon& dungeon) {
 
 		++roomIndex;
 	}
-
-	Assets::SaveDungeon(fname, &outDungeon);
 }
 
 static void DrawRoom(const EditorRoomInstance& room, const glm::mat3& gridToScreen, bool& outHovered) {
@@ -2809,27 +2817,13 @@ static void DrawDungeonCanvas(EditorDungeon& dungeon) {
 	drawList->PopClipRect();
 }
 
-static void DrawLevelConnectionsWindow() {
-	ImGui::Begin("Level connections", &pContext->levelConnectionsOpen, ImGuiWindowFlags_MenuBar);
+static void DrawDungeonTools(EditorDungeon& dungeon) {
+	//ImGui::SeparatorText(dungeon.name);
 
-	static EditorDungeon dungeon{};
+	//ImGui::InputText("Name", dungeon.name, DUNGEON_MAX_NAME_LENGTH);
+	ImGui::Separator();
 
-	if (ImGui::BeginMenuBar())
-	{
-		if (ImGui::BeginMenu("File"))
-		{
-			if (ImGui::MenuItem("Save")) {
-				SaveDungeon("assets/test.dng", dungeon);
-			}
-			if (ImGui::MenuItem("Revert changes")) {
-				LoadDungeon("assets/test.dng", dungeon);
-			}
-			ImGui::EndMenu();
-		}
-		ImGui::EndMenuBar();
-	}
-
-	ImGui::BeginChild("Level list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
+	ImGui::BeginChild("Room list", ImVec2(0, 0), ImGuiChildFlags_Border);
 	{
 		const Level* pLevels = Levels::GetLevelsPtr();
 		static s32 selection = 0;
@@ -2864,9 +2858,76 @@ static void DrawLevelConnectionsWindow() {
 		}
 	}
 	ImGui::EndChild();
+}
+
+static void DrawLevelConnectionsWindow() {
+	ImGui::Begin("Level connections", &pContext->levelConnectionsOpen, ImGuiWindowFlags_MenuBar);
+
+	static u32 selectedDungeon = 0;
+	static EditorDungeon editedDungeon = ConvertFromDungeon(selectedDungeon);
+
+	if (ImGui::BeginMenuBar())
+	{
+		if (ImGui::BeginMenu("File"))
+		{
+			if (ImGui::MenuItem("Save")) {
+				Dungeon* pEdited = Assets::GetDungeon(selectedDungeon);
+				ConvertToDungeon(editedDungeon, pEdited);
+				Assets::SaveDungeons("assets/test.dng");
+			}
+			if (ImGui::MenuItem("Revert changes")) {
+				Assets::LoadDungeons("assets/test.dng");
+				editedDungeon = ConvertFromDungeon(selectedDungeon);
+			}
+			ImGui::EndMenu();
+		}
+		ImGui::EndMenuBar();
+	}
+
+	ImGui::BeginChild("Dungeon list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
+	{
+		static constexpr u32 maxLabelNameLength = DUNGEON_MAX_NAME_LENGTH + 8;
+		char label[maxLabelNameLength];
+
+		for (u32 i = 0; i < MAX_DUNGEON_COUNT; i++)
+		{
+			Dungeon* pDungeon = Assets::GetDungeon(i);
+			ImGui::PushID(i);
+
+			snprintf(label, maxLabelNameLength, "%#04x: %s", i, "Untitled");
+
+			const bool selected = selectedDungeon == i;
+
+			if (ImGui::Selectable(label, selected)) {
+				Dungeon* pEdited = Assets::GetDungeon(selectedDungeon);
+				ConvertToDungeon(editedDungeon, pEdited);
+				selectedDungeon = i;
+				editedDungeon = ConvertFromDungeon(selectedDungeon);
+			}
+
+			if (selected) {
+				ImGui::SetItemDefaultFocus();
+			}
+
+			ImGui::PopID();
+		}
+	}
+	ImGui::EndChild();
+
 	ImGui::SameLine();
-	ImGui::BeginChild("Node graph");
-	DrawDungeonCanvas(dungeon);
+
+	const r32 toolWindowWidth = 350.0f;
+	ImGuiStyle& style = ImGui::GetStyle();
+	const r32 canvasViewWidth = ImGui::GetContentRegionAvail().x - style.WindowPadding.x - toolWindowWidth;
+
+	ImGui::BeginChild("Node graph", ImVec2(canvasViewWidth, 0));
+	DrawDungeonCanvas(editedDungeon);
+	ImGui::EndChild();
+
+	ImGui::SameLine();
+
+	ImGui::BeginChild("Dungeon tools", ImVec2(toolWindowWidth, 0));
+	DrawDungeonTools(editedDungeon);
 	ImGui::EndChild();
 
 	ImGui::End();

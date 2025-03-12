@@ -6,6 +6,7 @@
 #include "game_state.h"
 #include "dialog.h"
 #include "level.h"
+#include "dungeon.h"
 
 enum PlayerHeadFrame : u8 {
     PLAYER_HEAD_IDLE,
@@ -196,67 +197,50 @@ static void HandleLevelExit(const Actor* pPlayer) {
         return;
     }
 
-    Level* pCurrentLevel = Game::GetCurrentLevel();
-    if (pCurrentLevel == nullptr) {
-        return;
-    }
+    const Tilemap* pTilemap = Game::GetCurrentRoomTemplate()->pTilemap;
+    const glm::i8vec2 roomOffset = Game::GetCurrentRoomOffset();
+    const u32 xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pTilemap->width - 1);
+    const u32 yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pTilemap->height - 1);
 
     bool shouldExit = false;
-    u8 exitDirection = 0;
-    u8 enterDirection = 0;
-    u32 xScreen = 0;
-    u32 yScreen = 0;
+    u8 nextDirection = 0;
+    glm::i8vec2 nextGridCell(roomOffset.x + xScreen, roomOffset.y + yScreen);
 
     // Left side of screen is ugly, so trigger transition earlier
     if (pPlayer->position.x < 0.5f) {
         shouldExit = true;
-        exitDirection = SCREEN_EXIT_DIR_LEFT;
-        enterDirection = SCREEN_EXIT_DIR_RIGHT;
-        xScreen = 0;
-        yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pCurrentLevel->pTilemap->height);
+        nextDirection = SCREEN_EXIT_DIR_RIGHT;
+        nextGridCell.x--;
     }
-    else if (pPlayer->position.x >= pCurrentLevel->pTilemap->width * VIEWPORT_WIDTH_METATILES) {
+    else if (pPlayer->position.x >= pTilemap->width * VIEWPORT_WIDTH_METATILES) {
         shouldExit = true;
-        exitDirection = SCREEN_EXIT_DIR_RIGHT;
-        enterDirection = SCREEN_EXIT_DIR_LEFT;
-        xScreen = pCurrentLevel->pTilemap->width - 1;
-        yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pCurrentLevel->pTilemap->height);
+        nextDirection = SCREEN_EXIT_DIR_LEFT;
+        nextGridCell.x++;
     }
     else if (pPlayer->position.y < 0) {
         shouldExit = true;
-        exitDirection = SCREEN_EXIT_DIR_TOP;
-        enterDirection = SCREEN_EXIT_DIR_BOTTOM;
-        xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pCurrentLevel->pTilemap->width);
-        yScreen = 0;
+        nextDirection = SCREEN_EXIT_DIR_BOTTOM;
+        nextGridCell.y--;
     }
-    else if (pPlayer->position.y >= pCurrentLevel->pTilemap->height * VIEWPORT_HEIGHT_METATILES) {
+    else if (pPlayer->position.y >= pTilemap->height * VIEWPORT_HEIGHT_METATILES) {
         shouldExit = true;
-        exitDirection = SCREEN_EXIT_DIR_BOTTOM;
-        enterDirection = SCREEN_EXIT_DIR_TOP;
-        xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pCurrentLevel->pTilemap->width);
-        yScreen = pCurrentLevel->pTilemap->height - 1;
+        nextDirection = SCREEN_EXIT_DIR_TOP;
+        nextGridCell.y++;
     }
 
     if (shouldExit) {
-        const u32 screenIndex = xScreen + TILEMAP_MAX_DIM_SCREENS * yScreen;
-        const TilemapScreen& screen = pCurrentLevel->pTilemap->screens[screenIndex];
-        const LevelExit* exits = (LevelExit*)&screen.screenMetadata;
-
-        const LevelExit& exit = exits[exitDirection];
-
-        Game::TriggerLevelTransition(exit.targetLevel, exit.targetScreen, enterDirection);
+        Game::TriggerLevelTransition(nextGridCell, nextDirection);
     }
 }
 
 static void PlayerDie(Actor* pPlayer) {
-    Level* pCurrentLevel = Game::GetCurrentLevel();
 
-    Game::SetExpRemnant(Levels::GetIndex(pCurrentLevel), pPlayer->position, Game::GetPlayerExp());
+    Game::SetExpRemnant(pPlayer->position, Game::GetPlayerExp());
     Game::SetPlayerExp(0);
 
     // Transition to checkpoint
     const Checkpoint checkpoint = Game::GetCheckpoint();
-    Game::TriggerLevelTransition(checkpoint.levelIndex, checkpoint.screenIndex, SCREEN_EXIT_DIR_DEATH_WARP);
+    //Game::TriggerLevelTransition(checkpoint.levelIndex, checkpoint.screenIndex, SCREEN_EXIT_DIR_DEATH_WARP);
 }
 
 static void SpawnFeathers(Actor* pPlayer, u32 count) {

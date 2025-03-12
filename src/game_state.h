@@ -3,12 +3,14 @@
 #include "fixed_hash_map.h"
 
 struct Checkpoint {
-    u16 levelIndex;
-    u8 screenIndex;
+    s32 dungeonIndex;
+    glm::i8vec2 gridOffset;
 };
 
 struct ExpRemnant {
-    s32 levelIndex = -1;
+    s32 dungeonIndex = -1;
+    glm::i8vec2 gridOffset;
+
     glm::vec2 position;
     u16 value;
 };
@@ -44,8 +46,10 @@ enum GameState {
 	GAME_STATE_EXIT,
 };
 
-struct Level;
 struct Actor;
+struct Dungeon;
+struct RoomInstance;
+struct Level;
 
 namespace Game {
     void InitGameData();
@@ -67,7 +71,7 @@ namespace Game {
     void SetPlayerWeapon(u16 weapon);
 
 	void ClearExpRemnant();
-	void SetExpRemnant(s32 levelIndex, const glm::vec2& position, u16 value);
+	void SetExpRemnant(const glm::vec2& position, u16 value);
 
     Checkpoint GetCheckpoint();
     void SetCheckpoint(const Checkpoint& checkpoint);
@@ -76,10 +80,13 @@ namespace Game {
     PersistedActorData* GetPersistedActorData(u64 id);
     void SetPersistedActorData(u64 id, const PersistedActorData& data);
 
-    bool LoadLevel(u32 index, s32 screenIndex = 0, u8 direction = 0, bool refresh = true);
-    void UnloadLevel(bool refresh = true);
-    bool ReloadLevel(s32 screenIndex = 0, u8 direction = 0, bool refresh = true);
-	Level* GetCurrentLevel();
+    bool LoadRoom(const RoomInstance* pRoom, const glm::i8vec2 screenOffset = {0,0}, u8 direction = 0);
+    bool LoadRoom(s32 dungeonIndex, const glm::i8vec2 gridCell, u8 direction = 0);
+    void UnloadRoom();
+    bool ReloadRoom(const glm::i8vec2 screenOffset = { 0,0 }, u8 direction = 0);
+    glm::i8vec2 GetCurrentRoomOffset();
+    const RoomInstance* GetCurrentRoom();
+    const Level* GetCurrentRoomTemplate();
 
 	u32 GetFramesElapsed();
 
@@ -87,5 +94,5 @@ namespace Game {
     void StepFrame();
 
     void TriggerScreenShake(s16 magnitude, u16 duration, bool freezeGameplay);
-    void TriggerLevelTransition(u16 targetLevelIndex, u16 targetScreenIndex, u8 enterDirection, void (*callback)() = nullptr);
+    void TriggerLevelTransition(const glm::i8vec2& targetGridCell, u8 enterDirection, void (*callback)() = nullptr);
 }

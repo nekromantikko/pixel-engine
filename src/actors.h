@@ -62,7 +62,7 @@ typedef void (*ActorCollisionCallbackFn)(Actor*, Actor*);
 typedef bool (*ActorFilterFn)(const Actor*);
 
 namespace Game {
-	Actor* SpawnActor(const Actor* pTemplate);
+	Actor* SpawnActor(const Actor* pTemplate, u32 roomId);
 	Actor* SpawnActor(const s32 prototypeIndex, const glm::vec2& position, const glm::vec2& velocity = {0.0f, 0.0f});
 	void ClearActors();
 
