@@ -2,6 +2,7 @@
 #include "rendering_util.h"
 #include "debug.h"
 #include <limits>
+#include "asset_manager.h"
 
 #pragma region New API
 bool Tiles::PointInMapBounds(const Tilemap* pTilemap, const glm::vec2& pos) {
@@ -101,6 +102,8 @@ void Tiles::LoadTileset(const char* fname) {
 	fread((void*)&tileset.tiles, sizeof(TilesetTile), TILESET_SIZE, pFile);
 
 	fclose(pFile);
+
+	AssetManager::CreateAsset(ASSET_TYPE_TILESET, sizeof(Tileset), "Debug tileset");
 }
 
 void Tiles::SaveTileset(const char* fname) {

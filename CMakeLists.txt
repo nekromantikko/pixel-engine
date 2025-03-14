@@ -70,7 +70,8 @@ set(SOURCES
 		src/dungeon.cpp
 		src/debug.cpp
 		src/room.cpp
-		src/overworld.cpp)
+		src/overworld.cpp
+		src/asset_manager.cpp)
 
 set(EDITOR_SOURCES
 		src/editor.cpp)

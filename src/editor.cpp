@@ -22,6 +22,7 @@
 #include "random.h"
 #include "dungeon.h"
 #include "overworld.h"
+#include "asset_manager.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <gtx/matrix_transform_2d.hpp>
 #include <vector>
@@ -78,6 +79,7 @@ struct EditorContext {
 	bool roomWindowOpen = false;
 	bool actorWindowOpen = false;
 	bool audioWindowOpen = false;
+	bool assetBrowserOpen = false;
 	bool dungeonWindowOpen = false;
 	bool overworldWindowOpen = false;
 
@@ -3210,6 +3212,77 @@ static void DrawOverworldWindow() {
 }
 #pragma endregion
 
+#pragma region Asset browser
+static void DrawAssetBrowser() {
+	ImGui::Begin("Asset browser", &pContext->assetBrowserOpen, ImGuiWindowFlags_MenuBar);
+
+	if (ImGui::BeginMenuBar())
+	{
+		if (ImGui::BeginMenu("File")) {
+			if (ImGui::MenuItem("Save archive")) {
+				AssetManager::SaveArchive("assets.npak");
+			}
+			if (ImGui::MenuItem("Reload archive")) {
+				AssetManager::LoadArchive("assets.npak");
+			}
+			ImGui::EndMenu();
+		}
+		if (ImGui::BeginMenu("Create"))
+		{
+			if (ImGui::MenuItem("Tileset")) {
+				
+			}
+			if (ImGui::MenuItem("Room")) {
+				
+			}
+			ImGui::EndMenu();
+		}
+		ImGui::EndMenuBar();
+	}
+
+	static u64 selectedAsset = UUID_NULL;
+
+	ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_NoBordersInBody;
+	if (ImGui::BeginTable("Assets", 3, flags)) {
+		ImGui::TableSetupColumn("Name");
+		ImGui::TableSetupColumn("UUID");
+		ImGui::TableSetupColumn("Type");
+		ImGui::TableSetupScrollFreeze(0, 1); // Make row always visible
+		ImGui::TableHeadersRow();
+
+		const AssetIndex& index = AssetManager::GetIndex();
+		u32 assetCount = AssetManager::GetAssetCount();
+
+		for (const auto& kvp : index) {
+			const u64 id = kvp.first;
+			const AssetEntry& asset = kvp.second;
+
+			const bool selected = id == selectedAsset;
+
+			ImGui::PushID(id);
+			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			if (ImGui::Selectable(asset.name, selected, ImGuiSelectableFlags_SpanAllColumns)) {
+				selectedAsset = id;
+			}
+			ImGui::TableNextColumn();
+			ImGui::Text("%llu", id);
+			ImGui::TableNextColumn();
+			ImGui::Text("%s", ASSET_TYPE_NAMES[asset.flags.type]);
+			ImGui::PopID();
+		}
+
+		for (u32 i = 0; i < assetCount; i++) {
+			
+		}
+
+		ImGui::EndTable();
+	}
+
+	ImGui::End();
+}
+#pragma endregion
+
 #pragma region Main Menu
 static void DrawMainMenu() {
 	if (ImGui::BeginMainMenuBar()) {
@@ -3217,6 +3290,9 @@ static void DrawMainMenu() {
 		{
 			if (ImGui::MenuItem("Debug")) {
 				pContext->debugWindowOpen = true;
+			}
+			if (ImGui::MenuItem("Asset browser")) {
+				pContext->assetBrowserOpen = true;
 			}
 			if (ImGui::MenuItem("Metasprites")) {
 				pContext->spriteWindowOpen = true;
@@ -3346,6 +3422,10 @@ void Editor::Render(r64 dt) {
 
 	if (pContext->overworldWindowOpen) {
 		DrawOverworldWindow();
+	}
+
+	if (pContext->assetBrowserOpen) {
+		DrawAssetBrowser();
 	}
 
 	ImGui::Render();

@@ -22,6 +22,7 @@
 #include "dungeon.h"
 #include "room.h"
 #include "overworld.h"
+#include "asset_manager.h"
 
 namespace Game {
     r64 secondsElapsed = 0.0f;
@@ -69,6 +70,7 @@ namespace Game {
     void Initialize() {
         Rendering::Init();
 
+        AssetManager::LoadArchive("assets.npak");
         Tiles::LoadTileset("assets/tileset.ass");
         Metasprites::Load("assets/metasprites.ass");
         Assets::LoadRoomTemplates("assets/rooms.ass");
