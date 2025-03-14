@@ -84,6 +84,7 @@ namespace Game {
     bool LoadRoom(s32 dungeonIndex, const glm::i8vec2 gridCell, u8 direction = 0);
     void UnloadRoom();
     bool ReloadRoom(const glm::i8vec2 screenOffset = { 0,0 }, u8 direction = 0);
+    s32 GetCurrentDungeon();
     glm::i8vec2 GetCurrentRoomOffset();
     const RoomInstance* GetCurrentRoom();
     const Level* GetCurrentRoomTemplate();
@@ -94,5 +95,5 @@ namespace Game {
     void StepFrame();
 
     void TriggerScreenShake(s16 magnitude, u16 duration, bool freezeGameplay);
-    void TriggerLevelTransition(const glm::i8vec2& targetGridCell, u8 enterDirection, void (*callback)() = nullptr);
+    void TriggerLevelTransition(s32 targetDungeon, glm::i8vec2 targetGridCell, u8 enterDirection, void (*callback)() = nullptr);
 }

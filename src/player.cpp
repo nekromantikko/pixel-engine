@@ -229,7 +229,7 @@ static void HandleLevelExit(const Actor* pPlayer) {
     }
 
     if (shouldExit) {
-        Game::TriggerLevelTransition(nextGridCell, nextDirection);
+        Game::TriggerLevelTransition(Game::GetCurrentDungeon(), nextGridCell, nextDirection);
     }
 }
 
@@ -240,7 +240,7 @@ static void PlayerDie(Actor* pPlayer) {
 
     // Transition to checkpoint
     const Checkpoint checkpoint = Game::GetCheckpoint();
-    //Game::TriggerLevelTransition(checkpoint.levelIndex, checkpoint.screenIndex, SCREEN_EXIT_DIR_DEATH_WARP);
+    Game::TriggerLevelTransition(checkpoint.dungeonIndex, checkpoint.gridOffset, SCREEN_EXIT_DIR_DEATH_WARP);
 }
 
 static void SpawnFeathers(Actor* pPlayer, u32 count) {

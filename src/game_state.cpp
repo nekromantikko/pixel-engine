@@ -263,6 +263,7 @@ enum LevelTransitionStatus : u8 {
 };
 
 struct LevelTransitionState {
+    s32 nextDungeon;
     glm::i8vec2 nextGridCell;
     u8 nextDirection;
 
@@ -316,7 +317,7 @@ static bool LevelTransitionCoroutine(void* userData) {
             state->holdTimer--;
             return true;
         }
-        Game::LoadRoom(0, state->nextGridCell, state->nextDirection);
+        Game::LoadRoom(state->nextDungeon, state->nextGridCell, state->nextDirection);
         state->status = TRANSITION_FADE_IN;
         freezeGameplay = false;
         break;
@@ -554,6 +555,10 @@ bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
     return true;
 }
 
+s32 Game::GetCurrentDungeon() {
+    return currentDungeonIndex;
+}
+
 glm::i8vec2 Game::GetCurrentRoomOffset() {
     return currentRoomOffset;
 }
@@ -612,8 +617,9 @@ void Game::TriggerScreenShake(s16 magnitude, u16 duration, bool freeze) {
     StartCoroutine(ShakeScreenCoroutine, state);
 }
 
-void Game::TriggerLevelTransition(const glm::i8vec2& targetGridCell, u8 enterDirection, void(*callback)()) {
+void Game::TriggerLevelTransition(s32 targetDungeon, glm::i8vec2 targetGridCell, u8 enterDirection, void(*callback)()) {
     LevelTransitionState state = {
+            .nextDungeon = targetDungeon,
             .nextGridCell = targetGridCell,
             .nextDirection = enterDirection,
     };
