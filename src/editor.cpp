@@ -59,6 +59,9 @@ struct EditorContext {
 	// Timing
 	r64 secondsElapsed;
 
+	// Console
+	std::vector<char*> consoleLog;
+
 	// Editor state
 	bool demoWindowOpen = false;
 	bool debugWindowOpen = false;
@@ -830,10 +833,46 @@ static void DrawTypeSelectionCombo(const char* label, const char* const* const t
 #pragma endregion
 
 #pragma region Debug
+static void DrawDebugConsole() {
+	if (ImGui::SmallButton("Clear log")) {
+		pContext->consoleLog.clear();
+	}
+
+	ImGui::Separator();
+
+	if (ImGui::BeginChild("Output", ImVec2(0,0), 0, ImGuiWindowFlags_HorizontalScrollbar)) {
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 1)); // Tighten spacing
+
+		for (const char* msg : pContext->consoleLog) {
+			ImVec4 color = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+			if (strstr(msg, "[error]")) { 
+				color = ImVec4(1.0f, 0.4f, 0.4f, 1.0f);
+			}
+
+			ImGui::PushStyleColor(ImGuiCol_Text, color);
+			ImGui::TextUnformatted(msg);
+			ImGui::PopStyleColor();
+		}
+
+		if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) {
+			ImGui::SetScrollHereY(1.0f);
+		}
+
+		ImGui::PopStyleVar();
+	}
+	ImGui::EndChild();
+}
+
 static void DrawDebugWindow() {
 	ImGui::Begin("Debug", &pContext->debugWindowOpen);
 
 	if (ImGui::BeginTabBar("Debug tabs")) {
+		if (ImGui::BeginTabItem("Console")) {
+
+			DrawDebugConsole();
+
+			ImGui::EndTabItem();
+		}
 		if (ImGui::BeginTabItem("Sprites")) {
 			// TODO: Display layers on different tabs
 			ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_NoBordersInBody;
@@ -2998,6 +3037,23 @@ void Editor::Free() {
 void Editor::DestroyContext() {
 	delete pContext;
 	pContext = nullptr;
+}
+
+void Editor::ConsoleLog(const char* fmt, va_list args) {
+	if (pContext == nullptr) {
+		return;
+	}
+
+	char s[1024];
+	vsprintf_s(s, fmt, args);
+	pContext->consoleLog.push_back(strdup(s));
+}
+
+void Editor::ClearLog() {
+	for (char* msg : pContext->consoleLog) {
+		free(msg);
+	}
+	pContext->consoleLog.clear();
 }
 
 void Editor::ProcessEvent(const SDL_Event* event) {

@@ -1,5 +1,5 @@
 #include "metasprite.h"
-#include "system.h"
+#include "debug.h"
 #include <stdio.h>
 
 static Metasprite metasprites[MAX_METASPRITE_COUNT];

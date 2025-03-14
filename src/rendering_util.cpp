@@ -1,5 +1,6 @@
 #include "rendering_util.h"
 #include "system.h"
+#include "debug.h"
 #include <stdio.h>
 #include <gtc/constants.hpp>
 

@@ -10,6 +10,9 @@ namespace Editor {
 	void Free();
 	void DestroyContext();
 
+	void ConsoleLog(const char* fmt, va_list args);
+	void ClearLog();
+
 	void ProcessEvent(const SDL_Event* event);
 	void Render(r64 dt);
 }

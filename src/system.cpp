@@ -1,19 +1,8 @@
 #include "system.h"
 #include <cstdio>
-#include <stdarg.h>
-#include <windows.h>
-#include <atlimage.h>
 #include <iostream>
 #include <fstream>
-
-void Print(const char* fmt, ...) {
-	char s[1025];
-	va_list args;
-	va_start(args, fmt);
-	vsprintf_s(s, fmt, args);
-	va_end(args);
-	OutputDebugString(s);
-}
+#include "debug.h"
 
 // TODO: Do this without stl later...
 // Memory must be freed later
@@ -48,7 +37,7 @@ char* LoadBitmapBytes(const char* fname, u32& outWidth, u32& outHeight, u16& out
 	u32 fileSize;
 	char* bmpData = AllocFileBytes(fname, fileSize);
 	if (fileSize == 0) {
-		ERROR("Failed to read file!\n");
+		DEBUG_ERROR("Failed to read file!\n");
 	}
 
 	BitmapHeader* header = (BitmapHeader*)bmpData;

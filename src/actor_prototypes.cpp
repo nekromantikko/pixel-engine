@@ -1,5 +1,5 @@
 #include "actor_prototypes.h"
-#include "system.h"
+#include "debug.h"
 
 static ActorPrototype prototypes[MAX_ACTOR_PROTOTYPE_COUNT];
 static char prototypeNames[MAX_ACTOR_PROTOTYPE_COUNT][ACTOR_PROTOTYPE_MAX_NAME_LENGTH];

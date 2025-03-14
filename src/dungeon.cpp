@@ -1,5 +1,5 @@
 #include "dungeon.h"
-#include "system.h"
+#include "debug.h"
 #include "level.h"
 #include <cstdio>
 

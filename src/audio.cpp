@@ -1,7 +1,7 @@
 #include "audio.h"
 #include <SDL.h>
 #include <vector>
-#include "system.h"
+#include "debug.h"
 #include <cassert>
 #include "nes_timing.h"
 

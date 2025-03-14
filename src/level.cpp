@@ -1,6 +1,6 @@
 #include "level.h"
 #include "actor_prototypes.h"
-#include "system.h"
+#include "debug.h"
 #include <cstdio>
 #include <cstring>
 

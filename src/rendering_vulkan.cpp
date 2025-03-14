@@ -8,6 +8,7 @@
 #include "rendering.h"
 #include "rendering_util.h"
 #include "system.h"
+#include "debug.h"
 #include <SDL_vulkan.h>
 #include <cassert>
 #include <vector>

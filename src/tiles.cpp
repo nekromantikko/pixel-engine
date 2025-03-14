@@ -1,6 +1,6 @@
 #include "tiles.h"
 #include "rendering_util.h"
-#include "system.h"
+#include "debug.h"
 #include <limits>
 
 #pragma region Tileset
