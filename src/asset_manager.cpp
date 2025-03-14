@@ -35,6 +35,7 @@ static bool ResizeArchive(u32 minCapacity) {
 		return false;
 	}
 
+	DEBUG_LOG("Resizing asset archive (%d -> %d)\n", archiveCapacity, newCapacity);
 	archiveData = (u8*)newBlock;
 	archiveCapacity = newCapacity;
 	return true;
@@ -86,6 +87,7 @@ bool AssetManager::LoadArchive(const std::filesystem::path& path) {
 	fread(archiveData, 1, size, pFile);
 	archiveSize = size;
 
+	assetIndex.reserve(header.assetCount);
 	for (u32 i = 0; i < header.assetCount; i++) {
 		AssetEntry asset;
 		fread(&asset, sizeof(AssetEntry), 1, pFile);
@@ -149,6 +151,15 @@ u64 AssetManager::CreateAsset(u8 type, u32 size, const char* name) {
 }
 
 void* AssetManager::GetAsset(u64 id) {
+	const auto it = assetIndex.find(id);
+	if (it == assetIndex.end()) {
+		return nullptr;
+	}
+	const AssetEntry& asset = it->second;
+	return archiveData + asset.offset;
+}
+
+const AssetEntry* AssetManager::GetAssetInfo(u64 id) {
 	const auto it = assetIndex.find(id);
 	if (it == assetIndex.end()) {
 		return nullptr;

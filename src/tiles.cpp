@@ -103,7 +103,7 @@ void Tiles::LoadTileset(const char* fname) {
 
 	fclose(pFile);
 
-	AssetManager::CreateAsset(ASSET_TYPE_TILESET, sizeof(Tileset), "Debug tileset");
+	//AssetManager::CreateAsset(ASSET_TYPE_TILESET, sizeof(Tileset), "Debug tileset");
 }
 
 void Tiles::SaveTileset(const char* fname) {

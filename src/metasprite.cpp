@@ -1,18 +1,13 @@
 #include "metasprite.h"
 #include "debug.h"
 #include <stdio.h>
+#include "asset_manager.h"
 
 static Metasprite metasprites[MAX_METASPRITE_COUNT];
 static char nameMemory[MAX_METASPRITE_COUNT * METASPRITE_MAX_NAME_LENGTH];
-static Sprite spriteMemory[MAX_METASPRITE_COUNT * METASPRITE_MAX_SPRITE_COUNT];
 
 Metasprite* Metasprites::GetMetasprite(s32 index) {
 	return &metasprites[index];
-}
-
-// Access sprite memory directly, bypassing metasprites
-Sprite* Metasprites::GetRawSprite(s32 index) {
-	return &spriteMemory[index];
 }
 
 char* Metasprites::GetName(s32 index) {
@@ -37,29 +32,19 @@ s32 Metasprites::GetIndex(const Metasprite* pMetasprite) {
 	return index;
 }
 
-// Get the index of a sprite in spriteMemory
-s32 Metasprites::GetSpriteIndex(const Sprite* pSprite) {
-	s32 index = pSprite - spriteMemory;
-	if (index < 0 || index >= MAX_METASPRITE_COUNT * METASPRITE_MAX_SPRITE_COUNT) {
-		return -1;
-	}
-
-	return index;
-}
-
 void Metasprites::Copy(s32 srcIndex, s32 dstIndex) {
 	memcpy(&nameMemory[dstIndex * METASPRITE_MAX_NAME_LENGTH], &nameMemory[srcIndex * METASPRITE_MAX_NAME_LENGTH], METASPRITE_MAX_NAME_LENGTH);
-	memcpy(&spriteMemory[dstIndex * METASPRITE_MAX_SPRITE_COUNT], &spriteMemory[srcIndex * METASPRITE_MAX_SPRITE_COUNT], METASPRITE_MAX_SPRITE_COUNT*sizeof(Sprite));
+	memcpy(GetMetasprite(dstIndex)->spritesRelativePos, GetMetasprite(srcIndex)->spritesRelativePos, METASPRITE_MAX_SPRITE_COUNT*sizeof(Sprite));
 	GetMetasprite(dstIndex)->spriteCount = GetMetasprite(srcIndex)->spriteCount;
 }
 
 void Metasprites::Clear() {
-	for (u32 i = 0; i < MAX_METASPRITE_COUNT; i++) {
+	/*for (u32 i = 0; i < MAX_METASPRITE_COUNT; i++) {
 		nameMemory[i * METASPRITE_MAX_NAME_LENGTH] = 0;
 
 		metasprites[i].spritesRelativePos = &spriteMemory[i * METASPRITE_MAX_SPRITE_COUNT];
 		spriteMemory[i * METASPRITE_MAX_SPRITE_COUNT] = Sprite{};
-	}
+	}*/
 }
 
 void Metasprites::Load(const char* fname) {
@@ -75,14 +60,19 @@ void Metasprites::Load(const char* fname) {
 
 	for (u32 i = 0; i < MAX_METASPRITE_COUNT; i++) {
 		fread(&metasprites[i].spriteCount, sizeof(u32), 1, pFile);
-
-		metasprites[i].spritesRelativePos = &spriteMemory[i * METASPRITE_MAX_SPRITE_COUNT];
 	}
 
 	fread(nameMemory, METASPRITE_MAX_NAME_LENGTH, MAX_METASPRITE_COUNT, pFile);
-	fread(spriteMemory, sizeof(Sprite), METASPRITE_MAX_SPRITE_COUNT * MAX_METASPRITE_COUNT, pFile);
+
+	for (u32 i = 0; i < MAX_METASPRITE_COUNT; i++) {
+		fread(&metasprites[i].spritesRelativePos, sizeof(Sprite), METASPRITE_MAX_SPRITE_COUNT, pFile);
+	}
 
 	fclose(pFile);
+
+	//for (u32 i = 0; i < 33; i++) {
+		//AssetManager::CreateAsset(ASSET_TYPE_METASPRITE, sizeof(Metasprite), &nameMemory[i * METASPRITE_MAX_NAME_LENGTH]);
+	//}
 }
 
 void Metasprites::Save(const char* fname) {
@@ -101,7 +91,7 @@ void Metasprites::Save(const char* fname) {
 	}
 
 	fwrite(nameMemory, METASPRITE_MAX_NAME_LENGTH, MAX_METASPRITE_COUNT, pFile);
-	fwrite(spriteMemory, sizeof(Sprite), METASPRITE_MAX_SPRITE_COUNT * MAX_METASPRITE_COUNT, pFile);
+	//fwrite(spriteMemory, sizeof(Sprite), METASPRITE_MAX_SPRITE_COUNT * MAX_METASPRITE_COUNT, pFile);
 
 	fclose(pFile);
 }

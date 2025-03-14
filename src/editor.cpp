@@ -675,7 +675,7 @@ static AABB GetActorBoundingBox(const RoomActor* pActor) {
 	switch (anim.type) {
 	case ANIMATION_TYPE_SPRITES: {
 		const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex);
-		Sprite& sprite = pMetasprite->spritesRelativePos[0];
+		const Sprite& sprite = pMetasprite->spritesRelativePos[0];
 		result.min = { (r32)sprite.x / METATILE_DIM_PIXELS, (r32)sprite.y / METATILE_DIM_PIXELS };
 		result.max = { result.min.x + tileWorldDim, result.min.y + tileWorldDim };
 		break;
@@ -689,7 +689,7 @@ static AABB GetActorBoundingBox(const RoomActor* pActor) {
 		result.y2 = std::numeric_limits<r32>::min();
 
 		for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
-			Sprite& sprite = pMetasprite->spritesRelativePos[i];
+			const Sprite& sprite = pMetasprite->spritesRelativePos[i];
 			const glm::vec2 spriteMin = { (r32)sprite.x / METATILE_DIM_PIXELS, (r32)sprite.y / METATILE_DIM_PIXELS };
 			const glm::vec2 spriteMax = { spriteMin.x + tileWorldDim, spriteMin.y + tileWorldDim };
 			result.x1 = glm::min(result.x1, spriteMin.x);
@@ -711,7 +711,7 @@ static void DrawActor(const ActorPrototype* pPrototype, const ImVec2& origin, r3
 	switch (anim.type) {
 	case ANIMATION_TYPE_SPRITES: {
 		const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex);
-		Sprite& sprite = pMetasprite->spritesRelativePos[frameIndex];
+		const Sprite& sprite = pMetasprite->spritesRelativePos[frameIndex];
 		ImVec2 pos = ImVec2(origin.x + renderScale * sprite.x, origin.y + renderScale * sprite.y);
 		DrawSprite(sprite, pos, renderScale, color);
 		break;
@@ -3213,6 +3213,42 @@ static void DrawOverworldWindow() {
 #pragma endregion
 
 #pragma region Asset browser
+static void SortAssets(std::vector<u64>& assetIds, ImGuiTableSortSpecs* pSortSpecs) {
+	if (!pSortSpecs || pSortSpecs->SpecsCount == 0) return; // No sorting requested
+
+	std::sort(assetIds.begin(), assetIds.end(), [pSortSpecs](u64 aId, u64 bId) {
+		const ImGuiTableColumnSortSpecs* sortSpecs = pSortSpecs->Specs;
+
+		const AssetEntry& a = *AssetManager::GetAssetInfo(aId);
+		const AssetEntry& b = *AssetManager::GetAssetInfo(bId);
+
+		for (int i = 0; i < pSortSpecs->SpecsCount; i++) {
+			const ImGuiTableColumnSortSpecs& spec = sortSpecs[i];
+
+			switch (spec.ColumnIndex) {
+			case 0: { // Sort by Name
+				int cmp = strcmp(a.name, b.name);
+				if (cmp != 0) return spec.SortDirection == ImGuiSortDirection_Ascending ? (cmp < 0) : (cmp > 0);
+				break;
+			}
+			case 1: { // Sort by UUID
+				if (a.id != b.id) return spec.SortDirection == ImGuiSortDirection_Ascending ? (a.id < b.id) : (a.id > b.id);
+				break;
+			}
+			case 2: { // Sort by Type
+				if (a.flags.type != b.flags.type) return spec.SortDirection == ImGuiSortDirection_Ascending ? (a.flags.type < b.flags.type) : (a.flags.type > b.flags.type);
+				break;
+			}
+			default:
+				break;
+			}
+		}
+		return false; // Default (should never happen)
+		});
+
+	pSortSpecs->SpecsDirty = false; // Mark sorting as done
+}
+
 static void DrawAssetBrowser() {
 	ImGui::Begin("Asset browser", &pContext->assetBrowserOpen, ImGuiWindowFlags_MenuBar);
 
@@ -3241,39 +3277,55 @@ static void DrawAssetBrowser() {
 	}
 
 	static u64 selectedAsset = UUID_NULL;
+	static u32 assetCount = 0;
+	static std::vector<u64> assetIds;
 
-	ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_NoBordersInBody;
+	ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_Sortable;
 	if (ImGui::BeginTable("Assets", 3, flags)) {
-		ImGui::TableSetupColumn("Name");
-		ImGui::TableSetupColumn("UUID");
-		ImGui::TableSetupColumn("Type");
+		ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_DefaultSort);
+		ImGui::TableSetupColumn("UUID", ImGuiTableColumnFlags_DefaultSort);
+		ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_DefaultSort);
 		ImGui::TableSetupScrollFreeze(0, 1); // Make row always visible
 		ImGui::TableHeadersRow();
 
+		ImGuiTableSortSpecs* pSortSpecs = ImGui::TableGetSortSpecs();
+
 		const AssetIndex& index = AssetManager::GetIndex();
-		u32 assetCount = AssetManager::GetAssetCount();
+		const u32 newAssetCount = AssetManager::GetAssetCount();
 
-		for (const auto& kvp : index) {
-			const u64 id = kvp.first;
-			const AssetEntry& asset = kvp.second;
+		if (assetCount != newAssetCount) {
+			assetIds.clear();
+			assetIds.reserve(newAssetCount);
+			for (const auto& kvp : index) {
+				const u64 id = kvp.first;
+				assetIds.emplace_back(id);
+			}
+			assetCount = newAssetCount;
+			if (pSortSpecs) {
+				pSortSpecs->SpecsDirty = true;
+			}
+		}
 
+		if (pSortSpecs && pSortSpecs->SpecsDirty) {
+			SortAssets(assetIds, pSortSpecs);
+		}
+
+		for (const auto& id : assetIds) {
 			const bool selected = id == selectedAsset;
+
+			const AssetEntry* pAsset = AssetManager::GetAssetInfo(id);
 
 			ImGui::PushID(id);
 			ImGui::TableNextRow();
 			ImGui::TableNextColumn();
-			if (ImGui::Selectable(asset.name, selected, ImGuiSelectableFlags_SpanAllColumns)) {
+			if (ImGui::Selectable(pAsset->name, selected, ImGuiSelectableFlags_SpanAllColumns)) {
 				selectedAsset = id;
 			}
 			ImGui::TableNextColumn();
 			ImGui::Text("%llu", id);
 			ImGui::TableNextColumn();
-			ImGui::Text("%s", ASSET_TYPE_NAMES[asset.flags.type]);
+			ImGui::Text("%s", ASSET_TYPE_NAMES[pAsset->flags.type]);
 			ImGui::PopID();
-		}
-
-		for (u32 i = 0; i < assetCount; i++) {
-			
 		}
 
 		ImGui::EndTable();
