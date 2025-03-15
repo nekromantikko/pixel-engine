@@ -111,14 +111,6 @@ bool Tiles::SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& 
 
     return SetTilesetTile(pTilemap, screenIndex, i, tilesetIndex);
 }
-
-s32 Tiles::GetNametableIndex(const glm::ivec2& pos) {
-    return (pos.x / NAMETABLE_WIDTH_METATILES + pos.y / NAMETABLE_HEIGHT_METATILES) % NAMETABLE_COUNT;
-}
-
-glm::ivec2 Tiles::GetNametableOffset(const glm::ivec2& pos) {
-    return { (s32)(pos.x % NAMETABLE_WIDTH_METATILES), (s32)(pos.y % NAMETABLE_HEIGHT_METATILES) };
-}
 #pragma endregion
 
 static constexpr u32 tilesetMaxNameLength = 256;

@@ -5,19 +5,18 @@
 #include <gtc/constants.hpp>
 
 #pragma region Nametable
-static inline u32 GetNametableAttributeIndex(u32 x, u32 y) {
-	return (x >> 1) + (y >> 1) * NAMETABLE_WIDTH_ATTRIBUTES;
+static inline u32 GetNametableAttributeIndex(const glm::ivec2& metatileOffset) {
+	return (metatileOffset.x >> 1) + (metatileOffset.y >> 1) * NAMETABLE_WIDTH_ATTRIBUTES;
 }
 
 static inline u32 GetNametableAttributeIndex(u32 metatileIndex) {
-	const u32 x = metatileIndex & (NAMETABLE_WIDTH_METATILES - 1);
-	const u32 y = metatileIndex >> NAMETABLE_WIDTH_METATILES_LOG2;
+	const glm::ivec2 metatileOffset(metatileIndex & (NAMETABLE_WIDTH_METATILES - 1), metatileIndex >> NAMETABLE_WIDTH_METATILES_LOG2);
 
-	return (x >> 1) + (y >> 1) * NAMETABLE_WIDTH_ATTRIBUTES;
+	return GetNametableAttributeIndex(metatileOffset);
 }
 
-static inline u8 GetNametableAttributeOffset(u32 x, u32 y) {
-	return (x & 1) + (y & 1) * 2;
+static inline u8 GetNametableAttributeOffset(const glm::ivec2& metatilePos) {
+	return (metatilePos.x & 1) + (metatilePos.y & 1) * 2;
 }
 
 static inline u8 GetNametableAttributeOffset(u32 metatileIndex) {
@@ -39,11 +38,42 @@ u8 Rendering::Util::SetPalette(u8 attribute, u8 offset, s32 palette) {
 	return attribute;
 }
 
-void Rendering::Util::GetNametableMetatile(const Nametable* pNametable, u32 metatileIndex, Metatile& outMetatile, s32& outPalette) {
-	const u32 x = metatileIndex % NAMETABLE_WIDTH_METATILES;
-	const u32 y = metatileIndex / NAMETABLE_WIDTH_METATILES;
+s32 Rendering::Util::GetNametableTileIndexFromTileOffset(const glm::ivec2& tileOffset) {
+	return tileOffset.x + tileOffset.y * NAMETABLE_WIDTH_TILES;
+}
 
-	const u32 firstTileIndex = (x << 1) + (y << 1) * NAMETABLE_WIDTH_TILES;
+s32 Rendering::Util::GetNametableTileIndexFromMetatileOffset(const glm::ivec2& metatileOffset) {
+	return (metatileOffset.x << 1) + (metatileOffset.y << 1) * NAMETABLE_WIDTH_TILES;
+}
+
+s32 Rendering::Util::GetNametableIndexFromTilePos(const glm::ivec2& tilePos) {
+	return (tilePos.x / NAMETABLE_WIDTH_TILES + tilePos.y / NAMETABLE_HEIGHT_TILES) % NAMETABLE_COUNT;
+}
+
+glm::ivec2 Rendering::Util::GetNametableOffsetFromTilePos(const glm::ivec2& tilePos) {
+	return { (s32)(tilePos.x % NAMETABLE_WIDTH_TILES), (s32)(tilePos.y % NAMETABLE_HEIGHT_TILES) };
+}
+
+s32 Rendering::Util::GetNametableIndexFromMetatilePos(const glm::ivec2& pos) {
+	return (pos.x / NAMETABLE_WIDTH_METATILES + pos.y / NAMETABLE_HEIGHT_METATILES) % NAMETABLE_COUNT;
+}
+
+glm::ivec2 Rendering::Util::GetNametableOffsetFromMetatilePos(const glm::ivec2& pos) {
+	return { (s32)(pos.x % NAMETABLE_WIDTH_METATILES), (s32)(pos.y % NAMETABLE_HEIGHT_METATILES) };
+}
+
+void Rendering::Util::SetNametableTile(Nametable* pNametables, const glm::ivec2& tilePos, u8 tileIndex) {
+	const u32 nametableIndex = GetNametableIndexFromTilePos(tilePos);
+	const glm::ivec2 nametableOffset = GetNametableOffsetFromTilePos(tilePos);
+	const u32 nametableTileIndex = GetNametableTileIndexFromTileOffset(nametableOffset);
+
+	pNametables[nametableIndex].tiles[nametableTileIndex] = tileIndex;
+}
+
+void Rendering::Util::GetNametableMetatile(const Nametable* pNametable, u32 metatileIndex, Metatile& outMetatile, s32& outPalette) {
+	const glm::ivec2 metatileOffset(metatileIndex % NAMETABLE_WIDTH_METATILES, metatileIndex / NAMETABLE_WIDTH_METATILES);
+
+	const u32 firstTileIndex = GetNametableTileIndexFromMetatileOffset(metatileOffset);
 	
 	outMetatile = {
 		pNametable->tiles[firstTileIndex],
@@ -52,13 +82,13 @@ void Rendering::Util::GetNametableMetatile(const Nametable* pNametable, u32 meta
 		pNametable->tiles[firstTileIndex + NAMETABLE_WIDTH_TILES + 1],
 	};
 
-	outPalette = GetPalette(pNametable->attributes[GetNametableAttributeIndex(x,y)], GetNametableAttributeOffset(x,y));
+	outPalette = GetPalette(pNametable->attributes[GetNametableAttributeIndex(metatileOffset)], GetNametableAttributeOffset(metatileOffset));
 }
 
-void Rendering::Util::SetNametableMetatile(Nametable* pNametable, u32 x, u32 y, const Metatile& metatile, const s32 palette) {
-	const u32 firstTileIndex = (x << 1) + (y << 1) * NAMETABLE_WIDTH_TILES;
-	const u32 attributeIndex = GetNametableAttributeIndex(x, y);
-	const u32 attributeOffset = GetNametableAttributeOffset(x, y);
+void Rendering::Util::SetNametableMetatile(Nametable* pNametable, const glm::ivec2& metatileOffset, const Metatile& metatile, const s32 palette) {
+	const u32 firstTileIndex = GetNametableTileIndexFromMetatileOffset(metatileOffset);
+	const u32 attributeIndex = GetNametableAttributeIndex(metatileOffset);
+	const u32 attributeOffset = GetNametableAttributeOffset(metatileOffset);
 
 	pNametable->tiles[firstTileIndex] = metatile.tiles[0];
 	pNametable->tiles[firstTileIndex + 1] = metatile.tiles[1];

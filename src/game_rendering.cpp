@@ -94,12 +94,12 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
                 continue;
             }
 
-            const s32 nametableIndex = Tiles::GetNametableIndex({ x, y });
-            const glm::ivec2 nametableOffset = Tiles::GetNametableOffset({ x, y });
+            const s32 nametableIndex = Rendering::Util::GetNametableIndexFromMetatilePos({ x, y });
+            const glm::ivec2 nametableOffset = Rendering::Util::GetNametableOffsetFromMetatilePos({ x, y });
 
             const Metatile& metatile = tile->metatile;
             const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, tilesetIndex);
-            Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
+            Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile, palette);
         }
     }
 }
@@ -202,12 +202,12 @@ void Game::Rendering::RefreshViewport() {
                 continue;
             }
 
-            const s32 nametableIndex = Tiles::GetNametableIndex({ x, y });
-            const glm::ivec2 nametableOffset = Tiles::GetNametableOffset({ x, y });
+            const s32 nametableIndex = ::Rendering::Util::GetNametableIndexFromMetatilePos({ x, y });
+            const glm::ivec2 nametableOffset = ::Rendering::Util::GetNametableOffsetFromMetatilePos({ x, y });
 
             const Metatile& metatile = tile->metatile;
             const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, tilesetIndex);
-            ::Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
+            ::Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile, palette);
         }
     }
 }

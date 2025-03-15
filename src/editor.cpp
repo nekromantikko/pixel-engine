@@ -1665,9 +1665,9 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 					if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
 						Tiles::SetTilesetTile(pTilemap, metatileWorldPos, metatileIndex);
 
-						const u32 nametableIndex = Tiles::GetNametableIndex(metatileWorldPos);
-						const glm::ivec2 nametablePos = Tiles::GetNametableOffset(metatileWorldPos);
-						Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametablePos.x, nametablePos.y, metatile, palette);
+						const u32 nametableIndex = Rendering::Util::GetNametableIndexFromMetatilePos(metatileWorldPos);
+						const glm::ivec2 nametablePos = Rendering::Util::GetNametableOffsetFromMetatilePos(metatileWorldPos);
+						Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametablePos, metatile, palette);
 					}
 				}
 			}

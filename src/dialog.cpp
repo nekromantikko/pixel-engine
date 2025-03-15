@@ -27,20 +27,20 @@ static u8 GetBoxTileId(u32 x, u32 y, u32 w, u32 h) {
 }
 
 static void CopyLevelTileToNametable(Nametable* pNametables, const Tilemap* pTilemap, const glm::ivec2& worldPos) {
-    const u32 nametableIndex = Tiles::GetNametableIndex(worldPos);
-    const glm::ivec2 nametableOffset = Tiles::GetNametableOffset(worldPos);
+    const u32 nametableIndex = Rendering::Util::GetNametableIndexFromMetatilePos(worldPos);
+    const glm::ivec2 nametableOffset = Rendering::Util::GetNametableOffsetFromMetatilePos(worldPos);
 
     const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, worldPos);
     const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
 
     const Metatile& metatile = tile->metatile;
     const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, tilesetIndex);
-    Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
+    Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile, palette);
 }
 
 static void CopyBoxTileToNametable(Nametable* pNametables, const glm::ivec2& worldPos, const glm::ivec2& tileOffset, const glm::ivec2& sizeTiles, u8 palette) {
-    const u32 nametableIndex = Tiles::GetNametableIndex(worldPos);
-    const glm::ivec2 nametableOffset = Tiles::GetNametableOffset(worldPos);
+    const u32 nametableIndex = Rendering::Util::GetNametableIndexFromMetatilePos(worldPos);
+    const glm::ivec2 nametableOffset = Rendering::Util::GetNametableOffsetFromMetatilePos(worldPos);
 
     // Construct a metatile
     Metatile metatile{};
@@ -49,7 +49,7 @@ static void CopyBoxTileToNametable(Nametable* pNametables, const glm::ivec2& wor
     metatile.tiles[2] = GetBoxTileId(tileOffset.x, tileOffset.y + 1, sizeTiles.x, sizeTiles.y);
     metatile.tiles[3] = GetBoxTileId(tileOffset.x + 1, tileOffset.y + 1, sizeTiles.x, sizeTiles.y);
 
-    Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
+    Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile, palette);
 }
 
 static void DrawBgBoxAnimated() {
@@ -117,12 +117,7 @@ static void DrawBgText(const glm::ivec2& boxViewportOffset, const glm::ivec2& bo
             }
         }
 
-        // TODO: These could be utils too
-        const u32 nametableIndex = (xTile / NAMETABLE_WIDTH_TILES + yTile / NAMETABLE_HEIGHT_TILES) % NAMETABLE_COUNT;
-        const glm::ivec2 nametableOffset(xTile % NAMETABLE_WIDTH_TILES, yTile % NAMETABLE_HEIGHT_TILES);
-        const u32 nametableTileIndex = nametableOffset.x + nametableOffset.y * NAMETABLE_WIDTH_TILES;
-
-        pNametables[nametableIndex].tiles[nametableTileIndex] = c;
+        Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, c);
         xTile++;
     }
 }

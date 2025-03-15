@@ -1,5 +1,6 @@
 #include "game_state.h"
 #include "game_rendering.h"
+#include "rendering_util.h"
 #include "game_input.h"
 #include "game_ui.h"
 #include "coroutines.h"
@@ -291,11 +292,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
                 tileIndex += borderIndexOffset;
             }
 
-            const u32 nametableIndex = (x / NAMETABLE_WIDTH_TILES + y / NAMETABLE_HEIGHT_TILES) % NAMETABLE_COUNT;
-            const glm::ivec2 nametableOffset(x % NAMETABLE_WIDTH_TILES, y % NAMETABLE_HEIGHT_TILES);
-            const u32 nametableTileIndex = nametableOffset.x + nametableOffset.y * NAMETABLE_WIDTH_TILES;
-
-            pNametables[nametableIndex].tiles[nametableTileIndex] = tileIndex;
+            Rendering::Util::SetNametableTile(pNametables, { x, y }, tileIndex);
         }
     }
 
@@ -330,11 +327,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
 
                         // Clipping: Check if tile is within worldTileBounds
                         if (xTile >= xTileStart && xTile < xTileEnd && yTile >= yTileStart && yTile < yTileEnd) {
-                            const u32 nametableIndex = (xTile / NAMETABLE_WIDTH_TILES + yTile / NAMETABLE_HEIGHT_TILES) % NAMETABLE_COUNT;
-                            const glm::ivec2 nametableOffset(xTile % NAMETABLE_WIDTH_TILES, yTile % NAMETABLE_HEIGHT_TILES);
-                            const u32 nametableTileIndex = nametableOffset.x + nametableOffset.y * NAMETABLE_WIDTH_TILES;
-
-                            pNametables[nametableIndex].tiles[nametableTileIndex] = indexOffset + xIndex[i] + yIndex * 3;
+                            Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, indexOffset + xIndex[i] + yIndex * 3);
                         }
                     }
                 }

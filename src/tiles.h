@@ -88,9 +88,6 @@ namespace Tiles {
 	bool SetTilesetTile(Tilemap* pTilemap, s32 screenIndex, s32 tileIndex, const s32& tilesetIndex);
 	bool SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& tilesetIndex);
 
-	s32 GetNametableIndex(const glm::ivec2& pos);
-	glm::ivec2 GetNametableOffset(const glm::ivec2& pos);
-
 	// Temp until we have an asset manager
 	void LoadTileset(const char* fname);
 	void SaveTileset(const char* fname);
