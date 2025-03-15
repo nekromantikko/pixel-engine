@@ -1,30 +1,161 @@
 #include "input.h"
 #include "game_input.h"
+#include "debug.h"
 #include <SDL.h>
 
 //TODO: multiple controller support
-static SDL_GameController* gameController = nullptr;
-static SDL_Haptic* haptic = nullptr;
+static SDL_Joystick* pJoystick = nullptr;
+static SDL_Haptic* pHaptic = nullptr;
 
 static u16 controllerState = BUTTON_NONE;
 
 #pragma region Internal functions
-static void InitController() {
-    if (SDL_NumJoysticks()) {
-        gameController = SDL_GameControllerOpen(0);
-        haptic = SDL_HapticOpenFromJoystick(SDL_GameControllerGetJoystick(gameController));
-        SDL_HapticRumbleInit(haptic);
+static bool InitController(s32 index) {
+    if (index >= SDL_NumJoysticks()) {
+        return false;
     }
-    else gameController = nullptr;
+
+    if (index != 0) {
+        DEBUG_ERROR("Multiple controllers not supported yet!\n");
+        return false;
+    }
+
+    if (SDL_IsGameController(index)) {
+        SDL_GameController* pController = SDL_GameControllerOpen(index);
+        if (!pController) {
+            DEBUG_ERROR("Failed to open controller #%d\n", index);
+            return false;
+        }
+
+        pJoystick = SDL_GameControllerGetJoystick(pController);
+    }
+    else {
+        pJoystick = SDL_JoystickOpen(index);
+        if (!pJoystick) {
+            DEBUG_ERROR("Failed to open joystick #%d\n", index);
+            return false;
+        }
+    }
+
+    pHaptic = SDL_HapticOpenFromJoystick(pJoystick);
+    if (!pHaptic) {
+        DEBUG_LOG("Failed to open haptic from joystick #%d\n", index);
+    }
+    else
+    {
+        SDL_HapticRumbleInit(pHaptic);
+    }
+
+    return true;
 }
 
-static void FreeController() {
-    if (gameController) {
-        SDL_GameControllerClose(gameController);
+static bool FreeController(s32 index) {
+    if (index >= SDL_NumJoysticks()) {
+        return false;
     }
-    if (haptic) {
-        SDL_HapticRumbleStop(haptic);
-        SDL_HapticClose(haptic);
+
+    if (index != 0) {
+        return false;
+    }
+
+    if (!pJoystick) {
+        return false;
+    }
+
+    if (SDL_IsGameController(index)) {
+        const s32 instanceId = SDL_JoystickInstanceID(pJoystick);
+        SDL_GameController* pController = SDL_GameControllerFromInstanceID(instanceId);
+        SDL_GameControllerClose(pController);
+        DEBUG_LOG("Game controller closed.\n");
+    }
+    else {
+        SDL_JoystickClose(pJoystick);
+        DEBUG_LOG("Joystick closed.\n");
+    }
+
+    if (pHaptic) {
+        SDL_HapticRumbleStop(pHaptic);
+        SDL_HapticClose(pHaptic);
+        DEBUG_LOG("Haptic device closed.\n");
+    }
+}
+
+static void HandleJoystickButtonEvent(const SDL_JoyButtonEvent& event, u16& outState) {
+    if (SDL_IsGameController(event.which)) {
+        return;
+    }
+
+    const bool pressed = (event.state == SDL_PRESSED);
+
+    switch (event.button) {
+    case 0:
+        pressed ? outState |= BUTTON_X : outState &= ~BUTTON_X;
+        break;
+    case 1:
+        pressed ? outState |= BUTTON_A : outState &= ~BUTTON_A;
+        break;
+    case 2:
+        pressed ? outState |= BUTTON_B : outState &= ~BUTTON_B;
+        break;
+    case 3:
+        pressed ? outState |= BUTTON_Y : outState &= ~BUTTON_Y;
+        break;
+    case 4:
+        pressed ? outState |= BUTTON_L : outState &= ~BUTTON_L;
+        break;
+    case 5:
+        pressed ? outState |= BUTTON_R : outState &= ~BUTTON_R;
+        break;
+    case 8:
+        pressed ? outState |= BUTTON_SELECT : outState &= ~BUTTON_SELECT;
+        break;
+    case 9:
+        pressed ? outState |= BUTTON_START : outState &= ~BUTTON_START;
+        break;
+    default:
+        break;
+    }
+}
+
+static void HandleJoystickAxisEvent(const SDL_JoyAxisEvent& event, u16& outState) {
+    if (SDL_IsGameController(event.which)) {
+        return;
+    }
+
+    const int threshold = 8000; // Deadzone threshold for axis movement
+    const bool moved = (abs(event.value) > threshold);
+
+    switch (event.axis) {
+    case 0:
+        if (moved) {
+            if (event.value < 0) {
+                outState |= BUTTON_DPAD_LEFT;
+            }
+            else {
+                outState |= BUTTON_DPAD_RIGHT;
+            }
+        }
+        else {
+            outState &= ~BUTTON_DPAD_LEFT;
+            outState &= ~BUTTON_DPAD_RIGHT;
+        }
+        break;
+    case 1:
+        if (moved) {
+            if (event.value < 0) {
+                outState |= BUTTON_DPAD_UP;
+            }
+            else {
+                outState |= BUTTON_DPAD_DOWN;
+            }
+        }
+        else {
+            outState &= ~BUTTON_DPAD_UP;
+            outState &= ~BUTTON_DPAD_DOWN;
+        }
+        break;
+    default:
+        break;
     }
 }
 
@@ -117,30 +248,6 @@ static void HandleControllerAxisEvent(const SDL_ControllerAxisEvent& event, u16&
     }
 }
 
-static void HandleControllerDeviceEvent(const SDL_ControllerDeviceEvent& event)
-{
-    switch (event.type)
-    {
-    case SDL_CONTROLLERDEVICEADDED:
-        if (event.which == 0)
-        {
-            if (!gameController)
-                InitController();
-        }
-        break;
-    case SDL_CONTROLLERDEVICEREMOVED:
-        if (event.which == 0)
-        {
-            if (gameController)
-                FreeController();
-        }
-
-        break;
-    default:
-        break;
-    }
-}
-
 static void HandleKeyboardEvent(const SDL_KeyboardEvent& event, u16& outState) {
     const bool pressed = (event.state == SDL_PRESSED);
 
@@ -192,25 +299,37 @@ static void HandleKeyboardEvent(const SDL_KeyboardEvent& event, u16& outState) {
 void Input::ProcessEvent(const SDL_Event* event) {
     switch (event->type)
     {
+    case SDL_JOYBUTTONDOWN:
+    case SDL_JOYBUTTONUP:
+        HandleJoystickButtonEvent(event->jbutton, controllerState);
+        break;
+    case SDL_JOYAXISMOTION:
+        HandleJoystickAxisEvent(event->jaxis, controllerState);
+        break;
     case SDL_CONTROLLERBUTTONDOWN:
     case SDL_CONTROLLERBUTTONUP:
-        if (gameController != nullptr) {
-            HandleControllerButtonEvent(event->cbutton, controllerState);
-        }
+        HandleControllerButtonEvent(event->cbutton, controllerState);
         break;
     case SDL_CONTROLLERAXISMOTION:
-        if (gameController != nullptr) {
-            HandleControllerAxisEvent(event->caxis, controllerState);
-        }
+        HandleControllerAxisEvent(event->caxis, controllerState);
         break;
     case SDL_KEYDOWN:
     case SDL_KEYUP:
         HandleKeyboardEvent(event->key, controllerState);
         break;
+    case SDL_JOYDEVICEADDED:
+        InitController(event->jdevice.which);
+        break;
+    case SDL_JOYDEVICEREMOVED:
+        FreeController(event->jdevice.which);
+        break;
     case SDL_CONTROLLERDEVICEADDED:
+        InitController(event->cdevice.which);
+        break;
     case SDL_CONTROLLERDEVICEREMOVED:
+        FreeController(event->cdevice.which);
+        break;
     case SDL_CONTROLLERDEVICEREMAPPED:
-        HandleControllerDeviceEvent(event->cdevice);
         break;
     default:
         break;

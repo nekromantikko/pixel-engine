@@ -42,6 +42,7 @@ enum PlayerAimFrame : u8 {
 u16 jumpButton = BUTTON_A;
 u16 interactButton = BUTTON_X;
 u16 dodgeButton = BUTTON_B;
+u16 switchWeaponButton = BUTTON_SELECT;
 
 // Constants
 constexpr r32 maxSpeed = 0.09375f; // Actual movement speed from Zelda 2
@@ -370,7 +371,6 @@ static bool PlayerDodge(Actor* pPlayer) {
     if (Game::Input::ButtonPressed(dodgeButton) && Game::GetPlayerStamina() > 0 && (!pPlayer->flags.inAir || !pPlayer->state.playerState.flags.airDodged)) {
         Game::AddPlayerStamina(-dodgeStaminaCost);
         pPlayer->state.playerState.staminaRecoveryCounter = staminaRecoveryDelay;
-        pPlayer->state.playerState.flags.mode = PLAYER_MODE_DODGE;
         pPlayer->state.playerState.modeTransitionCounter = dodgeDuration;
 
         pPlayer->velocity.x += (pPlayer->flags.facingDir == ACTOR_FACING_LEFT) ? -dodgeSpeed : dodgeSpeed;
@@ -411,7 +411,10 @@ static void PlayerInput(Actor* pPlayer) {
     }
 
     // Dodge
-    PlayerDodge(pPlayer);
+    if (PlayerDodge(pPlayer)) {
+        pPlayer->state.playerState.flags.mode = PLAYER_MODE_DODGE;
+        return;
+    }
 
     // Interaction / Shooting
     Actor* pInteractable = Game::GetFirstActorCollision(pPlayer, ACTOR_TYPE_INTERACTABLE);
@@ -448,7 +451,7 @@ static void PlayerInput(Actor* pPlayer) {
         playerState.shootCounter = 0.0f;
     }
 
-    if (Game::Input::ButtonPressed(BUTTON_SELECT)) {
+    if (Game::Input::ButtonPressed(switchWeaponButton)) {
         u16 playerWeapon = Game::GetPlayerWeapon();
         if (playerWeapon == PLAYER_WEAPON_LAUNCHER) {
             Game::SetPlayerWeapon(PLAYER_WEAPON_BOW);
