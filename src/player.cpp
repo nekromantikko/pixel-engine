@@ -193,6 +193,13 @@ static void AnimatePlayer(Actor* pPlayer) {
     AnimateStanding(pPlayer, headFrameIndex, legsFrameIndex, vOffset);
 }
 
+static glm::i8vec2 GetScreenPos(const glm::vec2 worldPos) {
+    return {
+        s8(worldPos.x / VIEWPORT_WIDTH_METATILES),
+        s8(worldPos.y / VIEWPORT_HEIGHT_METATILES)
+    };
+}
+
 static void HandleLevelExit(const Actor* pPlayer) {
     if (pPlayer == nullptr) {
         return;
@@ -200,8 +207,9 @@ static void HandleLevelExit(const Actor* pPlayer) {
 
     const Tilemap* pTilemap = Game::GetCurrentRoomTemplate()->pTilemap;
     const glm::i8vec2 roomOffset = Game::GetCurrentRoomOffset();
-    const u32 xScreen = glm::clamp(s32(pPlayer->position.x / VIEWPORT_WIDTH_METATILES), 0, pTilemap->width - 1);
-    const u32 yScreen = glm::clamp(s32(pPlayer->position.y / VIEWPORT_HEIGHT_METATILES), 0, pTilemap->height - 1);
+    const glm::i8vec2 screenPos = GetScreenPos(pPlayer->position);
+    const s8 xScreen = glm::clamp(screenPos.x, s8(0), s8(pTilemap->width - 1));
+    const s8 yScreen = glm::clamp(screenPos.y, s8(0), s8(pTilemap->height - 1));
 
     bool shouldExit = false;
     u8 nextDirection = 0;
@@ -231,6 +239,17 @@ static void HandleLevelExit(const Actor* pPlayer) {
 
     if (shouldExit) {
         Game::TriggerLevelTransition(Game::GetCurrentDungeon(), nextGridCell, nextDirection);
+    }
+}
+
+static void HandleScreenDiscovery(const Actor* pPlayer) {
+    static glm::i8vec2 previousScreenPos = { -1, -1 };
+
+    const glm::i8vec2 screenPos = GetScreenPos(pPlayer->position);
+    if (screenPos != previousScreenPos) {
+        const glm::i8vec2 roomOffset = Game::GetCurrentRoomOffset();
+        Game::DiscoverScreen(screenPos + roomOffset);
+        previousScreenPos = screenPos;
     }
 }
 
@@ -604,6 +623,7 @@ static void UpdatePlayerSidescroller(Actor* pActor) {
     }
 
     if (pActor->state.playerState.flags.mode != PLAYER_MODE_DYING) {
+        HandleScreenDiscovery(pActor);
         HandleLevelExit(pActor);
     }
 }

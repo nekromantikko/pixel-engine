@@ -17,6 +17,9 @@ constexpr s32 xpRemnantPrototypeIndex = 0x0c;
 static GameData gameData;
 static GameState state;
 
+// TODO: Store bitfield instead
+static bool discoveredScreens[DUNGEON_GRID_SIZE]{};
+
 static s32 currentDungeonIndex;
 static glm::i8vec2 currentRoomOffset;
 static const RoomInstance* pCurrentRoom;
@@ -298,9 +301,14 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
 
     for (u32 y = 0; y < DUNGEON_GRID_DIM; y++) {
         for (u32 x = 0; x < DUNGEON_GRID_DIM; x++) {
-            const DungeonCell& cell = pDungeon->grid[x + y * DUNGEON_GRID_DIM];
+            const u32 cellIndex = x + y * DUNGEON_GRID_DIM;
+            if (!discoveredScreens[cellIndex]) {
+                continue;
+            }
 
-            if (cell.roomIndex < 0 || cell.screenIndex != 0) {
+            const DungeonCell& cell = pDungeon->grid[cellIndex];
+
+            if (cell.roomIndex < 0) {
                 continue;
             }
 
@@ -310,26 +318,26 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
             u32 roomWidthScreens = pTemplate->pTilemap->width;
             u32 roomHeightScreens = pTemplate->pTilemap->height;
 
-            for (u32 roomY = 0; roomY < roomHeightScreens; roomY++) {
-                for (u32 roomX = 0; roomX < roomWidthScreens; roomX++) {
-                    u32 yTile = y + roomY + yTileStart - scrollOffset.y;
+            const u32 roomX = cell.screenIndex % TILEMAP_MAX_DIM_SCREENS;
+            const u32 roomY = cell.screenIndex / TILEMAP_MAX_DIM_SCREENS;
 
-                    // Room width = 2;
-                    for (u32 i = 0; i < 2; i++) {
-                        u32 xTile = (x * 2) + (roomX * 2) + xTileStart + i - scrollOffset.x;
+            const u32 yTile = y + yTileStart - scrollOffset.y;
 
-                        constexpr u8 indexOffset = 0x04;
-                        u8 xIndex[2] = {
-                            roomX ? 1 : 0,
-                            (roomX == roomWidthScreens - 1) ? 2 : 1
-                        };
-                        u8 yIndex = (roomHeightScreens - 1) ? (roomY ? ((roomY == roomHeightScreens - 1) ? 2 : 1) : 0) : 3;
+            // Room width = 2;
+            for (u32 i = 0; i < 2; i++) {
+                const u32 xTile = (x * 2) + xTileStart + i - scrollOffset.x;
 
-                        // Clipping: Check if tile is within worldTileBounds
-                        if (xTile >= xTileStart && xTile < xTileEnd && yTile >= yTileStart && yTile < yTileEnd) {
-                            Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, indexOffset + xIndex[i] + yIndex * 3);
-                        }
-                    }
+                constexpr u8 indexOffset = 0x04;
+                const u8 xIndex[2] = {
+                    roomX ? 1 : 0,
+                    (roomX == roomWidthScreens - 1) ? 2 : 1
+                };
+                const u8 yIndex = (roomHeightScreens - 1) ? (roomY ? ((roomY == roomHeightScreens - 1) ? 2 : 1) : 0) : 3;
+                const u8 tileIndex = indexOffset + xIndex[i] + yIndex * 3;
+
+                // Clipping: Check if tile is within worldTileBounds
+                if (xTile >= xTileStart && xTile < xTileEnd && yTile >= yTileStart && yTile < yTileEnd) {
+                    Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tileIndex);
                 }
             }
         }
@@ -725,6 +733,11 @@ const Level* Game::GetCurrentRoomTemplate() {
     }
 
     return Levels::GetLevel(pCurrentRoom->templateIndex);
+}
+
+void Game::DiscoverScreen(const glm::i8vec2 gridCell) {
+    const u32 cellIndex = gridCell.x + gridCell.y * DUNGEON_GRID_DIM;
+    discoveredScreens[cellIndex] = true;
 }
 
 u32 Game::GetFramesElapsed() {

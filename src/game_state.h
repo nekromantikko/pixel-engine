@@ -88,6 +88,7 @@ namespace Game {
     glm::i8vec2 GetCurrentRoomOffset();
     const RoomInstance* GetCurrentRoom();
     const Level* GetCurrentRoomTemplate();
+    void DiscoverScreen(const glm::i8vec2 gridCell);
 
 	u32 GetFramesElapsed();
 
