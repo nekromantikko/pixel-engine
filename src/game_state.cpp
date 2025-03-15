@@ -214,6 +214,13 @@ static void ViewportFollowPlayer() {
 static void StepGameplayFrame() {
 	if (!freezeGameplay) {
         gameplayFramesElapsed++;
+
+        // Pause menu
+        if (Game::Input::ButtonPressed(BUTTON_START)) {
+            if (Game::OpenDialog({ 6, 3 }, { 20, 12 }, { 20, 0 })) {
+                state = GAME_STATE_PAUSED;
+            }
+        }
 		
         Game::UpdateActors();
         ViewportFollowPlayer();
@@ -222,6 +229,158 @@ static void StepGameplayFrame() {
 
     Game::Rendering::ClearSpriteLayers();
     Game::DrawActors();
+
+    // Draw HUD
+    Game::UI::DrawPlayerHealthBar(gameData.playerMaxHealth);
+    Game::UI::DrawPlayerStaminaBar(gameData.playerMaxStamina);
+    Game::UI::DrawExpCounter();
+}
+#pragma endregion
+
+#pragma region Pause menu
+// TODO: Move somewhere else?
+// Produces a random bit that can be biased towards zero using threshold (lower = more likely to be zero)
+static u8 DeterministicRandomBit(u32 input, u8 threshold) {
+    // Multiply with fibonacci primes
+    input = (input ^ (input >> 16)) * 0xb11924e1;
+    input = (input ^ (input >> 16)) * 0x19d699a5;
+    input = input ^ (input >> 16);
+
+    return (input & 0xFF) < threshold;
+}
+
+static void DrawMap(const glm::ivec2 scrollOffset) {
+    const glm::vec2 viewportPos = Game::Rendering::GetViewportPos();
+    const glm::ivec4 innerBounds = Game::GetDialogInnerBounds();
+    const glm::ivec4 worldBounds = innerBounds + glm::ivec4(viewportPos, viewportPos);
+    const glm::ivec4 worldTileBounds = worldBounds * s32(METATILE_DIM_TILES);
+
+    // TODO: Draw map borders
+    const u32 xTileStart = worldTileBounds.x;
+    const u32 yTileStart = worldTileBounds.y;
+    const u32 xTileEnd = worldTileBounds.z;
+    const u32 yTileEnd = worldTileBounds.w;
+
+    const Dungeon* pDungeon = Assets::GetDungeon(currentDungeonIndex);
+    if (!pDungeon) {
+        return;
+    }
+
+    Nametable* pNametables = Rendering::GetNametablePtr(0);
+
+    // Draw map background
+    constexpr u8 raggedIndexOffset = 0x10;
+    constexpr u8 borderIndexOffset = 0x14;
+    const u32 xBorderStart = xTileStart - 1;
+    const u32 xBorderEnd = xTileEnd + 1;
+    const u32 yBorderStart = yTileStart - 1;
+    const u32 yBorderEnd = yTileEnd + 1;
+    for (int y = yBorderStart; y < yBorderEnd; ++y) {
+        for (int x = xBorderStart; x < xBorderEnd; ++x) {
+            u8 xIndex = (x > xBorderStart) ? ((x == xBorderEnd - 1) ? 2 : 1) : 0;
+            u8 yIndex = (y > yBorderStart) ? ((y == yBorderEnd - 1) ? 2 : 1) : 0;
+            u8 tileIndex = xIndex + yIndex * 3;
+
+            if (tileIndex & 1 && // Tile is edge (Not corner)
+                DeterministicRandomBit(x ^ y, 0x20)) {
+                // Get ragged tile
+                tileIndex >>= 1;
+                tileIndex += raggedIndexOffset;
+            }
+            else {
+                tileIndex += borderIndexOffset;
+            }
+
+            const u32 nametableIndex = (x / NAMETABLE_WIDTH_TILES + y / NAMETABLE_HEIGHT_TILES) % NAMETABLE_COUNT;
+            const glm::ivec2 nametableOffset(x % NAMETABLE_WIDTH_TILES, y % NAMETABLE_HEIGHT_TILES);
+            const u32 nametableTileIndex = nametableOffset.x + nametableOffset.y * NAMETABLE_WIDTH_TILES;
+
+            pNametables[nametableIndex].tiles[nametableTileIndex] = tileIndex;
+        }
+    }
+
+    for (u32 y = 0; y < DUNGEON_GRID_DIM; y++) {
+        for (u32 x = 0; x < DUNGEON_GRID_DIM; x++) {
+            const DungeonCell& cell = pDungeon->grid[x + y * DUNGEON_GRID_DIM];
+
+            if (cell.roomIndex < 0 || cell.screenIndex != 0) {
+                continue;
+            }
+
+            const RoomInstance& roomInstance = pDungeon->rooms[cell.roomIndex];
+            const Level* pTemplate = Levels::GetLevel(roomInstance.templateIndex);
+
+            u32 roomWidthScreens = pTemplate->pTilemap->width;
+            u32 roomHeightScreens = pTemplate->pTilemap->height;
+
+            for (u32 roomY = 0; roomY < roomHeightScreens; roomY++) {
+                for (u32 roomX = 0; roomX < roomWidthScreens; roomX++) {
+                    u32 yTile = y + roomY + yTileStart - scrollOffset.y;
+
+                    // Room width = 2;
+                    for (u32 i = 0; i < 2; i++) {
+                        u32 xTile = (x * 2) + (roomX * 2) + xTileStart + i - scrollOffset.x;
+
+                        constexpr u8 indexOffset = 0x04;
+                        u8 xIndex[2] = {
+                            roomX ? 1 : 0,
+                            (roomX == roomWidthScreens - 1) ? 2 : 1
+                        };
+                        u8 yIndex = (roomHeightScreens - 1) ? (roomY ? ((roomY == roomHeightScreens - 1) ? 2 : 1) : 0) : 3;
+
+                        // Clipping: Check if tile is within worldTileBounds
+                        if (xTile >= xTileStart && xTile < xTileEnd && yTile >= yTileStart && yTile < yTileEnd) {
+                            const u32 nametableIndex = (xTile / NAMETABLE_WIDTH_TILES + yTile / NAMETABLE_HEIGHT_TILES) % NAMETABLE_COUNT;
+                            const glm::ivec2 nametableOffset(xTile % NAMETABLE_WIDTH_TILES, yTile % NAMETABLE_HEIGHT_TILES);
+                            const u32 nametableTileIndex = nametableOffset.x + nametableOffset.y * NAMETABLE_WIDTH_TILES;
+
+                            pNametables[nametableIndex].tiles[nametableTileIndex] = indexOffset + xIndex[i] + yIndex * 3;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void StepPauseMenu() {
+    if (!Game::UpdateDialog()) {
+        state = GAME_STATE_PLAYING;
+    }
+
+    if (Game::Input::ButtonPressed(BUTTON_START)) {
+        Game::CloseDialog();
+    }
+
+    static glm::vec2 scrollOffset(0);
+    static glm::vec2 scrollDir(0);
+    constexpr r32 scrollSpeed = 0.125f;
+    if (Game::Input::ButtonDown(BUTTON_DPAD_LEFT)) {
+        scrollDir.x = -1;
+    }
+    else if (Game::Input::ButtonDown(BUTTON_DPAD_RIGHT)) {
+        scrollDir.x = 1;
+    }
+    else if (glm::abs(scrollOffset.x - glm::roundEven(scrollOffset.x)) < scrollSpeed) {
+        scrollDir.x = 0;
+        scrollOffset.x = glm::roundEven(scrollOffset.x);
+    }
+
+    if (Game::Input::ButtonDown(BUTTON_DPAD_UP)) {
+        scrollDir.y = -1;
+    }
+    else if (Game::Input::ButtonDown(BUTTON_DPAD_DOWN)) {
+        scrollDir.y = 1;
+    }
+    else if (glm::abs(scrollOffset.y - glm::roundEven(scrollOffset.y)) < scrollSpeed) {
+        scrollDir.y = 0;
+        scrollOffset.y = glm::roundEven(scrollOffset.y);
+    }
+    
+    scrollOffset += scrollSpeed * scrollDir;
+    DrawMap(scrollOffset);
+
+    Game::Rendering::ClearSpriteLayers();
 
     // Draw HUD
     Game::UI::DrawPlayerHealthBar(gameData.playerMaxHealth);
@@ -587,7 +746,6 @@ void Game::InitGameState(GameState initialState) {
 void Game::StepFrame() {
     Input::Update();
     StepCoroutines();
-    UpdateDialog();
 
 	switch (state) {
 	case GAME_STATE_TITLE:
@@ -596,6 +754,7 @@ void Game::StepFrame() {
 		StepGameplayFrame();
         break;
 	case GAME_STATE_PAUSED:
+        StepPauseMenu();
 		break;
 	case GAME_STATE_GAME_OVER:
 		break;

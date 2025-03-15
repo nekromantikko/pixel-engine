@@ -5,28 +5,25 @@
 #include "game_rendering.h"
 #include "game_input.h"
 #include "level.h"
-#define GLM_FORCE_RADIANS
-#include <glm.hpp>
-static DialogState dialogState;
+
+enum DialogState {
+    DIALOG_CLOSED = 0,
+    DIALOG_OPENING,
+    DIALOG_OPEN,
+    DIALOG_CLOSING
+};
+
+static DialogState state = DIALOG_CLOSED;
+
+static glm::ivec2 viewportOffset;
+static glm::ivec2 targetSize;
+static glm::ivec2 initialSize;
+static glm::ivec2 currentSize;
 
 static u8 GetBoxTileId(u32 x, u32 y, u32 w, u32 h) {
-    const u8 offset = 0x10;
-    u8 xIndex = 0;
-    u8 yIndex = 0;
-
-    if (w != 1) {
-        xIndex = 0b01;
-        xIndex <<= (x % w != 0) ? 1 : 0;
-        xIndex += (x % w == w - 1) ? 1 : 0;
-    }
-    if (h != 1) {
-        yIndex = 0b01;
-        yIndex <<= (y % h != 0) ? 1 : 0;
-        yIndex += (y % h == h - 1) ? 1 : 0;
-    }
-
-    const u8 index = xIndex + (yIndex << 2);
-    return index + offset;
+    u8 xEdge = (x == 0 || x == w - 1) ? 1 : 0;
+    u8 yEdge = (y == 0 || y == h - 1) ? 2 : 0; // 2 == 0b00000010
+    return xEdge | yEdge;
 }
 
 static void CopyLevelTileToNametable(Nametable* pNametables, const Tilemap* pTilemap, const glm::ivec2& worldPos) {
@@ -55,61 +52,28 @@ static void CopyBoxTileToNametable(Nametable* pNametables, const glm::ivec2& wor
     Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset.x, nametableOffset.y, metatile, palette);
 }
 
-static void DrawBgBoxAnimated(const glm::ivec2& viewportOffset, const glm::ivec2& size, const glm::ivec2 maxSize, u8 palette) {
+static void DrawBgBoxAnimated() {
     const glm::vec2 viewportPos = Game::Rendering::GetViewportPos();
     
     const glm::ivec2 worldPos = viewportOffset + glm::ivec2(viewportPos);
-    const glm::ivec2 sizeTiles(size.x << 1, size.y << 1);
+    const glm::ivec2 sizeTiles(currentSize.x << 1, currentSize.y << 1);
 
     Nametable* pNametables = Rendering::GetNametablePtr(0);
     const Tilemap* pTilemap = Game::GetCurrentRoomTemplate()->pTilemap;
 
-    for (u32 y = 0; y < maxSize.y; y++) {
-        for (u32 x = 0; x < maxSize.x; x++) {
+    for (u32 y = 0; y < targetSize.y; y++) {
+        for (u32 x = 0; x < targetSize.x; x++) {
 
             const glm::ivec2 offset(x, y);
 
-            if (x < size.x && y < size.y) {
+            if (x < currentSize.x && y < currentSize.y) {
                 const glm::ivec2 tileOffset(x << 1, y << 1);
-                CopyBoxTileToNametable(pNametables, worldPos + offset, tileOffset, sizeTiles, palette);
+                CopyBoxTileToNametable(pNametables, worldPos + offset, tileOffset, sizeTiles, 0x3);
             }
             else {
                 CopyLevelTileToNametable(pNametables, pTilemap, worldPos + offset);
             }
         }
-    }
-}
-
-struct BgBoxAnimState {
-    const glm::ivec2 viewportPos;
-    const u32 width;
-    const u32 maxHeight;
-    const u8 palette;
-    const s32 direction = 1;
-
-    u32 height = 0;
-};
-
-static bool AnimBgBoxCoroutine(void* userData) {
-    BgBoxAnimState& state = *(BgBoxAnimState*)userData;
-
-    if (state.direction > 0) {
-        if (state.height < state.maxHeight) {
-            state.height++;
-        }
-
-        DrawBgBoxAnimated(state.viewportPos, glm::ivec2(state.width, state.height), glm::ivec2(state.width, state.maxHeight), state.palette);
-
-        return state.height != state.maxHeight;
-    }
-    else {
-        if (state.height > 0) {
-            state.height--;
-        }
-
-        DrawBgBoxAnimated(state.viewportPos, glm::ivec2(state.width, state.height), glm::ivec2(state.width, state.maxHeight), state.palette);
-
-        return state.height != 0;
     }
 }
 
@@ -210,11 +174,11 @@ static bool AnimTextCoroutine(void* userData) {
 }
 
 static void CloseDialog() {
-    dialogState.active = false;
+    //dialogState.active = false;
 }
 
 static void AdvanceDialogText() {
-    if (!dialogState.active) {
+    /*if (!dialogState.active) {
         return;
     }
 
@@ -245,39 +209,75 @@ static void AdvanceDialogText() {
         dialogState.currentLineCoroutine = Game::StartCoroutine(AnimTextCoroutine, state);
     }
 
-    dialogState.currentLine++;
+    dialogState.currentLine++;*/
 }
 
-void Game::OpenDialog(const char* const* pDialogueLines, u32 lineCount) {
-    if (dialogState.active) {
-        return;
+// TODO: Allow multiple dialogs simultaneously?
+bool Game::OpenDialog(const glm::ivec2& offset, const glm::ivec2& size, const glm::ivec2& inSize) {
+    if (state != DIALOG_CLOSED) {
+        return false;
     }
 
-    dialogState.active = true;
-    dialogState.currentLine = 0;
-    dialogState.pDialogueLines = pDialogueLines;
-    dialogState.lineCount = lineCount;
+    state = DIALOG_OPENING;
+    viewportOffset = offset;
+    targetSize = size;
+    initialSize = inSize;
+    currentSize = inSize;
 
-    BgBoxAnimState state{
-                .viewportPos = glm::ivec2(8,3),
-                .width = 16,
-                .maxHeight = 4,
-                .palette = 3,
-                .direction = 1,
-    };
-    StartCoroutine(AnimBgBoxCoroutine, state, AdvanceDialogText);
+    return true;
 }
-void Game::UpdateDialog() {
-    // TODO: Handle different types of dialogs
-    if (dialogState.active) {
-        if (Input::ButtonPressed(BUTTON_B)) {
-            AdvanceDialogText();
+
+void Game::CloseDialog() {
+    if (state == DIALOG_OPEN) {
+        state = DIALOG_CLOSING;
+    }
+}
+
+bool Game::UpdateDialog() {
+    if (state == DIALOG_OPENING) {
+        if (currentSize.x < targetSize.x) {
+            currentSize.x++;
+        }
+        if (currentSize.y < targetSize.y) {
+            currentSize.y++;
+        }
+
+        DrawBgBoxAnimated();
+
+        if (currentSize == targetSize) {
+            state = DIALOG_OPEN;
         }
     }
+    else if (state == DIALOG_CLOSING) {
+        if (currentSize.x > initialSize.x) {
+            currentSize.x--;
+        }
+        if (currentSize.y > initialSize.y) {
+            currentSize.y--;
+        }
+
+        DrawBgBoxAnimated();
+
+        if (currentSize == initialSize) {
+            state = DIALOG_CLOSED;
+        }
+    }
+
+    return state != DIALOG_CLOSED;
 }
 bool Game::IsDialogActive() {
-	return dialogState.active;
+	return state != DIALOG_CLOSED;
 }
-DialogState* Game::GetDialogState() {
-	return &dialogState;
+
+bool Game::IsDialogOpen() {
+    return state == DIALOG_OPEN;
+}
+
+glm::ivec4 Game::GetDialogInnerBounds() {
+    return glm::ivec4(
+        viewportOffset.x + 1,
+        viewportOffset.y + 1,
+        viewportOffset.x + currentSize.x - 1,
+        viewportOffset.y + currentSize.y - 1
+        );
 }

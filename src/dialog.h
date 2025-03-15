@@ -1,17 +1,12 @@
 #pragma once
-#include "coroutines.h"
-
-struct DialogState {
-    bool active = false;
-    u32 currentLine = 0;
-    const char* const* pDialogueLines = nullptr;
-    u32 lineCount;
-    PoolHandle<Coroutine> currentLineCoroutine = PoolHandle<Coroutine>::Null();
-};
+#define GLM_FORCE_RADIANS
+#include <glm.hpp>
 
 namespace Game {
-	void OpenDialog(const char* const* pDialogueLines, u32 lineCount);
-	void UpdateDialog();
+	bool OpenDialog(const glm::ivec2& offset, const glm::ivec2& size, const glm::ivec2& initialSize = {0,0});
+	void CloseDialog();
+	bool UpdateDialog();
 	bool IsDialogActive();
-	DialogState* GetDialogState();
+	bool IsDialogOpen();
+	glm::ivec4 GetDialogInnerBounds();
 }

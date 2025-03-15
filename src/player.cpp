@@ -290,13 +290,13 @@ static void TriggerInteraction(Actor* pPlayer, Actor* pInteractable) {
         Game::SetPlayerHealth(Game::GetPlayerMaxHealth());
 
         // Add dialogue
-        static constexpr const char* lines[] = {
+        /*static constexpr const char* lines[] = {
             "I just put a regular dialogue box here, but it would\nnormally be a level up menu.",
         };
 
         if (!Game::IsDialogActive()) {
             Game::OpenDialog(lines, 1);
-        }
+        }*/
     }
 }
 
