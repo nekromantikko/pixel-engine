@@ -18,10 +18,13 @@ constexpr s32 xpRemnantPrototypeIndex = 0x0c;
 static constexpr glm::ivec2 mapViewportOffset = { 7, 4 };
 static constexpr glm::ivec2 mapDialogViewportOffset = mapViewportOffset - 1;
 static constexpr glm::ivec2 mapSize = { 18, 10 };
+static constexpr glm::ivec2 mapCenter = mapSize / 2;
 static constexpr glm::ivec2 mapSizeTiles = mapSize * s32(METATILE_DIM_TILES);
 static constexpr glm::ivec2 mapSizeScreens = { mapSize.x, mapSizeTiles.y };
 static constexpr glm::ivec2 mapCenterScreens = mapSizeScreens / 2;
 static constexpr glm::ivec2 mapDialogSize = mapSize + 2;
+static constexpr glm::vec2 mapScrollMin = { -1, -1 };
+static constexpr glm::vec2 mapScrollMax = { (DUNGEON_GRID_DIM - mapSizeScreens.x) * 2 + 1, DUNGEON_GRID_DIM - mapSizeScreens.y + 1 };
 static constexpr r32 mapScrollSpeed = 0.125f;
 static glm::vec2 mapScrollOffset(0);
 static glm::vec2 mapScrollDir(0);
@@ -241,6 +244,8 @@ static void StepGameplayFrame() {
                 if (pPlayer) {
                     const glm::ivec2 playerGridPos = Game::GetDungeonGridCell(pPlayer->position);
                     mapScrollOffset = glm::vec2((playerGridPos.x - mapCenterScreens.x) * 2 + 1, playerGridPos.y - mapCenterScreens.y);
+                    mapScrollOffset.x = glm::clamp(mapScrollOffset.x, mapScrollMin.x, mapScrollMax.x);
+                    mapScrollOffset.y = glm::clamp(mapScrollOffset.y, mapScrollMin.y, mapScrollMax.y);
                 }
 
                 state = GAME_STATE_PAUSED;
@@ -386,6 +391,77 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
         const glm::ivec2 playerGridPos = Game::GetDungeonGridCell(pPlayer->position);
         DrawMapIcon(playerGridPos, 0xfc, 0x01, scrollOffset, worldBounds);
     }
+
+    if (!Game::IsDialogOpen()) {
+        return;
+    }
+
+    // Draw scroll arrows
+    Sprite sprite{};
+    sprite.palette = 0x01;
+    
+    if (scrollOffset.x > mapScrollMin.x) {
+        sprite.tileId = 0xf8;
+        glm::i16vec2 drawPos = Game::Rendering::WorldPosToScreenPixels({ worldBounds.x, worldBounds.y });
+        drawPos.x += TILE_DIM_PIXELS * 0.5f;
+        drawPos.y += mapCenter.y * s32(METATILE_DIM_PIXELS);
+
+        sprite.x = drawPos.x;
+        sprite.y = drawPos.y;
+        sprite.flipVertical = true;
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+
+        sprite.y -= TILE_DIM_PIXELS;
+        sprite.flipVertical = false;
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+    }
+    if (scrollOffset.x < mapScrollMax.x) {
+        sprite.tileId = 0xf8;
+        glm::i16vec2 drawPos = Game::Rendering::WorldPosToScreenPixels({ worldBounds.x, worldBounds.y });
+        drawPos.x += (mapSize.x * s32(METATILE_DIM_PIXELS)) - TILE_DIM_PIXELS * 1.5f;
+        drawPos.y += mapCenter.y * s32(METATILE_DIM_PIXELS);
+
+        sprite.x = drawPos.x;
+        sprite.y = drawPos.y;
+        sprite.flipHorizontal = true;
+        sprite.flipVertical = true;
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+
+        sprite.y -= TILE_DIM_PIXELS;
+        sprite.flipVertical = false;
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+    }
+    if (scrollOffset.y > mapScrollMin.y) {
+        sprite.tileId = 0xf9;
+        glm::i16vec2 drawPos = Game::Rendering::WorldPosToScreenPixels({ worldBounds.x, worldBounds.y });
+        drawPos.x += mapCenter.x * s32(METATILE_DIM_PIXELS);
+        drawPos.y += TILE_DIM_PIXELS * 0.5f;
+
+        sprite.x = drawPos.x;
+        sprite.y = drawPos.y;
+        sprite.flipHorizontal = true;
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+
+        sprite.x -= TILE_DIM_PIXELS;
+        sprite.flipHorizontal = false;
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+    }
+    if (scrollOffset.y < mapScrollMax.y) {
+        sprite.tileId = 0xf9;
+        glm::i16vec2 drawPos = Game::Rendering::WorldPosToScreenPixels({ worldBounds.x, worldBounds.y });
+        drawPos.x += mapCenter.x * s32(METATILE_DIM_PIXELS);
+        drawPos.y += (mapSize.y * s32(METATILE_DIM_PIXELS)) - TILE_DIM_PIXELS * 1.5f;
+
+        sprite.x = drawPos.x;
+        sprite.y = drawPos.y;
+        sprite.flipVertical = true;
+        sprite.flipHorizontal = true;
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+
+        sprite.x -= TILE_DIM_PIXELS;
+        sprite.flipHorizontal = false;
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+    }
 }
 
 static void StepPauseMenu() {
@@ -421,6 +497,8 @@ static void StepPauseMenu() {
         }
     
         mapScrollOffset += mapScrollSpeed * mapScrollDir;
+        mapScrollOffset.x = glm::clamp(mapScrollOffset.x, mapScrollMin.x, mapScrollMax.x);
+        mapScrollOffset.y = glm::clamp(mapScrollOffset.y, mapScrollMin.y, mapScrollMax.y);
     }
     else {
         mapScrollDir = glm::vec2(0.0f);
