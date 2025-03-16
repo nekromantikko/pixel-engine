@@ -253,6 +253,28 @@ static u8 DeterministicRandomBit(u32 input, u8 threshold) {
     return (input & 0xFF) < threshold;
 }
 
+static bool DrawMapIcon(const glm::i8vec2 gridCell, u8 tileId, u8 palette, const glm::ivec2& scrollOffset, const glm::vec4& worldBounds) {
+    const glm::ivec2 gridPos(gridCell.x * 2, gridCell.y); // Width = 2
+    const glm::vec2 mapOffset = glm::vec2(gridPos - scrollOffset) / r32(METATILE_DIM_TILES);
+    glm::vec2 worldPos = glm::vec2(worldBounds.x, worldBounds.y) + mapOffset;
+    worldPos.x += 1.0f / (METATILE_DIM_TILES * 2);
+
+    if (worldPos.x < worldBounds.x || worldPos.x >= worldBounds.z || worldPos.y < worldBounds.y || worldPos.y >= worldBounds.w) {
+        return false;
+    }
+
+    const glm::i16vec2 drawPos = Game::Rendering::WorldPosToScreenPixels(worldPos);
+
+    Sprite sprite{};
+    sprite.tileId = tileId;
+    sprite.palette = palette;
+    sprite.x = drawPos.x;
+    sprite.y = drawPos.y;
+    Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+
+    return true;
+}
+
 static void DrawMap(const glm::ivec2 scrollOffset) {
     const glm::vec2 viewportPos = Game::Rendering::GetViewportPos();
     const glm::ivec4 innerBounds = Game::GetDialogInnerBounds();
@@ -342,6 +364,17 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
             }
         }
     }
+
+    // Draw icons if dialog is fully open
+    if (!Game::IsDialogOpen()) {
+        return;
+    }
+
+    const Actor* pPlayer = Game::GetPlayer();
+    if (pPlayer) {
+        glm::ivec2 playerGridPos = Game::GetDungeonGridCell(pPlayer->position);
+        DrawMapIcon(playerGridPos, 0xfc, 0x01, scrollOffset, worldBounds);
+    }
 }
 
 static void StepPauseMenu() {
@@ -355,33 +388,40 @@ static void StepPauseMenu() {
 
     static glm::vec2 scrollOffset(0);
     static glm::vec2 scrollDir(0);
-    constexpr r32 scrollSpeed = 0.125f;
-    if (Game::Input::ButtonDown(BUTTON_DPAD_LEFT)) {
-        scrollDir.x = -1;
-    }
-    else if (Game::Input::ButtonDown(BUTTON_DPAD_RIGHT)) {
-        scrollDir.x = 1;
-    }
-    else if (glm::abs(scrollOffset.x - glm::roundEven(scrollOffset.x)) < scrollSpeed) {
-        scrollDir.x = 0;
-        scrollOffset.x = glm::roundEven(scrollOffset.x);
-    }
+    if (Game::IsDialogOpen()) {
+        constexpr r32 scrollSpeed = 0.125f;
+        if (Game::Input::ButtonDown(BUTTON_DPAD_LEFT)) {
+            scrollDir.x = -1;
+        }
+        else if (Game::Input::ButtonDown(BUTTON_DPAD_RIGHT)) {
+            scrollDir.x = 1;
+        }
+        else if (glm::abs(scrollOffset.x - glm::roundEven(scrollOffset.x)) < scrollSpeed) {
+            scrollDir.x = 0;
+            scrollOffset.x = glm::roundEven(scrollOffset.x);
+        }
 
-    if (Game::Input::ButtonDown(BUTTON_DPAD_UP)) {
-        scrollDir.y = -1;
+        if (Game::Input::ButtonDown(BUTTON_DPAD_UP)) {
+            scrollDir.y = -1;
+        }
+        else if (Game::Input::ButtonDown(BUTTON_DPAD_DOWN)) {
+            scrollDir.y = 1;
+        }
+        else if (glm::abs(scrollOffset.y - glm::roundEven(scrollOffset.y)) < scrollSpeed) {
+            scrollDir.y = 0;
+            scrollOffset.y = glm::roundEven(scrollOffset.y);
+        }
+    
+        scrollOffset += scrollSpeed * scrollDir;
     }
-    else if (Game::Input::ButtonDown(BUTTON_DPAD_DOWN)) {
-        scrollDir.y = 1;
-    }
-    else if (glm::abs(scrollOffset.y - glm::roundEven(scrollOffset.y)) < scrollSpeed) {
-        scrollDir.y = 0;
+    else {
+        scrollDir = glm::vec2(0.0f);
+        scrollOffset.x = glm::roundEven(scrollOffset.x);
         scrollOffset.y = glm::roundEven(scrollOffset.y);
     }
-    
-    scrollOffset += scrollSpeed * scrollDir;
-    DrawMap(scrollOffset);
 
     Game::Rendering::ClearSpriteLayers();
+    DrawMap(scrollOffset);
 
     // Draw HUD
     Game::UI::DrawPlayerHealthBar(gameData.playerMaxHealth);
@@ -733,6 +773,23 @@ const Level* Game::GetCurrentRoomTemplate() {
     }
 
     return Levels::GetLevel(pCurrentRoom->templateIndex);
+}
+
+glm::i8vec2 Game::GetDungeonGridCell(const glm::vec2& worldPos) {
+    const Level* pTemplate = GetCurrentRoomTemplate();
+    if (!pTemplate || !pTemplate->pTilemap) {
+        return { -1, -1 };
+    }
+
+    const glm::i8vec2 roomOffset = GetCurrentRoomOffset();
+    glm::i8vec2 screenOffset = {
+        s8(worldPos.x / VIEWPORT_WIDTH_METATILES),
+        s8(worldPos.y / VIEWPORT_HEIGHT_METATILES)
+    };
+    screenOffset.x = glm::clamp(screenOffset.x, s8(0), s8(pTemplate->pTilemap->width - 1));
+    screenOffset.y = glm::clamp(screenOffset.y, s8(0), s8(pTemplate->pTilemap->height - 1));
+
+    return roomOffset + screenOffset;
 }
 
 void Game::DiscoverScreen(const glm::i8vec2 gridCell) {

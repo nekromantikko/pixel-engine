@@ -193,27 +193,17 @@ static void AnimatePlayer(Actor* pPlayer) {
     AnimateStanding(pPlayer, headFrameIndex, legsFrameIndex, vOffset);
 }
 
-static glm::i8vec2 GetScreenPos(const glm::vec2 worldPos) {
-    return {
-        s8(worldPos.x / VIEWPORT_WIDTH_METATILES),
-        s8(worldPos.y / VIEWPORT_HEIGHT_METATILES)
-    };
-}
 
 static void HandleLevelExit(const Actor* pPlayer) {
     if (pPlayer == nullptr) {
         return;
     }
 
-    const Tilemap* pTilemap = Game::GetCurrentRoomTemplate()->pTilemap;
-    const glm::i8vec2 roomOffset = Game::GetCurrentRoomOffset();
-    const glm::i8vec2 screenPos = GetScreenPos(pPlayer->position);
-    const s8 xScreen = glm::clamp(screenPos.x, s8(0), s8(pTilemap->width - 1));
-    const s8 yScreen = glm::clamp(screenPos.y, s8(0), s8(pTilemap->height - 1));
-
     bool shouldExit = false;
     u8 nextDirection = 0;
-    glm::i8vec2 nextGridCell(roomOffset.x + xScreen, roomOffset.y + yScreen);
+    glm::i8vec2 nextGridCell = Game::GetDungeonGridCell(pPlayer->position);
+
+    const Tilemap* pTilemap = Game::GetCurrentRoomTemplate()->pTilemap;
 
     // Left side of screen is ugly, so trigger transition earlier
     if (pPlayer->position.x < 0.5f) {
@@ -243,13 +233,12 @@ static void HandleLevelExit(const Actor* pPlayer) {
 }
 
 static void HandleScreenDiscovery(const Actor* pPlayer) {
-    static glm::i8vec2 previousScreenPos = { -1, -1 };
+    static glm::i8vec2 previousGridCell = { -1, -1 };
 
-    const glm::i8vec2 screenPos = GetScreenPos(pPlayer->position);
-    if (screenPos != previousScreenPos) {
-        const glm::i8vec2 roomOffset = Game::GetCurrentRoomOffset();
-        Game::DiscoverScreen(screenPos + roomOffset);
-        previousScreenPos = screenPos;
+    const glm::i8vec2 gridCell = Game::GetDungeonGridCell(pPlayer->position);
+    if (gridCell != previousGridCell) {
+        Game::DiscoverScreen(gridCell);
+        previousGridCell = gridCell;
     }
 }
 
