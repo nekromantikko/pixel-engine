@@ -392,6 +392,11 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
         DrawMapIcon(playerGridPos, 0xfc, 0x01, scrollOffset, worldBounds);
     }
 
+    // Draw dropped exp with placeholder graphics
+    if (gameData.expRemnant.dungeonIndex == currentDungeonIndex) {
+        DrawMapIcon(gameData.expRemnant.gridOffset, 0x68, 0x00, scrollOffset, worldBounds);
+    }
+
     if (!Game::IsDialogOpen()) {
         return;
     }
