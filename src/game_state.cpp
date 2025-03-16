@@ -14,6 +14,18 @@
 constexpr s32 playerPrototypeIndex = 0;
 constexpr s32 xpRemnantPrototypeIndex = 0x0c;
 
+// Map drawing
+static constexpr glm::ivec2 mapViewportOffset = { 7, 4 };
+static constexpr glm::ivec2 mapDialogViewportOffset = mapViewportOffset - 1;
+static constexpr glm::ivec2 mapSize = { 18, 10 };
+static constexpr glm::ivec2 mapSizeTiles = mapSize * s32(METATILE_DIM_TILES);
+static constexpr glm::ivec2 mapSizeScreens = { mapSize.x, mapSizeTiles.y };
+static constexpr glm::ivec2 mapCenterScreens = mapSizeScreens / 2;
+static constexpr glm::ivec2 mapDialogSize = mapSize + 2;
+static constexpr r32 mapScrollSpeed = 0.125f;
+static glm::vec2 mapScrollOffset(0);
+static glm::vec2 mapScrollDir(0);
+
 static GameData gameData;
 static GameState state;
 
@@ -221,7 +233,16 @@ static void StepGameplayFrame() {
 
         // Pause menu
         if (Game::Input::ButtonPressed(BUTTON_START)) {
-            if (Game::OpenDialog({ 6, 3 }, { 20, 12 }, { 20, 0 })) {
+            if (Game::OpenDialog(mapDialogViewportOffset, mapDialogSize, { mapDialogSize.x, 0 })) {
+                mapScrollDir = glm::vec2(0.0f);
+
+                // Center map around player
+                const Actor* pPlayer = Game::GetPlayer();
+                if (pPlayer) {
+                    const glm::ivec2 playerGridPos = Game::GetDungeonGridCell(pPlayer->position);
+                    mapScrollOffset = glm::vec2((playerGridPos.x - mapCenterScreens.x) * 2 + 1, playerGridPos.y - mapCenterScreens.y);
+                }
+
                 state = GAME_STATE_PAUSED;
             }
         }
@@ -276,16 +297,13 @@ static bool DrawMapIcon(const glm::i8vec2 gridCell, u8 tileId, u8 palette, const
 }
 
 static void DrawMap(const glm::ivec2 scrollOffset) {
-    const glm::vec2 viewportPos = Game::Rendering::GetViewportPos();
+    const glm::ivec2 viewportPos = Game::Rendering::GetViewportPos();
     const glm::ivec4 innerBounds = Game::GetDialogInnerBounds();
     const glm::ivec4 worldBounds = innerBounds + glm::ivec4(viewportPos, viewportPos);
     const glm::ivec4 worldTileBounds = worldBounds * s32(METATILE_DIM_TILES);
 
-    // TODO: Draw map borders
-    const u32 xTileStart = worldTileBounds.x;
-    const u32 yTileStart = worldTileBounds.y;
-    const u32 xTileEnd = worldTileBounds.z;
-    const u32 yTileEnd = worldTileBounds.w;
+    const glm::ivec2 tileMin(worldTileBounds.x, worldTileBounds.y);
+    const glm::ivec2 tileMax(worldTileBounds.z, worldTileBounds.w);
 
     const Dungeon* pDungeon = Assets::GetDungeon(currentDungeonIndex);
     if (!pDungeon) {
@@ -297,14 +315,12 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
     // Draw map background
     constexpr u8 raggedIndexOffset = 0x10;
     constexpr u8 borderIndexOffset = 0x14;
-    const u32 xBorderStart = xTileStart - 1;
-    const u32 xBorderEnd = xTileEnd + 1;
-    const u32 yBorderStart = yTileStart - 1;
-    const u32 yBorderEnd = yTileEnd + 1;
-    for (int y = yBorderStart; y < yBorderEnd; ++y) {
-        for (int x = xBorderStart; x < xBorderEnd; ++x) {
-            u8 xIndex = (x > xBorderStart) ? ((x == xBorderEnd - 1) ? 2 : 1) : 0;
-            u8 yIndex = (y > yBorderStart) ? ((y == yBorderEnd - 1) ? 2 : 1) : 0;
+    const glm::ivec2 borderMin(tileMin - 1);
+    const glm::ivec2 borderMax(tileMax + 1);
+    for (int y = borderMin.y; y < borderMax.y; ++y) {
+        for (int x = borderMin.x; x < borderMax.x; ++x) {
+            u8 xIndex = (x > borderMin.x) ? ((x == borderMax.x - 1) ? 2 : 1) : 0;
+            u8 yIndex = (y > borderMin.y) ? ((y == borderMax.y - 1) ? 2 : 1) : 0;
             u8 tileIndex = xIndex + yIndex * 3;
 
             if (tileIndex & 1 && // Tile is edge (Not corner)
@@ -343,11 +359,11 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
             const u32 roomX = cell.screenIndex % TILEMAP_MAX_DIM_SCREENS;
             const u32 roomY = cell.screenIndex / TILEMAP_MAX_DIM_SCREENS;
 
-            const u32 yTile = y + yTileStart - scrollOffset.y;
+            const u32 yTile = y + tileMin.y - scrollOffset.y;
 
             // Room width = 2;
             for (u32 i = 0; i < 2; i++) {
-                const u32 xTile = (x * 2) + xTileStart + i - scrollOffset.x;
+                const u32 xTile = (x * 2) + tileMin.x + i - scrollOffset.x;
 
                 constexpr u8 indexOffset = 0x04;
                 const u8 xIndex[2] = {
@@ -358,21 +374,16 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
                 const u8 tileIndex = indexOffset + xIndex[i] + yIndex * 3;
 
                 // Clipping: Check if tile is within worldTileBounds
-                if (xTile >= xTileStart && xTile < xTileEnd && yTile >= yTileStart && yTile < yTileEnd) {
+                if (xTile >= tileMin.x && xTile < tileMax.x && yTile >= tileMin.y && yTile < tileMax.y) {
                     Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tileIndex);
                 }
             }
         }
     }
 
-    // Draw icons if dialog is fully open
-    if (!Game::IsDialogOpen()) {
-        return;
-    }
-
     const Actor* pPlayer = Game::GetPlayer();
     if (pPlayer) {
-        glm::ivec2 playerGridPos = Game::GetDungeonGridCell(pPlayer->position);
+        const glm::ivec2 playerGridPos = Game::GetDungeonGridCell(pPlayer->position);
         DrawMapIcon(playerGridPos, 0xfc, 0x01, scrollOffset, worldBounds);
     }
 }
@@ -385,43 +396,40 @@ static void StepPauseMenu() {
     if (Game::Input::ButtonPressed(BUTTON_START)) {
         Game::CloseDialog();
     }
-
-    static glm::vec2 scrollOffset(0);
-    static glm::vec2 scrollDir(0);
+    
     if (Game::IsDialogOpen()) {
-        constexpr r32 scrollSpeed = 0.125f;
         if (Game::Input::ButtonDown(BUTTON_DPAD_LEFT)) {
-            scrollDir.x = -1;
+            mapScrollDir.x = -1;
         }
         else if (Game::Input::ButtonDown(BUTTON_DPAD_RIGHT)) {
-            scrollDir.x = 1;
+            mapScrollDir.x = 1;
         }
-        else if (glm::abs(scrollOffset.x - glm::roundEven(scrollOffset.x)) < scrollSpeed) {
-            scrollDir.x = 0;
-            scrollOffset.x = glm::roundEven(scrollOffset.x);
+        else if (glm::abs(mapScrollOffset.x - glm::roundEven(mapScrollOffset.x)) < mapScrollSpeed) {
+            mapScrollDir.x = 0;
+            mapScrollOffset.x = glm::roundEven(mapScrollOffset.x);
         }
 
         if (Game::Input::ButtonDown(BUTTON_DPAD_UP)) {
-            scrollDir.y = -1;
+            mapScrollDir.y = -1;
         }
         else if (Game::Input::ButtonDown(BUTTON_DPAD_DOWN)) {
-            scrollDir.y = 1;
+            mapScrollDir.y = 1;
         }
-        else if (glm::abs(scrollOffset.y - glm::roundEven(scrollOffset.y)) < scrollSpeed) {
-            scrollDir.y = 0;
-            scrollOffset.y = glm::roundEven(scrollOffset.y);
+        else if (glm::abs(mapScrollOffset.y - glm::roundEven(mapScrollOffset.y)) < mapScrollSpeed) {
+            mapScrollDir.y = 0;
+            mapScrollOffset.y = glm::roundEven(mapScrollOffset.y);
         }
     
-        scrollOffset += scrollSpeed * scrollDir;
+        mapScrollOffset += mapScrollSpeed * mapScrollDir;
     }
     else {
-        scrollDir = glm::vec2(0.0f);
-        scrollOffset.x = glm::roundEven(scrollOffset.x);
-        scrollOffset.y = glm::roundEven(scrollOffset.y);
+        mapScrollDir = glm::vec2(0.0f);
+        mapScrollOffset.x = glm::roundEven(mapScrollOffset.x);
+        mapScrollOffset.y = glm::roundEven(mapScrollOffset.y);
     }
 
     Game::Rendering::ClearSpriteLayers();
-    DrawMap(scrollOffset);
+    DrawMap(mapScrollOffset);
 
     // Draw HUD
     Game::UI::DrawPlayerHealthBar(gameData.playerMaxHealth);
