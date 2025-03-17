@@ -1,6 +1,5 @@
 #include "dungeon.h"
 #include "debug.h"
-#include "level.h"
 #include <cstdio>
 
 static Dungeon dungeons[MAX_DUNGEON_COUNT];

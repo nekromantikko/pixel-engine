@@ -48,8 +48,8 @@ enum GameState {
 
 struct Actor;
 struct Dungeon;
+struct RoomTemplate;
 struct RoomInstance;
-struct Level;
 
 namespace Game {
     void InitGameData();
@@ -87,7 +87,7 @@ namespace Game {
     s32 GetCurrentDungeon();
     glm::i8vec2 GetCurrentRoomOffset();
     const RoomInstance* GetCurrentRoom();
-    const Level* GetCurrentRoomTemplate();
+    const RoomTemplate* GetCurrentRoomTemplate();
     glm::i8vec2 GetDungeonGridCell(const glm::vec2& worldPos);
     void DiscoverScreen(const glm::i8vec2 gridCell);
 

@@ -50,22 +50,19 @@ bool Tiles::PointInMapBounds(const Tilemap* pTilemap, const glm::vec2& pos) {
 		return false;
 	}
 
-	const s32 xMax = pTilemap->width * VIEWPORT_WIDTH_METATILES;
-	const s32 yMax = pTilemap->height * VIEWPORT_HEIGHT_METATILES;
-
-	if (pos.x >= xMax || pos.y >= yMax) {
+	if (pos.x >= pTilemap->width || pos.y >= pTilemap->height) {
 		return false;
 	}
 
 	return true;
 }
 
-s32 Tiles::GetScreenIndex(const glm::ivec2& pos) {
-    return (pos.x / VIEWPORT_WIDTH_METATILES) + (pos.y / VIEWPORT_HEIGHT_METATILES) * TILEMAP_MAX_DIM_SCREENS;
-}
+s32 Tiles::GetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
+	if (!PointInMapBounds(pTilemap, pos)) {
+		return -1;
+	}
 
-s32 Tiles::GetTileIndex(const glm::ivec2& pos) {
-    return (pos.x % VIEWPORT_WIDTH_METATILES) + (pos.y % VIEWPORT_HEIGHT_METATILES) * VIEWPORT_WIDTH_METATILES;
+    return (pos.x % pTilemap->width) + (pos.y % pTilemap->height) * pTilemap->width;
 }
 
 s32 Tiles::GetTilesetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
@@ -73,43 +70,56 @@ s32 Tiles::GetTilesetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
         return -1;
     }
 
-    const s32 screenIndex = GetScreenIndex(pos);
-    const s32 i = GetTileIndex(pos);
+    const s32 i = GetTileIndex(pTilemap, pos);
+	if (i < 0) {
+		return -1;
+	}
 
-    return pTilemap->screens[screenIndex].tiles[i];
+    return pTilemap->tiles[i];
 }
 
-const TilesetTile* Tiles::GetTilesetTile(const Tilemap* pTilemap, const s32& tilesetIndex) {
-    if (tilesetIndex == -1) {
+const TilesetTile* Tiles::GetTilesetTile(const Tilemap* pTilemap, const s32& tilesetTileIndex) {
+    if (tilesetTileIndex < 0) {
         return nullptr;
     }
 
-    return &pTilemap->pTileset->tiles[tilesetIndex];
+	const Tileset* pTileset = GetTileset();
+	if (!pTileset) {
+		return nullptr;
+	}
+
+    return &pTileset->tiles[tilesetTileIndex];
 }
 
 const TilesetTile* Tiles::GetTilesetTile(const Tilemap* pTilemap, const glm::ivec2& pos) {
     s32 index = GetTilesetTileIndex(pTilemap, pos);
+	if (index < 0) {
+		return nullptr;
+	}
+
     return GetTilesetTile(pTilemap, index);
 }
 
-bool Tiles::SetTilesetTile(Tilemap* pTilemap, s32 screenIndex, s32 tileIndex, const s32& tilesetIndex) {
-    if (tilesetIndex == -1) {
+bool Tiles::SetTilesetTile(Tilemap* pTilemap, s32 tileIndex, const s32& tilesetTileIndex) {
+	if (tilesetTileIndex < 0) {
         return false;
     }
 
-    pTilemap->screens[screenIndex].tiles[tileIndex] = tilesetIndex;
+    pTilemap->tiles[tileIndex] = tilesetTileIndex;
     return true;
 }
 
-bool Tiles::SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& tilesetIndex) {
+bool Tiles::SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& tilesetTileIndex) {
     if (!PointInMapBounds(pTilemap, pos)) {
         return false;
     }
 
-    const s32 screenIndex = GetScreenIndex(pos);
-    const s32 i = GetTileIndex(pos);
+    const s32 i = GetTileIndex(pTilemap, pos);
+	if (i < 0) {
+		return false;
+	}
 
-    return SetTilesetTile(pTilemap, screenIndex, i, tilesetIndex);
+    return SetTilesetTile(pTilemap, i, tilesetTileIndex);
 }
 #pragma endregion
 
@@ -157,51 +167,40 @@ Tileset* Tiles::GetTileset() {
 }
 
 #pragma region Compression
-void Tiles::CompressScreen(const TilemapScreen& screen, TilemapScreenCompressed& outCompressed) {
-	outCompressed.compressedTiles.clear();
-	outCompressed.compressedMetadata.clear();
+bool Tiles::CompressTiles(const u8* tiles, u32 count, std::vector<TileIndexRun>& outCompressed) {
+	if (tiles == nullptr) {
+		return false;
+	}
 
-	for (u32 i = 0; i < VIEWPORT_SIZE_METATILES;) {
-		u8 tile = screen.tiles[i];
+	outCompressed.clear();
+	
+	for (u32 i = 0; i < count;) {
+		u8 tile = tiles[i];
 		u16 length = 1;
 
-		while (i + length < VIEWPORT_SIZE_METATILES && screen.tiles[i + length] == tile && length < UCHAR_MAX) {
+		while (i + length < count && tiles[i + length] == tile && length < UCHAR_MAX) {
 			length++;
 		}
 
-		outCompressed.compressedTiles.emplace_back(tile, length);
+		outCompressed.emplace_back(tile, length);
 		i += length;
 	}
 
-	for (u32 i = 0; i < VIEWPORT_SIZE_METATILES;) {
-		TilemapTileMetadata metadata = screen.tileMetadata[i];
-		u16 length = 1;
-
-		while (i + length < VIEWPORT_SIZE_METATILES && screen.tileMetadata[i + length] == metadata && length < SHRT_MAX) {
-			length++;
-		}
-
-		outCompressed.compressedMetadata.emplace_back(metadata, length);
-		i += length;
-	}
-
-	memcpy(outCompressed.screenMetadata, screen.screenMetadata, TILEMAP_SCREEN_METADATA_SIZE);
+	return true;
 }
 
-void Tiles::DecompressScreen(const TilemapScreenCompressed& compressed, TilemapScreen& outScreen) {
-	u32 index = 0;
-	for (auto& tileRun : compressed.compressedTiles) {
-		for (u32 i = 0; i < tileRun.length; i++) {
-			outScreen.tiles[index++] = tileRun.tile;
-		}
+bool Tiles::DecompressTiles(const std::vector<TileIndexRun>& compressed, u8* outTiles) {
+	if (outTiles == nullptr) {
+		return false;
 	}
-	index = 0;
-	for (auto& metadataRun : compressed.compressedMetadata) {
-		for (u32 i = 0; i < metadataRun.length; i++) {
-			outScreen.tileMetadata[index++] = metadataRun.metadata;
+
+	u32 index = 0;
+	for (auto& tileRun : compressed) {
+		for (u32 i = 0; i < tileRun.length; i++) {
+			outTiles[index++] = tileRun.tile;
 		}
 	}
 
-	memcpy(outScreen.screenMetadata, compressed.screenMetadata, TILEMAP_SCREEN_METADATA_SIZE);
+	return true;
 }
 #pragma endregion

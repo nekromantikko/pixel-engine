@@ -12,11 +12,6 @@ constexpr u32 TILESET_SIZE = TILESET_DIM * TILESET_DIM;
 constexpr u32 TILESET_DIM_ATTRIBUTES = TILESET_DIM >> 1;
 constexpr u32 TILESET_ATTRIBUTE_COUNT = TILESET_DIM_ATTRIBUTES * TILESET_DIM_ATTRIBUTES;
 
-constexpr u32 TILEMAP_MAX_DIM_SCREENS = 4;
-constexpr u32 TILEMAP_MAX_SCREEN_COUNT = TILEMAP_MAX_DIM_SCREENS * TILEMAP_MAX_DIM_SCREENS;
-constexpr u32 TILEMAP_SCREEN_METADATA_SIZE = 32;
-constexpr u32 TILEMAP_TILE_METADATA_SIZE = 4;
-
 static_assert(TILESET_DIM == (1 << TILESET_DIM_LOG2));
 
 enum TilesetTileType : s32 {
@@ -39,38 +34,16 @@ struct Tileset {
 	u8 attributes[TILESET_ATTRIBUTE_COUNT];
 };
 
-typedef u8 TilemapScreenMetadata[TILEMAP_SCREEN_METADATA_SIZE];
-typedef u32 TilemapTileMetadata;
-
-struct TilemapScreen {
-	alignas(void*) TilemapScreenMetadata screenMetadata;
-
-	u8 tiles[VIEWPORT_SIZE_METATILES];
-	TilemapTileMetadata tileMetadata[VIEWPORT_SIZE_METATILES];
-};
-
 struct TileIndexRun {
 	u8 tile;
 	u8 length;
 };
 
-struct TileMetadataRun {
-	TilemapTileMetadata metadata;
-	alignas(4) u16 length;
-};
-
-struct TilemapScreenCompressed {
-	alignas(void*) TilemapScreenMetadata screenMetadata;
-
-	std::vector<TileIndexRun> compressedTiles;
-	std::vector<TileMetadataRun> compressedMetadata;
-};
-
 struct Tilemap {
-	s32 width;
-	s32 height;
-	Tileset* pTileset;
-	TilemapScreen screens[TILEMAP_MAX_SCREEN_COUNT];
+	u8 width;
+	u8 height;
+	u8 tilesetIndex;
+	u8* tiles;
 };
 
 namespace Tiles {
@@ -80,13 +53,12 @@ namespace Tiles {
 
 	// New API
 	bool PointInMapBounds(const Tilemap* pTilemap, const glm::vec2& pos);
-	s32 GetScreenIndex(const glm::ivec2& pos);
-	s32 GetTileIndex(const glm::ivec2& pos);
+	s32 GetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos);
 	s32 GetTilesetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos);
-	const TilesetTile* GetTilesetTile(const Tilemap* pTilemap, const s32& tilesetIndex);
+	const TilesetTile* GetTilesetTile(const Tilemap* pTilemap, const s32& tilesetTileIndex);
 	const TilesetTile* GetTilesetTile(const Tilemap* pTilemap, const glm::ivec2& pos);
-	bool SetTilesetTile(Tilemap* pTilemap, s32 screenIndex, s32 tileIndex, const s32& tilesetIndex);
-	bool SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& tilesetIndex);
+	bool SetTilesetTile(Tilemap* pTilemap, s32 tileIndex, const s32& tilesetTileIndex);
+	bool SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& tilesetTileIndex);
 
 	// Temp until we have an asset manager
 	void LoadTileset(const char* fname);
@@ -94,6 +66,6 @@ namespace Tiles {
 	Tileset* GetTileset();
 
 	// Compression
-	void CompressScreen(const TilemapScreen& screen, TilemapScreenCompressed& outCompressed);
-	void DecompressScreen(const TilemapScreenCompressed& compressed, TilemapScreen& outScreen);
+	bool CompressTiles(const u8* tiles, u32 count, std::vector<TileIndexRun>& outCompressed);
+	bool DecompressTiles(const std::vector<TileIndexRun>& compressed, u8* outTiles);
 }

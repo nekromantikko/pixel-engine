@@ -1,6 +1,6 @@
 #include "game_rendering.h"
 #include "game_state.h"
-#include "level.h"
+#include "room.h"
 #include "dungeon.h"
 #include "system.h"
 #include "tiles.h"
@@ -42,9 +42,9 @@ static void UpdateScreenScroll() {
 
 static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
     Nametable* pNametables = Rendering::GetNametablePtr(0);
-    const Tilemap* pTilemap = Game::GetCurrentRoomTemplate()->pTilemap;
+    const RoomTemplate* pTemplate = Game::GetCurrentRoomTemplate();
 
-	if (pTilemap == nullptr) {
+	if (pTemplate == nullptr) {
 		return;
 	}
 
@@ -52,8 +52,8 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
 	viewportPos += delta;
 
 	const glm::vec2 max = { 
-        (pTilemap->width - 1) * VIEWPORT_WIDTH_METATILES,
-        (pTilemap->height - 1) * VIEWPORT_HEIGHT_METATILES };
+        (pTemplate->width - 1) * VIEWPORT_WIDTH_METATILES,
+        (pTemplate->height - 1) * VIEWPORT_HEIGHT_METATILES };
 
     viewportPos = glm::clamp(viewportPos, glm::vec2(0), max);
     
@@ -80,6 +80,8 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
     const s32 yStart = currMetatile.y - BUFFER_DIM_METATILES;
     const s32 yEnd = VIEWPORT_HEIGHT_METATILES + currMetatile.y + BUFFER_DIM_METATILES;
 
+    const Tileset* pTileset = Tiles::GetTileset();
+
     for (s32 x = xStart; x < xEnd; x++) {
         for (s32 y = yStart; y < yEnd; y++) {
             // Only load tiles that weren't already loaded
@@ -87,8 +89,8 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
                 continue;
             }
 
-            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, { x, y });
-            const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
+            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(&pTemplate->tilemap, { x, y });
+            const TilesetTile* tile = Tiles::GetTilesetTile(&pTemplate->tilemap, tilesetIndex);
 
             if (!tile) {
                 continue;
@@ -98,7 +100,7 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
             const glm::ivec2 nametableOffset = Rendering::Util::GetNametableOffsetFromMetatilePos({ x, y });
 
             const Metatile& metatile = tile->metatile;
-            const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, tilesetIndex);
+            const s32 palette = Tiles::GetTilesetPalette(pTileset, tilesetIndex);
             Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile, palette);
         }
     }
@@ -181,9 +183,9 @@ glm::vec2 Game::Rendering::SetViewportPos(const glm::vec2& pos, bool loadTiles) 
 
 void Game::Rendering::RefreshViewport() {
     Nametable* pNametables = ::Rendering::GetNametablePtr(0);
-    const Tilemap* pTilemap = Game::GetCurrentRoomTemplate()->pTilemap;
+    const RoomTemplate* pTemplate = Game::GetCurrentRoomTemplate();
 
-    if (pTilemap == nullptr) {
+    if (pTemplate == nullptr) {
         return;
     }
 
@@ -193,10 +195,12 @@ void Game::Rendering::RefreshViewport() {
     const s32 yStart = viewportPos.y - BUFFER_DIM_METATILES;
     const s32 yEnd = VIEWPORT_HEIGHT_METATILES + viewportPos.y + BUFFER_DIM_METATILES;
 
+    const Tileset* pTileset = Tiles::GetTileset();
+
     for (s32 x = xStart; x < xEnd; x++) {
         for (s32 y = yStart; y < yEnd; y++) {
-            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, { x, y });
-            const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
+            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(&pTemplate->tilemap, { x, y });
+            const TilesetTile* tile = Tiles::GetTilesetTile(&pTemplate->tilemap, tilesetIndex);
 
             if (!tile) {
                 continue;
@@ -206,7 +210,7 @@ void Game::Rendering::RefreshViewport() {
             const glm::ivec2 nametableOffset = ::Rendering::Util::GetNametableOffsetFromMetatilePos({ x, y });
 
             const Metatile& metatile = tile->metatile;
-            const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, tilesetIndex);
+            const s32 palette = Tiles::GetTilesetPalette(pTileset, tilesetIndex);
             ::Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile, palette);
         }
     }

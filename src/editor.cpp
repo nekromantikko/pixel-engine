@@ -12,7 +12,7 @@
 #include "rendering_util.h"
 #include "metasprite.h"
 #include "game.h"
-#include "level.h"
+#include "room.h"
 #include "game_rendering.h"
 #include "game_state.h"
 #include "actors.h"
@@ -341,62 +341,28 @@ static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
 	}
 }
 
-static void DrawLevel(const Level* pLevel, ImVec2 pos, r32 scale) {
+static void DrawTilemap(const Tilemap* pTilemap, ImVec2 metatileOffset, ImVec2 metatileSize, ImVec2 pos, r32 scale) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-	const Tilemap* pTilemap = pLevel->pTilemap;
-	const Tileset* pTileset = pTilemap->pTileset;
-
-	const u32 screenCount = pTilemap->width * pTilemap->height;
-	const u32 tileCount = screenCount * VIEWPORT_SIZE_TILES;
+	const Tileset* pTileset = Tiles::GetTileset();
+	const u32 tileCount = metatileSize.x * metatileSize.y * METATILE_TILE_COUNT;
 
 	drawList->PushTextureID(pContext->chrTexture);
-	drawList->PrimReserve(tileCount * 6, tileCount * 4);
+	drawList->PrimReserve(tileCount * 6, tileCount * 4); // NOTE: Seems as if primiteves for max. 4096 tiles can be reserved...
 
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
 	ImVec2 uv[METATILE_TILE_COUNT * 4];
 
-	struct ScreenDrawData {
-		ImVec2 verts[VIEWPORT_SIZE_METATILES * METATILE_TILE_COUNT * 4];
-		ImVec2 uv[VIEWPORT_SIZE_METATILES * METATILE_TILE_COUNT * 4];
-	};
-	static ScreenDrawData screenData[TILEMAP_MAX_SCREEN_COUNT];
-
-	std::span<const TilemapScreen> screenSpan(pTilemap->screens, TILEMAP_MAX_SCREEN_COUNT);
-	std::for_each(std::execution::par, screenSpan.begin(), screenSpan.end(), [&](const TilemapScreen& screen) {
-		const u32 screenIndex = &screen - pTilemap->screens;
-		const u32 xScreen = screenIndex % TILEMAP_MAX_DIM_SCREENS;
-		const u32 yScreen = screenIndex / TILEMAP_MAX_DIM_SCREENS;
-
-		if (xScreen >= pTilemap->width || yScreen >= pTilemap->height) {
-			return;
-		}
-
-		const u32 outIndex = xScreen + pTilemap->width * yScreen;
-		ScreenDrawData& data = screenData[outIndex];
-		for (u32 i = 0; i < VIEWPORT_SIZE_METATILES; i++) {
-			const u8 tilesetTileIndex = screen.tiles[i];
+	for (u32 y = metatileOffset.y; y < metatileOffset.y + metatileSize.y; y++) {
+		for (u32 x = metatileOffset.y; x < metatileOffset.x + metatileSize.x; x++) {
+			const u32 i = x + y * pTilemap->width;
+			const u8 tilesetTileIndex = pTilemap->tiles[i];
 			const TilesetTile& tilesetTile = pTileset->tiles[tilesetTileIndex];
 			const Metatile& metatile = tilesetTile.metatile;
 			const s32 palette = Tiles::GetTilesetPalette(pTileset, tilesetTileIndex);
 
-			const u32 xMetatile = xScreen * VIEWPORT_WIDTH_METATILES + i % VIEWPORT_WIDTH_METATILES;
-			const u32 yMetatile = yScreen * VIEWPORT_HEIGHT_METATILES + i / VIEWPORT_WIDTH_METATILES;
-			const ImVec2 metatileOffset = ImVec2(pos.x + xMetatile * scale, pos.y + yMetatile * scale);
-
-			ImVec2* verts = data.verts + (METATILE_TILE_COUNT * 4) * i;
-			ImVec2* uv = data.uv + (METATILE_TILE_COUNT * 4) * i;
-
+			const ImVec2 metatileOffset = ImVec2(pos.x + x * scale, pos.y + y * scale);
 			GetMetatileVerticesAVX(metatile, palette, metatileOffset, scale, verts, uv);
-		}
-
-	});
-
-	for (u32 s = 0; s < screenCount; s++) {
-		const auto& data = screenData[s];
-		for (u32 i = 0; i < VIEWPORT_SIZE_METATILES; i++) {
-			const ImVec2* verts = data.verts + (METATILE_TILE_COUNT * 4) * i;
-			const ImVec2* uv = data.uv + (METATILE_TILE_COUNT * 4) * i;
 			WriteMetatile(verts, uv);
 		}
 	}
@@ -462,7 +428,7 @@ static void DrawMetasprite(const Metasprite* pMetasprite, const ImVec2& origin, 
 	}
 }
 
-static AABB GetActorBoundingBox(const Actor* pActor) {
+static AABB GetActorBoundingBox(const RoomActor* pActor) {
 	AABB result{};
 	if (pActor == nullptr) {
 		return result;
@@ -471,7 +437,8 @@ static AABB GetActorBoundingBox(const Actor* pActor) {
 	constexpr r32 tileWorldDim = 1.0f / METATILE_DIM_TILES;
 	
 	// TODO: What if animation changes bounds?
-	const Animation& anim = pActor->pPrototype->animations[0];
+	const ActorPrototype* pPrototype = Assets::GetActorPrototype(pActor->prototypeIndex);
+	const Animation& anim = pPrototype->animations[0];
 	switch (anim.type) {
 	case ANIMATION_TYPE_SPRITES: {
 		const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex);
@@ -554,38 +521,6 @@ static void swap(Metasprite& a, Metasprite& b) {
 	b.spriteCount = tempSpriteCount;
 	memcpy(nameB, tempName, METASPRITE_MAX_NAME_LENGTH);
 	memcpy(b.spritesRelativePos, tempSprites, METASPRITE_MAX_SPRITE_COUNT * sizeof(Sprite));
-}
-
-static void swap(Level& a, Level& b) {
-	Tilemap* levelATilemap = a.pTilemap;
-	char* levelAName = a.name;
-	Tilemap* levelBTilemap = b.pTilemap;
-	char* levelBName = b.name;
-
-	// Copy A to temp
-	Level temp = a;
-
-	Tilemap* tempTilemap = new Tilemap{};
-	char tempName[LEVEL_MAX_NAME_LENGTH];
-
-	memcpy(tempTilemap, levelATilemap, sizeof(Tilemap));
-	memcpy(tempName, levelAName, LEVEL_MAX_NAME_LENGTH);
-
-	// Copy B to A (But keep pointers pointing in original location)
-	a = b;
-	a.pTilemap = levelATilemap;
-	a.name = levelAName;
-	memcpy(levelATilemap, levelBTilemap, sizeof(Tilemap));
-	memcpy(levelAName, levelBName, LEVEL_MAX_NAME_LENGTH);
-
-	// Copy Temp to B
-	b = temp;
-	b.pTilemap = levelBTilemap;
-	b.name = levelBName;
-	memcpy(levelBTilemap, tempTilemap, sizeof(Tilemap));
-	memcpy(levelBName, tempName, LEVEL_MAX_NAME_LENGTH);
-
-	delete tempTilemap;
 }
 
 // Callback for displaying waveform in audio window
@@ -1406,7 +1341,7 @@ static void DrawActorColliders(const glm::vec2& viewportPos, const ImVec2 topLef
 	}
 }
 
-static void DrawGameViewOverlay(const Level* pLevel, const glm::vec2& viewportPos, const ImVec2 topLeft, const ImVec2 btmRight, const r32 renderScale, bool drawBorders, bool drawCollisionCells, bool drawHitboxes) {
+static void DrawGameViewOverlay(const RoomTemplate* pTemplate, const glm::vec2& viewportPos, const ImVec2 topLeft, const ImVec2 btmRight, const r32 renderScale, bool drawBorders, bool drawCollisionCells, bool drawHitboxes) {
 	const glm::vec2 viewportPixelPos = viewportPos * r32(METATILE_DIM_PIXELS);
 	const ImVec2 viewportDrawSize = ImVec2(VIEWPORT_WIDTH_PIXELS * renderScale, VIEWPORT_HEIGHT_PIXELS * renderScale);
 
@@ -1416,15 +1351,13 @@ static void DrawGameViewOverlay(const Level* pLevel, const glm::vec2& viewportPo
 	const s32 screenEndX = (viewportPos.x + VIEWPORT_WIDTH_METATILES) / VIEWPORT_WIDTH_METATILES;
 	const s32 screenEndY = (viewportPos.y + VIEWPORT_HEIGHT_METATILES) / VIEWPORT_HEIGHT_METATILES;
 
-	const Tilemap* pTilemap = pLevel->pTilemap;
-
 	for (s32 y = screenStartY; y <= screenEndY; y++) {
 		for (s32 x = screenStartX; x <= screenEndX; x++) {
 			const glm::vec2 screenPixelPos = { x * VIEWPORT_WIDTH_PIXELS, y * VIEWPORT_HEIGHT_PIXELS };
 			const ImVec2 pMin = ImVec2((screenPixelPos.x - viewportPixelPos.x) * renderScale + topLeft.x, (screenPixelPos.y - viewportPixelPos.y) * renderScale + topLeft.y);
 			const ImVec2 pMax = ImVec2(pMin.x + viewportDrawSize.x, pMin.y + viewportDrawSize.y);
 
-			const s32 i = x + y * TILEMAP_MAX_DIM_SCREENS;
+			const s32 i = x + y * ROOM_MAX_DIM_SCREENS;
 
 			if (drawBorders) {
 				DrawScreenBorders(i, pMin, pMax, renderScale);
@@ -1441,12 +1374,12 @@ static void DrawGameViewOverlay(const Level* pLevel, const glm::vec2& viewportPo
 	}
 }
 
-static PoolHandle<Actor> GetHoveredActorHandle(const Level* pLevel, const ImVec2& mousePosInWorldCoords) {
-	auto result = PoolHandle<Actor>::Null();
+static PoolHandle<RoomActor> GetHoveredActorHandle(const RoomTemplate* pTemplate, const ImVec2& mousePosInWorldCoords) {
+	auto result = PoolHandle<RoomActor>::Null();
 	// TODO: Some quadtree action needed desperately
-	for (u32 i = 0; i < pLevel->actors.Count(); i++) {
-		PoolHandle<Actor> handle = pLevel->actors.GetHandle(i);
-		const Actor* pActor = pLevel->actors.Get(handle);
+	for (u32 i = 0; i < pTemplate->actors.Count(); i++) {
+		PoolHandle<RoomActor> handle = pTemplate->actors.GetHandle(i);
+		const RoomActor* pActor = pTemplate->actors.Get(handle);
 
 		const AABB bounds = GetActorBoundingBox(pActor);
 		if (Collision::PointInsideBox({ mousePosInWorldCoords.x, mousePosInWorldCoords.y }, bounds, pActor->position)) {
@@ -1457,7 +1390,7 @@ static PoolHandle<Actor> GetHoveredActorHandle(const Level* pLevel, const ImVec2
 	return result;
 }
 
-static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboard& clipboard, u32& selectedLevel, PoolHandle<Actor>& selectedActorHandle) {
+static void DrawGameView(RoomTemplate* pTemplate, bool editing, u32 editMode, LevelClipboard& clipboard, u32& selectedLevel, PoolHandle<RoomActor>& selectedActorHandle) {
 	glm::vec2 viewportPos = Game::Rendering::GetViewportPos();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
 
@@ -1502,7 +1435,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 
 		if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
 			dragStartPos = io.MousePos;
-			selectedActorHandle = PoolHandle<Actor>::Null();
+			selectedActorHandle = PoolHandle<RoomActor>::Null();
 		}
 
 		if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
@@ -1522,22 +1455,23 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 		}
 	}
 
-	DrawGameViewOverlay(pLevel, viewportPos, topLeft, btmRight, renderScale, editing, drawCollisionCells, drawHitboxes);
+	DrawGameViewOverlay(pTemplate, viewportPos, topLeft, btmRight, renderScale, editing, drawCollisionCells, drawHitboxes);
 
 	if (editing) {
 		// Draw actors
 		const glm::vec2 viewportPixelPos = viewportPos * r32(METATILE_DIM_PIXELS);
-		for (u32 i = 0; i < pLevel->actors.Count(); i++)
+		for (u32 i = 0; i < pTemplate->actors.Count(); i++)
 		{
-			PoolHandle<Actor> handle = pLevel->actors.GetHandle(i);
-			const Actor* pActor = pLevel->actors.Get(handle);
+			PoolHandle<RoomActor> handle = pTemplate->actors.GetHandle(i);
+			const RoomActor* pActor = pTemplate->actors.Get(handle);
 
 			const glm::vec2 actorPixelPos = pActor->position * (r32)METATILE_DIM_PIXELS;
 			const glm::vec2 pixelOffset = actorPixelPos - viewportPixelPos;
 			const ImVec2 drawPos = ImVec2(topLeft.x + pixelOffset.x * renderScale, topLeft.y + pixelOffset.y * renderScale);
 
 			const u8 opacity = editMode == EDIT_MODE_ACTORS ? 255 : 80;
-			DrawActor(pActor->pPrototype, drawPos, renderScale, 0, 0, IM_COL32(255, 255, 255, opacity));
+			const ActorPrototype* pPrototype = Assets::GetActorPrototype(pActor->prototypeIndex);
+			DrawActor(pPrototype, drawPos, renderScale, 0, 0, IM_COL32(255, 255, 255, opacity));
 		}
 
 
@@ -1546,9 +1480,9 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 		switch (editMode) {
 		case EDIT_MODE_ACTORS:
 		{
-			Actor* pActor = pLevel->actors.Get(selectedActorHandle);
+			RoomActor* pActor = pTemplate->actors.Get(selectedActorHandle);
 			const AABB actorBounds = GetActorBoundingBox(pActor);
-			PoolHandle<Actor> hoveredActorHandle = GetHoveredActorHandle(pLevel, mousePosInWorldCoords);
+			PoolHandle<RoomActor> hoveredActorHandle = GetHoveredActorHandle(pTemplate, mousePosInWorldCoords);
 
 			// Selection
 			if (!scrolling) {
@@ -1568,16 +1502,16 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 			}
 
 			if (ImGui::BeginPopup("ActorContextMenu")) {
-				if (selectedActorHandle != PoolHandle<Actor>::Null()) {
+				if (selectedActorHandle != PoolHandle<RoomActor>::Null()) {
 					if (ImGui::MenuItem("Remove actor")) {
-						pLevel->actors.Remove(selectedActorHandle);
+						pTemplate->actors.Remove(selectedActorHandle);
 					}
 				}
 				else if (ImGui::MenuItem("Add actor")) {
-					PoolHandle<Actor> handle = pLevel->actors.Add();
-					Actor* pNewActor = pLevel->actors.Get(handle);
-					pNewActor->pPrototype = Assets::GetActorPrototype(0);
-					pNewActor->persistId = u64(Random::GenerateUUID32());
+					PoolHandle<RoomActor> handle = pTemplate->actors.Add();
+					RoomActor* pNewActor = pTemplate->actors.Get(handle);
+					pNewActor->prototypeIndex = 0;
+					pNewActor->id = Random::GenerateUUID32();
 					pNewActor->position = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
 				}
 				ImGui::EndPopup();
@@ -1595,7 +1529,6 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 		}
 		case EDIT_MODE_TILES:
 		{
-			Tilemap* pTilemap = pLevel->pTilemap;
 			static bool selecting = false;
 
 			// Selection
@@ -1634,7 +1567,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 							u32 clipboardIndex = y * selectionWidth + x;
 
 							const glm::ivec2 metatileWorldPos = { selectionTopLeft.x + x, selectionTopLeft.y + y };
-							const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, metatileWorldPos);
+							const s32 tilesetIndex = Tiles::GetTilesetTileIndex(&pTemplate->tilemap, metatileWorldPos);
 							clipboard.clipboard[clipboardIndex] = tilesetIndex;
 						}
 					}
@@ -1656,14 +1589,15 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 					const ImVec2 metatileInViewportCoords = ImVec2(metatileWorldPos.x - viewportPos.x, metatileWorldPos.y - viewportPos.y);
 					const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
 					const u8 metatileIndex = clipboard.clipboard[clipboardIndex];
-							
-					const Metatile& metatile = pTilemap->pTileset->tiles[metatileIndex].metatile;
-					const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, metatileIndex);
+					
+					const Tileset* pTileset = Tiles::GetTileset();
+					const Metatile& metatile = pTileset->tiles[metatileIndex].metatile;
+					const s32 palette = Tiles::GetTilesetPalette(pTileset, metatileIndex);
 					DrawMetatile(metatile, metatileInPixelCoords, tileDrawSize, palette, IM_COL32(255, 255, 255, 127));
 
 					// Paint metatiles
 					if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
-						Tiles::SetTilesetTile(pTilemap, metatileWorldPos, metatileIndex);
+						Tiles::SetTilesetTile(&pTemplate->tilemap, metatileWorldPos, metatileIndex);
 
 						const u32 nametableIndex = Rendering::Util::GetNametableIndexFromMetatilePos(metatileWorldPos);
 						const glm::ivec2 nametablePos = Rendering::Util::GetNametableOffsetFromMetatilePos(metatileWorldPos);
@@ -1683,11 +1617,10 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 	}
 	drawList->PopClipRect();
 
-	ImGui::BeginDisabled(pLevel == nullptr);
+	ImGui::BeginDisabled(pTemplate == nullptr);
 	if (ImGui::Button(editing ? "Play mode" : "Edit mode")) {
 		if (!editing) {
-			// This is a little bit cursed
-			u32 loadedLevelIndex = pLevel - Levels::GetLevelsPtr();
+			u32 loadedLevelIndex = Assets::GetRoomTemplateIndex(pTemplate);
 			selectedLevel = loadedLevelIndex;
 
 			Game::UnloadRoom();
@@ -1706,7 +1639,7 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 		}
 	}
 
-	ImGui::Text("Currently loaded level: %s", pLevel->name);
+	ImGui::Text("Currently loaded level: %s", pTemplate->name);
 	ImGui::Text("Viewport pos = (%f, %f)", viewportPos.x, viewportPos.y);
 
 	ImGui::SeparatorText("Debug");
@@ -1714,28 +1647,23 @@ static void DrawGameView(Level* pLevel, bool editing, u32 editMode, LevelClipboa
 	ImGui::Checkbox("Draw actor hitboxes", &drawHitboxes);
 }
 
-static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, LevelToolsState& state, LevelClipboard& clipboard, PoolHandle<Actor>& selectedActorHandle) {
+static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, LevelToolsState& state, LevelClipboard& clipboard, PoolHandle<RoomActor>& selectedActorHandle) {
 	const ImGuiTabBarFlags tabBarFlags = ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_AutoSelectNewTabs;
 	
-	Level* pLevels = Levels::GetLevelsPtr();
-	Level& level = pLevels[selectedLevel];
+	RoomTemplate* pTemplate = Assets::GetRoomTemplate(selectedLevel);
 
 	if (ImGui::BeginTabBar("Level tool tabs")) {
 		if (state.propertiesOpen && ImGui::BeginTabItem("Properties", &state.propertiesOpen)) {
 			editMode = EDIT_MODE_NONE;
 
-			ImGui::SeparatorText(level.name);
+			ImGui::SeparatorText(pTemplate->name);
 
-			ImGui::InputText("Name", level.name, LEVEL_MAX_NAME_LENGTH);
+			ImGui::InputText("Name", pTemplate->name, ROOM_MAX_NAME_LENGTH);
 
-			u8 type = level.flags.type % LEVEL_TYPE_COUNT;
-			DrawTypeSelectionCombo("Type", LEVEL_TYPE_NAMES, LEVEL_TYPE_COUNT, type);
-			level.flags.type = type;
-
-			s32 size[2] = { level.pTilemap->width, level.pTilemap->height };
+			s32 size[2] = { pTemplate->width, pTemplate->height };
 			if (ImGui::InputInt2("Size", size)) {
-				level.pTilemap->width = glm::clamp(size[0], 1, s32(TILEMAP_MAX_DIM_SCREENS));
-				level.pTilemap->height = glm::clamp(size[1], 1, s32(TILEMAP_MAX_DIM_SCREENS));
+				pTemplate->width = glm::clamp(size[0], 1, s32(ROOM_MAX_DIM_SCREENS));
+				pTemplate->height = glm::clamp(size[1], 1, s32(ROOM_MAX_DIM_SCREENS));
 			}
 
 			// Screens
@@ -1788,7 +1716,8 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 			const s32 currentSelection = (clipboard.size.x == 1 && clipboard.size.y == 1) ? clipboard.clipboard[0] : -1;
 			s32 newSelection = currentSelection;
 
-			DrawTileset(level.pTilemap->pTileset, ImGui::GetContentRegionAvail().x - style.WindowPadding.x, &newSelection);
+			const Tileset* pTileset = Tiles::GetTileset();
+			DrawTileset(pTileset, ImGui::GetContentRegionAvail().x - style.WindowPadding.x, &newSelection);
 
 			// Rewrite level editor clipboard if new selection was made
 			if (newSelection != currentSelection) {
@@ -1807,7 +1736,7 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 		if (state.actorsOpen && ImGui::BeginTabItem("Actors", &state.actorsOpen)) {
 			editMode = EDIT_MODE_ACTORS;
 
-			Actor* pActor = level.actors.Get(selectedActorHandle);
+			RoomActor* pActor = pTemplate->actors.Get(selectedActorHandle);
 			if (pActor == nullptr) {
 				ImGui::Text("No actor selected");
 			}
@@ -1815,17 +1744,16 @@ static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, Leve
 				ImGui::PushID(selectedActorHandle.Raw());
 				ImGui::BeginDisabled(!editing);
 
-				ImGui::Text("UUID: %llu", pActor->persistId);
+				ImGui::Text("UUID: %lu", pActor->id);
 
-				if (ImGui::BeginCombo("Prototype", Assets::GetActorPrototypeName(pActor->pPrototype))) {
+				if (ImGui::BeginCombo("Prototype", Assets::GetActorPrototypeName(pActor->prototypeIndex))) {
 					for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++) {
 						ImGui::PushID(i);
 
-						const ActorPrototype* pPrototype = Assets::GetActorPrototype(i);
-						const bool selected = pActor->pPrototype == pPrototype;
+						const bool selected = pActor->prototypeIndex == i;
 
-						if (ImGui::Selectable(Assets::GetActorPrototypeName(pPrototype), selected)) {
-							pActor->pPrototype = pPrototype;
+						if (ImGui::Selectable(Assets::GetActorPrototypeName(i), selected)) {
+							pActor->prototypeIndex = i;
 						}
 
 						if (selected) {
@@ -1898,35 +1826,34 @@ static void DrawGameWindow() {
 		.templateIndex = 0,
 	};
 	u32 currentRoomTemplateIndex = Game::GetCurrentRoom()->templateIndex;
-	Level* pCurrentLevel = Levels::GetLevel(currentRoomTemplateIndex);
+	RoomTemplate* pCurrentRoomTemplate = Assets::GetRoomTemplate(currentRoomTemplateIndex);
 
 	const glm::vec2 viewportPos = Game::Rendering::GetViewportPos();
 	Nametable* pNametables = Rendering::GetNametablePtr(0);
 
 	static u32 selectedLevel = 0;
-	static PoolHandle<Actor> selectedActorHandle = PoolHandle<Actor>::Null();
+	static PoolHandle<RoomActor> selectedActorHandle = PoolHandle<RoomActor>::Null();
 
 	static u32 editMode = EDIT_MODE_NONE;
 	static LevelClipboard clipboard{};
 	static LevelToolsState toolsState{};
 
-	const bool noLevelLoaded = pCurrentLevel == nullptr;
+	const bool noLevelLoaded = pCurrentRoomTemplate == nullptr;
 	bool editing = Game::IsPaused() && !noLevelLoaded;
 
-	Level* pLevels = Levels::GetLevelsPtr();
-	Level& editedLevel = pLevels[selectedLevel];
+	RoomTemplate* pEditedRoom = Assets::GetRoomTemplate(selectedLevel);
 
-	const bool editingCurrentLevel = pCurrentLevel == &editedLevel;
+	const bool editingCurrentLevel = pCurrentRoomTemplate == pEditedRoom;
 
 	if (ImGui::BeginMenuBar())
 	{
 		if (ImGui::BeginMenu("File"))
 		{
 			if (ImGui::MenuItem("Save")) {
-				Levels::SaveLevels("assets/levels.lev");
+				Assets::SaveRoomTemplates("assets/rooms.ass");
 			}
 			if (ImGui::MenuItem("Revert changes")) {
-				Levels::LoadLevels("assets/levels.lev");
+				Assets::LoadRoomTemplates("assets/rooms.ass");
 				Game::Rendering::RefreshViewport();
 			}
 			ImGui::EndMenu();
@@ -1950,17 +1877,18 @@ static void DrawGameWindow() {
 
 	ImGui::BeginChild("Level list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 	{
-		static constexpr u32 maxLabelNameLength = LEVEL_MAX_NAME_LENGTH + 8;
+		static constexpr u32 maxLabelNameLength = ROOM_MAX_NAME_LENGTH + 8;
 		char label[maxLabelNameLength];
 
-		for (u32 i = 0; i < MAX_LEVEL_COUNT; i++)
+		for (u32 i = 0; i < MAX_ROOM_TEMPLATE_COUNT; i++)
 		{
 			ImGui::PushID(i);
 
-			snprintf(label, maxLabelNameLength, "%#04x: %s", i, pLevels[i].name);
+			const RoomTemplate* pTemplate = Assets::GetRoomTemplate(i);
+			snprintf(label, maxLabelNameLength, "%#04x: %s", i, pTemplate->name);
 
 			const bool selected = selectedLevel == i;
-			const bool isCurrent = pCurrentLevel == pLevels + i;
+			const bool isCurrent = pCurrentRoomTemplate == pTemplate;
 
 			if (isCurrent) {
 				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0,1,0,1));
@@ -1978,36 +1906,6 @@ static void DrawGameWindow() {
 				ImGui::SetItemDefaultFocus();
 			}
 
-			if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
-			{
-				ImGui::SetDragDropPayload("swap_levels", &i, sizeof(u32));
-				ImGui::Text("%s", pLevels[i].name);
-
-				ImGui::EndDragDropSource();
-			}
-			if (ImGui::BeginDragDropTarget())
-			{
-				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("swap_levels"))
-				{
-					int sourceIndex = *(const u32*)payload->Data;
-
-					s32 step = i - sourceIndex;
-
-					ImVector<s32> vec;
-					vec.push_back(sourceIndex);
-
-					const bool canMove = CanMoveElements(MAX_LEVEL_COUNT, vec, step);
-
-					if (canMove) {
-						MoveElements<Level>(pLevels, vec, step);
-
-						Game::ReloadRoom();
-						selectedLevel = editing ? (pCurrentLevel - pLevels) : vec[0];
-					}
-				}
-				ImGui::EndDragDropTarget();
-			}
-
 			ImGui::PopID();
 
 			if (ImGui::BeginPopupContextItem())
@@ -2016,7 +1914,7 @@ static void DrawGameWindow() {
 					editorRoomInstance.templateIndex = i;
 					Game::LoadRoom(&editorRoomInstance);
 					Game::SetPaused(true);
-					selectedActorHandle = PoolHandle<Actor>::Null();
+					selectedActorHandle = PoolHandle<RoomActor>::Null();
 				}
 				ImGui::EndPopup();
 			}
@@ -2033,7 +1931,7 @@ static void DrawGameWindow() {
 
 	ImGui::BeginChild("Game view", ImVec2(gameViewWidth, 0));
 	ImGui::NewLine();
-	DrawGameView(pCurrentLevel, editing, editMode, clipboard, selectedLevel, selectedActorHandle);
+	DrawGameView(pCurrentRoomTemplate, editing, editMode, clipboard, selectedLevel, selectedActorHandle);
 	ImGui::EndChild();
 
 	ImGui::SameLine();
@@ -2562,7 +2460,7 @@ static void DrawAudioWindow() {
 #pragma region Level Connections
 struct EditorRoomInstance {
 	u32 id;
-	const Level* pTemplate;
+	const RoomTemplate* pTemplate;
 
 	glm::vec2 gridPos;
 };
@@ -2586,7 +2484,7 @@ static EditorDungeon ConvertFromDungeon(u32 dungeonIndex) {
 
 			outDungeon.rooms.emplace(room.id, EditorRoomInstance{
 				.id = room.id,
-				.pTemplate = Levels::GetLevel(room.templateIndex),
+				.pTemplate = Assets::GetRoomTemplate(room.templateIndex),
 				.gridPos = pos
 				});
 		}
@@ -2602,15 +2500,15 @@ static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon)
 	for (auto& [id, room] : dungeon.rooms) {
 		pOutDungeon->rooms[roomIndex] = RoomInstance{
 			.id = id,
-			.templateIndex = Levels::GetIndex(room.pTemplate)
+			.templateIndex = Assets::GetRoomTemplateIndex(room.pTemplate)
 		};
 
-		const u32 width = room.pTemplate->pTilemap->width;
-		const u32 height = room.pTemplate->pTilemap->height;
+		const u32 width = room.pTemplate->width;
+		const u32 height = room.pTemplate->height;
 
 		for (u32 y = 0; y < height; y++) {
 			for (u32 x = 0; x < width; x++) {
-				const u8 screenIndex = x + y * TILEMAP_MAX_DIM_SCREENS;
+				const u8 screenIndex = x + y * ROOM_MAX_DIM_SCREENS;
 				const u32 gridIndex = (room.gridPos.x + x) + (room.gridPos.y + y) * DUNGEON_GRID_DIM;
 				pOutDungeon->grid[gridIndex] = {
 					.roomIndex = roomIndex,
@@ -2630,8 +2528,8 @@ static void DrawRoom(const EditorRoomInstance& room, const glm::mat3& gridToScre
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 	// Node body
-	const r32 width = room.pTemplate->pTilemap->width;
-	const r32 height = room.pTemplate->pTilemap->height;
+	const r32 width = room.pTemplate->width;
+	const r32 height = room.pTemplate->height;
 
 	const glm::vec2 roomTopLeft = gridToScreen * glm::vec3(room.gridPos.x, room.gridPos.y, 1.0f);
 	const glm::vec2 roomBtmRight = gridToScreen * glm::vec3(room.gridPos.x + width, room.gridPos.y + height, 1.0f);
@@ -2648,7 +2546,7 @@ static void DrawRoom(const EditorRoomInstance& room, const glm::mat3& gridToScre
 	// Draw background color
 	drawList->AddImage(pContext->paletteTexture, nodeDrawMin, nodeDrawMax, ImVec2(0, 0), ImVec2(0.015625f, 1.0f));
 
-	DrawLevel(room.pTemplate, nodeDrawMin, scale);
+	DrawTilemap(&room.pTemplate->tilemap, ImVec2(0,0), ImVec2(width * VIEWPORT_WIDTH_METATILES, height * VIEWPORT_HEIGHT_METATILES), nodeDrawMin, scale);
 
 	drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0, 0, 0, 0x80));
 
@@ -2677,7 +2575,7 @@ static bool DungeonPositionFree(u32 roomId, const glm::ivec2& pos, const glm::iv
 			continue;
 		}
 
-		const AABB rect(0, otherRoom.pTemplate->pTilemap->width, 0, otherRoom.pTemplate->pTilemap->height);
+		const AABB rect(0, otherRoom.pTemplate->width, 0, otherRoom.pTemplate->height);
 
 		if (Collision::BoxesOverlap(targetRect, pos, rect, otherRoom.gridPos)) {
 			return false;
@@ -2785,10 +2683,10 @@ static void DrawDungeonCanvas(EditorDungeon& dungeon) {
 		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dd_levels", ImGuiDragDropFlags_AcceptBeforeDelivery))
 		{
 			s32 levelInd = *(const s32*)payload->Data;
-			const Level* pTemplate = Levels::GetLevel(levelInd);
+			const RoomTemplate* pTemplate = Assets::GetRoomTemplate(levelInd);
 
 			const glm::ivec2 roomTopLeft = hoveredCellPos;
-			const glm::ivec2 roomDim = { pTemplate->pTilemap->width, pTemplate->pTilemap->height };
+			const glm::ivec2 roomDim = { pTemplate->width, pTemplate->height };
 
 			const bool posFree = DrawDungeonDragDropPreview(UUID_NULL, roomTopLeft, roomDim, gridToScreen, dungeon);
 
@@ -2808,7 +2706,7 @@ static void DrawDungeonCanvas(EditorDungeon& dungeon) {
 
 	if (draggedRoom != UUID_NULL) {
 		auto& room = dungeon.rooms[draggedRoom];
-		const glm::ivec2 roomDim = { room.pTemplate->pTilemap->width, room.pTemplate->pTilemap->height };
+		const glm::ivec2 roomDim = { room.pTemplate->width, room.pTemplate->height };
 		const glm::ivec2 dragTargetPos = glm::clamp(glm::ivec2(glm::roundEven(room.gridPos.x), glm::roundEven(room.gridPos.y)), glm::ivec2(0), glm::ivec2(DUNGEON_GRID_DIM - 1));
 		const bool posFree = DrawDungeonDragDropPreview(room.id, dragTargetPos, roomDim, gridToScreen, dungeon);
 
@@ -2864,14 +2762,13 @@ static void DrawDungeonTools(EditorDungeon& dungeon) {
 
 	ImGui::BeginChild("Room list", ImVec2(0, 0), ImGuiChildFlags_Border);
 	{
-		const Level* pLevels = Levels::GetLevelsPtr();
 		static s32 selection = 0;
 
-		static constexpr u32 maxLabelNameLength = LEVEL_MAX_NAME_LENGTH + 8;
+		static constexpr u32 maxLabelNameLength = ROOM_MAX_NAME_LENGTH + 8;
 		char label[maxLabelNameLength];
 
-		for (u32 i = 0; i < MAX_LEVEL_COUNT; i++) {
-			const Level& level = pLevels[i];
+		for (u32 i = 0; i < MAX_ROOM_TEMPLATE_COUNT; i++) {
+			const RoomTemplate& level = *Assets::GetRoomTemplate(i);
 
 			ImGui::PushID(i);
 

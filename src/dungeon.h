@@ -8,8 +8,6 @@ constexpr u32 DUNGEON_GRID_SIZE = DUNGEON_GRID_DIM * DUNGEON_GRID_DIM;
 constexpr u32 DUNGEON_MAX_NAME_LENGTH = 256;
 constexpr u32 MAX_DUNGEON_ROOM_COUNT = 128;
 
-struct Level;
-
 struct RoomInstance {
 	u32 id;
 	s32 templateIndex;

@@ -44,7 +44,6 @@ set(SOURCES
 		src/collision.cpp
 		src/game.cpp
 		src/input.cpp
-		src/level.cpp
 		src/metasprite.cpp
 		src/rendering_util.cpp
 		src/rendering_vulkan.cpp
@@ -69,7 +68,8 @@ set(SOURCES
 		src/actor_types.cpp
 		src/spawner.cpp
 		src/dungeon.cpp
-		src/debug.cpp)
+		src/debug.cpp
+		src/room.cpp)
 
 set(EDITOR_SOURCES
 		src/editor.cpp)
@@ -78,7 +78,6 @@ set(HEADERS
 		src/rendering.h
 		src/game.h
 		src/input.h
-		src/level.h
 		src/memory_pool.h
 		src/metasprite.h
 		src/rendering_util.h

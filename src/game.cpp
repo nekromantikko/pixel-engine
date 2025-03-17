@@ -4,7 +4,6 @@
 #include "game_state.h"
 #include <cstring>
 #include <cstdio>
-#include "level.h"
 #include "game_rendering.h"
 #include "collision.h"
 #include "metasprite.h"
@@ -21,6 +20,7 @@
 #include "game_ui.h"
 #include "actor_prototypes.h"
 #include "dungeon.h"
+#include "room.h"
 
 namespace Game {
     r64 secondsElapsed = 0.0f;
@@ -74,7 +74,7 @@ namespace Game {
 
         Tiles::LoadTileset("assets/forest.til");
         Metasprites::Load("assets/meta.spr");
-        Levels::LoadLevels("assets/levels.lev");
+        Assets::LoadRoomTemplates("assets/rooms.ass");
         Assets::LoadActorPrototypes("assets/actors.prt");
         Assets::LoadDungeons("assets/test.dng");
 

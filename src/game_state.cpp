@@ -5,7 +5,7 @@
 #include "game_ui.h"
 #include "coroutines.h"
 #include "dialog.h"
-#include "level.h"
+#include "room.h"
 #include "collision.h"
 #include "actor_prototypes.h"
 #include "dungeon.h"
@@ -90,8 +90,8 @@ static const RoomInstance* GetDungeonRoom(s32 dungeonIndex, const glm::i8vec2 of
     const RoomInstance& result = pDungeon->rooms[pCell->roomIndex];
 
     if (pOutRoomOffset) {
-        const s8 xScreen = pCell->screenIndex % TILEMAP_MAX_DIM_SCREENS;
-        const s8 yScreen = pCell->screenIndex / TILEMAP_MAX_DIM_SCREENS;
+        const s8 xScreen = pCell->screenIndex % ROOM_MAX_DIM_SCREENS;
+        const s8 yScreen = pCell->screenIndex / ROOM_MAX_DIM_SCREENS;
         *pOutRoomOffset = glm::i8vec2(offset.x - xScreen, offset.y - yScreen);
     }
 
@@ -107,15 +107,15 @@ static const glm::i8vec2 RoomPosToDungeonGridOffset(const glm::i8vec2& roomOffse
 #pragma endregion
 
 #pragma region Gameplay
-static void CorrectPlayerSpawnY(const Level* pLevel, Actor* pPlayer) {
+static void CorrectPlayerSpawnY(const RoomTemplate* pTemplate, Actor* pPlayer) {
     HitResult hit{};
 
     const r32 dy = VIEWPORT_HEIGHT_METATILES / 2.0f;  // Sweep downwards to find a floor
 
-    Collision::SweepBoxVertical(pLevel->pTilemap, pPlayer->pPrototype->hitbox, pPlayer->position, dy, hit);
+    Collision::SweepBoxVertical(&pTemplate->tilemap, pPlayer->pPrototype->hitbox, pPlayer->position, dy, hit);
     while (hit.startPenetrating) {
         pPlayer->position.y -= 1.0f;
-        Collision::SweepBoxVertical(pLevel->pTilemap, pPlayer->pPrototype->hitbox, pPlayer->position, dy, hit);
+        Collision::SweepBoxVertical(&pTemplate->tilemap, pPlayer->pPrototype->hitbox, pPlayer->position, dy, hit);
     }
     pPlayer->position = hit.location;
 }
@@ -153,8 +153,8 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
         screenIndex = pCell->screenIndex;
     }
 
-    r32 x = (screenIndex % TILEMAP_MAX_DIM_SCREENS) * VIEWPORT_WIDTH_METATILES;
-    r32 y = (screenIndex / TILEMAP_MAX_DIM_SCREENS) * VIEWPORT_HEIGHT_METATILES;
+    r32 x = (screenIndex % ROOM_MAX_DIM_SCREENS) * VIEWPORT_WIDTH_METATILES;
+    r32 y = (screenIndex / ROOM_MAX_DIM_SCREENS) * VIEWPORT_HEIGHT_METATILES;
 
     Actor* pPlayer = Game::SpawnActor(playerPrototypeIndex, glm::vec2(x, y));
     if (pPlayer == nullptr) {
@@ -162,7 +162,7 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
     }
 
     constexpr r32 initialHSpeed = 0.0625f;
-    const Level* pLevel = Game::GetCurrentRoomTemplate();
+    const RoomTemplate* pTemplate = Game::GetCurrentRoomTemplate();
 
     switch (direction) {
     case SCREEN_EXIT_DIR_LEFT: {
@@ -170,7 +170,7 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
         pPlayer->position.y += VIEWPORT_HEIGHT_METATILES / 2.0f;
         pPlayer->flags.facingDir = ACTOR_FACING_RIGHT;
         pPlayer->velocity.x = initialHSpeed;
-        CorrectPlayerSpawnY(pLevel, pPlayer);
+        CorrectPlayerSpawnY(pTemplate, pPlayer);
         break;
     }
     case SCREEN_EXIT_DIR_RIGHT: {
@@ -178,7 +178,7 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
         pPlayer->position.y += VIEWPORT_HEIGHT_METATILES / 2.0f;
         pPlayer->flags.facingDir = ACTOR_FACING_LEFT;
         pPlayer->velocity.x = -initialHSpeed;
-        CorrectPlayerSpawnY(pLevel, pPlayer);
+        CorrectPlayerSpawnY(pTemplate, pPlayer);
         break;
     }
     case SCREEN_EXIT_DIR_TOP: {
@@ -359,13 +359,13 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
             }
 
             const RoomInstance& roomInstance = pDungeon->rooms[cell.roomIndex];
-            const Level* pTemplate = Levels::GetLevel(roomInstance.templateIndex);
+            const RoomTemplate* pTemplate = Assets::GetRoomTemplate(roomInstance.templateIndex);
 
-            u32 roomWidthScreens = pTemplate->pTilemap->width;
-            u32 roomHeightScreens = pTemplate->pTilemap->height;
+            u32 roomWidthScreens = pTemplate->width;
+            u32 roomHeightScreens = pTemplate->height;
 
-            const u32 roomX = cell.screenIndex % TILEMAP_MAX_DIM_SCREENS;
-            const u32 roomY = cell.screenIndex / TILEMAP_MAX_DIM_SCREENS;
+            const u32 roomX = cell.screenIndex % ROOM_MAX_DIM_SCREENS;
+            const u32 roomY = cell.screenIndex / ROOM_MAX_DIM_SCREENS;
 
             const u32 yTile = y + tileMin.y - scrollOffset.y;
 
@@ -817,25 +817,23 @@ void Game::UnloadRoom() {
 bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
     UnloadRoom();
 
-    const Level* pTemplate = Levels::GetLevel(pCurrentRoom->templateIndex);
+    const RoomTemplate* pTemplate = Assets::GetRoomTemplate(pCurrentRoom->templateIndex);
 
     for (u32 i = 0; i < pTemplate->actors.Count(); i++)
     {
         auto handle = pTemplate->actors.GetHandle(i);
-        const Actor* pActor = pTemplate->actors.Get(handle);
+        const RoomActor* pActor = pTemplate->actors.Get(handle);
 
-        const u64 combinedId = pActor->persistId | (u64(pCurrentRoom->id) << 32);
+        const u64 combinedId = pActor->id | (u64(pCurrentRoom->id) << 32);
         const PersistedActorData* pPersistData = gameData.persistedActorData.Get(combinedId);
         if (!pPersistData || !(pPersistData->dead || pPersistData->permaDead)) {
             SpawnActor(pActor, pCurrentRoom->id);
         }
     }
 
-    // Spawn player in sidescrolling level
-    if (pTemplate->flags.type == LEVEL_TYPE_SIDESCROLLER) {
-        SpawnPlayerAtEntrance(screenOffset, direction);
-        ViewportFollowPlayer();
-    }
+    // Spawn player
+    SpawnPlayerAtEntrance(screenOffset, direction);
+    ViewportFollowPlayer();
 
     // Spawn xp remnant, if it belongs in this room
     if (gameData.expRemnant.dungeonIndex == currentDungeonIndex && currentDungeonIndex >= 0) {
@@ -865,17 +863,17 @@ const RoomInstance* Game::GetCurrentRoom() {
     return pCurrentRoom;
 }
 
-const Level* Game::GetCurrentRoomTemplate() {
+const RoomTemplate* Game::GetCurrentRoomTemplate() {
     if (!pCurrentRoom) {
         return nullptr;
     }
 
-    return Levels::GetLevel(pCurrentRoom->templateIndex);
+    return Assets::GetRoomTemplate(pCurrentRoom->templateIndex);
 }
 
 glm::i8vec2 Game::GetDungeonGridCell(const glm::vec2& worldPos) {
-    const Level* pTemplate = GetCurrentRoomTemplate();
-    if (!pTemplate || !pTemplate->pTilemap) {
+    const RoomTemplate* pTemplate = GetCurrentRoomTemplate();
+    if (!pTemplate) {
         return { -1, -1 };
     }
 
@@ -884,8 +882,8 @@ glm::i8vec2 Game::GetDungeonGridCell(const glm::vec2& worldPos) {
         s8(worldPos.x / VIEWPORT_WIDTH_METATILES),
         s8(worldPos.y / VIEWPORT_HEIGHT_METATILES)
     };
-    screenOffset.x = glm::clamp(screenOffset.x, s8(0), s8(pTemplate->pTilemap->width - 1));
-    screenOffset.y = glm::clamp(screenOffset.y, s8(0), s8(pTemplate->pTilemap->height - 1));
+    screenOffset.x = glm::clamp(screenOffset.x, s8(0), s8(pTemplate->width - 1));
+    screenOffset.y = glm::clamp(screenOffset.y, s8(0), s8(pTemplate->height - 1));
 
     return roomOffset + screenOffset;
 }

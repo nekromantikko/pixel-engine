@@ -5,7 +5,7 @@
 #include "game_input.h"
 #include "game_state.h"
 #include "dialog.h"
-#include "level.h"
+#include "room.h"
 #include "dungeon.h"
 
 enum PlayerHeadFrame : u8 {
@@ -203,7 +203,7 @@ static void HandleLevelExit(const Actor* pPlayer) {
     u8 nextDirection = 0;
     glm::i8vec2 nextGridCell = Game::GetDungeonGridCell(pPlayer->position);
 
-    const Tilemap* pTilemap = Game::GetCurrentRoomTemplate()->pTilemap;
+    const RoomTemplate* pTemplate = Game::GetCurrentRoomTemplate();
 
     // Left side of screen is ugly, so trigger transition earlier
     if (pPlayer->position.x < 0.5f) {
@@ -211,7 +211,7 @@ static void HandleLevelExit(const Actor* pPlayer) {
         nextDirection = SCREEN_EXIT_DIR_RIGHT;
         nextGridCell.x--;
     }
-    else if (pPlayer->position.x >= pTilemap->width * VIEWPORT_WIDTH_METATILES) {
+    else if (pPlayer->position.x >= pTemplate->width * VIEWPORT_WIDTH_METATILES) {
         shouldExit = true;
         nextDirection = SCREEN_EXIT_DIR_LEFT;
         nextGridCell.x++;
@@ -221,7 +221,7 @@ static void HandleLevelExit(const Actor* pPlayer) {
         nextDirection = SCREEN_EXIT_DIR_BOTTOM;
         nextGridCell.y--;
     }
-    else if (pPlayer->position.y >= pTilemap->height * VIEWPORT_HEIGHT_METATILES) {
+    else if (pPlayer->position.y >= pTemplate->height * VIEWPORT_HEIGHT_METATILES) {
         shouldExit = true;
         nextDirection = SCREEN_EXIT_DIR_TOP;
         nextGridCell.y++;
@@ -653,7 +653,7 @@ static void UpdatePlayerOverworld(Actor* pPlayer) {
             state.facingDir = inputDir;
             const glm::ivec2 offset = GetMovementDir(state.facingDir);
             const glm::ivec2 targetPos = glm::ivec2(pPlayer->position) + offset;
-            const TilesetTile* pNextTile = Tiles::GetTilesetTile(Game::GetCurrentRoomTemplate()->pTilemap, targetPos);
+            const TilesetTile* pNextTile = Tiles::GetTilesetTile(&Game::GetCurrentRoomTemplate()->tilemap, targetPos);
             if (pNextTile->type != TILE_SOLID) {
                 state.movementCounter = movementSteps;
             }

@@ -4,7 +4,7 @@
 #include "game_state.h"
 #include "game_rendering.h"
 #include "game_input.h"
-#include "level.h"
+#include "room.h"
 
 enum DialogState {
     DIALOG_CLOSED = 0,
@@ -34,7 +34,8 @@ static void CopyLevelTileToNametable(Nametable* pNametables, const Tilemap* pTil
     const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
 
     const Metatile& metatile = tile->metatile;
-    const s32 palette = Tiles::GetTilesetPalette(pTilemap->pTileset, tilesetIndex);
+    const Tileset* pTileset = Tiles::GetTileset();
+    const s32 palette = Tiles::GetTilesetPalette(pTileset, tilesetIndex);
     Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile, palette);
 }
 
@@ -59,7 +60,7 @@ static void DrawBgBoxAnimated() {
     const glm::ivec2 sizeTiles(currentSize.x << 1, currentSize.y << 1);
 
     Nametable* pNametables = Rendering::GetNametablePtr(0);
-    const Tilemap* pTilemap = Game::GetCurrentRoomTemplate()->pTilemap;
+    const Tilemap* pTilemap = &Game::GetCurrentRoomTemplate()->tilemap;
 
     for (u32 y = 0; y < targetSize.y; y++) {
         for (u32 x = 0; x < targetSize.x; x++) {
