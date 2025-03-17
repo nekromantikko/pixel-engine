@@ -617,8 +617,48 @@ static void UpdatePlayerSidescroller(Actor* pActor) {
     }
 }
 
-static void UpdatePlayerOverworld(Actor* pPlayer) {
+static glm::vec2 GetMovementDir(u8 facingDir) {
+    glm::vec2 result(0.0f);
+    const u8 horizontalDir = facingDir & 3;
+    const u8 verticalDir = (facingDir >> 2) & 3;
 
+    if (horizontalDir) {
+        const bool signBit = (horizontalDir >> 1) & 1;
+        result.x = signBit ? -1.0f : 1.0f;
+    }
+    else if (verticalDir) {
+        const bool signBit = (verticalDir >> 1) & 1;
+        result.y = signBit ? -1.0f : 1.0f;
+    }
+
+    return result;
+}
+
+static void UpdatePlayerOverworld(Actor* pPlayer) {
+    static constexpr u16 movementRate = 1;
+    static constexpr u16 movementSteps = METATILE_DIM_PIXELS * movementRate;
+    static constexpr r32 movementStepLength = 1.0f / movementSteps;
+
+    PlayerOverworldState& state = pPlayer->state.playerOverworld;
+    
+    if (state.movementCounter != 0) {
+        Game::UpdateCounter(state.movementCounter);
+        pPlayer->position += GetMovementDir(state.facingDir) * movementStepLength;
+    }
+    else {
+        pPlayer->position = glm::roundEven(pPlayer->position);
+
+        const u8 inputDir = (Game::Input::GetCurrentState() >> 8) & 0xf;
+        if (inputDir) {
+            state.facingDir = inputDir;
+            const glm::ivec2 offset = GetMovementDir(state.facingDir);
+            const glm::ivec2 targetPos = glm::ivec2(pPlayer->position) + offset;
+            const TilesetTile* pNextTile = Tiles::GetTilesetTile(Game::GetCurrentRoomTemplate()->pTilemap, targetPos);
+            if (pNextTile->type != TILE_SOLID) {
+                state.movementCounter = movementSteps;
+            }
+        }
+    }
 }
 
 static bool DrawPlayerGun(const Actor* pPlayer) {
@@ -662,7 +702,7 @@ static bool DrawPlayerSidescroller(const Actor* pPlayer) {
 }
 
 static bool DrawPlayerOverworld(const Actor* pPlayer) {
-    return false;
+    return Game::DrawActorDefault(pPlayer);
 }
 
 static void InitPlayerSidescroller(Actor* pPlayer, const PersistedActorData* pPersistData) {
@@ -678,7 +718,9 @@ static void InitPlayerSidescroller(Actor* pPlayer, const PersistedActorData* pPe
 }
 
 static void InitPlayerOverworld(Actor* pPlayer, const PersistedActorData* pPersistData) {
-
+    pPlayer->state.playerOverworld.movementCounter = 0;
+    pPlayer->state.playerOverworld.facingDir = PLAYER_OW_DIR_DOWN;
+    pPlayer->position = glm::roundEven(pPlayer->position);
 }
 
 #pragma region Public API

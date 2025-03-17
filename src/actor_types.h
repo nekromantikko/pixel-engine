@@ -39,6 +39,7 @@ constexpr u32 ACTOR_STATE_SIZE = 32;
 
 union ActorState {
 	PlayerState playerState;
+	PlayerOverworldState playerOverworld;
 	EnemyState enemyState;
 	FireballState fireballState;
 	BulletState bulletState;

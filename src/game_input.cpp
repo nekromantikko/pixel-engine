@@ -33,6 +33,10 @@ bool Game::Input::AnyButtonReleased(u16 mask) {
 	return ((~currentInput & previousInput) & mask) != 0;
 }
 
+u16 Game::Input::GetCurrentState() {
+	return currentInput;
+}
+
 void Game::Input::Update() {
 	previousInput = currentInput;
 	currentInput = ::Input::GetControllerState();

@@ -32,6 +32,8 @@ namespace Game {
         bool AnyButtonPressed(u16 mask = BUTTON_ALL);
         bool AnyButtonReleased(u16 mask = BUTTON_ALL);
 
+        u16 GetCurrentState();
+
         void Update();
 	}
 }
