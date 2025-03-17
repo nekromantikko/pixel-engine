@@ -25,7 +25,10 @@ static constexpr glm::ivec2 mapCenterScreens = mapSizeScreens / 2;
 static constexpr glm::ivec2 mapDialogSize = mapSize + 2;
 static constexpr glm::vec2 mapScrollMin = { -1, -1 };
 static constexpr glm::vec2 mapScrollMax = { (DUNGEON_GRID_DIM - mapSizeScreens.x) * 2 + 1, DUNGEON_GRID_DIM - mapSizeScreens.y + 1 };
-static constexpr r32 mapScrollSpeed = 0.125f;
+static constexpr u16 mapScrollRate = 1;
+static constexpr u16 mapScrollSteps = TILE_DIM_PIXELS * mapScrollRate;
+static constexpr r32 mapScrollStepLength = 1.0f / mapScrollSteps;
+static u16 mapScrollCounter = 0;
 static glm::vec2 mapScrollOffset(0);
 static glm::vec2 mapScrollDir(0);
 
@@ -469,6 +472,23 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
     }
 }
 
+static glm::vec2 GetScrollDir(u8 inputDir) {
+    glm::vec2 result(0.0f);
+    const u8 horizontalDir = inputDir & 3;
+    const u8 verticalDir = (inputDir >> 2) & 3;
+
+    if (horizontalDir) {
+        const bool signBit = (horizontalDir >> 1) & 1;
+        result.x = signBit ? -1.0f : 1.0f;
+    }
+    else if (verticalDir) {
+        const bool signBit = (verticalDir >> 1) & 1;
+        result.y = signBit ? -1.0f : 1.0f;
+    }
+
+    return result;
+}
+
 static void StepPauseMenu() {
     if (!Game::UpdateDialog()) {
         state = GAME_STATE_PLAYING;
@@ -479,36 +499,23 @@ static void StepPauseMenu() {
     }
     
     if (Game::IsDialogOpen()) {
-        if (Game::Input::ButtonDown(BUTTON_DPAD_LEFT)) {
-            mapScrollDir.x = -1;
-        }
-        else if (Game::Input::ButtonDown(BUTTON_DPAD_RIGHT)) {
-            mapScrollDir.x = 1;
-        }
-        else if (glm::abs(mapScrollOffset.x - glm::roundEven(mapScrollOffset.x)) < mapScrollSpeed) {
-            mapScrollDir.x = 0;
-            mapScrollOffset.x = glm::roundEven(mapScrollOffset.x);
-        }
+        if (mapScrollCounter > 0) {
+            mapScrollCounter--;
 
-        if (Game::Input::ButtonDown(BUTTON_DPAD_UP)) {
-            mapScrollDir.y = -1;
+            mapScrollOffset += mapScrollDir * mapScrollStepLength;
         }
-        else if (Game::Input::ButtonDown(BUTTON_DPAD_DOWN)) {
-            mapScrollDir.y = 1;
+        else {
+            mapScrollOffset = glm::roundEven(mapScrollOffset);
+
+            const u8 inputDir = (Game::Input::GetCurrentState() >> 8) & 0xf;
+            if (inputDir) {
+                mapScrollDir = GetScrollDir(inputDir);
+                const glm::vec2 targetOffset = mapScrollOffset + mapScrollDir;
+                if (targetOffset.x >= mapScrollMin.x && targetOffset.x <= mapScrollMax.x && targetOffset.y >= mapScrollMin.y && targetOffset.y <= mapScrollMax.y) {
+                    mapScrollCounter = mapScrollSteps;
+                }
+            }
         }
-        else if (glm::abs(mapScrollOffset.y - glm::roundEven(mapScrollOffset.y)) < mapScrollSpeed) {
-            mapScrollDir.y = 0;
-            mapScrollOffset.y = glm::roundEven(mapScrollOffset.y);
-        }
-    
-        mapScrollOffset += mapScrollSpeed * mapScrollDir;
-        mapScrollOffset.x = glm::clamp(mapScrollOffset.x, mapScrollMin.x, mapScrollMax.x);
-        mapScrollOffset.y = glm::clamp(mapScrollOffset.y, mapScrollMin.y, mapScrollMax.y);
-    }
-    else {
-        mapScrollDir = glm::vec2(0.0f);
-        mapScrollOffset.x = glm::roundEven(mapScrollOffset.x);
-        mapScrollOffset.y = glm::roundEven(mapScrollOffset.y);
     }
 
     Game::Rendering::ClearSpriteLayers();
