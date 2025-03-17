@@ -31,7 +31,6 @@ struct TilesetTile {
 
 struct Tileset {
 	TilesetTile tiles[TILESET_SIZE];
-	u8 attributes[TILESET_ATTRIBUTE_COUNT];
 };
 
 struct TileIndexRun {
@@ -47,10 +46,6 @@ struct Tilemap {
 };
 
 namespace Tiles {
-	// Tileset utils
-	s32 GetTilesetPalette(const Tileset* tileset, u32 tileIndex);
-	bool SetTilesetPalette(Tileset* tileset, u32 tileIndex, s32 palette);
-
 	// New API
 	bool PointInMapBounds(const Tilemap* pTilemap, const glm::vec2& pos);
 	s32 GetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos);

@@ -1,9 +1,9 @@
 #version 450
 #define MAX_SPRITES_PER_SCANLINE 64
-#define NAMETABLE_SIZE 0xFF0
-#define NAMETABLE_ATTRIBUTE_OFFSET 0xF00
+#define NAMETABLE_SIZE 0x2000
+#define SPRITE_PALETTE_OFFSET 8
 
-const ivec2 nametableSizePixels = ivec2(512, 480);
+const ivec2 nametableSizePixels = ivec2(512, 512);
 
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 layout(set = 0, binding = 0, rgba8) uniform writeonly image2D outImage;
@@ -30,7 +30,7 @@ layout(set = 0, binding = 4) readonly buffer Nametable
 } nametable;
 struct Sprite
 {
-	uint pos;
+	int pos;
 	uint attributes;
 };
 layout(set = 0, binding = 5) readonly buffer Sprites
@@ -53,12 +53,12 @@ layout(set = 0, binding = 6) readonly buffer Scanlines
 float ToLinear1(float c){return(c<=0.04045)?c/12.92:pow((c+0.055)/1.055,2.4);}
 vec3 ToLinear(vec3 c){return vec3(ToLinear1(c.r),ToLinear1(c.g),ToLinear1(c.b));}
 
-uint ReadNametableByte(int index, int tileOffset) {
-	int coarse = tileOffset / 4; // Offset to 4 byte block
-	int fine = tileOffset % 4; // byte index (2bits)
+uint ReadNametableWord(int index, int tileOffset) {
+	int coarse = tileOffset >> 1; // Offset to 2 byte block
+	int fine = tileOffset & 1; // byte index (1 bit)
 	uint nametableOffset = index * (NAMETABLE_SIZE / 4);
 	uint result = nametable.data[nametableOffset + coarse];
-	return bitfieldExtract(result, 8 * fine, 8);
+	return bitfieldExtract(result, 16 * fine, 16);
 }
 
 uint ReadCHRTile(uint chrIndex, uint tileIndex, uint offset, uint flipX, uint flipY) {
@@ -119,28 +119,20 @@ ivec2 RenderBackground(ivec2 screenPos) {
 	ivec2 fine2d = scrollPos % 8; // position of pixel within tile
 	int fine = fine2d.x + fine2d.y * 8; // Should be 6 bits (yyyxxx)
 
-	uint tileIndex = ReadNametableByte(nametableIndex, coarse);
+	uint tile = ReadNametableWord(nametableIndex, coarse);
+	uint tileIndex = bitfieldExtract(tile, 0, 10);
+	uint palette = bitfieldExtract(tile, 10, 3);
+	uint flipX = bitfieldExtract(tile, 14, 1);
+	uint flipY = bitfieldExtract(tile, 15, 1);
 	
-	uint colorIndex = ReadCHRTile(0, tileIndex, fine, 0, 0);
+	uint colorIndex = ReadCHRTile(0, tileIndex, fine, flipX, flipY);
 
 	// Don't draw transparent pixels
 	if (colorIndex == 0) {
 		return ivec2(0, 0);
 	}
 
-	// Nametable attributes store palette indices for 4x4 tiles in one byte
-	int attributeOffset = NAMETABLE_ATTRIBUTE_OFFSET; // Attribute memory starts after all the tile data
-	ivec2 attributeBlockPos2d = coarse2d / 4; // Position of big 4x4 block
-	int attributeBlockPos = attributeBlockPos2d.x + attributeBlockPos2d.y * 16; // This should be 8 bits (yyyyxxxx)
-	ivec2 attributeBlockTilePos2d = coarse2d % 4; // Position of tile within big 4x4 block
-	int attributeBlockTilePos = attributeBlockTilePos2d.x + attributeBlockTilePos2d.y * 4; // This should be 4 bits (yyxx)
-	ivec2 attributeSubBlockPos2d = attributeBlockTilePos2d / 2; // Position of 2x2 block within 4x4 block
-	int attributeSubBlockPos = attributeSubBlockPos2d.x + attributeSubBlockPos2d.y * 2; // This should be 2 bits
-	uint palTableIndex = ReadNametableByte(nametableIndex, attributeOffset + attributeBlockPos);
-	palTableIndex &= (3 << (2 * attributeSubBlockPos));
-	palTableIndex >>= 2 * attributeSubBlockPos;
-
-	return ivec2(colorIndex, palTableIndex);
+	return ivec2(colorIndex, palette);
 }
 
 vec3 RenderDebugGrid(ivec2 screenPos, vec3 background) {
@@ -166,13 +158,13 @@ ivec2 RenderSprites(ivec2 screenPos, ivec2 result) {
 	for (int i = 0; i < spriteCount; i++) {
 		uint spriteIndex = scanline.spriteIndices[i];
 		Sprite sprite = sprites.data[spriteIndex];
-		uint y = bitfieldExtract(sprite.pos, 0, 9);
-		uint x = bitfieldExtract(sprite.pos, 16, 9);
+		int y = bitfieldExtract(sprite.pos, 0, 16);
+		int x = bitfieldExtract(sprite.pos, 16, 16);
 		// Is pixel inside sprite?
 		if (screenPos.x >= x && screenPos.x < x + 8) {
 
-			uint tileId = bitfieldExtract(sprite.attributes, 0, 8);
-			uint palTableIndex = bitfieldExtract(sprite.attributes, 8, 2) + 4;
+			uint tileId = bitfieldExtract(sprite.attributes, 0, 10);
+			uint palTableIndex = bitfieldExtract(sprite.attributes, 10, 3) + SPRITE_PALETTE_OFFSET;
 			uint priority = bitfieldExtract(sprite.attributes, 13, 1);
 			uint flipX = bitfieldExtract(sprite.attributes, 14, 1);
 			uint flipY = bitfieldExtract(sprite.attributes, 15, 1);

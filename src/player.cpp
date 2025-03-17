@@ -205,8 +205,7 @@ static void HandleLevelExit(const Actor* pPlayer) {
 
     const RoomTemplate* pTemplate = Game::GetCurrentRoomTemplate();
 
-    // Left side of screen is ugly, so trigger transition earlier
-    if (pPlayer->position.x < 0.5f) {
+    if (pPlayer->position.x < 0) {
         shouldExit = true;
         nextDirection = SCREEN_EXIT_DIR_RIGHT;
         nextGridCell.x--;

@@ -100,8 +100,7 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
             const glm::ivec2 nametableOffset = Rendering::Util::GetNametableOffsetFromMetatilePos({ x, y });
 
             const Metatile& metatile = tile->metatile;
-            const s32 palette = Tiles::GetTilesetPalette(pTileset, tilesetIndex);
-            Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile, palette);
+            Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile);
         }
     }
 }
@@ -135,17 +134,8 @@ static Sprite TransformMetaspriteSprite(const Metasprite* pMetasprite, u32 sprit
         sprite.palette = paletteOverride;
     }
 
-    // Check for wraparound
-    const s16 extendedX = pos.x + ::Rendering::Util::SignExtendSpritePos(sprite.x);
-    const s16 extendedY = pos.y + ::Rendering::Util::SignExtendSpritePos(sprite.y);
-    
-    if (extendedX > VIEWPORT_WIDTH_PIXELS || extendedY > VIEWPORT_HEIGHT_PIXELS) {
-        sprite.x = 0;
-        sprite.y = 288;
-    } else {
-        sprite.x += pos.x; // Moved to else block for clarity
-        sprite.y += pos.y; // Moved to else block for clarity
-    }
+    sprite.x += pos.x;
+    sprite.y += pos.y;
 
     return sprite;
 }
@@ -210,8 +200,7 @@ void Game::Rendering::RefreshViewport() {
             const glm::ivec2 nametableOffset = ::Rendering::Util::GetNametableOffsetFromMetatilePos({ x, y });
 
             const Metatile& metatile = tile->metatile;
-            const s32 palette = Tiles::GetTilesetPalette(pTileset, tilesetIndex);
-            ::Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile, palette);
+            ::Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile);
         }
     }
 }

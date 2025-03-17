@@ -3,47 +3,6 @@
 #include "debug.h"
 #include <limits>
 
-#pragma region Tileset
-static inline u32 GetTilesetAttributeIndex(u32 tileIndex) {
-	const u32 x = tileIndex & (TILESET_DIM - 1);
-	const u32 y = tileIndex >> TILESET_DIM_LOG2;
-
-	return (x >> 1) + (y >> 1) * TILESET_DIM_ATTRIBUTES;
-}
-
-static inline u32 GetTilesetAttributeOffset(u32 tileIndex) {
-	const u32 y = tileIndex >> TILESET_DIM_LOG2;
-
-	return (tileIndex & 1) + (y & 1) * 2;
-}
-
-s32 Tiles::GetTilesetPalette(const Tileset* tileset, u32 tileIndex) {
-	if (tileIndex > TILESET_SIZE) {
-		return -1;
-	}
-
-	const s32 index = GetTilesetAttributeIndex(tileIndex);
-	const s8 offset = GetTilesetAttributeOffset(tileIndex);
-
-	u8 attribute = tileset->attributes[index];
-	return Rendering::Util::GetPalette(attribute, offset);
-}
-
-bool Tiles::SetTilesetPalette(Tileset* tileset, u32 tileIndex, s32 palette) {
-	if (tileIndex > TILESET_SIZE) {
-		return false;
-	}
-
-	const s32 index = GetTilesetAttributeIndex(tileIndex);
-	const s8 offset = GetTilesetAttributeOffset(tileIndex);
-
-	u8& attribute = tileset->attributes[index];
-	attribute = Rendering::Util::SetPalette(attribute, offset, palette);
-
-	return true;
-}
-#pragma endregion
-
 #pragma region New API
 bool Tiles::PointInMapBounds(const Tilemap* pTilemap, const glm::vec2& pos) {
 	if (pos.x < 0 || pos.y < 0) {
@@ -140,7 +99,6 @@ void Tiles::LoadTileset(const char* fname) {
 	fread((void*)signature, sizeof(u8), 4, pFile);
 	fread((void*)name, sizeof(char), tilesetMaxNameLength, pFile);
 	fread((void*)&tileset.tiles, sizeof(TilesetTile), TILESET_SIZE, pFile);
-	fread((void*)&tileset.attributes, sizeof(u8), TILESET_ATTRIBUTE_COUNT, pFile);
 
 	fclose(pFile);
 }
@@ -157,7 +115,6 @@ void Tiles::SaveTileset(const char* fname) {
 	fwrite(signature, sizeof(u8), 4, pFile);
 	fwrite(name, sizeof(char), tilesetMaxNameLength, pFile);
 	fwrite(&tileset.tiles, sizeof(TilesetTile), TILESET_SIZE, pFile);
-	fwrite(&tileset.attributes, sizeof(u8), TILESET_ATTRIBUTE_COUNT, pFile);
 
 	fclose(pFile);
 }

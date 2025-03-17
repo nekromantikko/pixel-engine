@@ -58,7 +58,7 @@ void main() {
 	uint sheetIndex = gl_WorkGroupID.y / 16;
 	uvec2 tileCoord = uvec2(gl_WorkGroupID.x % 16, gl_WorkGroupID.y % 16);
 	uint tileIndex = tileCoord.x + tileCoord.y * 16 + sheetIndex * 256;
-	uint palTableIndex = (gl_WorkGroupID.x / 16) + sheetIndex * 4;
+	uint palTableIndex = (gl_WorkGroupID.x / 16) + sheetIndex * 8;
 
 	int fine = int(gl_LocalInvocationID.x + gl_LocalInvocationID.y * 8); // Should be 6 bits (yyyxxx)
 	uint colorIndex = ReadCHRTile(tileIndex, fine, 0, 0);

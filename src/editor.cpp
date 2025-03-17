@@ -121,7 +121,8 @@ static ImVec2 DrawTileGrid(ImVec2 size, r32 gridStep, s32* selection = nullptr, 
 		*focused = ImGui::IsItemActive();
 	}
 
-	drawList->AddImage(pContext->paletteTexture, topLeft, btmRight, ImVec2(0, 0), ImVec2(0.015625f, 1.0f));
+	constexpr r32 invBgColorIndex = 1.0f / (PALETTE_COUNT * PALETTE_COLOR_COUNT);
+	drawList->AddImage(pContext->paletteTexture, topLeft, btmRight, ImVec2(0, 0), ImVec2(invBgColorIndex, 1.0f));
 	for (r32 x = 0; x < size.x; x += gridStep)
 		drawList->AddLine(ImVec2(topLeft.x + x, topLeft.y), ImVec2(topLeft.x + x, btmRight.y), IM_COL32(200, 200, 200, 40));
 	for (r32 y = 0; y < size.y; y += gridStep)
@@ -152,7 +153,7 @@ static void DrawTileGridSelection(ImVec2 gridPos, ImVec2 gridSize, r32 gridStep,
 }
 
 // See GetMetatileVertices for human-readable version
-static void GetMetatileVerticesAVX(const Metatile& metatile, s32 palette, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
+static void GetMetatileVerticesAVX(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
 	constexpr r32 TILE_SIZE = 1.0f / METATILE_DIM_TILES;
 	constexpr r32 INV_CHR_COUNT = 1.0f / CHR_COUNT;
 	constexpr r32 INV_CHR_DIM_TILES = 1.0f / CHR_DIM_TILES;
@@ -163,10 +164,25 @@ static void GetMetatileVerticesAVX(const Metatile& metatile, s32 palette, const 
 	const __m256 xMask = _mm256_setr_ps(0, 1, 0, 1, 1, 0, 1, 0);
 	const __m256 yMask = _mm256_setr_ps(0, 0, 0, 0, 1, 1, 1, 1);
 
-	const s32 i0 = metatile.tiles[0];
-	const s32 i1 = metatile.tiles[1];
-	const s32 i2 = metatile.tiles[2];
-	const s32 i3 = metatile.tiles[3];
+	const s32 i0 = metatile.tiles[0].tileId;
+	const s32 i1 = metatile.tiles[1].tileId;
+	const s32 i2 = metatile.tiles[2].tileId;
+	const s32 i3 = metatile.tiles[3].tileId;
+
+	const u32 p0 = metatile.tiles[0].palette;
+	const u32 p1 = metatile.tiles[1].palette;
+	const u32 p2 = metatile.tiles[2].palette;
+	const u32 p3 = metatile.tiles[3].palette;
+
+	const bool hf0 = metatile.tiles[0].flipHorizontal;
+	const bool hf1 = metatile.tiles[1].flipHorizontal;
+	const bool hf2 = metatile.tiles[2].flipHorizontal;
+	const bool hf3 = metatile.tiles[3].flipHorizontal;
+
+	const bool vf0 = metatile.tiles[0].flipVertical;
+	const bool vf1 = metatile.tiles[1].flipVertical;
+	const bool vf2 = metatile.tiles[2].flipVertical;
+	const bool vf3 = metatile.tiles[3].flipVertical;
 
 	const __m256i ti0 = _mm256_setr_epi32(i0, i0, i1, i1, i0, i0, i1, i1);
 	const __m256i ti1 = _mm256_setr_epi32(i2, i2, i3, i3, i2, i2, i3, i3);
@@ -174,7 +190,15 @@ static void GetMetatileVerticesAVX(const Metatile& metatile, s32 palette, const 
 	const __m256 cit = _mm256_set1_ps(INV_CHR_DIM_TILES);
 	const __m256i cb = _mm256_set1_epi32(CHR_DIM_TILES_BITS);
 
-	const __m256 p = _mm256_set1_ps(r32(palette));
+	const __m256 p0v = _mm256_setr_ps(p0, p0, p1, p1, p0, p0, p1, p1);
+	const __m256 p1v = _mm256_setr_ps(p2, p2, p3, p3, p2, p2, p3, p3);
+
+	const __m256 h0v = _mm256_setr_ps(hf0, hf0, hf1, hf1, hf0, hf0, hf1, hf1);
+	const __m256 h1v = _mm256_setr_ps(hf2, hf2, hf3, hf3, hf2, hf2, hf3, hf3);
+
+	const __m256 v0v = _mm256_setr_ps(vf0, vf0, vf1, vf1, vf0, vf0, vf1, vf1);
+	const __m256 v1v = _mm256_setr_ps(vf2, vf2, vf3, vf3, vf2, vf2, vf3, vf3);
+
 	const __m256 pi = _mm256_set1_ps(INV_SHEET_PALETTE_COUNT);
 
 	const __m256 s = _mm256_set1_ps(scale * TILE_SIZE);
@@ -191,15 +215,17 @@ static void GetMetatileVerticesAVX(const Metatile& metatile, s32 palette, const 
 
 	const __m256i tix0 = _mm256_and_si256(ti0, cb);
 	const __m256i tiy0 = _mm256_srli_epi32(ti0, CHR_DIM_TILES_LOG2);
+	const __m256 fhMask0 = _mm256_xor_ps(xMask, h0v);
 	__m256 u0 = _mm256_cvtepi32_ps(tix0);
-	u0 = _mm256_add_ps(u0, xMask);
+	u0 = _mm256_add_ps(u0, fhMask0);
 	u0 = _mm256_mul_ps(u0, cit);
 
-	u0 = _mm256_add_ps(u0, p);
+	u0 = _mm256_add_ps(u0, p0v);
 	u0 = _mm256_mul_ps(u0, pi);
 
+	const __m256 fvMask0 = _mm256_xor_ps(yMask, v0v);
 	__m256 v0 = _mm256_cvtepi32_ps(tiy0);
-	v0 = _mm256_add_ps(v0, yMask);
+	v0 = _mm256_add_ps(v0, fvMask0);
 	v0 = _mm256_mul_ps(v0, cit);
 
 	v0 = _mm256_mul_ps(v0, ci);
@@ -210,15 +236,17 @@ static void GetMetatileVerticesAVX(const Metatile& metatile, s32 palette, const 
 
 	const __m256i tix1 = _mm256_and_si256(ti1, cb);
 	const __m256i tiy1 = _mm256_srli_epi32(ti1, CHR_DIM_TILES_LOG2);
+	const __m256 fhMask1 = _mm256_xor_ps(xMask, h1v);
 	__m256 u1 = _mm256_cvtepi32_ps(tix1);
-	u1 = _mm256_add_ps(u1, xMask);
+	u1 = _mm256_add_ps(u1, fhMask1);
 	u1 = _mm256_mul_ps(u1, cit);
 
-	u1 = _mm256_add_ps(u1, p);
+	u1 = _mm256_add_ps(u1, p1v);
 	u1 = _mm256_mul_ps(u1, pi);
 
+	const __m256 fvMask1 = _mm256_xor_ps(yMask, v1v);
 	__m256 v1 = _mm256_cvtepi32_ps(tiy1);
-	v1 = _mm256_add_ps(v1, yMask);
+	v1 = _mm256_add_ps(v1, fvMask1);
 	v1 = _mm256_mul_ps(v1, cit);
 
 	v1 = _mm256_mul_ps(v1, ci);
@@ -234,7 +262,7 @@ static void GetMetatileVerticesAVX(const Metatile& metatile, s32 palette, const 
 	_mm256_store_ps((r32*)outUV + 24, _mm256_unpackhi_ps(u1, v1));
 }
 
-static void GetMetatileVertices(const Metatile& metatile, s32 palette, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
+static void GetMetatileVertices(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
 	constexpr r32 tileSize = 1.0f / METATILE_DIM_TILES;
 
 	for (u32 i = 0; i < METATILE_TILE_COUNT; i++) {
@@ -257,7 +285,7 @@ static void GetMetatileVertices(const Metatile& metatile, s32 palette, const ImV
 		outVertices[i * 4 + 2] = p2;
 		outVertices[i * 4 + 3] = p3;
 
-		const glm::vec4 uvMinMax = ChrTileToTexCoord(metatile.tiles[i], 0, palette);
+		const glm::vec4 uvMinMax = ChrTileToTexCoord(metatile.tiles[i].tileId, 0, metatile.tiles[i].palette);
 
 		outUV[i * 4] = ImVec2(uvMinMax.x, uvMinMax.y);
 		outUV[i * 4 + 1] = ImVec2(uvMinMax.z, uvMinMax.y);
@@ -284,7 +312,7 @@ static void WriteMetatile(const ImVec2* verts, const ImVec2* uv, ImU32 color = I
 	}
 }
 
-static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, s32 palette, ImU32 color = IM_COL32(255, 255, 255, 255)) {
+static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, ImU32 color = IM_COL32(255, 255, 255, 255)) {
 	const r32 tileSize = size / METATILE_DIM_TILES;
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -294,34 +322,33 @@ static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, s32 pal
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
 	ImVec2 uv[METATILE_TILE_COUNT * 4];
 
-	GetMetatileVerticesAVX(metatile, palette, pos, size, verts, uv);
+	GetMetatileVerticesAVX(metatile, pos, size, verts, uv);
 	WriteMetatile(verts, uv, color);
 
 	drawList->PopTextureID();
 }
 
 static void DrawNametable(ImVec2 size, const Nametable& nametable) {
-	const r32 gridStep = size.x / NAMETABLE_WIDTH_TILES;
+	const r32 gridStep = size.x / NAMETABLE_DIM_TILES;
 	const ImVec2 tablePos = DrawTileGrid(size, gridStep);
 
-	const r32 scale = size.x / NAMETABLE_WIDTH_PIXELS;
+	const r32 scale = size.x / NAMETABLE_DIM_PIXELS;
 	const r32 metatileDrawSize = METATILE_DIM_PIXELS * scale;
 
-	Metatile metatile;
-	s32 palette;
 	for (u32 i = 0; i < NAMETABLE_SIZE_METATILES; i++) {
-		u32 x = i % NAMETABLE_WIDTH_METATILES;
-		u32 y = i / NAMETABLE_WIDTH_METATILES;
+		u32 x = i % NAMETABLE_DIM_METATILES;
+		u32 y = i / NAMETABLE_DIM_METATILES;
 
 		ImVec2 pos = ImVec2(tablePos.x + (x * metatileDrawSize), tablePos.y + (y * metatileDrawSize));
 
-		Rendering::Util::GetNametableMetatile(&nametable, i, metatile, palette);
-		DrawMetatile(metatile, pos, metatileDrawSize, palette);
+		const Metatile metatile = Rendering::Util::GetNametableMetatile(&nametable, i);
+		DrawMetatile(metatile, pos, metatileDrawSize);
 	}
 }
 
 static bool DrawPaletteButton(u8 palette) {
-	return ImGui::ImageButton("", pContext->paletteTexture, ImVec2(80, 10), ImVec2(0.125 * palette, 0), ImVec2(0.125 * (palette + 1), 1));
+	constexpr r32 invPaletteCount = 1.0f / PALETTE_COUNT;
+	return ImGui::ImageButton("", pContext->paletteTexture, ImVec2(80, 10), ImVec2(invPaletteCount * palette, 0), ImVec2(invPaletteCount * (palette + 1), 1));
 }
 
 static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
@@ -359,10 +386,9 @@ static void DrawTilemap(const Tilemap* pTilemap, ImVec2 metatileOffset, ImVec2 m
 			const u8 tilesetTileIndex = pTilemap->tiles[i];
 			const TilesetTile& tilesetTile = pTileset->tiles[tilesetTileIndex];
 			const Metatile& metatile = tilesetTile.metatile;
-			const s32 palette = Tiles::GetTilesetPalette(pTileset, tilesetTileIndex);
 
 			const ImVec2 metatileOffset = ImVec2(pos.x + x * scale, pos.y + y * scale);
-			GetMetatileVerticesAVX(metatile, palette, metatileOffset, scale, verts, uv);
+			GetMetatileVerticesAVX(metatile, metatileOffset, scale, verts, uv);
 			WriteMetatile(verts, uv);
 		}
 	}
@@ -393,8 +419,7 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 		ImVec2 metatileOffset = ImVec2(chrPos.x + metatileCoord.x * gridStepPixels, chrPos.y + metatileCoord.y * gridStepPixels);
 
 		const Metatile& metatile = pTileset->tiles[i].metatile;
-		const s32 palette = Tiles::GetTilesetPalette(pTileset, i);
-		GetMetatileVerticesAVX(metatile, palette, metatileOffset, renderScale * TILESET_DIM, verts, uv);
+		GetMetatileVerticesAVX(metatile, metatileOffset, renderScale * TILESET_DIM, verts, uv);
 		WriteMetatile(verts, uv);
 	}
 	drawList->PopTextureID();
@@ -423,7 +448,7 @@ static void DrawMetasprite(const Metasprite* pMetasprite, const ImVec2& origin, 
 	const r32 tileDrawSize = TILE_DIM_PIXELS * renderScale;
 	for (s32 i = pMetasprite->spriteCount - 1; i >= 0; i--) {
 		const Sprite& sprite = pMetasprite->spritesRelativePos[i];
-		const ImVec2 pos = ImVec2(origin.x + renderScale * Rendering::Util::SignExtendSpritePos(sprite.x), origin.y + renderScale * Rendering::Util::SignExtendSpritePos(sprite.y));
+		const ImVec2 pos = ImVec2(origin.x + renderScale * sprite.x, origin.y + renderScale * sprite.y);
 		DrawSprite(sprite, pos, renderScale, color);
 	}
 }
@@ -443,7 +468,7 @@ static AABB GetActorBoundingBox(const RoomActor* pActor) {
 	case ANIMATION_TYPE_SPRITES: {
 		const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex);
 		Sprite& sprite = pMetasprite->spritesRelativePos[0];
-		result.min = { (r32)Rendering::Util::SignExtendSpritePos(sprite.x) / METATILE_DIM_PIXELS, (r32)Rendering::Util::SignExtendSpritePos(sprite.y) / METATILE_DIM_PIXELS };
+		result.min = { (r32)sprite.x / METATILE_DIM_PIXELS, (r32)sprite.y / METATILE_DIM_PIXELS };
 		result.max = { result.min.x + tileWorldDim, result.min.y + tileWorldDim };
 		break;
 	}
@@ -457,7 +482,7 @@ static AABB GetActorBoundingBox(const RoomActor* pActor) {
 
 		for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
 			Sprite& sprite = pMetasprite->spritesRelativePos[i];
-			const glm::vec2 spriteMin = { (r32)Rendering::Util::SignExtendSpritePos(sprite.x) / METATILE_DIM_PIXELS, (r32)Rendering::Util::SignExtendSpritePos(sprite.y) / METATILE_DIM_PIXELS };
+			const glm::vec2 spriteMin = { (r32)sprite.x / METATILE_DIM_PIXELS, (r32)sprite.y / METATILE_DIM_PIXELS };
 			const glm::vec2 spriteMax = { spriteMin.x + tileWorldDim, spriteMin.y + tileWorldDim };
 			result.x1 = glm::min(result.x1, spriteMin.x);
 			result.x2 = glm::max(result.x2, spriteMax.x);
@@ -479,7 +504,7 @@ static void DrawActor(const ActorPrototype* pPrototype, const ImVec2& origin, r3
 	case ANIMATION_TYPE_SPRITES: {
 		const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex);
 		Sprite& sprite = pMetasprite->spritesRelativePos[frameIndex];
-		ImVec2 pos = ImVec2(origin.x + renderScale * Rendering::Util::SignExtendSpritePos(sprite.x), origin.y + renderScale * Rendering::Util::SignExtendSpritePos(sprite.y));
+		ImVec2 pos = ImVec2(origin.x + renderScale * sprite.x, origin.y + renderScale * sprite.y);
 		DrawSprite(sprite, pos, renderScale, color);
 		break;
 	}
@@ -849,7 +874,7 @@ static void DrawDebugWindow() {
 			ImGui::EndTabItem();
 		}
 		if (ImGui::BeginTabItem("Nametables")) {
-			const ImVec2 nametableSizePx = ImVec2(NAMETABLE_WIDTH_PIXELS, NAMETABLE_HEIGHT_PIXELS);
+			const ImVec2 nametableSizePx = ImVec2(NAMETABLE_DIM_PIXELS, NAMETABLE_DIM_PIXELS);
 
 			for (u32 i = 0; i < NAMETABLE_COUNT; i++) {
 				ImGui::PushID(i);
@@ -864,12 +889,16 @@ static void DrawDebugWindow() {
 			static s32 selectedPalettes[2]{};
 
 			for (int i = 0; i < PALETTE_COUNT; i++) {
+				if (i == BG_PALETTE_COUNT) {
+					ImGui::NewLine();
+				}
+
 				ImGui::PushID(i);
 				if (DrawPaletteButton(i)) {
-					if (i < 4) {
+					if (i < BG_PALETTE_COUNT) {
 						selectedPalettes[0] = i;
 					}
-					else selectedPalettes[1] = i - 4;
+					else selectedPalettes[1] = i - BG_PALETTE_COUNT;
 				}
 				ImGui::PopID();
 				ImGui::SameLine();
@@ -992,7 +1021,7 @@ static void DrawMetaspritePreview(Metasprite& metasprite, ImVector<s32>& spriteS
 		const u8 palette = sprite.palette;
 
 		glm::vec4 uvMinMax = ChrTileToTexCoord(index, 1, palette);
-		ImVec2 pos = ImVec2(origin.x + renderScale * Rendering::Util::SignExtendSpritePos(sprite.x), origin.y + renderScale * Rendering::Util::SignExtendSpritePos(sprite.y));
+		ImVec2 pos = ImVec2(origin.x + renderScale * sprite.x, origin.y + renderScale * sprite.y);
 
 		// Select sprite by clicking (Topmost sprite gets selected)
 		bool spriteClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left) && io.MousePos.x >= pos.x && io.MousePos.x < pos.x + gridStepPixels && io.MousePos.y >= pos.y && io.MousePos.y < pos.y + gridStepPixels;
@@ -1073,9 +1102,9 @@ static void DrawSpriteEditor(Metasprite& metasprite, ImVector<s32>& spriteSelect
 		ImGui::SameLine();
 		ImGui::BeginChild("sprite palette", ImVec2(0, chrSheetSize));
 		{
-			for (int i = 0; i < 4; i++) {
+			for (int i = 0; i < FG_PALETTE_COUNT; i++) {
 				ImGui::PushID(i);
-				if (DrawPaletteButton(i+4)) {
+				if (DrawPaletteButton(i + BG_PALETTE_COUNT)) {
 					sprite.palette = i;
 				}
 				ImGui::PopID();
@@ -1083,7 +1112,7 @@ static void DrawSpriteEditor(Metasprite& metasprite, ImVector<s32>& spriteSelect
 		}
 		ImGui::EndChild();
 
-		ImGui::Text("Position: (%d, %d)", Rendering::Util::SignExtendSpritePos(sprite.x), Rendering::Util::SignExtendSpritePos(sprite.y));
+		ImGui::Text("Position: (%d, %d)", sprite.x, sprite.y);
 
 		if (ImGui::Checkbox("Flip horizontal", &flipX)) {
 			sprite.flipHorizontal = flipX;
@@ -1260,15 +1289,15 @@ static void DrawTilesetWindow() {
 		ImGui::SeparatorText("Metatile editor");
 
 		Metatile& metatile = pTileset->tiles[selectedMetatileIndex].metatile;
-		s32 palette = Tiles::GetTilesetPalette(pTileset, selectedMetatileIndex);
-		s32 tileId = metatile.tiles[selectedTileIndex];
+		s32 tileId = metatile.tiles[selectedTileIndex].tileId;
 
+		s32 palette = metatile.tiles[selectedTileIndex].palette;
 		r32 chrSheetSize = 256;
 		ImGui::PushID(0);
 		DrawCHRSheet(chrSheetSize, 0, palette, &tileId);
 		ImGui::PopID();
-		if (tileId != metatile.tiles[selectedTileIndex]) {
-			metatile.tiles[selectedTileIndex] = tileId;
+		if (tileId != metatile.tiles[selectedTileIndex].tileId) {
+			metatile.tiles[selectedTileIndex].tileId = tileId;
 		}
 
 		ImGui::Text("0x%02x", selectedMetatileIndex);
@@ -1278,17 +1307,30 @@ static void DrawTilesetWindow() {
 		ImGui::PushID(1);
 		const ImVec2 tilePos = DrawTileGrid(gridSize, gridStepPixels, &selectedTileIndex);
 		ImGui::PopID();
-		DrawMetatile(metatile, tilePos, tilePreviewSize, palette);
+		DrawMetatile(metatile, tilePos, tilePreviewSize);
 		DrawTileGridSelection(tilePos, gridSize, gridStepPixels, selectedTileIndex);
 
 		s32& type = pTileset->tiles[selectedMetatileIndex].type;
 		ImGui::SliderInt("Type", &type, 0, TILE_TYPE_COUNT - 1, METATILE_TYPE_NAMES[type]);
 
-		if (ImGui::SliderInt("Palette", &palette, 0, 3)) {
-			Tiles::SetTilesetPalette(pTileset, selectedMetatileIndex, palette);
+		ImGui::SeparatorText("Tile Settings");
+
+		if (ImGui::SliderInt("Palette", &palette, 0, BG_PALETTE_COUNT - 1)) {
+			metatile.tiles[selectedTileIndex].palette = palette;
+		}
+
+		bool flipHorizontal = metatile.tiles[selectedTileIndex].flipHorizontal;
+		if (ImGui::Checkbox("Flip Horizontal", &flipHorizontal)) {
+			metatile.tiles[selectedTileIndex].flipHorizontal = flipHorizontal;
+		}
+
+		bool flipVertical = metatile.tiles[selectedTileIndex].flipVertical;
+		if (ImGui::Checkbox("Flip Vertical", &flipVertical)) {
+			metatile.tiles[selectedTileIndex].flipVertical = flipVertical;
 		}
 	}
 	ImGui::EndChild();
+
 
 	ImGui::End();
 }
@@ -1592,8 +1634,7 @@ static void DrawGameView(RoomTemplate* pTemplate, bool editing, u32 editMode, Le
 					
 					const Tileset* pTileset = Tiles::GetTileset();
 					const Metatile& metatile = pTileset->tiles[metatileIndex].metatile;
-					const s32 palette = Tiles::GetTilesetPalette(pTileset, metatileIndex);
-					DrawMetatile(metatile, metatileInPixelCoords, tileDrawSize, palette, IM_COL32(255, 255, 255, 127));
+					DrawMetatile(metatile, metatileInPixelCoords, tileDrawSize, IM_COL32(255, 255, 255, 127));
 
 					// Paint metatiles
 					if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
@@ -1601,7 +1642,7 @@ static void DrawGameView(RoomTemplate* pTemplate, bool editing, u32 editMode, Le
 
 						const u32 nametableIndex = Rendering::Util::GetNametableIndexFromMetatilePos(metatileWorldPos);
 						const glm::ivec2 nametablePos = Rendering::Util::GetNametableOffsetFromMetatilePos(metatileWorldPos);
-						Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametablePos, metatile, palette);
+						Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametablePos, metatile);
 					}
 				}
 			}
@@ -2544,7 +2585,8 @@ static void DrawRoom(const EditorRoomInstance& room, const glm::mat3& gridToScre
 	constexpr r32 outlineHoveredThickness = 2.0f;
 
 	// Draw background color
-	drawList->AddImage(pContext->paletteTexture, nodeDrawMin, nodeDrawMax, ImVec2(0, 0), ImVec2(0.015625f, 1.0f));
+	constexpr r32 invBgColorIndex = 1.0f / (PALETTE_COUNT * PALETTE_COLOR_COUNT);
+	drawList->AddImage(pContext->paletteTexture, nodeDrawMin, nodeDrawMax, ImVec2(0, 0), ImVec2(invBgColorIndex, 1.0f));
 
 	DrawTilemap(&room.pTemplate->tilemap, ImVec2(0,0), ImVec2(width * VIEWPORT_WIDTH_METATILES, height * VIEWPORT_HEIGHT_METATILES), nodeDrawMin, scale);
 

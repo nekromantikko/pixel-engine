@@ -341,7 +341,10 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
                 tileIndex += borderIndexOffset;
             }
 
-            Rendering::Util::SetNametableTile(pNametables, { x, y }, tileIndex);
+            BgTile tile{};
+            tile.tileId = tileIndex;
+            tile.palette = 0x03;
+            Rendering::Util::SetNametableTile(pNametables, { x, y }, tile);
         }
     }
 
@@ -383,7 +386,11 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
 
                 // Clipping: Check if tile is within worldTileBounds
                 if (xTile >= tileMin.x && xTile < tileMax.x && yTile >= tileMin.y && yTile < tileMax.y) {
-                    Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tileIndex);
+
+                    BgTile tile{};
+                    tile.tileId = tileIndex;
+                    tile.palette = 0x03;
+                    Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tile);
                 }
             }
         }

@@ -998,7 +998,7 @@ static void RenderChrImage() {
 
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipelineLayout, 0, 1, &pContext->chrDescriptorSet, 0, nullptr);
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipeline);
-	vkCmdDispatch(cmd, 64, 32, 1);
+	vkCmdDispatch(cmd, CHR_DIM_TILES * PALETTE_COUNT / 2, CHR_DIM_TILES * 2, 1);
 
 	barrier = GetImageBarrier(&pContext->chrImage, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	vkCmdPipelineBarrier(

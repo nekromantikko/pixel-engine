@@ -28,25 +28,15 @@ constexpr u32 CHR_COUNT = 2;
 constexpr u32 CHR_MEMORY_SIZE = CHR_SIZE_BYTES * CHR_COUNT;
 
 constexpr u32 NAMETABLE_COUNT = 2;
-constexpr u32 NAMETABLE_WIDTH_TILES = 64;
-constexpr u32 NAMETABLE_WIDTH_TILES_LOG2 = 6;
-constexpr u32 NAMETABLE_HEIGHT_TILES = 60;
-constexpr u32 NAMETABLE_SIZE_TILES = NAMETABLE_WIDTH_TILES * NAMETABLE_HEIGHT_TILES;
-constexpr u32 NAMETABLE_WIDTH_METATILES = NAMETABLE_WIDTH_TILES >> 1;
-constexpr u32 NAMETABLE_WIDTH_METATILES_LOG2 = NAMETABLE_WIDTH_TILES_LOG2 - 1;
-constexpr u32 NAMETABLE_HEIGHT_METATILES = NAMETABLE_HEIGHT_TILES >> 1;
+constexpr u32 NAMETABLE_DIM_TILES = 64;
+constexpr u32 NAMETABLE_DIM_TILES_LOG2 = 6;
+constexpr u32 NAMETABLE_SIZE_TILES = NAMETABLE_DIM_TILES * NAMETABLE_DIM_TILES;
+constexpr u32 NAMETABLE_DIM_METATILES = NAMETABLE_DIM_TILES >> 1;
 constexpr u32 NAMETABLE_SIZE_METATILES = NAMETABLE_SIZE_TILES >> 2;
 
-constexpr u32 NAMETABLE_WIDTH_PIXELS = NAMETABLE_WIDTH_TILES * TILE_DIM_PIXELS;
-constexpr u32 NAMETABLE_HEIGHT_PIXELS = NAMETABLE_HEIGHT_TILES * TILE_DIM_PIXELS;
+constexpr u32 NAMETABLE_DIM_PIXELS = NAMETABLE_DIM_TILES * TILE_DIM_PIXELS;
 
-constexpr u32 NAMETABLE_WIDTH_ATTRIBUTES = NAMETABLE_WIDTH_TILES >> 2;
-constexpr u32 NAMETABLE_HEIGHT_ATTRIBUTES = NAMETABLE_HEIGHT_TILES >> 2;
-constexpr u32 NAMETABLE_ATTRIBUTE_COUNT = NAMETABLE_SIZE_TILES >> 4;
-
-constexpr u32 NAMETABLE_MEMORY_SIZE = NAMETABLE_SIZE_TILES + NAMETABLE_ATTRIBUTE_COUNT;
-
-constexpr u32 VIEWPORT_WIDTH_TILES = NAMETABLE_WIDTH_TILES;
+constexpr u32 VIEWPORT_WIDTH_TILES = NAMETABLE_DIM_TILES;
 constexpr u32 VIEWPORT_HEIGHT_TILES = 36;
 constexpr u32 VIEWPORT_SIZE_TILES = VIEWPORT_WIDTH_TILES * VIEWPORT_HEIGHT_TILES;
 constexpr u32 VIEWPORT_WIDTH_PIXELS = VIEWPORT_WIDTH_TILES * TILE_DIM_PIXELS;
@@ -57,29 +47,23 @@ constexpr u32 VIEWPORT_SIZE_METATILES = VIEWPORT_WIDTH_METATILES * VIEWPORT_HEIG
 
 constexpr u32 COLOR_COUNT = 0x80;
 
-constexpr u32 PALETTE_COUNT = 8;
+constexpr u32 PALETTE_COUNT = 16;
+constexpr u32 BG_PALETTE_COUNT = PALETTE_COUNT / 2;
+constexpr u32 FG_PALETTE_COUNT = PALETTE_COUNT / 2;
 constexpr u32 PALETTE_COLOR_COUNT = 8;
 constexpr u32 PALETTE_MEMORY_SIZE = PALETTE_COUNT * PALETTE_COLOR_COUNT;
 
 constexpr u32 SCANLINE_COUNT = VIEWPORT_HEIGHT_PIXELS;
 
-static_assert(NAMETABLE_WIDTH_TILES == (1 << NAMETABLE_WIDTH_TILES_LOG2));
-
 struct alignas(4) Sprite {
 	// y is first so we can easily set it offscreen when clearing
-	u16 y : 9;
-	u16 x : 9;
-	u8 tileId;
-	union {
-		struct alignas(1) {
-			u8 palette : 2;
-			u8 unused : 3;
-			u8 priority : 1;
-			bool flipHorizontal : 1;
-			bool flipVertical : 1;
-		};
-		u8 attributes;
-	};
+	s16 y;
+	s16 x;
+	u16 tileId : 10;
+	u16 palette : 3;
+	u16 priority : 1;
+	u16 flipHorizontal : 1;
+	u16 flipVertical : 1;
 };
 
 struct Scanline {
@@ -97,9 +81,16 @@ struct ChrSheet {
 	ChrTile tiles[0x100];
 };
 
+struct BgTile {
+	u16 tileId : 10;
+	u16 palette : 3;
+	u16 unused : 1;
+	u16 flipHorizontal : 1;
+	u16 flipVertical : 1;
+};
+
 struct Nametable {
-	u8 tiles[NAMETABLE_SIZE_TILES];
-	u8 attributes[NAMETABLE_ATTRIBUTE_COUNT];
+	BgTile tiles[NAMETABLE_SIZE_TILES];
 };
 
 struct Palette {
@@ -107,7 +98,7 @@ struct Palette {
 };
 
 struct Metatile {
-	u8 tiles[METATILE_TILE_COUNT];
+	BgTile tiles[METATILE_TILE_COUNT];
 };
 
 struct RenderSettings {
