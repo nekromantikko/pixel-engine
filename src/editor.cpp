@@ -64,13 +64,18 @@ struct EditorContext {
 
 	// Editor state
 	bool demoWindowOpen = false;
-	bool debugWindowOpen = false;
+	bool debugWindowOpen = true;
 	bool spriteWindowOpen = false;
 	bool tilesetWindowOpen = false;
 	bool gameWindowOpen = false;
 	bool actorWindowOpen = false;
 	bool audioWindowOpen = false;
 	bool levelConnectionsOpen = false;
+
+	// Debug overlay
+	bool showDebugOverlay = true;
+	bool drawActorHitboxes = false;
+	bool drawActorPositions = false;
 };
 
 static EditorContext* pContext;
@@ -793,6 +798,79 @@ static void DrawTypeSelectionCombo(const char* label, const char* const* const t
 #pragma endregion
 
 #pragma region Debug
+static void DrawArrow(ImVec2 start, ImVec2 end, float arrowSize, ImU32 color) {
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	// Draw the line
+	drawList->AddLine(start, end, color);
+
+	// Calculate arrowhead points
+	ImVec2 direction = { end.x - start.x, end.y - start.y };
+	float length = sqrtf(direction.x * direction.x + direction.y * direction.y);
+	if (length == 0.0f) return; // Avoid division by zero
+
+	direction.x /= length;
+	direction.y /= length;
+
+	ImVec2 perpendicular = { -direction.y, direction.x };
+
+	ImVec2 arrowTip = end;
+	ImVec2 arrowLeft = { end.x - direction.x * arrowSize + perpendicular.x * arrowSize * 0.5f,
+						 end.y - direction.y * arrowSize + perpendicular.y * arrowSize * 0.5f };
+	ImVec2 arrowRight = { end.x - direction.x * arrowSize - perpendicular.x * arrowSize * 0.5f,
+						  end.y - direction.y * arrowSize - perpendicular.y * arrowSize * 0.5f };
+
+	// Draw the arrowhead
+	drawList->AddTriangleFilled(arrowTip, arrowLeft, arrowRight, color);
+}
+
+static void DrawActorDebugInfo(const ImVec2& pos, const ImVec2& size) {
+	const glm::vec2 viewportPos = Game::Rendering::GetViewportPos();
+	const r32 renderScale = size.y / VIEWPORT_HEIGHT_PIXELS;
+
+	const DynamicActorPool* actors = Game::GetActors();
+	const glm::vec2 viewportPixelPos = viewportPos * r32(METATILE_DIM_PIXELS);
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	for (u32 i = 0; i < actors->Count(); i++)
+	{
+		PoolHandle<Actor> handle = actors->GetHandle(i);
+		const Actor* pActor = actors->Get(handle);
+
+		const glm::vec2 actorPixelPos = pActor->position * (r32)METATILE_DIM_PIXELS;
+		const glm::vec2 pixelOffset = actorPixelPos - viewportPixelPos;
+		const ImVec2 drawPos = ImVec2(pos.x + pixelOffset.x * renderScale, pos.y + pixelOffset.y * renderScale);
+
+		if (pContext->drawActorHitboxes) {
+			DrawHitbox(&pActor->pPrototype->hitbox, drawPos, renderScale);
+		}
+		if (pContext->drawActorPositions) {
+			char positionText[64];
+			sprintf(positionText, "(%.2f, %.2f)", pActor->position.x, pActor->position.y);
+
+			drawList->AddText(drawPos, IM_COL32(255, 255, 0, 255), positionText);
+		}
+	}
+}
+
+static void DrawDebugOverlay() {
+	const ImGuiViewport* viewport = ImGui::GetMainViewport();
+	ImGui::SetNextWindowPos(viewport->Pos);
+	ImGui::SetNextWindowSize(viewport->Size);
+
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+	ImGui::Begin("Game View Overlay", nullptr,
+		ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+		ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
+		ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoFocusOnAppearing |
+		ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+	DrawActorDebugInfo(viewport->Pos, viewport->Size);
+
+	ImGui::End();
+	ImGui::PopStyleVar(2);
+}
+
 static void DrawDebugConsole() {
 	if (ImGui::SmallButton("Clear log")) {
 		pContext->consoleLog.clear();
@@ -922,6 +1000,13 @@ static void DrawDebugWindow() {
 			if (ImGui::Button("Save palette to file")) {
 				Rendering::Util::SavePaletteToFile("generated.pal");
 			}
+			ImGui::EndTabItem();
+		}
+		if (ImGui::BeginTabItem("Settings")) {
+			ImGui::Checkbox("Show Game View Overlay", &pContext->showDebugOverlay);
+			ImGui::SeparatorText("Overlay settings");
+			ImGui::Checkbox("Draw actor hitboxes", &pContext->drawActorHitboxes);
+			ImGui::Checkbox("Draw actor positions", &pContext->drawActorPositions);
 			ImGui::EndTabItem();
 		}
 		ImGui::EndTabBar();
@@ -1349,41 +1434,7 @@ static void DrawScreenBorders(u32 index, ImVec2 pMin, ImVec2 pMax, r32 renderSca
 	drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), screenLabelText);
 }
 
-static void DrawScreenCollisionCells(ImVec2 pMin, ImVec2 pMax, ImVec2 viewportDrawSize) {
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-	for (s32 y = 0; y < 4; y++) {
-		r32 yPos = pMin.y + (viewportDrawSize.y / 4) * y;
-		for (s32 x = 0; x < 4; x++) {
-			r32 xPos = pMin.x + (viewportDrawSize.x / 4) * x;
-
-			ImVec2 pMin2 = ImVec2(xPos, yPos);
-			ImVec2 pMax2 = ImVec2(pMin2.x + viewportDrawSize.x / 4, pMin2.y + viewportDrawSize.y / 4);
-
-			drawList->AddRectFilled(pMin2, pMax2, IM_COL32(255, 0, 0, 63));
-			drawList->AddRect(pMin2, pMax2, IM_COL32(255, 255, 255, 63));
-		}
-	}
-}
-
-static void DrawActorColliders(const glm::vec2& viewportPos, const ImVec2 topLeft, const r32 renderScale) {
-	const DynamicActorPool* actors = Game::GetActors();
-
-	const glm::vec2 viewportPixelPos = viewportPos * r32(METATILE_DIM_PIXELS);
-	for (u32 i = 0; i < actors->Count(); i++)
-	{
-		PoolHandle<Actor> handle = actors->GetHandle(i);
-		const Actor* pActor = actors->Get(handle);
-
-		const glm::vec2 actorPixelPos = pActor->position * (r32)METATILE_DIM_PIXELS;
-		const glm::vec2 pixelOffset = actorPixelPos - viewportPixelPos;
-		const ImVec2 drawPos = ImVec2(topLeft.x + pixelOffset.x * renderScale, topLeft.y + pixelOffset.y * renderScale);
-
-		DrawHitbox(&pActor->pPrototype->hitbox, drawPos, renderScale);
-	}
-}
-
-static void DrawGameViewOverlay(const RoomTemplate* pTemplate, const glm::vec2& viewportPos, const ImVec2 topLeft, const ImVec2 btmRight, const r32 renderScale, bool drawBorders, bool drawCollisionCells, bool drawHitboxes) {
+static void DrawGameViewOverlay(const RoomTemplate* pTemplate, const glm::vec2& viewportPos, const ImVec2 topLeft, const ImVec2 btmRight, const r32 renderScale, bool drawBorders) {
 	const glm::vec2 viewportPixelPos = viewportPos * r32(METATILE_DIM_PIXELS);
 	const ImVec2 viewportDrawSize = ImVec2(VIEWPORT_WIDTH_PIXELS * renderScale, VIEWPORT_HEIGHT_PIXELS * renderScale);
 
@@ -1403,14 +1454,6 @@ static void DrawGameViewOverlay(const RoomTemplate* pTemplate, const glm::vec2& 
 
 			if (drawBorders) {
 				DrawScreenBorders(i, pMin, pMax, renderScale);
-			}
-
-			if (drawCollisionCells) {
-				DrawScreenCollisionCells(pMin, pMax, viewportDrawSize);
-			}
-
-			if (drawHitboxes) {
-				DrawActorColliders(viewportPos, topLeft, renderScale);
 			}
 		}
 	}
@@ -1466,9 +1509,6 @@ static void DrawGameView(RoomTemplate* pTemplate, bool editing, u32 editMode, Le
 
 	drawList->AddImage(pContext->gameViewTexture, topLeft, btmRight);
 
-	static bool drawCollisionCells = false;
-	static bool drawHitboxes = false;
-
 	// View scrolling
 	bool scrolling = false;
 	if (editing) {
@@ -1497,7 +1537,7 @@ static void DrawGameView(RoomTemplate* pTemplate, bool editing, u32 editMode, Le
 		}
 	}
 
-	DrawGameViewOverlay(pTemplate, viewportPos, topLeft, btmRight, renderScale, editing, drawCollisionCells, drawHitboxes);
+	DrawGameViewOverlay(pTemplate, viewportPos, topLeft, btmRight, renderScale, editing);
 
 	if (editing) {
 		// Draw actors
@@ -1682,10 +1722,6 @@ static void DrawGameView(RoomTemplate* pTemplate, bool editing, u32 editMode, Le
 
 	ImGui::Text("Currently loaded level: %s", pTemplate->name);
 	ImGui::Text("Viewport pos = (%f, %f)", viewportPos.x, viewportPos.y);
-
-	ImGui::SeparatorText("Debug");
-	ImGui::Checkbox("Draw collision cells", &drawCollisionCells);
-	ImGui::Checkbox("Draw actor hitboxes", &drawHitboxes);
 }
 
 static void DrawLevelTools(u32& selectedLevel, bool editing, u32& editMode, LevelToolsState& state, LevelClipboard& clipboard, PoolHandle<RoomActor>& selectedActorHandle) {
@@ -3013,6 +3049,10 @@ void Editor::Render(r64 dt) {
 
 	if (pContext->debugWindowOpen) {
 		DrawDebugWindow();
+	}
+
+	if (pContext->showDebugOverlay) {
+		DrawDebugOverlay();
 	}
 
 	if (pContext->spriteWindowOpen) {
