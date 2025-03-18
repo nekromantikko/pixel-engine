@@ -26,8 +26,6 @@ namespace Game {
     r64 secondsElapsed = 0.0f;
     u32 clockCounter = 0;
 
-    bool paused = false;
-
     Sound jumpSfx;
     Sound gunSfx;
     Sound ricochetSfx;
@@ -39,9 +37,7 @@ namespace Game {
     //bool musicPlaying = false;
 
     static void Step() {
-        if (!paused) {
-            StepFrame();
-        }
+        StepFrame();
 
         /*if (ButtonPressed(BUTTON_START)) {
             if (!musicPlaying) {
@@ -118,14 +114,6 @@ namespace Game {
                 clockCounter = 0;
             }
         }
-    }
-
-    bool IsPaused() {
-        return paused;
-    }
-    void SetPaused(bool p) {
-        Rendering::ClearSpriteLayers();
-        paused = p;
     }
 #pragma endregion
 }
