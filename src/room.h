@@ -33,6 +33,8 @@ struct RoomTemplate {
     u8 height;
     Tilemap tilemap;
     Pool<RoomActor, ROOM_MAX_ACTOR_COUNT> actors;
+
+    BgTile mapTiles[ROOM_MAX_SCREEN_COUNT * 2];
 };
 
 namespace Assets {

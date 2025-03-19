@@ -1259,7 +1259,8 @@ static void DrawSpriteListPreview(const Sprite& sprite) {
 	u8 index = (u8)sprite.tileId;
 	const bool flipX = sprite.flipHorizontal;
 	const bool flipY = sprite.flipVertical;
-	glm::vec4 uvMinMax = ChrTileToTexCoord(index, 1, sprite.palette);
+	const u8 pageIndex = (sprite.tileId >> 8) & 3;
+	glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex + CHR_PAGE_COUNT, sprite.palette);
 	ImGuiStyle& style = ImGui::GetStyle();
 	r32 itemHeight = ImGui::GetItemRectSize().y - style.FramePadding.y;
 
@@ -1423,9 +1424,7 @@ static void DrawTilesetWindow() {
 
 		s32 palette = metatile.tiles[selectedTileIndex].palette;
 		r32 chrSheetSize = 256;
-		ImGui::PushID(0);
 		DrawCHRPageSelector(chrSheetSize, 0, palette, &tileId);
-		ImGui::PopID();
 		if (tileId != metatile.tiles[selectedTileIndex].tileId) {
 			metatile.tiles[selectedTileIndex].tileId = tileId;
 		}
@@ -1434,9 +1433,7 @@ static void DrawTilesetWindow() {
 
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		const ImVec2 gridSize = ImVec2(tilePreviewSize, tilePreviewSize);
-		ImGui::PushID(1);
 		const ImVec2 tilePos = DrawTileGrid(gridSize, gridStepPixels, &selectedTileIndex);
-		ImGui::PopID();
 		DrawMetatile(metatile, tilePos, tilePreviewSize);
 		DrawTileGridSelection(tilePos, gridSize, gridStepPixels, selectedTileIndex);
 
@@ -1761,6 +1758,70 @@ static void DrawRoomTools(RoomTemplate* pTemplate, u32& editMode, RoomToolsState
 			if (ImGui::InputInt2("Size", size)) {
 				pTemplate->width = glm::clamp(size[0], 1, s32(ROOM_MAX_DIM_SCREENS));
 				pTemplate->height = glm::clamp(size[1], 1, s32(ROOM_MAX_DIM_SCREENS));
+			}
+
+			ImGui::SeparatorText("Map visuals");
+
+			static s32 selectedTile = 0;
+			if (selectedTile >= pTemplate->width * 2 * pTemplate->height) {
+				selectedTile = 0;
+			}
+			const s32 xTile = selectedTile % (pTemplate->width * 2);
+			const s32 yTile = selectedTile / (pTemplate->width * 2);
+			const s32 roomTileIndex = xTile + yTile * ROOM_MAX_DIM_SCREENS * 2;
+			s32 tileId = pTemplate->mapTiles[roomTileIndex].tileId;
+			s32 palette = pTemplate->mapTiles[roomTileIndex].palette;
+
+			constexpr r32 chrSheetSize = 256;
+			ImGuiStyle& style = ImGui::GetStyle();
+			ImGui::BeginChild("Tile selector", ImVec2(chrSheetSize, chrSheetSize + ImGui::GetItemRectSize().y + style.ItemSpacing.y));
+			DrawCHRPageSelector(chrSheetSize, 0, palette, &tileId);
+			pTemplate->mapTiles[roomTileIndex].tileId = tileId;
+			ImGui::EndChild();
+
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			constexpr r32 previewTileSize = 32;
+			const ImVec2 gridSize(previewTileSize * pTemplate->width * 2, previewTileSize * pTemplate->height);
+
+			static bool gridFocused = false;
+			const ImVec2 gridPos = DrawTileGrid(gridSize, previewTileSize, &selectedTile, &gridFocused);
+
+			for (u32 y = 0; y < pTemplate->height; y++) {
+				for (u32 x = 0; x < pTemplate->width * 2; x++) {
+					const s32 tileIndex = x + y * ROOM_MAX_DIM_SCREENS * 2;
+					const BgTile& tile = pTemplate->mapTiles[tileIndex];
+
+					const u8 index = (u8)tile.tileId;
+					const bool flipX = tile.flipHorizontal;
+					const bool flipY = tile.flipVertical;
+					const u8 palette = tile.palette;
+					const u8 pageIndex = (tile.tileId >> 8) & 3;
+
+					glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex, palette);
+
+					const ImVec2 pos(gridPos.x + x * previewTileSize, gridPos.y + y * previewTileSize);
+					drawList->AddImage(pContext->chrTexture, pos, ImVec2(pos.x + previewTileSize, pos.y + previewTileSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
+				}
+			}
+
+			DrawTileGridSelection(gridPos, gridSize, previewTileSize, selectedTile);
+
+			ImGui::SeparatorText("Tile Settings");
+
+			ImGui::Text("Tile ID: 0x%02x", tileId);
+
+			if (ImGui::SliderInt("Palette", &palette, 0, BG_PALETTE_COUNT - 1)) {
+				pTemplate->mapTiles[roomTileIndex].palette = palette;
+			}
+
+			bool flipHorizontal = pTemplate->mapTiles[roomTileIndex].flipHorizontal;
+			if (ImGui::Checkbox("Flip Horizontal", &flipHorizontal)) {
+				pTemplate->mapTiles[roomTileIndex].flipHorizontal = flipHorizontal;
+			}
+
+			bool flipVertical = pTemplate->mapTiles[roomTileIndex].flipVertical;
+			if (ImGui::Checkbox("Flip Vertical", &flipVertical)) {
+				pTemplate->mapTiles[roomTileIndex].flipVertical = flipVertical;
 			}
 
 			ImGui::EndTabItem();

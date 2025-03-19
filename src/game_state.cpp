@@ -377,20 +377,10 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
             for (u32 i = 0; i < 2; i++) {
                 const u32 xTile = (x * 2) + tileMin.x + i - scrollOffset.x;
 
-                constexpr u8 indexOffset = 0x04;
-                const u8 xIndex[2] = {
-                    roomX ? 1 : 0,
-                    (roomX == roomWidthScreens - 1) ? 2 : 1
-                };
-                const u8 yIndex = (roomHeightScreens - 1) ? (roomY ? ((roomY == roomHeightScreens - 1) ? 2 : 1) : 0) : 3;
-                const u8 tileIndex = indexOffset + xIndex[i] + yIndex * 3;
-
                 // Clipping: Check if tile is within worldTileBounds
                 if (xTile >= tileMin.x && xTile < tileMax.x && yTile >= tileMin.y && yTile < tileMax.y) {
-
-                    BgTile tile{};
-                    tile.tileId = tileIndex;
-                    tile.palette = 0x03;
+                    const u32 roomTileIndex = (roomX * 2 + i) + roomY * ROOM_MAX_DIM_SCREENS * 2;
+                    const BgTile& tile = pTemplate->mapTiles[roomTileIndex];
                     Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tile);
                 }
             }

@@ -79,6 +79,9 @@ bool Assets::LoadRoomTemplates(const char* fname) {
             fread(&actor, sizeof(RoomActor), 1, pFile);
             room.actors.Add(actor);
         }
+
+        // Map tiles
+        fread(&room.mapTiles, sizeof(BgTile), ROOM_MAX_SCREEN_COUNT * 2, pFile);
     }
 
     fclose(pFile);
@@ -125,6 +128,9 @@ bool Assets::SaveRoomTemplates(const char* fname) {
 
             fwrite(pActor, sizeof(RoomActor), 1, pFile);
         }
+
+        // Map tiles
+        fwrite(&room.mapTiles, sizeof(BgTile), ROOM_MAX_SCREEN_COUNT * 2, pFile);
     }
 
     fclose(pFile);
