@@ -42,12 +42,13 @@ static void CopyBoxTileToNametable(Nametable* pNametables, const glm::ivec2& wor
     const u32 nametableIndex = Rendering::Util::GetNametableIndexFromMetatilePos(worldPos);
     const glm::ivec2 nametableOffset = Rendering::Util::GetNametableOffsetFromMetatilePos(worldPos);
 
+    constexpr u16 borderTileOffset = 256;
     // Construct a metatile
     Metatile metatile{};
     for (u32 y = 0; y < METATILE_DIM_TILES; y++) {
         for (u32 x = 0; x < METATILE_DIM_TILES; x++) {
             metatile.tiles[x + y * METATILE_DIM_TILES] = {
-                .tileId = GetBoxTileId(tileOffset.x + x, tileOffset.y + y, sizeTiles.x, sizeTiles.y),
+                .tileId = u16(borderTileOffset + GetBoxTileId(tileOffset.x + x, tileOffset.y + y, sizeTiles.x, sizeTiles.y)),
                 .palette = palette
             };
         }

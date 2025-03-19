@@ -4,7 +4,7 @@
 #define GLM_FORCE_RADIANS
 #include <glm.hpp>
 
-constexpr u32 PLAYER_BANK_INDEX = 2;
+constexpr u32 PLAYER_BANK_INDEX = 8;
 
 enum SpriteLayerType : u8 {
 	SPRITE_LAYER_UI,

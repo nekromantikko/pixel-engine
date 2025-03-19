@@ -16,7 +16,7 @@ static SpriteLayer spriteLayers[SPRITE_LAYER_COUNT];
 
 static u8 paletteColors[PALETTE_MEMORY_SIZE];
 
-static ChrSheet chrBanks[3];
+static ChrSheet chrBanks[9];
 
 static void UpdateScreenScroll() {
     Scanline* pScanlines = Rendering::GetScanlinePtr(0);
@@ -147,13 +147,18 @@ void Game::Rendering::Init() {
 
     // Init chr memory
     // TODO: Pre-process these instead of loading from bitmap at runtime!
-    ::Rendering::Util::CreateChrSheet("assets/chr000.bmp", &chrBanks[0]);
+    ::Rendering::Util::CreateChrSheet("assets/bg0.bmp", &chrBanks[0]);
 	CopyBankTiles(0, 0, 0, 0, CHR_SIZE_TILES);
-    ::Rendering::Util::CreateChrSheet("assets/chr001.bmp", &chrBanks[1]);
-	CopyBankTiles(1, 0, 4, 0, CHR_SIZE_TILES);
+    ::Rendering::Util::CreateChrSheet("assets/bg1.bmp", &chrBanks[1]);
+	CopyBankTiles(1, 0, 1, 0, CHR_SIZE_TILES);
+    ::Rendering::Util::CreateChrSheet("assets/bg2.bmp", &chrBanks[2]);
+    CopyBankTiles(2, 0, 2, 0, CHR_SIZE_TILES);
+
+    ::Rendering::Util::CreateChrSheet("assets/fg0.bmp", &chrBanks[4]);
+    CopyBankTiles(4, 0, 4, 0, CHR_SIZE_TILES);
 
     // Player bank
-    ::Rendering::Util::CreateChrSheet("assets/player.bmp", &chrBanks[2]);
+    ::Rendering::Util::CreateChrSheet("assets/player.bmp", &chrBanks[8]);
 
 
     ::Rendering::Util::LoadPaletteColorsFromFile("assets/palette.dat", paletteColors);

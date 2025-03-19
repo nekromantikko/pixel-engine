@@ -1445,6 +1445,8 @@ static void DrawTilesetWindow() {
 
 		ImGui::SeparatorText("Tile Settings");
 
+		ImGui::Text("Tile ID: 0x%02x", tileId);
+
 		if (ImGui::SliderInt("Palette", &palette, 0, BG_PALETTE_COUNT - 1)) {
 			metatile.tiles[selectedTileIndex].palette = palette;
 		}

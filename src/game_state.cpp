@@ -272,14 +272,13 @@ static void StepGameplayFrame() {
 
 #pragma region Pause menu
 // TODO: Move somewhere else?
-// Produces a random bit that can be biased towards zero using threshold (lower = more likely to be zero)
-static u8 DeterministicRandomBit(u32 input, u8 threshold) {
+static u32 Hash(u32 input) {
     // Multiply with fibonacci primes
     input = (input ^ (input >> 16)) * 0xb11924e1;
     input = (input ^ (input >> 16)) * 0x19d699a5;
     input = input ^ (input >> 16);
 
-    return (input & 0xFF) < threshold;
+    return input;
 }
 
 static bool DrawMapIcon(const glm::i8vec2 gridCell, u8 tileId, u8 palette, const glm::ivec2& scrollOffset, const glm::vec4& worldBounds) {
@@ -321,29 +320,31 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
     Nametable* pNametables = Rendering::GetNametablePtr(0);
 
     // Draw map background
-    constexpr u8 raggedIndexOffset = 0x10;
-    constexpr u8 borderIndexOffset = 0x14;
+    constexpr u16 borderIndexOffset = 0x110;
     const glm::ivec2 borderMin(tileMin - 1);
     const glm::ivec2 borderMax(tileMax + 1);
     for (int y = borderMin.y; y < borderMax.y; ++y) {
         for (int x = borderMin.x; x < borderMax.x; ++x) {
-            u8 xIndex = (x > borderMin.x) ? ((x == borderMax.x - 1) ? 2 : 1) : 0;
-            u8 yIndex = (y > borderMin.y) ? ((y == borderMax.y - 1) ? 2 : 1) : 0;
-            u8 tileIndex = xIndex + yIndex * 3;
+            u8 xEdge = ((x == borderMin.x) || (x == borderMax.x - 1)) ? 1 : 0;
+            u8 yEdge = ((y == borderMin.y) || (y == borderMax.y - 1)) ? 2 : 0;
+            bool hFlip = (x == borderMin.x);
+            bool vFlip = (y == borderMin.y);
+            u16 tileIndex = xEdge | yEdge;
 
-            if (tileIndex & 1 && // Tile is edge (Not corner)
-                DeterministicRandomBit(x ^ y, 0x20)) {
-                // Get ragged tile
-                tileIndex >>= 1;
-                tileIndex += raggedIndexOffset;
+            u16 raggedOffset = Hash((x - borderMin.x) ^ (y - borderMin.y));
+            if ((raggedOffset & 7) != 7) {
+                raggedOffset = 0;
             }
-            else {
-                tileIndex += borderIndexOffset;
-            }
+            else raggedOffset = (raggedOffset >> 8) & 12;
+
+            tileIndex += raggedOffset;
+            tileIndex += borderIndexOffset;
 
             BgTile tile{};
             tile.tileId = tileIndex;
             tile.palette = 0x03;
+            tile.flipHorizontal = hFlip;
+            tile.flipVertical = vFlip;
             Rendering::Util::SetNametableTile(pNametables, { x, y }, tile);
         }
     }
