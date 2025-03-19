@@ -672,6 +672,29 @@ static void UpdatePlayerOverworld(Actor* pPlayer) {
             }
         }
     }
+
+    // This feels really stupid...
+    switch (state.facingDir) {
+    case PLAYER_OW_DIR_RIGHT:
+        pPlayer->drawState.animIndex = 0;
+        break;
+    case PLAYER_OW_DIR_LEFT:
+        pPlayer->drawState.animIndex = 1;
+        break;
+    case PLAYER_OW_DIR_DOWN:
+        pPlayer->drawState.animIndex = 2;
+        break;
+    case PLAYER_OW_DIR_UP:
+        pPlayer->drawState.animIndex = 3;
+        break;
+    default:
+        break;
+    }
+
+    if ((state.movementCounter & 7) == 7) {
+        pPlayer->drawState.frameIndex++;
+        pPlayer->drawState.frameIndex &= 1;
+    }
 }
 
 static bool DrawPlayerGun(const Actor* pPlayer) {
