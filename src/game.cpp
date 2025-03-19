@@ -21,6 +21,7 @@
 #include "actor_prototypes.h"
 #include "dungeon.h"
 #include "room.h"
+#include "overworld.h"
 
 namespace Game {
     r64 secondsElapsed = 0.0f;
@@ -73,6 +74,7 @@ namespace Game {
         Assets::LoadRoomTemplates("assets/rooms.ass");
         Assets::LoadActorPrototypes("assets/actors.prt");
         Assets::LoadDungeons("assets/test.dng");
+        Assets::LoadOverworld("assets/overworld.ass");
 
         // TEMP SOUND STUFF
         jumpSfx = Audio::LoadSound("assets/jump.nsf");

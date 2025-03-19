@@ -21,6 +21,7 @@
 #include "audio.h"
 #include "random.h"
 #include "dungeon.h"
+#include "overworld.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <gtx/matrix_transform_2d.hpp>
 #include <vector>
@@ -72,6 +73,7 @@ struct EditorContext {
 	bool actorWindowOpen = false;
 	bool audioWindowOpen = false;
 	bool dungeonWindowOpen = false;
+	bool overworldWindowOpen = false;
 
 	// Debug overlay
 	bool showDebugOverlay = true;
@@ -469,6 +471,161 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 	if (selectedMetatile != nullptr && *selectedMetatile >= 0) {
 		DrawTileGridSelection(chrPos, gridSize, gridStepPixels, *selectedMetatile);
 	}
+}
+
+static void DrawTilemapTools(TilemapClipboard& clipboard) {
+	ImGuiStyle& style = ImGui::GetStyle();
+
+	const s32 currentSelection = (clipboard.size.x == 1 && clipboard.size.y == 1) ? clipboard.clipboard[0] : -1;
+	s32 newSelection = currentSelection;
+
+	const Tileset* pTileset = Tiles::GetTileset();
+	DrawTileset(pTileset, ImGui::GetContentRegionAvail().x - style.WindowPadding.x, &newSelection);
+
+	// Rewrite level editor clipboard if new selection was made
+	if (newSelection != currentSelection) {
+		clipboard.clipboard[0] = newSelection;
+		clipboard.offset = ImVec2(0, 0);
+		clipboard.size = ImVec2(1, 1);
+	}
+
+	if (currentSelection >= 0) {
+		ImGui::Text("0x%02x", currentSelection);
+	}
+}
+
+// Returns true if scrolling view
+static bool DrawTilemapEditor(Tilemap* pTilemap, ImVec2 topLeft, r32 renderScale, glm::vec2& viewportPos, TilemapClipboard& clipboard, bool allowEditing) {
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	const ImVec2 size(VIEWPORT_WIDTH_PIXELS * renderScale, VIEWPORT_HEIGHT_PIXELS * renderScale);
+	const ImVec2 btmRight(topLeft.x + size.x, topLeft.y + size.y);
+	const r32 tileDrawSize = METATILE_DIM_PIXELS * renderScale;
+
+	ImGuiIO& io = ImGui::GetIO();
+	const ImVec2 mousePosInViewportCoords = ImVec2((io.MousePos.x - topLeft.x) / tileDrawSize, (io.MousePos.y - topLeft.y) / tileDrawSize);
+	const ImVec2 mousePosInWorldCoords = ImVec2(mousePosInViewportCoords.x + viewportPos.x, mousePosInViewportCoords.y + viewportPos.y);
+	const ImVec2 hoveredTileWorldPos = ImVec2(glm::floor(mousePosInWorldCoords.x), glm::floor(mousePosInWorldCoords.y));
+
+	// Invisible button to prevent dragging window
+	ImGui::InvisibleButton("##canvas", ImVec2(size.x, size.y), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
+
+	const bool hovered = ImGui::IsItemHovered();
+	const bool active = ImGui::IsItemActive();
+
+	drawList->PushClipRect(topLeft, btmRight, true);
+
+	DrawTilemap(pTilemap, ImVec2(viewportPos.x, viewportPos.y), ImVec2(VIEWPORT_WIDTH_METATILES + 1, VIEWPORT_HEIGHT_METATILES + 1), topLeft, renderScale * METATILE_DIM_PIXELS);
+
+	// View scrolling
+	bool scrolling = false;
+
+	static ImVec2 dragStartPos = ImVec2(0, 0);
+	static ImVec2 dragDelta = ImVec2(0, 0);
+
+	if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
+		dragStartPos = io.MousePos;
+	}
+
+	if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+		const ImVec2 newDelta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Middle);
+		glm::vec2 newViewportPos = viewportPos;
+		newViewportPos.x -= (newDelta.x - dragDelta.x) / renderScale / METATILE_DIM_PIXELS;
+		newViewportPos.y -= (newDelta.y - dragDelta.y) / renderScale / METATILE_DIM_PIXELS;
+		dragDelta = newDelta;
+
+		const glm::vec2 max = {
+			pTilemap->width,
+			pTilemap->height
+		};
+
+		viewportPos = glm::clamp(newViewportPos, glm::vec2(0.0f), max);
+		scrolling = true;
+	}
+
+	// Reset drag delta when mouse released
+	if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
+		dragDelta = ImVec2(0, 0);
+	}
+
+	// Editing
+	if (allowEditing) {
+		static bool selecting = false;
+
+		// Selection
+		if (!scrolling) {
+			static ImVec2 selectionStartPos = ImVec2(0, 0);
+			static ImVec2 selectionTopLeft;
+			static ImVec2 selectionBtmRight;
+
+			if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+				selectionStartPos = hoveredTileWorldPos;
+				selectionTopLeft = hoveredTileWorldPos;
+				selectionBtmRight = ImVec2(hoveredTileWorldPos.x + 1, hoveredTileWorldPos.y + 1);
+				selecting = true;
+			}
+
+			if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+				selectionTopLeft = ImVec2(glm::min(selectionStartPos.x, hoveredTileWorldPos.x), glm::min(selectionStartPos.y, hoveredTileWorldPos.y));
+				selectionBtmRight = ImVec2(glm::max(selectionStartPos.x, hoveredTileWorldPos.x) + 1, glm::max(selectionStartPos.y, hoveredTileWorldPos.y) + 1);
+
+				const ImVec2 selectionTopLeftInPixelCoords = ImVec2((selectionTopLeft.x - viewportPos.x) * tileDrawSize + topLeft.x, (selectionTopLeft.y - viewportPos.y) * tileDrawSize + topLeft.y);
+				const ImVec2 selectionBtmRightInPixelCoords = ImVec2((selectionBtmRight.x - viewportPos.x) * tileDrawSize + topLeft.x, (selectionBtmRight.y - viewportPos.y) * tileDrawSize + topLeft.y);
+
+				drawList->AddRectFilled(selectionTopLeftInPixelCoords, selectionBtmRightInPixelCoords, IM_COL32(255, 255, 255, 63));
+			}
+
+			if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
+				selecting = false;
+				u32 selectionWidth = (selectionBtmRight.x - selectionTopLeft.x);
+				u32 selectionHeight = (selectionBtmRight.y - selectionTopLeft.y);
+
+				clipboard.size = ImVec2((r32)selectionWidth, (r32)selectionHeight);
+				clipboard.offset = ImVec2(selectionTopLeft.x - hoveredTileWorldPos.x, selectionTopLeft.y - hoveredTileWorldPos.y);
+
+				for (u32 x = 0; x < selectionWidth; x++) {
+					for (u32 y = 0; y < selectionHeight; y++) {
+						u32 clipboardIndex = y * selectionWidth + x;
+
+						const glm::ivec2 metatileWorldPos = { selectionTopLeft.x + x, selectionTopLeft.y + y };
+						const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, metatileWorldPos);
+						clipboard.clipboard[clipboardIndex] = tilesetIndex;
+					}
+				}
+			}
+		}
+
+		if (!selecting) {
+			const u32 clipboardWidth = (u32)clipboard.size.x;
+			const u32 clipboardHeight = (u32)clipboard.size.y;
+			const ImVec2 clipboardTopLeft = ImVec2(hoveredTileWorldPos.x + clipboard.offset.x, hoveredTileWorldPos.y + clipboard.offset.y);
+			const ImVec2 clipboardBtmRight = ImVec2(clipboardTopLeft.x + clipboardWidth, clipboardTopLeft.y + clipboardHeight);
+			for (u32 x = 0; x < clipboardWidth; x++) {
+				for (u32 y = 0; y < clipboardHeight; y++) {
+					u32 clipboardIndex = y * clipboardWidth + x;
+					const glm::ivec2 metatileWorldPos = { clipboardTopLeft.x + x, clipboardTopLeft.y + y };
+					const ImVec2 metatileInViewportCoords = ImVec2(metatileWorldPos.x - viewportPos.x, metatileWorldPos.y - viewportPos.y);
+					const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
+					const u8 metatileIndex = clipboard.clipboard[clipboardIndex];
+
+					const Tileset* pTileset = Tiles::GetTileset();
+					const Metatile& metatile = pTileset->tiles[metatileIndex].metatile;
+					DrawMetatile(metatile, metatileInPixelCoords, tileDrawSize, IM_COL32(255, 255, 255, 127));
+
+					// Paint metatiles
+					if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
+						Tiles::SetTilesetTile(pTilemap, metatileWorldPos, metatileIndex);
+					}
+				}
+			}
+
+			const ImVec2 clipboardTopLeftInPixelCoords = ImVec2((clipboardTopLeft.x - viewportPos.x) * tileDrawSize + topLeft.x, (clipboardTopLeft.y - viewportPos.y) * tileDrawSize + topLeft.y);
+			const ImVec2 clipboardBtmRightInPixelCoords = ImVec2((clipboardBtmRight.x - viewportPos.x) * tileDrawSize + topLeft.x, (clipboardBtmRight.y - viewportPos.y) * tileDrawSize + topLeft.y);
+			drawList->AddRect(clipboardTopLeftInPixelCoords, clipboardBtmRightInPixelCoords, IM_COL32(255, 255, 255, 255));
+		}
+	}
+
+	drawList->PopClipRect();
+	return scrolling;
 }
 
 static void DrawSprite(const Sprite& sprite, const ImVec2& pos, r32 renderScale, ImU32 color = IM_COL32(255, 255, 255, 255)) {
@@ -1518,8 +1675,6 @@ static PoolHandle<RoomActor> GetHoveredActorHandle(const RoomTemplate* pTemplate
 }
 
 static void DrawRoomView(RoomTemplate* pTemplate, u32 editMode, TilemapClipboard& clipboard, PoolHandle<RoomActor>& selectedActorHandle, glm::vec2& viewportPos) {
-	Nametable* pNametables = Rendering::GetNametablePtr(0);
-
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	ImVec2 topLeft = ImGui::GetCursorScreenPos();
 	static const r32 aspectRatio = (r32)VIEWPORT_WIDTH_PIXELS / VIEWPORT_HEIGHT_PIXELS;
@@ -1527,17 +1682,20 @@ static void DrawRoomView(RoomTemplate* pTemplate, u32 editMode, TilemapClipboard
 	const r32 contentHeight = contentWidth / aspectRatio;
 	const r32 renderScale = contentWidth / VIEWPORT_WIDTH_PIXELS;
 	ImVec2 btmRight = ImVec2(topLeft.x + contentWidth, topLeft.y + contentHeight);
-
-	ImGuiIO& io = ImGui::GetIO();
 	const r32 tileDrawSize = METATILE_DIM_PIXELS * renderScale;
-	const ImVec2 mousePosInViewportCoords = ImVec2((io.MousePos.x - topLeft.x) / tileDrawSize, (io.MousePos.y - topLeft.y) / tileDrawSize);
-	const ImVec2 mousePosInWorldCoords = ImVec2(mousePosInViewportCoords.x + viewportPos.x, mousePosInViewportCoords.y + viewportPos.y);
+	
+	const bool scrolling = DrawTilemapEditor(&pTemplate->tilemap, topLeft, renderScale, viewportPos, clipboard, editMode == EDIT_MODE_TILES);
 
-	// Invisible button to prevent dragging window
-	ImGui::InvisibleButton("##canvas", ImVec2(contentWidth, contentHeight), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
+	// Clamp scrolling to room size
+	const glm::vec2 scrollMax = {
+			(pTemplate->width - 1) * VIEWPORT_WIDTH_METATILES,
+			(pTemplate->height - 1) * VIEWPORT_HEIGHT_METATILES
+	};
 
-	const bool hovered = ImGui::IsItemHovered(); // Hovered
-	const bool active = ImGui::IsItemActive();   // Held
+	viewportPos = glm::clamp(viewportPos, glm::vec2(0.0f), scrollMax);
+
+	const bool hovered = ImGui::IsItemHovered();
+	const bool active = ImGui::IsItemActive();
 
 	// Context menu handling
 	if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
@@ -1547,42 +1705,6 @@ static void DrawRoomView(RoomTemplate* pTemplate, u32 editMode, TilemapClipboard
 	}
 
 	drawList->PushClipRect(topLeft, btmRight, true);
-
-	DrawTilemap(&pTemplate->tilemap, ImVec2(viewportPos.x, viewportPos.y), ImVec2(VIEWPORT_WIDTH_METATILES + 1, VIEWPORT_HEIGHT_METATILES + 1), topLeft, renderScale * METATILE_DIM_PIXELS);
-
-	// View scrolling
-	bool scrolling = false;
-
-	static ImVec2 dragStartPos = ImVec2(0, 0);
-	static ImVec2 dragDelta = ImVec2(0, 0);
-
-	if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
-		dragStartPos = io.MousePos;
-		selectedActorHandle = PoolHandle<RoomActor>::Null();
-	}
-
-	if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-		const ImVec2 newDelta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Middle);
-		glm::vec2 newViewportPos = viewportPos;
-		newViewportPos.x -= (newDelta.x - dragDelta.x) / renderScale / METATILE_DIM_PIXELS;
-		newViewportPos.y -= (newDelta.y - dragDelta.y) / renderScale / METATILE_DIM_PIXELS;
-		dragDelta = newDelta;
-
-		const glm::vec2 min(0.0f, 0.0f);
-		const glm::vec2 max = {
-			(pTemplate->width - 1) * VIEWPORT_WIDTH_METATILES,
-			(pTemplate->height - 1) * VIEWPORT_HEIGHT_METATILES 
-		};
-
-		viewportPos = glm::clamp(newViewportPos, min, max);
-		scrolling = true;
-	}
-
-	// Reset drag delta when mouse released
-	if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
-		dragDelta = ImVec2(0, 0);
-	}
-
 	DrawRoomOverlay(pTemplate, viewportPos, topLeft, btmRight, renderScale);
 
 	// Draw actors
@@ -1601,11 +1723,11 @@ static void DrawRoomView(RoomTemplate* pTemplate, u32 editMode, TilemapClipboard
 		DrawActor(pPrototype, drawPos, renderScale, 0, 0, IM_COL32(255, 255, 255, opacity));
 	}
 
-	const ImVec2 hoveredTileWorldPos = ImVec2(glm::floor(mousePosInWorldCoords.x), glm::floor(mousePosInWorldCoords.y));
+	ImGuiIO& io = ImGui::GetIO();
+	const ImVec2 mousePosInViewportCoords = ImVec2((io.MousePos.x - topLeft.x) / tileDrawSize, (io.MousePos.y - topLeft.y) / tileDrawSize);
+	const ImVec2 mousePosInWorldCoords = ImVec2(mousePosInViewportCoords.x + viewportPos.x, mousePosInViewportCoords.y + viewportPos.y);
 
-	switch (editMode) {
-	case EDIT_MODE_ACTORS:
-	{
+	if (editMode == EDIT_MODE_ACTORS) {
 		RoomActor* pActor = pTemplate->actors.Get(selectedActorHandle);
 		const AABB actorBounds = GetActorBoundingBox(pActor);
 		PoolHandle<RoomActor> hoveredActorHandle = GetHoveredActorHandle(pTemplate, mousePosInWorldCoords);
@@ -1650,94 +1772,6 @@ static void DrawRoomView(RoomTemplate* pTemplate, u32 editMode, TilemapClipboard
 
 			drawList->AddRect(pMin, pMax, IM_COL32(255, 255, 255, 255));
 		}
-
-		break;
-	}
-	case EDIT_MODE_TILES:
-	{
-		static bool selecting = false;
-
-		// Selection
-		if (!scrolling) {
-			static ImVec2 selectionStartPos = ImVec2(0, 0);
-			static ImVec2 selectionTopLeft;
-			static ImVec2 selectionBtmRight;
-
-			if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-				selectionStartPos = hoveredTileWorldPos;
-				selectionTopLeft = hoveredTileWorldPos;
-				selectionBtmRight = ImVec2(hoveredTileWorldPos.x + 1, hoveredTileWorldPos.y + 1);
-				selecting = true;
-			}
-
-			if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
-				selectionTopLeft = ImVec2(glm::min(selectionStartPos.x, hoveredTileWorldPos.x), glm::min(selectionStartPos.y, hoveredTileWorldPos.y));
-				selectionBtmRight = ImVec2(glm::max(selectionStartPos.x, hoveredTileWorldPos.x) + 1, glm::max(selectionStartPos.y, hoveredTileWorldPos.y) + 1);
-
-				const ImVec2 selectionTopLeftInPixelCoords = ImVec2((selectionTopLeft.x - viewportPos.x) * tileDrawSize + topLeft.x, (selectionTopLeft.y - viewportPos.y) * tileDrawSize + topLeft.y);
-				const ImVec2 selectionBtmRightInPixelCoords = ImVec2((selectionBtmRight.x - viewportPos.x) * tileDrawSize + topLeft.x, (selectionBtmRight.y - viewportPos.y) * tileDrawSize + topLeft.y);
-
-				drawList->AddRectFilled(selectionTopLeftInPixelCoords, selectionBtmRightInPixelCoords, IM_COL32(255, 255, 255, 63));
-			}
-
-			if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
-				selecting = false;
-				u32 selectionWidth = (selectionBtmRight.x - selectionTopLeft.x);
-				u32 selectionHeight = (selectionBtmRight.y - selectionTopLeft.y);
-
-				clipboard.size = ImVec2((r32)selectionWidth, (r32)selectionHeight);
-				clipboard.offset = ImVec2(selectionTopLeft.x - hoveredTileWorldPos.x, selectionTopLeft.y - hoveredTileWorldPos.y);
-
-				for (u32 x = 0; x < selectionWidth; x++) {
-					for (u32 y = 0; y < selectionHeight; y++) {
-						u32 clipboardIndex = y * selectionWidth + x;
-
-						const glm::ivec2 metatileWorldPos = { selectionTopLeft.x + x, selectionTopLeft.y + y };
-						const s32 tilesetIndex = Tiles::GetTilesetTileIndex(&pTemplate->tilemap, metatileWorldPos);
-						clipboard.clipboard[clipboardIndex] = tilesetIndex;
-					}
-				}
-			}
-		}
-
-		if (selecting) {
-			break;
-		}
-
-		const u32 clipboardWidth = (u32)clipboard.size.x;
-		const u32 clipboardHeight = (u32)clipboard.size.y;
-		const ImVec2 clipboardTopLeft = ImVec2(hoveredTileWorldPos.x + clipboard.offset.x, hoveredTileWorldPos.y + clipboard.offset.y);
-		const ImVec2 clipboardBtmRight = ImVec2(clipboardTopLeft.x + clipboardWidth, clipboardTopLeft.y + clipboardHeight);
-		for (u32 x = 0; x < clipboardWidth; x++) {
-			for (u32 y = 0; y < clipboardHeight; y++) {
-				u32 clipboardIndex = y * clipboardWidth + x;
-				const glm::ivec2 metatileWorldPos = { clipboardTopLeft.x + x, clipboardTopLeft.y + y };
-				const ImVec2 metatileInViewportCoords = ImVec2(metatileWorldPos.x - viewportPos.x, metatileWorldPos.y - viewportPos.y);
-				const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
-				const u8 metatileIndex = clipboard.clipboard[clipboardIndex];
-					
-				const Tileset* pTileset = Tiles::GetTileset();
-				const Metatile& metatile = pTileset->tiles[metatileIndex].metatile;
-				DrawMetatile(metatile, metatileInPixelCoords, tileDrawSize, IM_COL32(255, 255, 255, 127));
-
-				// Paint metatiles
-				if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
-					Tiles::SetTilesetTile(&pTemplate->tilemap, metatileWorldPos, metatileIndex);
-
-					const u32 nametableIndex = Rendering::Util::GetNametableIndexFromMetatilePos(metatileWorldPos);
-					const glm::ivec2 nametablePos = Rendering::Util::GetNametableOffsetFromMetatilePos(metatileWorldPos);
-					Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametablePos, metatile);
-				}
-			}
-		}
-
-		const ImVec2 clipboardTopLeftInPixelCoords = ImVec2((clipboardTopLeft.x - viewportPos.x) * tileDrawSize + topLeft.x, (clipboardTopLeft.y - viewportPos.y) * tileDrawSize + topLeft.y);
-		const ImVec2 clipboardBtmRightInPixelCoords = ImVec2((clipboardBtmRight.x - viewportPos.x) * tileDrawSize + topLeft.x, (clipboardBtmRight.y - viewportPos.y) * tileDrawSize + topLeft.y);
-		drawList->AddRect(clipboardTopLeftInPixelCoords, clipboardBtmRightInPixelCoords, IM_COL32(255, 255, 255, 255));
-		break;
-	}
-	default:
-		break;
 	}
 
 	drawList->PopClipRect();
@@ -1829,24 +1863,7 @@ static void DrawRoomTools(RoomTemplate* pTemplate, u32& editMode, RoomToolsState
 
 		if (state.tilemapOpen && ImGui::BeginTabItem("Tilemap", &state.tilemapOpen)) {
 			editMode = EDIT_MODE_TILES;
-			ImGuiStyle& style = ImGui::GetStyle();
-
-			const s32 currentSelection = (clipboard.size.x == 1 && clipboard.size.y == 1) ? clipboard.clipboard[0] : -1;
-			s32 newSelection = currentSelection;
-
-			const Tileset* pTileset = Tiles::GetTileset();
-			DrawTileset(pTileset, ImGui::GetContentRegionAvail().x - style.WindowPadding.x, &newSelection);
-
-			// Rewrite level editor clipboard if new selection was made
-			if (newSelection != currentSelection) {
-				clipboard.clipboard[0] = newSelection;
-				clipboard.offset = ImVec2(0, 0);
-				clipboard.size = ImVec2(1, 1);
-			}
-
-			if (currentSelection >= 0) {
-				ImGui::Text("0x%02x", currentSelection);
-			}
+			DrawTilemapTools(clipboard);
 
 			ImGui::EndTabItem();
 		}
@@ -2911,6 +2928,64 @@ static void DrawDungeonWindow() {
 }
 #pragma endregion
 
+#pragma region Overworld editor
+static void DrawOverworldWindow() {
+	ImGui::Begin("Overworld editor", &pContext->overworldWindowOpen, ImGuiWindowFlags_MenuBar);
+
+	static glm::vec2 viewportPos(0.0f);
+	static TilemapClipboard clipboard{};
+
+	Overworld* pOverworld = Assets::GetOverworld();
+
+	if (ImGui::BeginMenuBar())
+	{
+		if (ImGui::BeginMenu("File"))
+		{
+			if (ImGui::MenuItem("Save")) {
+				Assets::SaveOverworld("assets/overworld.ass");
+			}
+			if (ImGui::MenuItem("Revert changes")) {
+				Assets::LoadOverworld("assets/overworld.ass");
+			}
+			ImGui::EndMenu();
+		}
+		ImGui::EndMenuBar();
+	}
+
+	const bool showToolsWindow = true;
+	const r32 toolWindowWidth = showToolsWindow ? 350.0f : 0.0f;
+	ImGuiStyle& style = ImGui::GetStyle();
+	const r32 tilemapWidth = ImGui::GetContentRegionAvail().x - style.WindowPadding.x - toolWindowWidth;
+
+	ImGui::BeginChild("Tilemap", ImVec2(tilemapWidth, 0));
+	ImVec2 topLeft = ImGui::GetCursorScreenPos();
+	static const r32 aspectRatio = (r32)VIEWPORT_WIDTH_PIXELS / VIEWPORT_HEIGHT_PIXELS;
+	const r32 contentWidth = ImGui::GetContentRegionAvail().x;
+	const r32 contentHeight = contentWidth / aspectRatio;
+	const r32 renderScale = contentWidth / VIEWPORT_WIDTH_PIXELS;
+
+	DrawTilemapEditor(&pOverworld->tilemap, topLeft, renderScale, viewportPos, clipboard, true);
+	ImGui::EndChild();
+
+	ImGui::SameLine();
+
+	if (showToolsWindow) {
+		ImGui::BeginChild("Overworld tools", ImVec2(toolWindowWidth, 0));
+		if (ImGui::BeginTabBar("Overworld tool tabs")) {
+			if (ImGui::BeginTabItem("Tilemap")) {
+				DrawTilemapTools(clipboard);
+
+				ImGui::EndTabItem();
+			}
+			ImGui::EndTabBar();
+		}
+		ImGui::EndChild();
+	}
+
+	ImGui::End();
+}
+#pragma endregion
+
 #pragma region Main Menu
 static void DrawMainMenu() {
 	if (ImGui::BeginMainMenuBar()) {
@@ -2930,6 +3005,9 @@ static void DrawMainMenu() {
 			}
 			if (ImGui::MenuItem("Dungeon editor")) {
 				pContext->dungeonWindowOpen = true;
+			}
+			if (ImGui::MenuItem("Overworld editor")) {
+				pContext->overworldWindowOpen = true;
 			}
 			if (ImGui::MenuItem("Actor prototypes")) {
 				pContext->actorWindowOpen = true;
@@ -3040,6 +3118,10 @@ void Editor::Render(r64 dt) {
 
 	if (pContext->dungeonWindowOpen) {
 		DrawDungeonWindow();
+	}
+
+	if (pContext->overworldWindowOpen) {
+		DrawOverworldWindow();
 	}
 
 	ImGui::Render();
