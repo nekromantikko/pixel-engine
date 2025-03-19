@@ -1,6 +1,7 @@
 #include "editor.h"
 #include "editor_actor.h"
 #include "system.h"
+#include "debug.h"
 #include <cassert>
 #include <limits>
 #include <type_traits>
@@ -83,7 +84,7 @@ static EditorContext* pContext;
 #pragma region Utils
 static inline glm::vec4 NormalizedToChrTexCoord(const glm::vec4& normalized, u8 chrIndex, u8 palette) {
 	constexpr r32 INV_CHR_COUNT = 1.0f / CHR_COUNT;
-	constexpr r32 INV_SHEET_PALETTE_COUNT = (1.0f / PALETTE_COUNT) * CHR_COUNT;
+	constexpr r32 INV_SHEET_PALETTE_COUNT = (1.0f / (PALETTE_COUNT / 2));
 	
 	// Apply palette and sheet index offsets to normalized coordinates
 	return glm::vec4(
@@ -164,7 +165,7 @@ static void GetMetatileVerticesAVX(const Metatile& metatile, const ImVec2& pos, 
 	constexpr r32 INV_CHR_DIM_TILES = 1.0f / CHR_DIM_TILES;
 	constexpr u32 CHR_DIM_TILES_BITS = 0xf;
 	constexpr u32 CHR_DIM_TILES_LOG2 = 4;
-	constexpr r32 INV_SHEET_PALETTE_COUNT = (1.0f / PALETTE_COUNT) * CHR_COUNT;
+	constexpr r32 INV_SHEET_PALETTE_COUNT = (1.0f / (PALETTE_COUNT / 2));
 
 	const __m256 xMask = _mm256_setr_ps(0, 1, 0, 1, 1, 0, 1, 0);
 	const __m256 yMask = _mm256_setr_ps(0, 0, 0, 0, 1, 1, 1, 1);
@@ -373,6 +374,33 @@ static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
 	}
 }
 
+static void DrawCHRPageSelector(r32 chrSize, u32 index, u8 palette, s32* selectedTile) {
+	const s32 selectedPage = selectedTile ? *selectedTile >> 8 : -1;
+
+	if (ImGui::BeginTabBar("CHR Pages")) {
+		for (u32 i = 0; i < CHR_PAGE_COUNT; i++) {
+			char label[8];
+			snprintf(label, 8, "Page #%d", i);
+			if (ImGui::BeginTabItem(label)) {
+				s32 selectedPageTile = -1;
+				if (selectedPage == i) {
+					selectedPageTile = *selectedTile & 0xff;
+				}
+
+				DrawCHRSheet(chrSize, i + index*CHR_PAGE_COUNT, palette, &selectedPageTile);
+
+				if (selectedPageTile >= 0) {
+					const s32 newSelection = selectedPageTile | (i << 8);
+					*selectedTile = newSelection;
+				}
+
+				ImGui::EndTabItem();
+			}
+		}
+		ImGui::EndTabBar();
+	}
+}
+
 static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, const ImVec2& metatileSize, const ImVec2& pos, r32 scale) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
@@ -451,8 +479,9 @@ static void DrawSprite(const Sprite& sprite, const ImVec2& pos, r32 renderScale,
 	const bool flipX = sprite.flipHorizontal;
 	const bool flipY = sprite.flipVertical;
 	const u8 palette = sprite.palette;
+	const u8 pageIndex = (sprite.tileId >> 8) & 3;
 
-	glm::vec4 uvMinMax = ChrTileToTexCoord(index, 1, palette);
+	glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex + CHR_PAGE_COUNT, palette);
 
 	drawList->AddImage(pContext->chrTexture, pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y), color);
 }
@@ -974,6 +1003,7 @@ static void DrawDebugWindow() {
 		}
 		if (ImGui::BeginTabItem("Pattern tables")) {
 			static s32 selectedPalettes[2]{};
+			static u32 selectedPages[2]{};
 
 			for (int i = 0; i < PALETTE_COUNT; i++) {
 				if (i == BG_PALETTE_COUNT) {
@@ -995,12 +1025,13 @@ static void DrawDebugWindow() {
 			constexpr s32 renderScale = 3;
 			const r32 chrWidth = CHR_DIM_PIXELS * renderScale;
 
-			for (u32 i = 0; i < CHR_COUNT; i++) {
-				ImGui::PushID(i);
-				DrawCHRSheet(chrWidth, i, selectedPalettes[i], nullptr);
-				ImGui::PopID();
-				ImGui::SameLine();
-			}
+			ImGui::BeginChild("BG page selector", ImVec2(chrWidth, 0));
+			DrawCHRPageSelector(chrWidth, 0, selectedPalettes[0], nullptr);
+			ImGui::EndChild();
+			ImGui::SameLine();
+			ImGui::BeginChild("FG page selector", ImVec2(chrWidth, 0));
+			DrawCHRPageSelector(chrWidth, 1, selectedPalettes[1], nullptr);
+			ImGui::EndChild();
 			
 			ImGui::EndTabItem();
 		}
@@ -1113,8 +1144,9 @@ static void DrawMetaspritePreview(Metasprite& metasprite, ImVector<s32>& spriteS
 		const bool flipX = sprite.flipHorizontal;
 		const bool flipY = sprite.flipVertical;
 		const u8 palette = sprite.palette;
+		const u8 pageIndex = (sprite.tileId >> 8) & 3;
 
-		glm::vec4 uvMinMax = ChrTileToTexCoord(index, 1, palette);
+		glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex + CHR_PAGE_COUNT, palette);
 		ImVec2 pos = ImVec2(origin.x + renderScale * sprite.x, origin.y + renderScale * sprite.y);
 
 		// Select sprite by clicking (Topmost sprite gets selected)
@@ -1187,10 +1219,14 @@ static void DrawSpriteEditor(Metasprite& metasprite, ImVector<s32>& spriteSelect
 
 		s32 newId = (s32)sprite.tileId;
 		r32 chrSheetSize = 256;
-		DrawCHRSheet(chrSheetSize, 1, sprite.palette, &newId);
+
+		ImGuiStyle& style = ImGui::GetStyle();
+		ImGui::BeginChild("Tile selector", ImVec2(chrSheetSize, chrSheetSize + ImGui::GetItemRectSize().y + style.ItemSpacing.y));
+		DrawCHRPageSelector(chrSheetSize, 1, sprite.palette, &newId);
+		ImGui::EndChild();
 
 		if (newId != sprite.tileId) {
-			sprite.tileId = (u8)newId;
+			sprite.tileId = (u16)newId;
 		}
 
 		ImGui::SameLine();
@@ -1388,7 +1424,7 @@ static void DrawTilesetWindow() {
 		s32 palette = metatile.tiles[selectedTileIndex].palette;
 		r32 chrSheetSize = 256;
 		ImGui::PushID(0);
-		DrawCHRSheet(chrSheetSize, 0, palette, &tileId);
+		DrawCHRPageSelector(chrSheetSize, 0, palette, &tileId);
 		ImGui::PopID();
 		if (tileId != metatile.tiles[selectedTileIndex].tileId) {
 			metatile.tiles[selectedTileIndex].tileId = tileId;

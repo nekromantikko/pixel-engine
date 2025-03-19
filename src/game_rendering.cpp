@@ -150,7 +150,7 @@ void Game::Rendering::Init() {
     ::Rendering::Util::CreateChrSheet("assets/chr000.bmp", &chrBanks[0]);
 	CopyBankTiles(0, 0, 0, 0, CHR_SIZE_TILES);
     ::Rendering::Util::CreateChrSheet("assets/chr001.bmp", &chrBanks[1]);
-	CopyBankTiles(1, 0, 1, 0, CHR_SIZE_TILES);
+	CopyBankTiles(1, 0, 4, 0, CHR_SIZE_TILES);
 
     // Player bank
     ::Rendering::Util::CreateChrSheet("assets/player.bmp", &chrBanks[2]);

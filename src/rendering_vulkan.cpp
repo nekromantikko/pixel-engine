@@ -998,7 +998,7 @@ static void RenderChrImage() {
 
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipelineLayout, 0, 1, &pContext->chrDescriptorSet, 0, nullptr);
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->chrPipeline);
-	vkCmdDispatch(cmd, CHR_DIM_TILES * PALETTE_COUNT / 2, CHR_DIM_TILES * 2, 1);
+	vkCmdDispatch(cmd, CHR_DIM_TILES * PALETTE_COUNT / 2, CHR_DIM_TILES * CHR_COUNT, 1);
 
 	barrier = GetImageBarrier(&pContext->chrImage, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	vkCmdPipelineBarrier(
@@ -1989,7 +1989,7 @@ static void InitializeChrDescriptorSet() {
 }
 
 void Rendering::CreateImGuiChrTexture(ImTextureID* pTexture) {
-	constexpr u32 sheetPaletteCount = PALETTE_COUNT / CHR_COUNT;
+	constexpr u32 sheetPaletteCount = PALETTE_COUNT / 2;
 	CreateImage(CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, pContext->chrImage);
 	*pTexture = (ImTextureID)ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, pContext->chrImage.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 

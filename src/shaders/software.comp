@@ -125,7 +125,9 @@ ivec2 RenderBackground(ivec2 screenPos) {
 	uint flipX = bitfieldExtract(tile, 14, 1);
 	uint flipY = bitfieldExtract(tile, 15, 1);
 	
-	uint colorIndex = ReadCHRTile(0, tileIndex, fine, flipX, flipY);
+	uint chrPage = (tileIndex >> 8) & 3;
+	uint pageTile = tileIndex & 0xff;
+	uint colorIndex = ReadCHRTile(chrPage, pageTile, fine, flipX, flipY);
 
 	// Don't draw transparent pixels
 	if (colorIndex == 0) {
@@ -171,7 +173,10 @@ ivec2 RenderSprites(ivec2 screenPos, ivec2 result) {
 
 			ivec2 fine2d = screenPos - ivec2(x, y);
 			int fine = fine2d.x + fine2d.y * 8;
-			uint colorIndex = ReadCHRTile(1, tileId, fine, flipX, flipY);
+
+			uint chrPage = (tileId >> 8) & 3;
+			uint pageTile = tileId & 0xff;
+			uint colorIndex = ReadCHRTile(chrPage + 4, pageTile, fine, flipX, flipY);
 
 			// Don't draw transparent pixels
 			if (colorIndex == 0) {
