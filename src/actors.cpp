@@ -347,7 +347,7 @@ bool Game::ActorMoveHorizontal(Actor* pActor, HitResult& outHit) {
 
 	const r32 dx = pActor->velocity.x;
 
-	Collision::SweepBoxHorizontal(&Game::GetCurrentRoomTemplate()->tilemap, hitbox, pActor->position, dx, outHit);
+	Collision::SweepBoxHorizontal(Game::GetCurrentTilemap(), hitbox, pActor->position, dx, outHit);
 	pActor->position.x = outHit.location.x;
 	return outHit.blockingHit;
 }
@@ -357,7 +357,7 @@ bool Game::ActorMoveVertical(Actor* pActor, HitResult& outHit) {
 
 	const r32 dy = pActor->velocity.y;
 
-	Collision::SweepBoxVertical(&Game::GetCurrentRoomTemplate()->tilemap, hitbox, pActor->position, dy, outHit);
+	Collision::SweepBoxVertical(Game::GetCurrentTilemap(), hitbox, pActor->position, dy, outHit);
 	pActor->position.y = outHit.location.y;
 	return outHit.blockingHit;
 }

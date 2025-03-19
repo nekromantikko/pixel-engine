@@ -38,9 +38,10 @@ struct GameData {
 
 enum GameState {
     GAME_STATE_NONE,
-	GAME_STATE_TITLE,
-	GAME_STATE_PLAYING,
-	GAME_STATE_PAUSED,
+    GAME_STATE_TITLE,
+    GAME_STATE_OVERWORLD,
+	GAME_STATE_DUNGEON,
+	GAME_STATE_DUNGEON_MAP,
 	GAME_STATE_GAME_OVER,
 	GAME_STATE_CREDITS,
 	GAME_STATE_EXIT,
@@ -50,6 +51,7 @@ struct Actor;
 struct Dungeon;
 struct RoomTemplate;
 struct RoomInstance;
+struct Tilemap;
 
 namespace Game {
     void InitGameData();
@@ -80,6 +82,8 @@ namespace Game {
     PersistedActorData* GetPersistedActorData(u64 id);
     void SetPersistedActorData(u64 id, const PersistedActorData& data);
 
+    bool LoadOverworld(u8 keyAreaIndex, u8 direction);
+
     bool LoadRoom(const RoomInstance* pRoom, const glm::i8vec2 screenOffset = {0,0}, u8 direction = 0);
     bool LoadRoom(s32 dungeonIndex, const glm::i8vec2 gridCell, u8 direction = 0);
     void UnloadRoom();
@@ -87,9 +91,11 @@ namespace Game {
     s32 GetCurrentDungeon();
     glm::i8vec2 GetCurrentRoomOffset();
     const RoomInstance* GetCurrentRoom();
-    const RoomTemplate* GetCurrentRoomTemplate();
     glm::i8vec2 GetDungeonGridCell(const glm::vec2& worldPos);
     void DiscoverScreen(const glm::i8vec2 gridCell);
+
+    glm::ivec2 GetCurrentPlayAreaSize();
+    const Tilemap* GetCurrentTilemap();
 
 	u32 GetFramesElapsed();
 

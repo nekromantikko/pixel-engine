@@ -48,9 +48,15 @@ struct RoomToolsState {
 };
 
 enum RoomEditMode {
-	EDIT_MODE_NONE = 0,
-	EDIT_MODE_TILES = 1,
-	EDIT_MODE_ACTORS = 2
+	ROOM_EDIT_MODE_NONE = 0,
+	ROOM_EDIT_MODE_TILES = 1,
+	ROOM_EDIT_MODE_ACTORS = 2
+};
+
+enum OverworldEditMode {
+	OW_EDIT_MODE_NONE = 0,
+	OW_EDIT_MODE_TILES,
+	OW_EDIT_MODE_AREAS
 };
 
 struct EditorContext {
@@ -1684,7 +1690,7 @@ static void DrawRoomView(RoomTemplate* pTemplate, u32 editMode, TilemapClipboard
 	ImVec2 btmRight = ImVec2(topLeft.x + contentWidth, topLeft.y + contentHeight);
 	const r32 tileDrawSize = METATILE_DIM_PIXELS * renderScale;
 	
-	const bool scrolling = DrawTilemapEditor(&pTemplate->tilemap, topLeft, renderScale, viewportPos, clipboard, editMode == EDIT_MODE_TILES);
+	const bool scrolling = DrawTilemapEditor(&pTemplate->tilemap, topLeft, renderScale, viewportPos, clipboard, editMode == ROOM_EDIT_MODE_TILES);
 
 	// Clamp scrolling to room size
 	const glm::vec2 scrollMax = {
@@ -1699,7 +1705,7 @@ static void DrawRoomView(RoomTemplate* pTemplate, u32 editMode, TilemapClipboard
 
 	// Context menu handling
 	if (active && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-		if (editMode == EDIT_MODE_ACTORS) {
+		if (editMode == ROOM_EDIT_MODE_ACTORS) {
 			ImGui::OpenPopup("ActorContextMenu");
 		}
 	}
@@ -1718,7 +1724,7 @@ static void DrawRoomView(RoomTemplate* pTemplate, u32 editMode, TilemapClipboard
 		const glm::vec2 pixelOffset = actorPixelPos - viewportPixelPos;
 		const ImVec2 drawPos = ImVec2(topLeft.x + pixelOffset.x * renderScale, topLeft.y + pixelOffset.y * renderScale);
 
-		const u8 opacity = editMode == EDIT_MODE_ACTORS ? 255 : 80;
+		const u8 opacity = editMode == ROOM_EDIT_MODE_ACTORS ? 255 : 80;
 		const ActorPrototype* pPrototype = Assets::GetActorPrototype(pActor->prototypeIndex);
 		DrawActor(pPrototype, drawPos, renderScale, 0, 0, IM_COL32(255, 255, 255, opacity));
 	}
@@ -1727,7 +1733,7 @@ static void DrawRoomView(RoomTemplate* pTemplate, u32 editMode, TilemapClipboard
 	const ImVec2 mousePosInViewportCoords = ImVec2((io.MousePos.x - topLeft.x) / tileDrawSize, (io.MousePos.y - topLeft.y) / tileDrawSize);
 	const ImVec2 mousePosInWorldCoords = ImVec2(mousePosInViewportCoords.x + viewportPos.x, mousePosInViewportCoords.y + viewportPos.y);
 
-	if (editMode == EDIT_MODE_ACTORS) {
+	if (editMode == ROOM_EDIT_MODE_ACTORS) {
 		RoomActor* pActor = pTemplate->actors.Get(selectedActorHandle);
 		const AABB actorBounds = GetActorBoundingBox(pActor);
 		PoolHandle<RoomActor> hoveredActorHandle = GetHoveredActorHandle(pTemplate, mousePosInWorldCoords);
@@ -1782,7 +1788,7 @@ static void DrawRoomTools(RoomTemplate* pTemplate, u32& editMode, RoomToolsState
 
 	if (ImGui::BeginTabBar("Room tool tabs")) {
 		if (state.propertiesOpen && ImGui::BeginTabItem("Properties", &state.propertiesOpen)) {
-			editMode = EDIT_MODE_NONE;
+			editMode = ROOM_EDIT_MODE_NONE;
 
 			ImGui::SeparatorText(pTemplate->name);
 
@@ -1862,14 +1868,14 @@ static void DrawRoomTools(RoomTemplate* pTemplate, u32& editMode, RoomToolsState
 		}
 
 		if (state.tilemapOpen && ImGui::BeginTabItem("Tilemap", &state.tilemapOpen)) {
-			editMode = EDIT_MODE_TILES;
+			editMode = ROOM_EDIT_MODE_TILES;
 			DrawTilemapTools(clipboard);
 
 			ImGui::EndTabItem();
 		}
 
 		if (state.actorsOpen && ImGui::BeginTabItem("Actors", &state.actorsOpen)) {
-			editMode = EDIT_MODE_ACTORS;
+			editMode = ROOM_EDIT_MODE_ACTORS;
 
 			RoomActor* pActor = pTemplate->actors.Get(selectedActorHandle);
 			if (pActor == nullptr) {
@@ -1918,7 +1924,7 @@ static void DrawRoomWindow() {
 	static u32 selectedRoom = 0;
 	static PoolHandle<RoomActor> selectedActorHandle = PoolHandle<RoomActor>::Null();
 
-	static u32 editMode = EDIT_MODE_NONE;
+	static u32 editMode = ROOM_EDIT_MODE_NONE;
 	static TilemapClipboard clipboard{};
 	static RoomToolsState toolsState{};
 	static glm::vec2 viewportPos(0.0f);
@@ -1998,7 +2004,7 @@ static void DrawRoomWindow() {
 	ImGui::SameLine();
 
 	// Reset edit mode, it will be set by the tools window
-	editMode = EDIT_MODE_NONE;
+	editMode = ROOM_EDIT_MODE_NONE;
 	if (showToolsWindow) {
 		ImGui::BeginChild("Room tools", ImVec2(toolWindowWidth,0));
 		DrawRoomTools(pEditedRoom, editMode, toolsState, clipboard, selectedActorHandle);
@@ -2932,6 +2938,7 @@ static void DrawDungeonWindow() {
 static void DrawOverworldWindow() {
 	ImGui::Begin("Overworld editor", &pContext->overworldWindowOpen, ImGuiWindowFlags_MenuBar);
 
+	static u32 editMode = OW_EDIT_MODE_NONE;
 	static glm::vec2 viewportPos(0.0f);
 	static TilemapClipboard clipboard{};
 
@@ -2963,20 +2970,79 @@ static void DrawOverworldWindow() {
 	const r32 contentWidth = ImGui::GetContentRegionAvail().x;
 	const r32 contentHeight = contentWidth / aspectRatio;
 	const r32 renderScale = contentWidth / VIEWPORT_WIDTH_PIXELS;
+	const ImVec2 btmRight(topLeft.x + contentWidth, topLeft.y + contentHeight);
+	const r32 tileDrawSize = METATILE_DIM_PIXELS * renderScale;
 
-	DrawTilemapEditor(&pOverworld->tilemap, topLeft, renderScale, viewportPos, clipboard, true);
+	DrawTilemapEditor(&pOverworld->tilemap, topLeft, renderScale, viewportPos, clipboard, editMode == OW_EDIT_MODE_TILES);
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	drawList->PushClipRect(topLeft, btmRight, true);
+
+	for (u32 i = 0; i < MAX_OVERWORLD_KEY_AREA_COUNT; i++) {
+		OverworldKeyArea& area = pOverworld->keyAreas[i];
+
+		char label[8];
+		snprintf(label, 8, "%#02x", i);
+		const ImVec2 areaPosInPixelCoords = ImVec2((area.position.x - viewportPos.x) * tileDrawSize + topLeft.x, (area.position.y - viewportPos.y) * tileDrawSize + topLeft.y);
+		drawList->AddText(areaPosInPixelCoords, IM_COL32(255, 255, 255, 255), label);
+	}
+
+	drawList->PopClipRect();
 	ImGui::EndChild();
 
 	ImGui::SameLine();
 
+	editMode = OW_EDIT_MODE_NONE;
 	if (showToolsWindow) {
 		ImGui::BeginChild("Overworld tools", ImVec2(toolWindowWidth, 0));
 		if (ImGui::BeginTabBar("Overworld tool tabs")) {
 			if (ImGui::BeginTabItem("Tilemap")) {
+				editMode = OW_EDIT_MODE_TILES;
 				DrawTilemapTools(clipboard);
 
 				ImGui::EndTabItem();
 			}
+			
+			if (ImGui::BeginTabItem("Key areas")) {
+				editMode = OW_EDIT_MODE_AREAS;
+				static u8 selectedArea = 0;
+
+				char label[8];
+				snprintf(label, 8, "%#02x", selectedArea);
+
+				if (ImGui::BeginCombo("Area ID", label)) {
+					for (u32 i = 0; i < MAX_OVERWORLD_KEY_AREA_COUNT; i++) {
+						ImGui::PushID(i);
+
+						const bool selected = selectedArea == i;
+
+						snprintf(label, 8, "%#02x", i);
+						if (ImGui::Selectable(label, selected)) {
+							selectedArea = i;
+						}
+
+						if (selected) {
+							ImGui::SetItemDefaultFocus();
+						}
+						ImGui::PopID();
+					}
+					ImGui::EndCombo();
+				}
+
+				ImGui::SeparatorText("Area properties");
+
+				OverworldKeyArea& area = pOverworld->keyAreas[selectedArea];
+
+				ImGui::InputScalarN("Position", ImGuiDataType_S8, &area.position, 2);
+
+				s32 dungeonIndex = area.dungeonIndex;
+				if (ImGui::InputInt("Target dungeon", &dungeonIndex)) {
+					area.dungeonIndex = dungeonIndex;
+				}
+
+				ImGui::EndTabItem();
+			}
+
 			ImGui::EndTabBar();
 		}
 		ImGui::EndChild();

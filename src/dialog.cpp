@@ -64,7 +64,7 @@ static void DrawBgBoxAnimated() {
     const glm::ivec2 sizeTiles(currentSize.x << 1, currentSize.y << 1);
 
     Nametable* pNametables = Rendering::GetNametablePtr(0);
-    const Tilemap* pTilemap = &Game::GetCurrentRoomTemplate()->tilemap;
+    const Tilemap* pTilemap = Game::GetCurrentTilemap();
 
     for (u32 y = 0; y < targetSize.y; y++) {
         for (u32 x = 0; x < targetSize.x; x++) {

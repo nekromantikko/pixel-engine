@@ -7,6 +7,7 @@
 #include "dialog.h"
 #include "room.h"
 #include "dungeon.h"
+#include "overworld.h"
 
 enum PlayerHeadFrame : u8 {
     PLAYER_HEAD_IDLE,
@@ -203,14 +204,14 @@ static void HandleLevelExit(const Actor* pPlayer) {
     u8 nextDirection = 0;
     glm::i8vec2 nextGridCell = Game::GetDungeonGridCell(pPlayer->position);
 
-    const RoomTemplate* pTemplate = Game::GetCurrentRoomTemplate();
+    const glm::i8vec2 roomMax = Game::GetCurrentPlayAreaSize();
 
     if (pPlayer->position.x < 0) {
         shouldExit = true;
         nextDirection = SCREEN_EXIT_DIR_RIGHT;
         nextGridCell.x--;
     }
-    else if (pPlayer->position.x >= pTemplate->width * VIEWPORT_WIDTH_METATILES) {
+    else if (pPlayer->position.x >= roomMax.x) {
         shouldExit = true;
         nextDirection = SCREEN_EXIT_DIR_LEFT;
         nextGridCell.x++;
@@ -220,7 +221,7 @@ static void HandleLevelExit(const Actor* pPlayer) {
         nextDirection = SCREEN_EXIT_DIR_BOTTOM;
         nextGridCell.y--;
     }
-    else if (pPlayer->position.y >= pTemplate->height * VIEWPORT_HEIGHT_METATILES) {
+    else if (pPlayer->position.y >= roomMax.y) {
         shouldExit = true;
         nextDirection = SCREEN_EXIT_DIR_TOP;
         nextGridCell.y++;
@@ -641,8 +642,21 @@ static void UpdatePlayerOverworld(Actor* pPlayer) {
     PlayerOverworldState& state = pPlayer->state.playerOverworld;
     
     if (state.movementCounter != 0) {
-        Game::UpdateCounter(state.movementCounter);
         pPlayer->position += GetMovementDir(state.facingDir) * movementStepLength;
+
+        if (!Game::UpdateCounter(state.movementCounter)) {
+            const Overworld* pOverworld = Assets::GetOverworld();
+
+            for (u32 i = 0; i < MAX_OVERWORLD_KEY_AREA_COUNT; i++) {
+                const OverworldKeyArea& area = pOverworld->keyAreas[i];
+
+                if (area.position != glm::i8vec2(pPlayer->position)) {
+                    continue;
+                }
+
+                Game::TriggerLevelTransition(area.dungeonIndex, { 0, 0 }, 0);
+            }
+        }
     }
     else {
         pPlayer->position = glm::roundEven(pPlayer->position);
@@ -652,8 +666,8 @@ static void UpdatePlayerOverworld(Actor* pPlayer) {
             state.facingDir = inputDir;
             const glm::ivec2 offset = GetMovementDir(state.facingDir);
             const glm::ivec2 targetPos = glm::ivec2(pPlayer->position) + offset;
-            const TilesetTile* pNextTile = Tiles::GetTilesetTile(&Game::GetCurrentRoomTemplate()->tilemap, targetPos);
-            if (pNextTile->type != TILE_SOLID) {
+            const TilesetTile* pNextTile = Tiles::GetTilesetTile(Game::GetCurrentTilemap(), targetPos);
+            if (!pNextTile || pNextTile->type != TILE_SOLID) {
                 state.movementCounter = movementSteps;
             }
         }

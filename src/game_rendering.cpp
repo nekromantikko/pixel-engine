@@ -42,18 +42,15 @@ static void UpdateScreenScroll() {
 
 static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
     Nametable* pNametables = Rendering::GetNametablePtr(0);
-    const RoomTemplate* pTemplate = Game::GetCurrentRoomTemplate();
-
-	if (pTemplate == nullptr) {
-		return;
-	}
 
 	const glm::vec2 prevPos = viewportPos;
 	viewportPos += delta;
 
-	const glm::vec2 max = { 
-        (pTemplate->width - 1) * VIEWPORT_WIDTH_METATILES,
-        (pTemplate->height - 1) * VIEWPORT_HEIGHT_METATILES };
+    glm::vec2 playAreaSize = Game::GetCurrentPlayAreaSize();
+    const glm::vec2 max = {
+        playAreaSize.x - VIEWPORT_WIDTH_METATILES,
+        playAreaSize.y - VIEWPORT_HEIGHT_METATILES 
+    };
 
     viewportPos = glm::clamp(viewportPos, glm::vec2(0), max);
     
@@ -81,6 +78,7 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
     const s32 yEnd = VIEWPORT_HEIGHT_METATILES + currMetatile.y + BUFFER_DIM_METATILES;
 
     const Tileset* pTileset = Tiles::GetTileset();
+    const Tilemap* pTilemap = Game::GetCurrentTilemap();
 
     for (s32 x = xStart; x < xEnd; x++) {
         for (s32 y = yStart; y < yEnd; y++) {
@@ -89,8 +87,8 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
                 continue;
             }
 
-            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(&pTemplate->tilemap, { x, y });
-            const TilesetTile* tile = Tiles::GetTilesetTile(&pTemplate->tilemap, tilesetIndex);
+            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, { x, y });
+            const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
 
             if (!tile) {
                 continue;
@@ -178,11 +176,6 @@ glm::vec2 Game::Rendering::SetViewportPos(const glm::vec2& pos, bool loadTiles) 
 
 void Game::Rendering::RefreshViewport() {
     Nametable* pNametables = ::Rendering::GetNametablePtr(0);
-    const RoomTemplate* pTemplate = Game::GetCurrentRoomTemplate();
-
-    if (pTemplate == nullptr) {
-        return;
-    }
 
     const s32 xStart = viewportPos.x - BUFFER_DIM_METATILES;
     const s32 xEnd = VIEWPORT_WIDTH_METATILES + viewportPos.x + BUFFER_DIM_METATILES;
@@ -191,11 +184,12 @@ void Game::Rendering::RefreshViewport() {
     const s32 yEnd = VIEWPORT_HEIGHT_METATILES + viewportPos.y + BUFFER_DIM_METATILES;
 
     const Tileset* pTileset = Tiles::GetTileset();
+    const Tilemap* pTilemap = Game::GetCurrentTilemap();
 
     for (s32 x = xStart; x < xEnd; x++) {
         for (s32 y = yStart; y < yEnd; y++) {
-            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(&pTemplate->tilemap, { x, y });
-            const TilesetTile* tile = Tiles::GetTilesetTile(&pTemplate->tilemap, tilesetIndex);
+            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, { x, y });
+            const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
 
             if (!tile) {
                 continue;

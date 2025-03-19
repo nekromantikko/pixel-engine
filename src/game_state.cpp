@@ -9,9 +9,11 @@
 #include "collision.h"
 #include "actor_prototypes.h"
 #include "dungeon.h"
+#include "overworld.h"
 
 // TODO: Define in editor in game settings 
 constexpr s32 playerPrototypeIndex = 0;
+constexpr s32 playerOverworldPrototypeIndex = 0x03;
 constexpr s32 xpRemnantPrototypeIndex = 0x0c;
 
 // Map drawing
@@ -41,6 +43,9 @@ static bool discoveredScreens[DUNGEON_GRID_SIZE]{};
 static s32 currentDungeonIndex;
 static glm::i8vec2 currentRoomOffset;
 static const RoomInstance* pCurrentRoom;
+
+static u8 currentOverworldArea;
+static u8 overworldAreaEnterDir;
 
 // 16ms Frames elapsed while not paused
 static u32 gameplayFramesElapsed = 0;
@@ -104,9 +109,17 @@ static const glm::i8vec2 RoomPosToDungeonGridOffset(const glm::i8vec2& roomOffse
     gridOffset.y = roomOffset.y + s32(pos.y / VIEWPORT_HEIGHT_METATILES);
     return gridOffset;
 }
+
+static const RoomTemplate* GetCurrentRoomTemplate() {
+    if (!pCurrentRoom) {
+        return nullptr;
+    }
+
+    return Assets::GetRoomTemplate(pCurrentRoom->templateIndex);
+}
 #pragma endregion
 
-#pragma region Gameplay
+#pragma region Dungeon Gameplay
 static void CorrectPlayerSpawnY(const RoomTemplate* pTemplate, Actor* pPlayer) {
     HitResult hit{};
 
@@ -162,7 +175,7 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
     }
 
     constexpr r32 initialHSpeed = 0.0625f;
-    const RoomTemplate* pTemplate = Game::GetCurrentRoomTemplate();
+    const RoomTemplate* pTemplate = GetCurrentRoomTemplate();
 
     switch (direction) {
     case SCREEN_EXIT_DIR_LEFT: {
@@ -233,7 +246,7 @@ static void ViewportFollowPlayer() {
     Game::Rendering::SetViewportPos(viewportPos + delta);
 }
 
-static void StepGameplayFrame() {
+static void StepDungeonGameplayFrame() {
 	if (!freezeGameplay) {
         gameplayFramesElapsed++;
 
@@ -251,7 +264,7 @@ static void StepGameplayFrame() {
                     mapScrollOffset.y = glm::clamp(mapScrollOffset.y, mapScrollMin.y, mapScrollMax.y);
                 }
 
-                state = GAME_STATE_PAUSED;
+                state = GAME_STATE_DUNGEON_MAP;
             }
         }
 		
@@ -270,7 +283,7 @@ static void StepGameplayFrame() {
 }
 #pragma endregion
 
-#pragma region Pause menu
+#pragma region Dungeon map
 // TODO: Move somewhere else?
 static u32 Hash(u32 input) {
     // Multiply with fibonacci primes
@@ -487,9 +500,9 @@ static glm::vec2 GetScrollDir(u8 inputDir) {
     return result;
 }
 
-static void StepPauseMenu() {
+static void StepDungeonMap() {
     if (!Game::UpdateDialog()) {
-        state = GAME_STATE_PLAYING;
+        state = GAME_STATE_DUNGEON;
     }
 
     if (Game::Input::ButtonPressed(BUTTON_START)) {
@@ -523,6 +536,21 @@ static void StepPauseMenu() {
     Game::UI::DrawPlayerHealthBar(gameData.playerMaxHealth);
     Game::UI::DrawPlayerStaminaBar(gameData.playerMaxStamina);
     Game::UI::DrawExpCounter();
+}
+#pragma endregion
+
+#pragma region Overworld Gameplay
+static void StepOverworldGameplayFrame() {
+    if (!freezeGameplay) {
+        gameplayFramesElapsed++;
+
+        Game::UpdateActors();
+        ViewportFollowPlayer();
+        Game::UI::Update();
+    }
+
+    Game::Rendering::ClearSpriteLayers();
+    Game::DrawActors();
 }
 #pragma endregion
 
@@ -780,6 +808,22 @@ void Game::SetPersistedActorData(u64 id, const PersistedActorData& data) {
 #pragma endregion
 
 #pragma region Level
+bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
+    state = GAME_STATE_OVERWORLD;
+    const Overworld* pOverworld = Assets::GetOverworld();
+
+    Rendering::SetViewportPos(glm::vec2(0.0f), false);
+    ClearActors();
+
+    const glm::vec2 areaWorldPos = pOverworld->keyAreas[keyAreaIndex].position;
+    Actor* pPlayer = Game::SpawnActor(playerOverworldPrototypeIndex, areaWorldPos);
+
+    gameplayFramesElapsed = 0;
+    Rendering::RefreshViewport();
+
+    return true;
+}
+
 bool Game::LoadRoom(const RoomInstance* pRoom, const glm::i8vec2 screenOffset, u8 direction) {
     currentDungeonIndex = -1;
     currentRoomOffset = { 0,0 };
@@ -793,7 +837,7 @@ bool Game::LoadRoom(s32 dungeonIndex, const glm::i8vec2 gridCell, u8 direction) 
     glm::i8vec2 roomOffset;
     const RoomInstance* pNextRoom = GetDungeonRoom(dungeonIndex, gridCell, &roomOffset);
     if (!pNextRoom) {
-        return ReloadRoom({ 0, 0 }, direction);
+        return LoadOverworld(currentOverworldArea, direction);
     }
 
     currentDungeonIndex = dungeonIndex;
@@ -813,6 +857,7 @@ void Game::UnloadRoom() {
 }
 
 bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
+    state = GAME_STATE_DUNGEON;
     UnloadRoom();
 
     const RoomTemplate* pTemplate = Assets::GetRoomTemplate(pCurrentRoom->templateIndex);
@@ -843,7 +888,6 @@ bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
     }
 
     gameplayFramesElapsed = 0;
-
     Rendering::RefreshViewport();
 
     return true;
@@ -859,14 +903,6 @@ glm::i8vec2 Game::GetCurrentRoomOffset() {
 
 const RoomInstance* Game::GetCurrentRoom() {
     return pCurrentRoom;
-}
-
-const RoomTemplate* Game::GetCurrentRoomTemplate() {
-    if (!pCurrentRoom) {
-        return nullptr;
-    }
-
-    return Assets::GetRoomTemplate(pCurrentRoom->templateIndex);
 }
 
 glm::i8vec2 Game::GetDungeonGridCell(const glm::vec2& worldPos) {
@@ -891,6 +927,50 @@ void Game::DiscoverScreen(const glm::i8vec2 gridCell) {
     discoveredScreens[cellIndex] = true;
 }
 
+glm::ivec2 Game::GetCurrentPlayAreaSize() {
+    switch (state) {
+    case GAME_STATE_DUNGEON:
+    case GAME_STATE_DUNGEON_MAP: {
+        if (!pCurrentRoom) {
+            break;
+        }
+
+        const RoomTemplate* pTemplate = Assets::GetRoomTemplate(pCurrentRoom->templateIndex);
+        return { pTemplate->width * VIEWPORT_WIDTH_METATILES, pTemplate->height * VIEWPORT_HEIGHT_METATILES };
+    }
+    case GAME_STATE_OVERWORLD: {
+        const Overworld* pOverworld = Assets::GetOverworld();
+        return { pOverworld->tilemap.width, pOverworld->tilemap.height };
+    }
+    default:
+        break;
+    }
+
+    return glm::i8vec2(0);
+}
+
+const Tilemap* Game::GetCurrentTilemap() {
+    switch (state) {
+    case GAME_STATE_DUNGEON:
+    case GAME_STATE_DUNGEON_MAP: {
+        if (!pCurrentRoom) {
+            break;
+        }
+
+        const RoomTemplate* pTemplate = Assets::GetRoomTemplate(pCurrentRoom->templateIndex);
+        return &pTemplate->tilemap;
+    }
+    case GAME_STATE_OVERWORLD: {
+        const Overworld* pOverworld = Assets::GetOverworld();
+        return &pOverworld->tilemap;
+    }
+    default:
+        break;
+    }
+
+    return nullptr;
+}
+
 u32 Game::GetFramesElapsed() {
 	return gameplayFramesElapsed;
 }
@@ -907,11 +987,14 @@ void Game::StepFrame() {
 	switch (state) {
 	case GAME_STATE_TITLE:
 		break;
-	case GAME_STATE_PLAYING:
-		StepGameplayFrame();
+    case GAME_STATE_OVERWORLD:
+        StepOverworldGameplayFrame();
         break;
-	case GAME_STATE_PAUSED:
-        StepPauseMenu();
+	case GAME_STATE_DUNGEON:
+		StepDungeonGameplayFrame();
+        break;
+	case GAME_STATE_DUNGEON_MAP:
+        StepDungeonMap();
 		break;
 	case GAME_STATE_GAME_OVER:
 		break;

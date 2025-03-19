@@ -86,7 +86,7 @@ namespace Game {
         //bgm = Audio::LoadSound("assets/music.nsf");
 
 		InitGameData();
-        InitGameState(GAME_STATE_PLAYING);
+        InitGameState(GAME_STATE_DUNGEON);
 
         // TODO: Level should load palettes and tileset?
         LoadRoom(0, { 0,0 });
