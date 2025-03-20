@@ -89,7 +89,7 @@ namespace Game {
         InitGameState(GAME_STATE_DUNGEON);
 
         // TODO: Level should load palettes and tileset?
-        LoadRoom(0, { 0,0 });
+        LoadRoom(1, { 14, 14 });
     }
 
     void Free() {

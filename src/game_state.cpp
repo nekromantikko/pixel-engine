@@ -45,7 +45,7 @@ static glm::i8vec2 currentRoomOffset;
 static const RoomInstance* pCurrentRoom;
 
 static u8 currentOverworldArea;
-static u8 overworldAreaEnterDir;
+static glm::ivec2 overworldAreaEnterDir;
 
 // 16ms Frames elapsed while not paused
 static u32 gameplayFramesElapsed = 0;
@@ -178,7 +178,7 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
     const RoomTemplate* pTemplate = GetCurrentRoomTemplate();
 
     switch (direction) {
-    case SCREEN_EXIT_DIR_LEFT: {
+    case SCREEN_EXIT_DIR_RIGHT: {
         pPlayer->position.x += 0.5f;
         pPlayer->position.y += VIEWPORT_HEIGHT_METATILES / 2.0f;
         pPlayer->flags.facingDir = ACTOR_FACING_RIGHT;
@@ -186,7 +186,7 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
         CorrectPlayerSpawnY(pTemplate, pPlayer);
         break;
     }
-    case SCREEN_EXIT_DIR_RIGHT: {
+    case SCREEN_EXIT_DIR_LEFT: {
         pPlayer->position.x += VIEWPORT_WIDTH_METATILES - 0.5f;
         pPlayer->position.y += VIEWPORT_HEIGHT_METATILES / 2.0f;
         pPlayer->flags.facingDir = ACTOR_FACING_LEFT;
@@ -194,13 +194,13 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
         CorrectPlayerSpawnY(pTemplate, pPlayer);
         break;
     }
-    case SCREEN_EXIT_DIR_TOP: {
+    case SCREEN_EXIT_DIR_BOTTOM: {
         pPlayer->position.x += VIEWPORT_WIDTH_METATILES / 2.0f;
         pPlayer->position.y += 0.5f;
         pPlayer->velocity.y = 0.25f;
         break;
     }
-    case SCREEN_EXIT_DIR_BOTTOM: {
+    case SCREEN_EXIT_DIR_TOP: {
         pPlayer->position.x += VIEWPORT_WIDTH_METATILES / 2.0f;
         pPlayer->position.y += VIEWPORT_HEIGHT_METATILES - 0.5f;
         pPlayer->velocity.y = -0.25f;
@@ -316,6 +316,12 @@ static bool DrawMapIcon(const glm::i8vec2 gridCell, u8 tileId, u8 palette, const
     return true;
 }
 
+static void DrawMapTile(Nametable* pNametables, const glm::ivec2& tileMin, const glm::ivec2& tileMax, const glm::ivec2& tilePos, const BgTile& tile) {
+    if (tilePos.x >= tileMin.x && tilePos.x < tileMax.x && tilePos.y >= tileMin.y && tilePos.y < tileMax.y) {
+        Rendering::Util::SetNametableTile(pNametables, tilePos, tile);
+    }
+}
+
 static void DrawMap(const glm::ivec2 scrollOffset) {
     const glm::ivec2 viewportPos = Game::Rendering::GetViewportPos();
     const glm::ivec4 innerBounds = Game::GetDialogInnerBounds();
@@ -365,13 +371,101 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
     for (u32 y = 0; y < DUNGEON_GRID_DIM; y++) {
         for (u32 x = 0; x < DUNGEON_GRID_DIM; x++) {
             const u32 cellIndex = x + y * DUNGEON_GRID_DIM;
-            if (!discoveredScreens[cellIndex]) {
+            const DungeonCell& cell = pDungeon->grid[cellIndex];
+
+            // Empty tile
+            if (cell.roomIndex == -1) {
                 continue;
             }
 
-            const DungeonCell& cell = pDungeon->grid[cellIndex];
+            const u32 yTile = y + tileMin.y - scrollOffset.y;
+            // Vertical clipping
+            if (yTile < tileMin.y || yTile >= tileMax.y) {
+                continue;
+            }
 
-            if (cell.roomIndex < 0) {
+            // Exit tile
+            if (cell.roomIndex < -1) {
+                constexpr u16 rightExitTileIndex = 0x10a;
+                constexpr u16 leftExitTileIndex = 0x10b;
+                constexpr u16 bottomExitTileIndex = 0x10c;
+                constexpr u16 topExitTileIndex = 0x10e;
+
+                const u8 dir = ~(cell.roomIndex) - 1;
+
+                const u32 xTile = (x * 2) + tileMin.x - scrollOffset.x;
+
+                switch (dir) {
+                case SCREEN_EXIT_DIR_RIGHT: {
+                    if (!discoveredScreens[cellIndex - 1]) {
+                        continue;
+                    }
+
+                    const BgTile tile{
+                        .tileId = rightExitTileIndex,
+                        .palette = 0x03,
+                    };
+                    if (xTile >= tileMin.x && xTile < tileMax.x) {
+                        Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tile);
+                    }
+                    continue;
+                }
+                case SCREEN_EXIT_DIR_LEFT: {
+                    if (!discoveredScreens[cellIndex + 1]) {
+                        continue;
+                    }
+
+                    const BgTile tile{
+                        .tileId = leftExitTileIndex,
+                        .palette = 0x03,
+                    };
+                    if (xTile + 1 >= tileMin.x && xTile + 1 < tileMax.x) {
+                        Rendering::Util::SetNametableTile(pNametables, { xTile + 1, yTile }, tile);
+                    }
+                    continue;
+                }
+                case SCREEN_EXIT_DIR_BOTTOM: {
+                    if (!discoveredScreens[cellIndex - DUNGEON_GRID_DIM]) {
+                        continue;
+                    }
+
+                    BgTile tile{
+                        .tileId = bottomExitTileIndex,
+                        .palette = 0x03,
+                    };
+                    if (xTile >= tileMin.x && xTile < tileMax.x) {
+                        Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tile);
+                    }
+                    tile.tileId++;
+                    if (xTile >= tileMin.x && xTile < tileMax.x) {
+                        Rendering::Util::SetNametableTile(pNametables, { xTile + 1, yTile }, tile);
+                    }
+                    continue;
+                }
+                case SCREEN_EXIT_DIR_TOP: {
+                    if (!discoveredScreens[cellIndex + DUNGEON_GRID_DIM]) {
+                        continue;
+                    }
+
+                    BgTile tile{
+                        .tileId = topExitTileIndex,
+                        .palette = 0x03,
+                    };
+                    if (xTile >= tileMin.x && xTile < tileMax.x) {
+                        Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tile);
+                    }
+                    tile.tileId++;
+                    if (xTile + 1 >= tileMin.x && xTile + 1 < tileMax.x) {
+                        Rendering::Util::SetNametableTile(pNametables, { xTile + 1, yTile }, tile);
+                    }
+                    continue;
+                }
+                default:
+                    continue;
+                }
+            }
+
+            if (!discoveredScreens[cellIndex]) {
                 continue;
             }
 
@@ -384,14 +478,12 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
             const u32 roomX = cell.screenIndex % ROOM_MAX_DIM_SCREENS;
             const u32 roomY = cell.screenIndex / ROOM_MAX_DIM_SCREENS;
 
-            const u32 yTile = y + tileMin.y - scrollOffset.y;
-
             // Room width = 2;
             for (u32 i = 0; i < 2; i++) {
                 const u32 xTile = (x * 2) + tileMin.x + i - scrollOffset.x;
 
                 // Clipping: Check if tile is within worldTileBounds
-                if (xTile >= tileMin.x && xTile < tileMax.x && yTile >= tileMin.y && yTile < tileMax.y) {
+                if (xTile >= tileMin.x && xTile < tileMax.x) {
                     const u32 roomTileIndex = (roomX * 2 + i) + roomY * ROOM_MAX_DIM_SCREENS * 2;
                     const BgTile& tile = pTemplate->mapTiles[roomTileIndex];
                     Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tile);
@@ -808,6 +900,32 @@ void Game::SetPersistedActorData(u64 id, const PersistedActorData& data) {
 #pragma endregion
 
 #pragma region Level
+static u8 GetSidescrollingDir(glm::ivec2 facingDir, bool flip) {
+    if (flip) {
+        facingDir *= -1;
+    }
+
+    if (facingDir.x != 0) {
+        return facingDir.x > 0 ? SCREEN_EXIT_DIR_RIGHT : SCREEN_EXIT_DIR_LEFT;
+    }
+
+    return facingDir.y > 0 ? SCREEN_EXIT_DIR_RIGHT : SCREEN_EXIT_DIR_LEFT;
+}
+
+static glm::ivec2 GetOverworldDir(const OverworldKeyArea& area, u8 direction) {
+    glm::ivec2 result = overworldAreaEnterDir.x ? glm::ivec2(1, 0) : glm::ivec2(0, 1);
+
+    if (direction == SCREEN_EXIT_DIR_LEFT || direction == SCREEN_EXIT_DIR_TOP) {
+        result *= -1;
+    }
+
+    if (area.flipDirection) {
+        result *= -1;
+    }
+
+    return result;
+}
+
 bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
     state = GAME_STATE_OVERWORLD;
     const Overworld* pOverworld = Assets::GetOverworld();
@@ -815,13 +933,32 @@ bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
     Rendering::SetViewportPos(glm::vec2(0.0f), false);
     ClearActors();
 
-    const glm::vec2 areaWorldPos = pOverworld->keyAreas[keyAreaIndex].position;
-    Actor* pPlayer = Game::SpawnActor(playerOverworldPrototypeIndex, areaWorldPos);
+    const OverworldKeyArea& area = pOverworld->keyAreas[keyAreaIndex];
+    const glm::ivec2 overworldDir = GetOverworldDir(area, direction);
+    glm::ivec2 spawnPos = area.position;
+    if (area.passthrough) {
+        spawnPos += overworldDir;
+    }
+
+    Actor* pPlayer = Game::SpawnActor(playerOverworldPrototypeIndex, spawnPos);
+    if (!pPlayer) {
+        return false;
+    }
+    pPlayer->state.playerOverworld.facingDir = overworldDir;
 
     gameplayFramesElapsed = 0;
     Rendering::RefreshViewport();
 
     return true;
+}
+
+void Game::EnterOverworldArea(u8 keyAreaIndex, const glm::ivec2& direction) {
+    currentOverworldArea = keyAreaIndex;
+    const Overworld* pOverworld = Assets::GetOverworld();
+    const OverworldKeyArea& area = pOverworld->keyAreas[keyAreaIndex];
+
+    overworldAreaEnterDir = direction;
+    Game::TriggerLevelTransition(area.dungeonIndex, area.targetGridCell, GetSidescrollingDir(direction, area.flipDirection));
 }
 
 bool Game::LoadRoom(const RoomInstance* pRoom, const glm::i8vec2 screenOffset, u8 direction) {
@@ -837,7 +974,12 @@ bool Game::LoadRoom(s32 dungeonIndex, const glm::i8vec2 gridCell, u8 direction) 
     glm::i8vec2 roomOffset;
     const RoomInstance* pNextRoom = GetDungeonRoom(dungeonIndex, gridCell, &roomOffset);
     if (!pNextRoom) {
-        return LoadOverworld(currentOverworldArea, direction);
+        const DungeonCell* pCell = GetDungeonCell(dungeonIndex, gridCell);
+        if (!pCell || pCell->roomIndex == -1) {
+            return LoadOverworld(currentOverworldArea, direction);
+        }
+
+        return LoadOverworld(pCell->screenIndex, direction);
     }
 
     currentDungeonIndex = dungeonIndex;

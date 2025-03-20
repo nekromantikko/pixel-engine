@@ -46,15 +46,8 @@ struct PlayerState {
 	u16 staminaRecoveryCounter;
 };
 
-enum PlayerOverworldFacingDir : u8 {
-	PLAYER_OW_DIR_RIGHT = 1 << 0,
-	PLAYER_OW_DIR_LEFT = 1 << 1,
-	PLAYER_OW_DIR_DOWN = 1 << 2,
-	PLAYER_OW_DIR_UP = 1 << 3,
-};
-
 struct PlayerOverworldState {
-	u8 facingDir;
+	glm::ivec2 facingDir;
 	u16 movementCounter;
 };
 

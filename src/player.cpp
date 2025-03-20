@@ -208,22 +208,22 @@ static void HandleLevelExit(const Actor* pPlayer) {
 
     if (pPlayer->position.x < 0) {
         shouldExit = true;
-        nextDirection = SCREEN_EXIT_DIR_RIGHT;
+        nextDirection = SCREEN_EXIT_DIR_LEFT;
         nextGridCell.x--;
     }
     else if (pPlayer->position.x >= roomMax.x) {
         shouldExit = true;
-        nextDirection = SCREEN_EXIT_DIR_LEFT;
+        nextDirection = SCREEN_EXIT_DIR_RIGHT;
         nextGridCell.x++;
     }
     else if (pPlayer->position.y < 0) {
         shouldExit = true;
-        nextDirection = SCREEN_EXIT_DIR_BOTTOM;
+        nextDirection = SCREEN_EXIT_DIR_TOP;
         nextGridCell.y--;
     }
     else if (pPlayer->position.y >= roomMax.y) {
         shouldExit = true;
-        nextDirection = SCREEN_EXIT_DIR_TOP;
+        nextDirection = SCREEN_EXIT_DIR_BOTTOM;
         nextGridCell.y++;
     }
 
@@ -617,18 +617,24 @@ static void UpdatePlayerSidescroller(Actor* pActor) {
     }
 }
 
-static glm::vec2 GetMovementDir(u8 facingDir) {
-    glm::vec2 result(0.0f);
-    const u8 horizontalDir = facingDir & 3;
-    const u8 verticalDir = (facingDir >> 2) & 3;
+static glm::ivec2 GetOverworldInputDir() {
+    glm::ivec2 result(0);
 
-    if (horizontalDir) {
-        const bool signBit = (horizontalDir >> 1) & 1;
-        result.x = signBit ? -1.0f : 1.0f;
+    const u8 inputDir = (Game::Input::GetCurrentState() >> 8) & 0xf;
+    if (!inputDir) {
+        return result;
     }
-    else if (verticalDir) {
+
+    const u8 horizontalDir = inputDir & 3;
+    const u8 verticalDir = (inputDir >> 2) & 3;
+
+    if (horizontalDir && horizontalDir != 3) {
+        const bool signBit = (horizontalDir >> 1) & 1;
+        result.x = signBit ? -1 : 1;
+    }
+    else if (verticalDir && verticalDir != 3) {
         const bool signBit = (verticalDir >> 1) & 1;
-        result.y = signBit ? -1.0f : 1.0f;
+        result.y = signBit ? -1 : 1;
     }
 
     return result;
@@ -642,7 +648,7 @@ static void UpdatePlayerOverworld(Actor* pPlayer) {
     PlayerOverworldState& state = pPlayer->state.playerOverworld;
     
     if (state.movementCounter != 0) {
-        pPlayer->position += GetMovementDir(state.facingDir) * movementStepLength;
+        pPlayer->position += pPlayer->velocity;
 
         if (!Game::UpdateCounter(state.movementCounter)) {
             const Overworld* pOverworld = Assets::GetOverworld();
@@ -654,18 +660,18 @@ static void UpdatePlayerOverworld(Actor* pPlayer) {
                     continue;
                 }
 
-                Game::TriggerLevelTransition(area.dungeonIndex, { 0, 0 }, 0);
+                Game::EnterOverworldArea(i, state.facingDir);
             }
         }
     }
     else {
         pPlayer->position = glm::roundEven(pPlayer->position);
 
-        const u8 inputDir = (Game::Input::GetCurrentState() >> 8) & 0xf;
-        if (inputDir) {
+        const glm::ivec2 inputDir = GetOverworldInputDir();
+        if (inputDir.x != 0 || inputDir.y != 0) {
             state.facingDir = inputDir;
-            const glm::ivec2 offset = GetMovementDir(state.facingDir);
-            const glm::ivec2 targetPos = glm::ivec2(pPlayer->position) + offset;
+            const glm::ivec2 targetPos = glm::ivec2(pPlayer->position) + state.facingDir;
+            pPlayer->velocity = glm::vec2(state.facingDir) * movementStepLength;
             const TilesetTile* pNextTile = Tiles::GetTilesetTile(Game::GetCurrentTilemap(), targetPos);
             if (!pNextTile || pNextTile->type != TILE_SOLID) {
                 state.movementCounter = movementSteps;
@@ -673,22 +679,11 @@ static void UpdatePlayerOverworld(Actor* pPlayer) {
         }
     }
 
-    // This feels really stupid...
-    switch (state.facingDir) {
-    case PLAYER_OW_DIR_RIGHT:
-        pPlayer->drawState.animIndex = 0;
-        break;
-    case PLAYER_OW_DIR_LEFT:
-        pPlayer->drawState.animIndex = 1;
-        break;
-    case PLAYER_OW_DIR_DOWN:
-        pPlayer->drawState.animIndex = 2;
-        break;
-    case PLAYER_OW_DIR_UP:
-        pPlayer->drawState.animIndex = 3;
-        break;
-    default:
-        break;
+    if (state.facingDir.x) {
+        pPlayer->drawState.animIndex = state.facingDir.x > 0 ? 0 : 1;
+    }
+    else {
+        pPlayer->drawState.animIndex = state.facingDir.y > 0 ? 2 : 3;
     }
 
     if ((state.movementCounter & 7) == 7) {
@@ -755,7 +750,7 @@ static void InitPlayerSidescroller(Actor* pPlayer, const PersistedActorData* pPe
 
 static void InitPlayerOverworld(Actor* pPlayer, const PersistedActorData* pPersistData) {
     pPlayer->state.playerOverworld.movementCounter = 0;
-    pPlayer->state.playerOverworld.facingDir = PLAYER_OW_DIR_DOWN;
+    pPlayer->state.playerOverworld.facingDir = { 0, 1 };
     pPlayer->position = glm::roundEven(pPlayer->position);
 }
 

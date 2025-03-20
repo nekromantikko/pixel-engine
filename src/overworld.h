@@ -9,8 +9,10 @@ constexpr u32 MAX_OVERWORLD_KEY_AREA_COUNT = 64;
 
 struct OverworldKeyArea {
 	glm::i8vec2 position = { -1, -1 };
+	glm::i8vec2 targetGridCell = { 0, 0 };
 	u8 dungeonIndex : 6;
 	u8 flipDirection : 1;
+	u8 passthrough : 1;
 };
 
 struct Overworld {

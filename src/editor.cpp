@@ -2525,16 +2525,34 @@ static void DrawAudioWindow() {
 #pragma endregion
 
 #pragma region Dungeon editor
-struct EditorRoomInstance {
-	u32 id;
+enum DungeonNodeType {
+	DUNGEON_NODE_ROOM,
+	DUNGEON_NODE_EXIT,
+};
+
+struct DungeonRoomData {
 	const RoomTemplate* pTemplate;
+};
+
+struct DungeonExitData {
+	u8 direction;
+	u8 keyArea;
+};
+
+struct DungeonNode {
+	u32 id;
+	u32 type;
+	union {
+		DungeonRoomData roomData;
+		DungeonExitData exitData;
+	};
 
 	glm::vec2 gridPos;
 };
 
 struct EditorDungeon {
 	//char* name;
-	std::unordered_map<u32, EditorRoomInstance> rooms;
+	std::unordered_map<u32, DungeonNode> nodes;
 };
 
 static EditorDungeon ConvertFromDungeon(u32 dungeonIndex) {
@@ -2544,15 +2562,32 @@ static EditorDungeon ConvertFromDungeon(u32 dungeonIndex) {
 
 	for (u32 i = 0; i < DUNGEON_GRID_SIZE; i++) {
 		const DungeonCell& cell = dungeon.grid[i];
+		const glm::vec2 pos(i % DUNGEON_GRID_DIM, i / DUNGEON_GRID_DIM);
 
 		if (cell.roomIndex >= 0 && cell.screenIndex == 0) {
 			const RoomInstance& room = dungeon.rooms[cell.roomIndex];
-			const glm::vec2 pos(i % DUNGEON_GRID_DIM, i / DUNGEON_GRID_DIM);
 
-			outDungeon.rooms.emplace(room.id, EditorRoomInstance{
+			outDungeon.nodes.emplace(room.id, DungeonNode {
 				.id = room.id,
-				.pTemplate = Assets::GetRoomTemplate(room.templateIndex),
+				.type = DUNGEON_NODE_ROOM,
+				.roomData = {
+					.pTemplate = Assets::GetRoomTemplate(room.templateIndex),
+				},
 				.gridPos = pos
+				});
+		}
+		else if (cell.roomIndex < -1) {
+			const u32 nodeId = Random::GenerateUUID32();
+
+			const u8 dir = ~(cell.roomIndex) - 1;
+			outDungeon.nodes.emplace(nodeId, DungeonNode{
+				.id = nodeId,
+				.type = DUNGEON_NODE_EXIT,
+				.exitData = {
+					.direction = dir,
+					.keyArea = cell.screenIndex,
+				},
+				.gridPos = pos,
 				});
 		}
 	}
@@ -2561,62 +2596,101 @@ static EditorDungeon ConvertFromDungeon(u32 dungeonIndex) {
 }
 
 static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon) {
-	pOutDungeon->roomCount = dungeon.rooms.size();
 
 	s8 roomIndex = 0;
-	for (auto& [id, room] : dungeon.rooms) {
-		pOutDungeon->rooms[roomIndex] = RoomInstance{
-			.id = id,
-			.templateIndex = Assets::GetRoomTemplateIndex(room.pTemplate)
-		};
+	for (auto& [id, node] : dungeon.nodes) {
+		if (node.type == DUNGEON_NODE_ROOM) {
+			pOutDungeon->rooms[roomIndex] = RoomInstance{
+				.id = node.id,
+				.templateIndex = Assets::GetRoomTemplateIndex(node.roomData.pTemplate)
+			};
 
-		const u32 width = room.pTemplate->width;
-		const u32 height = room.pTemplate->height;
+			const u32 width = node.roomData.pTemplate->width;
+			const u32 height = node.roomData.pTemplate->height;
 
-		for (u32 y = 0; y < height; y++) {
-			for (u32 x = 0; x < width; x++) {
-				const u8 screenIndex = x + y * ROOM_MAX_DIM_SCREENS;
-				const u32 gridIndex = (room.gridPos.x + x) + (room.gridPos.y + y) * DUNGEON_GRID_DIM;
-				pOutDungeon->grid[gridIndex] = {
-					.roomIndex = roomIndex,
-					.screenIndex = screenIndex,
-				};
+			for (u32 y = 0; y < height; y++) {
+				for (u32 x = 0; x < width; x++) {
+					const u8 screenIndex = x + y * ROOM_MAX_DIM_SCREENS;
+					const u32 gridIndex = (node.gridPos.x + x) + (node.gridPos.y + y) * DUNGEON_GRID_DIM;
+					pOutDungeon->grid[gridIndex] = {
+						.roomIndex = roomIndex,
+						.screenIndex = screenIndex,
+					};
+				}
 			}
-		}
 
-		++roomIndex;
+			++roomIndex;
+		}
+		else {
+			const u32 gridIndex = node.gridPos.x + node.gridPos.y * DUNGEON_GRID_DIM;
+
+			// Convert direction to negative room index value
+			const s8 roomIndex = ~(node.exitData.direction + 1);
+			pOutDungeon->grid[gridIndex] = {
+				.roomIndex = roomIndex,
+				.screenIndex = node.exitData.keyArea,
+			};
+		}
 	}
+	pOutDungeon->roomCount = roomIndex;
 }
 
-static void DrawRoom(const EditorRoomInstance& room, const glm::mat3& gridToScreen, bool& outHovered) {
+static u32 GetRoomCount(const EditorDungeon& dungeon) {
+	u32 result = 0;
+	for (auto& [id, node] : dungeon.nodes) {
+		if (node.type != DUNGEON_NODE_ROOM) {
+			continue;
+		}
+
+		result++;
+	}
+	return result;
+}
+
+static glm::ivec2 GetDungeonNodeSize(const DungeonNode& node) {
+	if (node.type == DUNGEON_NODE_ROOM) {
+		return {
+			node.roomData.pTemplate->width,
+			node.roomData.pTemplate->height
+		};
+	}
+	
+	return { 1, 1 };
+}
+
+static void DrawDungeonNode(const DungeonNode& node, const glm::mat3& gridToScreen, bool selected, bool& outHovered) {
 	outHovered = false;
 
 	ImGuiIO& io = ImGui::GetIO();
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 	// Node body
-	const r32 width = room.pTemplate->width;
-	const r32 height = room.pTemplate->height;
+	const glm::ivec2 nodeSize = GetDungeonNodeSize(node);
 
-	const glm::vec2 roomTopLeft = gridToScreen * glm::vec3(room.gridPos.x, room.gridPos.y, 1.0f);
-	const glm::vec2 roomBtmRight = gridToScreen * glm::vec3(room.gridPos.x + width, room.gridPos.y + height, 1.0f);
+	const glm::vec2 nodeTopLeft = gridToScreen * glm::vec3(node.gridPos.x, node.gridPos.y, 1.0f);
+	const glm::vec2 nodeBtmRight = gridToScreen * glm::vec3(node.gridPos.x + nodeSize.x, node.gridPos.y + nodeSize.y, 1.0f);
 	const r32 scale = glm::length(glm::vec2(gridToScreen[0][0], gridToScreen[1][0])) / VIEWPORT_WIDTH_METATILES;
 
-	const ImVec2 nodeDrawMin = ImVec2(roomTopLeft.x, roomTopLeft.y);
-	const ImVec2 nodeDrawMax = ImVec2(roomBtmRight.x, roomBtmRight.y);
+	const ImVec2 nodeDrawMin = ImVec2(nodeTopLeft.x, nodeTopLeft.y);
+	const ImVec2 nodeDrawMax = ImVec2(nodeBtmRight.x, nodeBtmRight.y);
 
 	constexpr ImU32 outlineColor = IM_COL32(255, 255, 255, 255);
+	constexpr ImU32 outlineSelectedColor = IM_COL32(0, 255, 0, 255);
 	constexpr ImU32 outlineHoveredColor = IM_COL32(255, 255, 0, 255);
 	constexpr r32 outlineThickness = 1.0f;
 	constexpr r32 outlineHoveredThickness = 2.0f;
 
-	DrawTilemap(&room.pTemplate->tilemap, ImVec2(0,0), ImVec2(width * VIEWPORT_WIDTH_METATILES, height * VIEWPORT_HEIGHT_METATILES), nodeDrawMin, scale);
+	if (node.type == DUNGEON_NODE_ROOM) {
+		DrawTilemap(&node.roomData.pTemplate->tilemap, ImVec2(0,0), ImVec2(nodeSize.x * VIEWPORT_WIDTH_METATILES, nodeSize.y * VIEWPORT_HEIGHT_METATILES), nodeDrawMin, scale);
+		drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0, 0, 0, 0x80));
+		drawList->AddText(ImVec2(nodeDrawMin.x + 10, nodeDrawMin.y + 10), IM_COL32(255, 255, 255, 255), node.roomData.pTemplate->name);
+	}
+	else {
+		drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0xc, 0xc, 0xc, 255));
+		drawList->AddText(ImVec2(nodeDrawMin.x + 10, nodeDrawMin.y + 10), IM_COL32(255, 255, 255, 255), "EXIT");
+	}
 
-	drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0, 0, 0, 0x80));
-
-	drawList->AddText(ImVec2(nodeDrawMin.x + 10, nodeDrawMin.y + 10), IM_COL32(255, 255, 255, 255), room.pTemplate->name);
-
-	ImU32 nodeOutlineColor = outlineColor;
+	ImU32 nodeOutlineColor = selected ? outlineSelectedColor : outlineColor;
 	r32 nodeOutlineThickness = outlineThickness;
 	// If node hovered
 	if (io.MousePos.x >= nodeDrawMin.x &&
@@ -2634,12 +2708,13 @@ static void DrawRoom(const EditorRoomInstance& room, const glm::mat3& gridToScre
 static bool DungeonPositionFree(u32 roomId, const glm::ivec2& pos, const glm::ivec2& dim, const EditorDungeon& dungeon) {
 	const AABB targetRect(0, dim.x, 0, dim.y);
 	
-	for (auto& [otherId, otherRoom] : dungeon.rooms) {
+	for (auto& [otherId, otherRoom] : dungeon.nodes) {
 		if (otherId == roomId) {
 			continue;
 		}
 
-		const AABB rect(0, otherRoom.pTemplate->width, 0, otherRoom.pTemplate->height);
+		const glm::ivec2 otherSize = GetDungeonNodeSize(otherRoom);
+		const AABB rect(0, otherSize.x, 0, otherSize.y);
 
 		if (Collision::BoxesOverlap(targetRect, pos, rect, otherRoom.gridPos)) {
 			return false;
@@ -2664,7 +2739,7 @@ static bool DrawDungeonDragDropPreview(u32 roomId, const glm::ivec2& pos, const 
 	return posFree;
 }
 
-static void DrawDungeonCanvas(EditorDungeon& dungeon) {
+static void DrawDungeonCanvas(EditorDungeon& dungeon, u32& selectedNodeId) {
 	// NOTE: ImGui examples -> custom rendering -> canvas
 	ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();
 	ImVec2 canvas_sz = ImGui::GetContentRegionAvail();
@@ -2737,10 +2812,10 @@ static void DrawDungeonCanvas(EditorDungeon& dungeon) {
 	const glm::vec2 mousePosInGrid = screenToGrid * glm::vec3(io.MousePos.x, io.MousePos.y, 1.0f);
 	const glm::ivec2 hoveredCellPos = glm::clamp(glm::ivec2(mousePosInGrid), glm::ivec2(0), glm::ivec2(DUNGEON_GRID_DIM - 1));
 
-	static u32 draggedRoom = UUID_NULL;
+	static u32 draggedNode = UUID_NULL;
 	static glm::vec2 dragStartPos(0.0f);
 
-	static u32 contextRoom = UUID_NULL;
+	static u32 contextNode = UUID_NULL;
 
 	if (ImGui::BeginDragDropTarget())
 	{
@@ -2755,11 +2830,14 @@ static void DrawDungeonCanvas(EditorDungeon& dungeon) {
 			const bool posFree = DrawDungeonDragDropPreview(UUID_NULL, roomTopLeft, roomDim, gridToScreen, dungeon);
 
 			if (posFree && payload->IsDelivery()) {
-				const u32 roomId = Random::GenerateUUID32();
-				if (dungeon.rooms.size() < MAX_DUNGEON_ROOM_COUNT) {
-					dungeon.rooms.emplace(roomId, EditorRoomInstance{
-						.id = roomId,
-						.pTemplate = pTemplate,
+				const u32 nodeId = Random::GenerateUUID32();
+				if (GetRoomCount(dungeon) < MAX_DUNGEON_ROOM_COUNT) {
+					dungeon.nodes.emplace(nodeId, DungeonNode{
+						.id = nodeId,
+						.type = DUNGEON_NODE_ROOM,
+						.roomData = {
+							.pTemplate = pTemplate,
+						},
 						.gridPos = roomTopLeft
 						});
 				}
@@ -2768,96 +2846,163 @@ static void DrawDungeonCanvas(EditorDungeon& dungeon) {
 		ImGui::EndDragDropTarget();
 	}
 
-	if (draggedRoom != UUID_NULL) {
-		auto& room = dungeon.rooms[draggedRoom];
-		const glm::ivec2 roomDim = { room.pTemplate->width, room.pTemplate->height };
-		const glm::ivec2 dragTargetPos = glm::clamp(glm::ivec2(glm::roundEven(room.gridPos.x), glm::roundEven(room.gridPos.y)), glm::ivec2(0), glm::ivec2(DUNGEON_GRID_DIM - 1));
-		const bool posFree = DrawDungeonDragDropPreview(room.id, dragTargetPos, roomDim, gridToScreen, dungeon);
+	if (draggedNode != UUID_NULL) {
+		auto& node = dungeon.nodes[draggedNode];
+		const glm::ivec2 nodeSize = GetDungeonNodeSize(node);
+		const glm::ivec2 dragTargetPos = glm::clamp(glm::ivec2(glm::roundEven(node.gridPos.x), glm::roundEven(node.gridPos.y)), glm::ivec2(0), glm::ivec2(DUNGEON_GRID_DIM - 1));
+		const bool posFree = DrawDungeonDragDropPreview(node.id, dragTargetPos, nodeSize, gridToScreen, dungeon);
 
 		if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
 			glm::vec2 scaledDelta = screenToGrid * glm::vec3(io.MouseDelta.x, io.MouseDelta.y, 0.0f);
 
-			room.gridPos += scaledDelta;
+			node.gridPos += scaledDelta;
 		}
 
 		if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
 			if (posFree) {
-				room.gridPos = dragTargetPos;
+				node.gridPos = dragTargetPos;
 			}
 			else {
-				room.gridPos = dragStartPos;
+				node.gridPos = dragStartPos;
 			}
 
-			draggedRoom = UUID_NULL;
+			draggedNode = UUID_NULL;
 		}
 	}
 
-	for (auto& [id, room] : dungeon.rooms) {
+	for (auto& [id, node] : dungeon.nodes) {
+		const bool selected = id == selectedNodeId;
 		bool nodeHovered;
-		DrawRoom(room, gridToScreen, nodeHovered);
+		DrawDungeonNode(node, gridToScreen, selected, nodeHovered);
 
 		if (active && nodeHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-			draggedRoom = id;
-			dragStartPos = room.gridPos;
+			draggedNode = id;
+			dragStartPos = node.gridPos;
+			selectedNodeId = id;
 		}
 
 		if (active && nodeHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-			contextRoom = id;
+			contextNode = id;
 			ImGui::OpenPopup("NodeContextMenu");
 		}
 	}
 
+	if (active && contextNode == UUID_NULL && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+		ImGui::OpenPopup("CanvasContextMenu");
+	}
+
 	if (ImGui::BeginPopup("NodeContextMenu")) {
-		if (ImGui::MenuItem("Delete Node") && contextRoom != UUID_NULL) {
-			dungeon.rooms.erase(contextRoom);
-			contextRoom = UUID_NULL;
+		if (ImGui::MenuItem("Delete Node") && contextNode != UUID_NULL) {
+			dungeon.nodes.erase(contextNode);
+			contextNode = UUID_NULL;
 		}
+		ImGui::EndPopup();
+	}
+	else {
+		contextNode = UUID_NULL;
+	}
+
+	if (ImGui::BeginPopup("CanvasContextMenu")) {
+		bool posFree = DungeonPositionFree(UUID_NULL, hoveredCellPos, { 1, 1 }, dungeon);
+		ImGui::BeginDisabled(!posFree);
+		if (ImGui::MenuItem("Add exit")) {
+			const u32 nodeId = Random::GenerateUUID32();
+			dungeon.nodes.emplace(nodeId, DungeonNode{
+					.id = nodeId,
+					.type = DUNGEON_NODE_EXIT,
+					.exitData = {
+						.direction = 0,
+						.keyArea = 0,
+					},
+					.gridPos = hoveredCellPos
+				});
+		}
+		ImGui::EndDisabled();
 		ImGui::EndPopup();
 	}
 
 	drawList->PopClipRect();
 }
 
-static void DrawDungeonTools(EditorDungeon& dungeon) {
+static void DrawDungeonTools(EditorDungeon& dungeon, u32 selectedNodeId) {
 	//ImGui::SeparatorText(dungeon.name);
 
 	//ImGui::InputText("Name", dungeon.name, DUNGEON_MAX_NAME_LENGTH);
-	ImGui::Separator();
+	if (ImGui::BeginTabBar("Dungeon tools")) {
+		if (ImGui::BeginTabItem("Room list")) {
+				ImGui::BeginChild("Room list", ImVec2(0, 0), ImGuiChildFlags_Border);
+				{
+					static s32 selection = 0;
 
-	ImGui::BeginChild("Room list", ImVec2(0, 0), ImGuiChildFlags_Border);
-	{
-		static s32 selection = 0;
+					static constexpr u32 maxLabelNameLength = ROOM_MAX_NAME_LENGTH + 8;
+					char label[maxLabelNameLength];
 
-		static constexpr u32 maxLabelNameLength = ROOM_MAX_NAME_LENGTH + 8;
-		char label[maxLabelNameLength];
+					for (u32 i = 0; i < MAX_ROOM_TEMPLATE_COUNT; i++) {
+						const RoomTemplate& room = *Assets::GetRoomTemplate(i);
 
-		for (u32 i = 0; i < MAX_ROOM_TEMPLATE_COUNT; i++) {
-			const RoomTemplate& room = *Assets::GetRoomTemplate(i);
+						ImGui::PushID(i);
 
-			ImGui::PushID(i);
+						snprintf(label, maxLabelNameLength, "%#04x: %s", i, room.name);
 
-			snprintf(label, maxLabelNameLength, "%#04x: %s", i, room.name);
+						const bool selected = selection == i;
+						if (ImGui::Selectable(label, selected)) {
+							selection = i;
+						}
 
-			const bool selected = selection == i;
-			if (ImGui::Selectable(label, selected)) {
-				selection = i;
-			}
+						if (selected) {
+							ImGui::SetItemDefaultFocus();
+						}
 
-			if (selected) {
-				ImGui::SetItemDefaultFocus();
-			}
+						if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+						{
+							ImGui::SetDragDropPayload("dd_rooms", &i, sizeof(s32));
+							ImGui::Text("%s", room.name);
 
-			if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
-			{
-				ImGui::SetDragDropPayload("dd_rooms", &i, sizeof(s32));
-				ImGui::Text("%s", room.name);
+							ImGui::EndDragDropSource();
+						}
+						ImGui::PopID();
+					}
+				}
+				ImGui::EndChild();
 
-				ImGui::EndDragDropSource();
-			}
-			ImGui::PopID();
+			ImGui::EndTabItem();
 		}
+
+		if (ImGui::BeginTabItem("Node Info")) {
+			const auto it = dungeon.nodes.find(selectedNodeId);
+			if (it == dungeon.nodes.end()) {
+				ImGui::Text("No node selected!");
+			}
+			else {
+				DungeonNode& node = it->second;
+
+				ImGui::Text("Grid position: (%f, %f)", node.gridPos.x, node.gridPos.y);
+
+				if (node.type == DUNGEON_NODE_ROOM) {
+					ImGui::Text("Node Type: ROOM");
+
+					ImGui::Text("Room: %s", node.roomData.pTemplate->name);
+				}
+				else {
+					ImGui::Text("Node Type: EXIT");
+
+					constexpr const char* exitDirNames[4] = { "Right", "Left", "Bottom", "Top" };
+
+					s32 dir = node.exitData.direction;
+					DrawTypeSelectionCombo("Exit direction", exitDirNames, 4, dir);
+					node.exitData.direction = dir;
+
+					ImGui::InputScalar("Target area", ImGuiDataType_U8, &node.exitData.keyArea);
+				}
+			}
+
+
+			ImGui::EndTabItem();
+		}
+
+		ImGui::EndTabBar();
 	}
-	ImGui::EndChild();
+
 }
 
 static void DrawDungeonWindow() {
@@ -2865,6 +3010,7 @@ static void DrawDungeonWindow() {
 
 	static u32 selectedDungeon = 0;
 	static EditorDungeon editedDungeon = ConvertFromDungeon(selectedDungeon);
+	static u32 selectedNodeId = UUID_NULL;
 
 	if (ImGui::BeginMenuBar())
 	{
@@ -2921,13 +3067,13 @@ static void DrawDungeonWindow() {
 	const r32 canvasViewWidth = ImGui::GetContentRegionAvail().x - style.WindowPadding.x - toolWindowWidth;
 
 	ImGui::BeginChild("Node graph", ImVec2(canvasViewWidth, 0));
-	DrawDungeonCanvas(editedDungeon);
+	DrawDungeonCanvas(editedDungeon, selectedNodeId);
 	ImGui::EndChild();
 
 	ImGui::SameLine();
 
 	ImGui::BeginChild("Dungeon tools", ImVec2(toolWindowWidth, 0));
-	DrawDungeonTools(editedDungeon);
+	DrawDungeonTools(editedDungeon, selectedNodeId);
 	ImGui::EndChild();
 
 	ImGui::End();
@@ -3038,6 +3184,18 @@ static void DrawOverworldWindow() {
 				s32 dungeonIndex = area.dungeonIndex;
 				if (ImGui::InputInt("Target dungeon", &dungeonIndex)) {
 					area.dungeonIndex = dungeonIndex;
+				}
+
+				ImGui::InputScalarN("Target grid cell", ImGuiDataType_S8, &area.targetGridCell, 2);
+
+				bool flipDirection = area.flipDirection;
+				if (ImGui::Checkbox("Flip direction", &flipDirection)) {
+					area.flipDirection = flipDirection;
+				}
+
+				bool passthrough = area.passthrough;
+				if (ImGui::Checkbox("Passthrough", &passthrough)) {
+					area.passthrough = passthrough;
 				}
 
 				ImGui::EndTabItem();

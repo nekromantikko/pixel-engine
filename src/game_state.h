@@ -83,6 +83,7 @@ namespace Game {
     void SetPersistedActorData(u64 id, const PersistedActorData& data);
 
     bool LoadOverworld(u8 keyAreaIndex, u8 direction);
+    void EnterOverworldArea(u8 keyAreaIndex, const glm::ivec2& direction);
 
     bool LoadRoom(const RoomInstance* pRoom, const glm::i8vec2 screenOffset = {0,0}, u8 direction = 0);
     bool LoadRoom(s32 dungeonIndex, const glm::i8vec2 gridCell, u8 direction = 0);
