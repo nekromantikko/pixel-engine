@@ -69,11 +69,11 @@ namespace Game {
     void Initialize() {
         Rendering::Init();
 
-        Tiles::LoadTileset("assets/forest.til");
-        Metasprites::Load("assets/meta.spr");
+        Tiles::LoadTileset("assets/tileset.ass");
+        Metasprites::Load("assets/metasprites.ass");
         Assets::LoadRoomTemplates("assets/rooms.ass");
-        Assets::LoadActorPrototypes("assets/actors.prt");
-        Assets::LoadDungeons("assets/test.dng");
+        Assets::LoadActorPrototypes("assets/actors.ass");
+        Assets::LoadDungeons("assets/dungeons.ass");
         Assets::LoadOverworld("assets/overworld.ass");
 
         // TEMP SOUND STUFF

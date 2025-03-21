@@ -1480,10 +1480,10 @@ static void DrawSpriteWindow() {
 		if (ImGui::BeginMenu("File"))
 		{
 			if (ImGui::MenuItem("Save")) {
-				Metasprites::Save("assets/meta.spr");
+				Metasprites::Save("assets/metasprites.ass");
 			}
 			if (ImGui::MenuItem("Revert changes")) {
-				Metasprites::Load("assets/meta.spr");
+				Metasprites::Load("assets/metasprites.ass");
 				spriteSelection.clear();
 			}
 			ImGui::EndMenu();
@@ -1552,10 +1552,10 @@ static void DrawTilesetWindow() {
 		if (ImGui::BeginMenu("File"))
 		{
 			if (ImGui::MenuItem("Save")) {
-				Tiles::SaveTileset("assets/forest.til");
+				Tiles::SaveTileset("assets/tileset.ass");
 			}
 			if (ImGui::MenuItem("Revert changes")) {
-				Tiles::LoadTileset("assets/forest.til");
+				Tiles::LoadTileset("assets/tileset.ass");
 			}
 			ImGui::EndMenu();
 		}
@@ -2110,10 +2110,10 @@ static void DrawActorWindow() {
 		if (ImGui::BeginMenu("File"))
 		{
 			if (ImGui::MenuItem("Save")) {
-				Assets::SaveActorPrototypes("assets/actors.prt");
+				Assets::SaveActorPrototypes("assets/actors.ass");
 			}
 			if (ImGui::MenuItem("Revert changes")) {
-				Assets::LoadActorPrototypes("assets/actors.prt");
+				Assets::LoadActorPrototypes("assets/actors.ass");
 			}
 			ImGui::EndMenu();
 		}
@@ -3019,10 +3019,10 @@ static void DrawDungeonWindow() {
 			if (ImGui::MenuItem("Save")) {
 				Dungeon* pEdited = Assets::GetDungeon(selectedDungeon);
 				ConvertToDungeon(editedDungeon, pEdited);
-				Assets::SaveDungeons("assets/test.dng");
+				Assets::SaveDungeons("assets/dungeons.ass");
 			}
 			if (ImGui::MenuItem("Revert changes")) {
-				Assets::LoadDungeons("assets/test.dng");
+				Assets::LoadDungeons("assets/dungeons.ass");
 				editedDungeon = ConvertFromDungeon(selectedDungeon);
 			}
 			ImGui::EndMenu();
