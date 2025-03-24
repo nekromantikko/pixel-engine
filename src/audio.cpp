@@ -663,9 +663,11 @@ namespace Audio {
     }
 
     void Audio::Init() {
+#ifdef EDITOR
         memset(pContext->debugBuffer, 0, DEBUG_BUFFER_SIZE);
         pContext->debugWriteOffset = 0;
         pContext->debugReadOffset = 0;
+#endif
 
         ClearRegisters();
         // Make sure there's silence at startup
