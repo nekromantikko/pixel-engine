@@ -45,12 +45,13 @@ constexpr const char* ASSET_TYPE_NAMES[ASSET_TYPE_COUNT] = { "Chr bank", "Sound"
 namespace AssetManager {
 	bool LoadArchive(const std::filesystem::path& path);
 	bool SaveArchive(const std::filesystem::path& path);
+	bool RepackArchive();
 
 	u64 CreateAsset(u8 type, u32 size, const char* name);
 	void* GetAsset(u64 id);
-	const AssetEntry* GetAssetInfo(u64 id);
+	AssetEntry* GetAssetInfo(u64 id);
 
 	u32 GetAssetCount();
-	const AssetIndex& GetIndex();
+	AssetIndex& GetIndex();
 
 }

@@ -70,9 +70,11 @@ void Metasprites::Load(const char* fname) {
 
 	fclose(pFile);
 
-	//for (u32 i = 0; i < 33; i++) {
-		//AssetManager::CreateAsset(ASSET_TYPE_METASPRITE, sizeof(Metasprite), &nameMemory[i * METASPRITE_MAX_NAME_LENGTH]);
-	//}
+	/*for (u32 i = 0; i < 41; i++) {
+		u64 id = AssetManager::CreateAsset(ASSET_TYPE_METASPRITE, sizeof(Metasprite), &nameMemory[i * METASPRITE_MAX_NAME_LENGTH]);
+		void* assetData = AssetManager::GetAsset(id);
+		memcpy(assetData, &metasprites[i], sizeof(Metasprite));
+	}*/
 }
 
 void Metasprites::Save(const char* fname) {

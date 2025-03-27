@@ -1000,6 +1000,46 @@ static void DrawTypeSelectionCombo(const char* label, const char* const* const t
 }
 #pragma endregion
 
+#pragma region Assets
+static u64 DrawAssetList(AssetType type) {
+	u64 result = UUID_NULL;
+	ImGui::BeginChild("Asset list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
+	
+	AssetIndex& assetIndex = AssetManager::GetIndex();
+	for (auto& kvp : assetIndex) {
+		AssetEntry& asset = kvp.second;
+
+		if (asset.flags.type != type || asset.flags.deleted) {
+			continue;
+		}
+
+		ImGui::PushID(asset.id);
+
+		ImGui::Selectable(asset.name);
+
+		if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+			result = asset.id;
+		}
+
+		if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+			ImGui::OpenPopup("AssetPopup");
+		}
+		if (ImGui::BeginPopup("AssetPopup")) {
+			if (ImGui::MenuItem("Delete")) {
+				asset.flags.deleted = true;
+			}
+			ImGui::EndPopup();
+		}
+
+		ImGui::PopID();
+	}
+
+	ImGui::EndChild();
+	return result;
+}
+
+#pragma endregion
+
 #pragma region Debug
 static void DrawArrow(ImVec2 start, ImVec2 end, float arrowSize, ImU32 color) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -1545,24 +1585,147 @@ static void DrawSpriteWindow() {
 }
 #pragma endregion
 
-#pragma region Tileset
-static void DrawTilesetWindow() {
-	ImGui::Begin("Tileset", &pContext->tilesetWindowOpen, ImGuiWindowFlags_MenuBar);
+struct EditedAsset {
+	u64 id;
+	char name[MAX_ASSET_NAME_LENGTH];
+	u32 size;
+	void* data;
+
+	bool dirty;
+};
+
+typedef void (*AssetEditorFn)(EditedAsset&);
+
+static EditedAsset CopyAssetForEditing(u64 id) {
+	EditedAsset result{};
+	result.id = id;
+
+	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(id);
+	strcpy(result.name, pAssetInfo->name);
+	result.size = pAssetInfo->size;
+	result.data = malloc(pAssetInfo->size);
+	memcpy(result.data, AssetManager::GetAsset(id), pAssetInfo->size);
+	result.dirty = false;
+
+	return result;
+}
+
+static void SaveEditedAsset(EditedAsset& asset) {
+	// TODO: Recreate asset if size has changed
+	AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
+	memcpy(pAssetInfo->name, asset.name, MAX_ASSET_NAME_LENGTH);
+	void* data = AssetManager::GetAsset(asset.id);
+	memcpy(data, asset.data, asset.size);
+	asset.dirty = false;
+}
+
+static void RevertEditedAsset(EditedAsset& asset) {
+	// TODO: Handle size change
+	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
+	memcpy(asset.name, pAssetInfo->name, MAX_ASSET_NAME_LENGTH);
+	const void* data = AssetManager::GetAsset(asset.id);
+	memcpy(asset.data, data, asset.size);
+	asset.dirty = false;
+}
+
+static void DrawAssetEditor(const char* title, bool& open, AssetType type, u32 newSize, const char* newName, AssetEditorFn drawEditor) {
+	ImGui::Begin(title, &open, ImGuiWindowFlags_MenuBar);
+
+	static std::unordered_map<u64, EditedAsset> editedAssets;
+	static u64 currentAsset = UUID_NULL;
 
 	if (ImGui::BeginMenuBar())
 	{
-		if (ImGui::BeginMenu("File"))
+		if (ImGui::BeginMenu("Asset"))
 		{
+			if (ImGui::MenuItem("New")) {
+				const u64 id = AssetManager::CreateAsset(type, newSize, newName);
+				editedAssets.try_emplace(id, CopyAssetForEditing(id));
+			}
+			ImGui::Separator();
+			ImGui::BeginDisabled(!editedAssets.contains(currentAsset));
 			if (ImGui::MenuItem("Save")) {
-				Tiles::SaveTileset("assets/tileset.ass");
+				EditedAsset& asset = editedAssets.at(currentAsset);
+				SaveEditedAsset(asset);
+			}
+			if (ImGui::MenuItem("Save all")) {
+				for (auto& kvp : editedAssets) {
+					EditedAsset& asset = kvp.second;
+					SaveEditedAsset(asset);
+				}
 			}
 			if (ImGui::MenuItem("Revert changes")) {
-				Tiles::LoadTileset("assets/tileset.ass");
+				EditedAsset& asset = editedAssets.at(currentAsset);
+				RevertEditedAsset(asset);
 			}
+			if (ImGui::MenuItem("Revert all")) {
+				for (auto& kvp : editedAssets) {
+					EditedAsset& asset = kvp.second;
+					RevertEditedAsset(asset);
+				}
+			}
+			ImGui::EndDisabled();
 			ImGui::EndMenu();
 		}
 		ImGui::EndMenuBar();
 	}
+
+	const u64 openedAsset = DrawAssetList(ASSET_TYPE_TILESET);
+	if (openedAsset != UUID_NULL && !editedAssets.contains(openedAsset)) {
+		editedAssets.emplace(openedAsset, CopyAssetForEditing(openedAsset));
+	}
+	ImGui::SameLine();
+
+	ImGui::BeginChild("Editor Area");
+	if (ImGui::BeginTabBar("Edited assets")) {
+		std::vector<u64> eraseList;
+		for (auto& kvp : editedAssets) {
+			auto& asset = kvp.second;
+
+			// Check if deleted
+			const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(kvp.first);
+			if (!pAssetInfo || pAssetInfo->flags.deleted) {
+				free(asset.data);
+				eraseList.push_back(kvp.first);
+				continue;
+			}
+
+			bool open = true;
+
+			char label[MAX_ASSET_NAME_LENGTH + 4];
+			if (asset.dirty) {
+				sprintf(label, "%s*###%lld", asset.name, kvp.first);
+			}
+			else {
+				sprintf(label, "%s###%lld", asset.name, kvp.first);
+			}
+
+			if (ImGui::BeginTabItem(label, &open)) {
+				currentAsset = kvp.first;
+				drawEditor(asset);
+				ImGui::EndTabItem();
+			}
+
+			if (!open) {
+				// TODO: Popup that asks if the user is sure they want to close this
+				free(asset.data);
+				eraseList.push_back(kvp.first);
+			}
+		}
+		for (u64 id : eraseList) {
+			editedAssets.erase(id);
+		}
+		eraseList.clear();
+		ImGui::EndTabBar();
+	}
+	ImGui::EndChild();
+
+	ImGui::End();
+}
+
+#pragma region Tileset
+static void DrawTilesetEditor(EditedAsset& asset) {
+	ImGui::BeginChild("Tileset editor");
 
 	static s32 selectedMetatileIndex = 0;
 	static s32 selectedTileIndex = 0;
@@ -1572,17 +1735,22 @@ static void DrawTilesetWindow() {
 	constexpr s32 gridStepPixels = METATILE_DIM_PIXELS * renderScale;
 	constexpr s32 gridSizePixels = gridSizeTiles * gridStepPixels;
 
-	Tileset* pTileset = Tiles::GetTileset();
+	Tileset* pTileset = (Tileset*)asset.data;
 	DrawTileset(pTileset, gridSizePixels, &selectedMetatileIndex);
 
 	ImGui::SameLine();
 
-	ImGui::BeginChild("Metatile editor");
+	ImGui::BeginChild("Editor tools");
 	{
-		constexpr r32 tilePreviewSize = 64;
-		constexpr r32 pixelSize = tilePreviewSize / TILE_DIM_PIXELS;
+		ImGui::SeparatorText("Properties");
+		if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
+			asset.dirty = true;
+		}
 
 		ImGui::SeparatorText("Metatile editor");
+
+		constexpr r32 tilePreviewSize = 64;
+		constexpr r32 pixelSize = tilePreviewSize / TILE_DIM_PIXELS;
 
 		Metatile& metatile = pTileset->tiles[selectedMetatileIndex].metatile;
 		s32 tileId = metatile.tiles[selectedTileIndex].tileId;
@@ -1592,6 +1760,7 @@ static void DrawTilesetWindow() {
 		DrawCHRPageSelector(chrSheetSize, 0, palette, &tileId);
 		if (tileId != metatile.tiles[selectedTileIndex].tileId) {
 			metatile.tiles[selectedTileIndex].tileId = tileId;
+			asset.dirty = true;
 		}
 
 		ImGui::Text("0x%02x", selectedMetatileIndex);
@@ -1611,22 +1780,28 @@ static void DrawTilesetWindow() {
 
 		if (ImGui::SliderInt("Palette", &palette, 0, BG_PALETTE_COUNT - 1)) {
 			metatile.tiles[selectedTileIndex].palette = palette;
+			asset.dirty = true;
 		}
 
 		bool flipHorizontal = metatile.tiles[selectedTileIndex].flipHorizontal;
 		if (ImGui::Checkbox("Flip Horizontal", &flipHorizontal)) {
 			metatile.tiles[selectedTileIndex].flipHorizontal = flipHorizontal;
+			asset.dirty = true;
 		}
 
 		bool flipVertical = metatile.tiles[selectedTileIndex].flipVertical;
 		if (ImGui::Checkbox("Flip Vertical", &flipVertical)) {
 			metatile.tiles[selectedTileIndex].flipVertical = flipVertical;
+			asset.dirty = true;
 		}
 	}
 	ImGui::EndChild();
 
+	ImGui::EndChild();
+}
 
-	ImGui::End();
+static void DrawTilesetWindow() {
+	DrawAssetEditor("Tileset editor", pContext->tilesetWindowOpen, ASSET_TYPE_TILESET, sizeof(Tileset), "New Tileset", DrawTilesetEditor);
 }
 #pragma endregion
 
@@ -3261,15 +3436,8 @@ static void DrawAssetBrowser() {
 			if (ImGui::MenuItem("Reload archive")) {
 				AssetManager::LoadArchive("assets.npak");
 			}
-			ImGui::EndMenu();
-		}
-		if (ImGui::BeginMenu("Create"))
-		{
-			if (ImGui::MenuItem("Tileset")) {
-				
-			}
-			if (ImGui::MenuItem("Room")) {
-				
+			if (ImGui::MenuItem("Repack archive")) {
+				AssetManager::RepackArchive();
 			}
 			ImGui::EndMenu();
 		}
@@ -3317,6 +3485,7 @@ static void DrawAssetBrowser() {
 
 			ImGui::PushID(id);
 			ImGui::TableNextRow();
+			ImGui::BeginDisabled(pAsset->flags.deleted);
 			ImGui::TableNextColumn();
 			if (ImGui::Selectable(pAsset->name, selected, ImGuiSelectableFlags_SpanAllColumns)) {
 				selectedAsset = id;
@@ -3325,6 +3494,7 @@ static void DrawAssetBrowser() {
 			ImGui::Text("%llu", id);
 			ImGui::TableNextColumn();
 			ImGui::Text("%s", ASSET_TYPE_NAMES[pAsset->flags.type]);
+			ImGui::EndDisabled();
 			ImGui::PopID();
 		}
 

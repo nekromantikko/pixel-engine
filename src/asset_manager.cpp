@@ -106,7 +106,7 @@ bool AssetManager::SaveArchive(const std::filesystem::path& path) {
 		return false;
 	}
 
-	// TODO: Repack!
+	RepackArchive();
 
 	ArchiveHeader header{
 		.signature = { 'N','P','A','K' },
@@ -126,6 +126,42 @@ bool AssetManager::SaveArchive(const std::filesystem::path& path) {
 	return true;
 }
 
+bool AssetManager::RepackArchive() {
+	u32 newSize = 0;
+	for (auto& kvp : assetIndex) {
+		auto& [id, asset] = kvp;
+		if (asset.flags.deleted) {
+			continue;
+		}
+
+		newSize += asset.size;
+	}
+
+	u8* newData = (u8*)malloc(newSize);
+	if (!newData) {
+		return false;
+	}
+
+	const u32 removedCount = std::erase_if(assetIndex, [](const auto& item) {
+		const auto& [id, asset] = item;
+		return asset.flags.deleted;
+		});
+
+	u32 offset = 0;
+	for (auto& kvp : assetIndex) {
+		auto& [id, asset] = kvp;
+		memcpy(newData + offset, archiveData + asset.offset, asset.size);
+		asset.offset = offset;
+		offset += asset.size;
+	}
+
+	archiveSize = newSize;
+	memcpy(archiveData, newData, newSize);
+
+	free(newData);
+	return true;
+}
+
 u64 AssetManager::CreateAsset(u8 type, u32 size, const char* name) {
 	const u32 minCapacity = archiveSize + size;
 	if (archiveCapacity < minCapacity) {
@@ -133,8 +169,6 @@ u64 AssetManager::CreateAsset(u8 type, u32 size, const char* name) {
 			return UUID_NULL;
 		}
 	}
-
-	archiveSize += size;
 
 	const u64 id = Random::GenerateUUID();
 
@@ -146,6 +180,9 @@ u64 AssetManager::CreateAsset(u8 type, u32 size, const char* name) {
 	newEntry.flags.type = type;
 
 	assetIndex.emplace(id, newEntry);
+
+	memset(archiveData + archiveSize, 0, size);
+	archiveSize += size;
 
 	return id;
 }
@@ -159,7 +196,7 @@ void* AssetManager::GetAsset(u64 id) {
 	return archiveData + asset.offset;
 }
 
-const AssetEntry* AssetManager::GetAssetInfo(u64 id) {
+AssetEntry* AssetManager::GetAssetInfo(u64 id) {
 	const auto it = assetIndex.find(id);
 	if (it == assetIndex.end()) {
 		return nullptr;
@@ -168,10 +205,10 @@ const AssetEntry* AssetManager::GetAssetInfo(u64 id) {
 }
 
 u32 AssetManager::GetAssetCount() {
-	return assetIndex.size();;
+	return assetIndex.size();
 }
 
-const AssetIndex& AssetManager::GetIndex() {
+AssetIndex& AssetManager::GetIndex() {
 	return assetIndex;
 }
 #pragma endregion

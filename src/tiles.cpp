@@ -103,7 +103,9 @@ void Tiles::LoadTileset(const char* fname) {
 
 	fclose(pFile);
 
-	//AssetManager::CreateAsset(ASSET_TYPE_TILESET, sizeof(Tileset), "Debug tileset");
+	//u64 id = AssetManager::CreateAsset(ASSET_TYPE_TILESET, sizeof(Tileset), "Debug tileset");
+	//void* assetData = AssetManager::GetAsset(id);
+	//memcpy(assetData, &tileset, sizeof(Tileset));
 }
 
 void Tiles::SaveTileset(const char* fname) {
