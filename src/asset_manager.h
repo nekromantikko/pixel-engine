@@ -1,27 +1,14 @@
 #pragma once
 #include "typedef.h"
+#include "asset_types.h"
 #include "debug.h"
 #include <filesystem>
 #include <unordered_map>
 
 constexpr u32 MAX_ASSET_NAME_LENGTH = 56;
 
-enum AssetType {
-	ASSET_TYPE_CHR_BANK,
-	ASSET_TYPE_SOUND,
-	ASSET_TYPE_TILESET,
-	ASSET_TYPE_METASPRITE,
-	ASSET_TYPE_ACTOR_PROTOTYPE,
-	ASSET_TYPE_ROOM,
-	ASSET_TYPE_DUNGEON,
-	ASSET_TYPE_OVERWORLD,
-	ASSET_TYPE_ANIMATION,
-
-	ASSET_TYPE_COUNT,
-};
-
 struct AssetFlags {
-	u8 type : 4;
+	AssetType type : 4;
 	bool deleted : 1;
 	bool compressed : 1; // NOTE: For the future maybe?
 };
@@ -49,8 +36,19 @@ namespace AssetManager {
 	bool SaveArchive(const std::filesystem::path& path);
 	bool RepackArchive();
 
-	u64 CreateAsset(u8 type, u32 size, const char* name);
-	void* GetAsset(u64 id);
+	u64 CreateAsset(AssetType type, u32 size, const char* name);
+	template <AssetType T>
+	AssetHandle<T> CreateAsset(u32 size, const char* name) {
+		const u64 id = CreateAsset(T, size, name);
+		return AssetHandle<T>{ id };
+	}
+
+	void* GetAsset(u64 id, AssetType type);
+	template <AssetType T>
+	void* GetAsset(const AssetHandle<T>& handle) {
+		return GetAsset(handle.id, T);
+	}
+
 	AssetEntry* GetAssetInfo(u64 id);
 
 	u32 GetAssetCount();

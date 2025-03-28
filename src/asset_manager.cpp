@@ -163,7 +163,7 @@ bool AssetManager::RepackArchive() {
 	return true;
 }
 
-u64 AssetManager::CreateAsset(u8 type, u32 size, const char* name) {
+u64 AssetManager::CreateAsset(AssetType type, u32 size, const char* name) {
 	const u32 minCapacity = archiveSize + size;
 	if (archiveCapacity < minCapacity) {
 		if (!ResizeArchive(minCapacity)) {
@@ -188,12 +188,16 @@ u64 AssetManager::CreateAsset(u8 type, u32 size, const char* name) {
 	return id;
 }
 
-void* AssetManager::GetAsset(u64 id) {
+void* AssetManager::GetAsset(u64 id, AssetType type) {
 	const auto it = assetIndex.find(id);
 	if (it == assetIndex.end()) {
 		return nullptr;
 	}
 	const AssetEntry& asset = it->second;
+	if (asset.flags.type != type) {
+		return nullptr;
+	}
+
 	return archiveData + asset.offset;
 }
 

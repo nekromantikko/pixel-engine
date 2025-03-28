@@ -1027,7 +1027,7 @@ static EditedAsset CopyAssetForEditing(u64 id) {
 	strcpy(result.name, pAssetInfo->name);
 	result.size = pAssetInfo->size;
 	result.data = malloc(pAssetInfo->size);
-	memcpy(result.data, AssetManager::GetAsset(id), pAssetInfo->size);
+	memcpy(result.data, AssetManager::GetAsset(id, pAssetInfo->flags.type), pAssetInfo->size);
 	result.dirty = false;
 
 	return result;
@@ -1037,7 +1037,7 @@ static void SaveEditedAsset(EditedAsset& asset) {
 	// TODO: Recreate asset if size has changed
 	AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
 	memcpy(pAssetInfo->name, asset.name, MAX_ASSET_NAME_LENGTH);
-	void* data = AssetManager::GetAsset(asset.id);
+	void* data = AssetManager::GetAsset(asset.id, pAssetInfo->flags.type);
 	memcpy(data, asset.data, asset.size);
 	asset.dirty = false;
 }
@@ -1046,7 +1046,7 @@ static void RevertEditedAsset(EditedAsset& asset) {
 	// TODO: Handle size change
 	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
 	memcpy(asset.name, pAssetInfo->name, MAX_ASSET_NAME_LENGTH);
-	const void* data = AssetManager::GetAsset(asset.id);
+	const void* data = AssetManager::GetAsset(asset.id, pAssetInfo->flags.type);
 	memcpy(asset.data, data, asset.size);
 	asset.dirty = false;
 }
@@ -1057,7 +1057,7 @@ static bool DuplicateAsset(u64 id) {
 		return false;
 	}
 
-	const void* assetData = AssetManager::GetAsset(id);
+	const void* assetData = AssetManager::GetAsset(id, pAssetInfo->flags.type);
 	if (!assetData) {
 		return false;
 	}
@@ -1068,7 +1068,7 @@ static bool DuplicateAsset(u64 id) {
 	if (newId == UUID_NULL) {
 		return false;
 	}
-	void* newData = AssetManager::GetAsset(newId);
+	void* newData = AssetManager::GetAsset(newId, pAssetInfo->flags.type);
 	memcpy(newData, assetData, pAssetInfo->size);
 	return true;
 }

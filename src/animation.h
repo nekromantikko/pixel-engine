@@ -1,10 +1,11 @@
 #pragma once
 #include "typedef.h"
+#include "asset_types.h"
 
 constexpr u32 ANIMATION_MAX_FRAME_COUNT = 64;
 
 struct AnimationFrame {
-	u64 metaspriteId;
+	MetaspriteHandle metaspriteId;
 };
 
 struct AnimationNew {
