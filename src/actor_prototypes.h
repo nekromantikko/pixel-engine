@@ -2,6 +2,7 @@
 #include "typedef.h"
 #include "collision.h"
 #include "actor_types.h"
+#include "asset_types.h"
 
 static constexpr u32 MAX_ACTOR_PROTOTYPE_COUNT = 256;
 static constexpr u32 ACTOR_PROTOTYPE_MAX_NAME_LENGTH = 256;
@@ -35,6 +36,18 @@ struct ActorPrototype {
 
 	u32 animCount;
 	Animation animations[ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT];
+
+	ActorPrototypeData data;
+};
+
+struct ActorPrototypeNew {
+	TActorType type;
+	TActorSubtype subtype;
+
+	AABB hitbox;
+
+	u32 animCount;
+	AnimationHandle animations[ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT];
 
 	ActorPrototypeData data;
 };

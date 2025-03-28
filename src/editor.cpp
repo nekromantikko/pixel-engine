@@ -708,24 +708,16 @@ static AABB GetActorBoundingBox(const RoomActor* pActor) {
 	return result;
 }
 
-static void DrawActor(const ActorPrototype* pPrototype, const ImVec2& origin, r32 renderScale, s32 animIndex = 0, s32 frameIndex = 0, ImU32 color = IM_COL32(255, 255, 255, 255)) {
-	const Animation& anim = pPrototype->animations[animIndex];
-	switch (anim.type) {
-	case ANIMATION_TYPE_SPRITES: {
-		const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex);
-		const Sprite& sprite = pMetasprite->spritesRelativePos[frameIndex];
-		ImVec2 pos = ImVec2(origin.x + renderScale * sprite.x, origin.y + renderScale * sprite.y);
-		DrawSprite(sprite, pos, renderScale, color);
-		break;
+static void DrawActor(const ActorPrototypeNew* pPrototype, const ImVec2& origin, r32 renderScale, s32 animIndex = 0, s32 frameIndex = 0, ImU32 color = IM_COL32(255, 255, 255, 255)) {
+	const AnimationHandle& animHandle = pPrototype->animations[animIndex];
+	const AnimationNew* pAnimation = (AnimationNew*)AssetManager::GetAsset(animHandle);
+	if (!pAnimation) {
+		return;
 	}
-	case ANIMATION_TYPE_METASPRITES: {
-		const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex + frameIndex);
-		DrawMetasprite(pMetasprite, origin, renderScale, color);
-		break;
-	}
-	default:
-		break;
-	}
+
+	const AnimationFrame& frame = pAnimation->frames[frameIndex];
+	const Metasprite* pMetasprite = (Metasprite*)AssetManager::GetAsset(frame.metaspriteId);
+	DrawMetasprite(pMetasprite, origin, renderScale, color);
 }
 
 static void DrawHitbox(const AABB* pHitbox, const ImVec2 origin, const r32 renderScale, ImU32 color = IM_COL32(0, 255, 0, 80)) {
@@ -1071,6 +1063,52 @@ static bool DuplicateAsset(u64 id) {
 	void* newData = AssetManager::GetAsset(newId, pAssetInfo->flags.type);
 	memcpy(newData, assetData, pAssetInfo->size);
 	return true;
+}
+
+static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
+	const u64 oldId = selectedId;
+
+	std::vector<u64> ids;
+	std::vector<const char*> assetNames;
+	s32 selectedIndex = -1;
+
+	AssetIndex& assetIndex = AssetManager::GetIndex();
+	for (auto& kvp : assetIndex) {
+		const auto& [id, asset] = kvp;
+
+		if (asset.flags.type != type || asset.flags.deleted) {
+			continue;
+		}
+
+		if (id == selectedId) {
+			selectedIndex = ids.size();
+		}
+
+		ids.push_back(id);
+		assetNames.push_back(asset.name);
+	}
+
+	DrawTypeSelectionCombo(label, assetNames.data(), assetNames.size(), selectedIndex);
+	if (selectedIndex >= 0) {
+		selectedId = ids[selectedIndex];
+	}
+
+	if (ImGui::BeginDragDropTarget()) {
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dd_asset", ImGuiDragDropFlags_AcceptBeforeDelivery))
+		{
+			const u64 assetId = *(const u64*)payload->Data;
+
+			const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(assetId);
+			const bool isValid = pAssetInfo && pAssetInfo->flags.type == type;
+
+			if (isValid && payload->IsDelivery()) {
+				selectedId = assetId;
+			}
+		}
+		ImGui::EndDragDropTarget();
+	}
+
+	return oldId != selectedId;
 }
 
 static u64 DrawAssetList(AssetType type) {
@@ -1839,7 +1877,7 @@ static void DrawRoomView(RoomTemplate* pTemplate, u32 editMode, TilemapClipboard
 
 		const u8 opacity = editMode == ROOM_EDIT_MODE_ACTORS ? 255 : 80;
 		const ActorPrototype* pPrototype = Assets::GetActorPrototype(pActor->prototypeIndex);
-		DrawActor(pPrototype, drawPos, renderScale, 0, 0, IM_COL32(255, 255, 255, opacity));
+		//DrawActor(pPrototype, drawPos, renderScale, 0, 0, IM_COL32(255, 255, 255, opacity));
 	}
 
 	ImGuiIO& io = ImGui::GetIO();
@@ -2129,7 +2167,7 @@ static void DrawRoomWindow() {
 #pragma endregion
 
 #pragma region Actor prototypes
-static ImVec2 DrawActorPreview(const ActorPrototype* pPrototype, s32 animIndex, s32 frameIndex, r32 size) {
+static ImVec2 DrawActorPreview(const ActorPrototypeNew* pPrototype, s32 animIndex, s32 frameIndex, r32 size) {
 	constexpr s32 gridSizeTiles = 8;
 
 	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
@@ -2210,60 +2248,29 @@ static void DrawActorPrototypeProperty(const ActorEditorProperty& property, Acto
 	}
 }
 
-static void DrawActorWindow() {
-	ImGui::Begin("Actor prototypes", &pContext->actorWindowOpen, ImGuiWindowFlags_MenuBar);
-
-	const r32 framesElapsed = pContext->secondsElapsed * 60.f;
-
-	static s32 selection;
-	static bool showHitboxPreview = false;
-
-	if (ImGui::BeginMenuBar())
-	{
-		if (ImGui::BeginMenu("File"))
-		{
-			if (ImGui::MenuItem("Save")) {
-				Assets::SaveActorPrototypes("assets/actors.ass");
-			}
-			if (ImGui::MenuItem("Revert changes")) {
-				Assets::LoadActorPrototypes("assets/actors.ass");
-			}
-			ImGui::EndMenu();
-		}
-		ImGui::EndMenuBar();
-	}
-
-	static ImVector<s32> selectedAnims;
-	static s32 currentAnim = 0;
-
-	ImGui::BeginChild("Prototype list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-	s32 newSelection = selection;
-	DrawActorPrototypeList(newSelection);
-	if (newSelection != selection) {
-		selection = newSelection;
-		selectedAnims.clear();
-		currentAnim = 0;
-	}
-	ImGui::EndChild();
-
-	ImGui::SameLine();
+static void DrawActorEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Prototype editor");
 	{
-		ActorPrototype* pPrototype = Assets::GetActorPrototype(selection);
-		char* prototypeName = Assets::GetActorPrototypeName(selection);
+		static bool showHitboxPreview = false;
 
-		ImGui::SeparatorText(prototypeName);
+		static ImVector<s32> selectedAnims;
+		static s32 currentAnim = 0;
 
-		ImGui::InputText("Name", prototypeName, ACTOR_PROTOTYPE_MAX_NAME_LENGTH);
+		ActorPrototypeNew* pPrototype = (ActorPrototypeNew*)asset.data;
+
+		ImGui::SeparatorText("Properties");
+
+		if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
+			asset.dirty = true;
+		}
 
 		ImGui::Separator();
 
 		constexpr r32 previewSize = 256;
 		ImGui::BeginChild("Actor preview", ImVec2(previewSize, previewSize));
 
-		const Animation& anim = pPrototype->animations[currentAnim];
-		const r32 animFramesElapsed = framesElapsed / anim.frameLength;
-		const s32 currentFrame = anim.frameCount == 0 ? 0 : (s32)glm::floor(animFramesElapsed) % anim.frameCount;
+		// TODO: Play back anim
+		const s32 currentFrame = 0;
 
 		ImVec2 metaspriteGridPos = DrawActorPreview(pPrototype, currentAnim, currentFrame, previewSize);
 
@@ -2276,49 +2283,6 @@ static void DrawActorWindow() {
 			ImVec2 origin = ImVec2(metaspriteGridPos.x + previewSize / 2, metaspriteGridPos.y + previewSize / 2);
 
 			DrawHitbox(&hitbox, origin, renderScale);
-		}
-		ImGui::EndChild();
-
-		ImGui::SameLine();
-		ImGuiStyle& style = ImGui::GetStyle();
-		const r32 timelineWidth = ImGui::GetContentRegionAvail().x;
-		ImGui::BeginChild("Timeline", ImVec2(timelineWidth - style.WindowPadding.x, previewSize));
-		{
-			ImGui::SeparatorText("Timeline");
-
-			ImDrawList* drawList = ImGui::GetWindowDrawList();
-			static const ImVec2 timelineSize = ImVec2(timelineWidth, 32);
-			const ImVec2 topLeft = ImGui::GetCursorScreenPos();
-			const ImVec2 btmRight = ImVec2(topLeft.x + timelineSize.x, topLeft.y + timelineSize.y);
-			const r32 yHalf = (topLeft.y + btmRight.y) / 2.0f;
-
-			ImGui::InvisibleButton("##canvas", timelineSize);
-
-			const ImU32 color = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Border]);
-			drawList->AddLine(ImVec2(topLeft.x, btmRight.y), ImVec2(btmRight.x, btmRight.y), color);
-
-			const r32 frameWidth = timelineSize.x / anim.frameCount;
-			for (u32 i = 0; i < anim.frameCount; i++) {
-				const r32 x = i * frameWidth + topLeft.x;
-
-				drawList->AddLine(ImVec2(x, topLeft.y), ImVec2(x, btmRight.y), color, 2.0f);
-
-				for (u32 s = 0; s < anim.frameLength; s++) {
-					const r32 xSmallNormalized = (r32)s / anim.frameLength;
-					const r32 xSmall = xSmallNormalized * frameWidth + x;
-
-					drawList->AddLine(ImVec2(xSmall, yHalf), ImVec2(xSmall, btmRight.y), color, 1.0f);
-				}
-			}
-
-			const u32 totalTicks = anim.frameCount * anim.frameLength;
-			const r32 xCurrentPosNormalized = glm::mod(framesElapsed, (r32)totalTicks) / totalTicks;
-			const r32 xCurrentPos = xCurrentPosNormalized * timelineSize.x + topLeft.x;
-			drawList->AddCircleFilled(ImVec2(xCurrentPos, btmRight.y), 8.0f, IM_COL32(255, 255, 0, 255));
-
-			const r32 xLoopPointNormalized = r32(anim.loopPoint * anim.frameLength) / totalTicks;
-			const r32 xLoopPoint = xLoopPointNormalized * timelineSize.x + topLeft.x;
-			drawList->AddCircleFilled(ImVec2(xLoopPoint, btmRight.y), 8.0f, IM_COL32(128, 0, 255, 255));
 		}
 		ImGui::EndChild();
 
@@ -2349,18 +2313,18 @@ static void DrawActorWindow() {
 
 				ImGui::BeginDisabled(pPrototype->animCount == ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT);
 				if (ImGui::Button("+")) {
-					PushElement<Animation>(pPrototype->animations, pPrototype->animCount);
+					PushElement<AnimationHandle>(pPrototype->animations, pPrototype->animCount);
 				}
 				ImGui::EndDisabled();
 				ImGui::SameLine();
 				ImGui::BeginDisabled(pPrototype->animCount == 1);
 				if (ImGui::Button("-")) {
-					PopElement<Animation>(pPrototype->animations, pPrototype->animCount);
+					PopElement<AnimationHandle>(pPrototype->animations, pPrototype->animCount);
 				}
 				ImGui::EndDisabled();
 
 				ImGui::BeginChild("Anim list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-				DrawGenericEditableList<Animation>(pPrototype->animations, pPrototype->animCount, ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT, selectedAnims, "Animation");
+				DrawGenericEditableList<AnimationHandle>(pPrototype->animations, pPrototype->animCount, ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT, selectedAnims, "Animation");
 
 				ImGui::EndChild();
 
@@ -2377,38 +2341,12 @@ static void DrawActorWindow() {
 					}
 					else {
 						currentAnim = selectedAnims[0];
-						Animation& anim = pPrototype->animations[currentAnim];
+						AnimationHandle& animHandle = pPrototype->animations[currentAnim];
 
-						DrawTypeSelectionCombo("Animation type", ANIMATION_TYPE_NAMES, ANIMATION_TYPE_COUNT, anim.type);
-
-						// TODO: Use DrawTypeSelectionCombo
-						if (ImGui::BeginCombo("Metasprite", Metasprites::GetName(anim.metaspriteIndex))) {
-							for (u32 i = 0; i < MAX_METASPRITE_COUNT; i++) {
-								ImGui::PushID(i);
-
-								const bool selected = anim.metaspriteIndex == i;
-								if (ImGui::Selectable(Metasprites::GetName(i), selected)) {
-									anim.metaspriteIndex = i;
-								}
-
-								if (selected) {
-									ImGui::SetItemDefaultFocus();
-								}
-								ImGui::PopID();
-							}
-							ImGui::EndCombo();
+						if (DrawAssetField("Animation", ASSET_TYPE_ANIMATION, animHandle.id)) {
+							asset.dirty = true;
 						}
 
-						const Metasprite* pMetasprite = Metasprites::GetMetasprite(anim.metaspriteIndex);
-						static const s16 step = 1;
-						ImGui::InputScalar("Frame count", ImGuiDataType_U16, &anim.frameCount, &step);
-						const u16 maxFrameCount = anim.type == ANIMATION_TYPE_SPRITES ? pMetasprite->spriteCount : MAX_METASPRITE_COUNT - anim.metaspriteIndex;
-						anim.frameCount = glm::clamp(anim.frameCount, u16(0), maxFrameCount);
-
-						ImGui::InputScalar("Loop point", ImGuiDataType_S16, &anim.loopPoint, &step);
-						anim.loopPoint = glm::clamp(anim.loopPoint, s16(-1), s16(anim.frameCount - 1));
-
-						ImGui::InputScalar("Frame length", ImGuiDataType_U8, &anim.frameLength, &step);
 					}
 				}
 				ImGui::EndChild();
@@ -2458,8 +2396,11 @@ static void DrawActorWindow() {
 
 	}
 	ImGui::EndChild();
+}
 
-	ImGui::End();
+static void DrawActorWindow() {
+	static AssetEditorState state{};
+	DrawAssetEditor("Actor editor", pContext->actorWindowOpen, ASSET_TYPE_ACTOR_PROTOTYPE, sizeof(ActorPrototype), "New actor prototype", DrawActorEditor, state);
 }
 #pragma endregion
 

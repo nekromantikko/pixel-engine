@@ -1,5 +1,6 @@
 #include "actor_prototypes.h"
 #include "debug.h"
+#include "asset_manager.h"
 
 static ActorPrototype prototypes[MAX_ACTOR_PROTOTYPE_COUNT];
 static char prototypeNames[MAX_ACTOR_PROTOTYPE_COUNT][ACTOR_PROTOTYPE_MAX_NAME_LENGTH];
@@ -58,7 +59,19 @@ void Assets::LoadActorPrototypes(const char* fname) {
 
 	fclose(pFile);
 
+	for (u32 i = 0; i < 18; i++) {
+		const char* name = prototypeNames[i];
+		ActorPrototypeHandle handle = AssetManager::CreateAsset<ASSET_TYPE_ACTOR_PROTOTYPE>(sizeof(ActorPrototypeNew), name);
+		ActorPrototypeNew* pPrototype = (ActorPrototypeNew*)AssetManager::GetAsset(handle);
 
+		ActorPrototype& old = prototypes[i];
+
+		pPrototype->type = old.type;
+		pPrototype->subtype = old.subtype;
+		pPrototype->hitbox = old.hitbox;
+		pPrototype->animCount = old.animCount;
+		pPrototype->data = old.data;
+	}
 }
 
 void Assets::SaveActorPrototypes(const char* fname) {
