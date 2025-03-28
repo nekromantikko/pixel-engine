@@ -146,6 +146,7 @@ bool AssetManager::RepackArchive() {
 		const auto& [id, asset] = item;
 		return asset.flags.deleted;
 		});
+	DEBUG_LOG("Removed %d assets\n", removedCount);
 
 	u32 offset = 0;
 	for (auto& kvp : assetIndex) {

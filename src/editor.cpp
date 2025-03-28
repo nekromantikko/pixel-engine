@@ -1001,10 +1001,80 @@ static void DrawTypeSelectionCombo(const char* label, const char* const* const t
 #pragma endregion
 
 #pragma region Assets
+struct EditedAsset {
+	u64 id;
+	char name[MAX_ASSET_NAME_LENGTH];
+	u32 size;
+	void* data;
+
+	bool dirty;
+};
+
+struct AssetEditorState {
+	std::unordered_map<u64, EditedAsset> editedAssets;
+	u64 currentAsset = UUID_NULL;
+};
+
+typedef void (*AssetEditorFn)(EditedAsset&);
+
+static EditedAsset CopyAssetForEditing(u64 id) {
+	EditedAsset result{};
+	result.id = id;
+
+	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(id);
+	strcpy(result.name, pAssetInfo->name);
+	result.size = pAssetInfo->size;
+	result.data = malloc(pAssetInfo->size);
+	memcpy(result.data, AssetManager::GetAsset(id), pAssetInfo->size);
+	result.dirty = false;
+
+	return result;
+}
+
+static void SaveEditedAsset(EditedAsset& asset) {
+	// TODO: Recreate asset if size has changed
+	AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
+	memcpy(pAssetInfo->name, asset.name, MAX_ASSET_NAME_LENGTH);
+	void* data = AssetManager::GetAsset(asset.id);
+	memcpy(data, asset.data, asset.size);
+	asset.dirty = false;
+}
+
+static void RevertEditedAsset(EditedAsset& asset) {
+	// TODO: Handle size change
+	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
+	memcpy(asset.name, pAssetInfo->name, MAX_ASSET_NAME_LENGTH);
+	const void* data = AssetManager::GetAsset(asset.id);
+	memcpy(asset.data, data, asset.size);
+	asset.dirty = false;
+}
+
+static bool DuplicateAsset(u64 id) {
+	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(id);
+	if (!pAssetInfo) {
+		return false;
+	}
+
+	const void* assetData = AssetManager::GetAsset(id);
+	if (!assetData) {
+		return false;
+	}
+
+	char newName[MAX_ASSET_NAME_LENGTH];
+	snprintf(newName, MAX_ASSET_NAME_LENGTH, "%s (Copy)", pAssetInfo->name);
+	const u64 newId = AssetManager::CreateAsset(pAssetInfo->flags.type, pAssetInfo->size, newName);
+	if (newId == UUID_NULL) {
+		return false;
+	}
+	void* newData = AssetManager::GetAsset(newId);
+	memcpy(newData, assetData, pAssetInfo->size);
+	return true;
+}
+
 static u64 DrawAssetList(AssetType type) {
 	u64 result = UUID_NULL;
 	ImGui::BeginChild("Asset list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-	
+
 	AssetIndex& assetIndex = AssetManager::GetIndex();
 	for (auto& kvp : assetIndex) {
 		AssetEntry& asset = kvp.second;
@@ -1028,7 +1098,18 @@ static u64 DrawAssetList(AssetType type) {
 			if (ImGui::MenuItem("Delete")) {
 				asset.flags.deleted = true;
 			}
+			if (ImGui::MenuItem("Duplicate")) {
+				DuplicateAsset(asset.id);
+			}
 			ImGui::EndPopup();
+		}
+
+		if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+		{
+			ImGui::SetDragDropPayload("dd_asset", &kvp.first, sizeof(u64));
+			ImGui::Text("%s", asset.name);
+
+			ImGui::EndDragDropSource();
 		}
 
 		ImGui::PopID();
@@ -1038,6 +1119,97 @@ static u64 DrawAssetList(AssetType type) {
 	return result;
 }
 
+static void DrawAssetEditor(const char* title, bool& open, AssetType type, u32 newSize, const char* newName, AssetEditorFn drawEditor, AssetEditorState& state) {
+	ImGui::Begin(title, &open, ImGuiWindowFlags_MenuBar);
+
+	if (ImGui::BeginMenuBar())
+	{
+		if (ImGui::BeginMenu("Asset"))
+		{
+			if (ImGui::MenuItem("New")) {
+				const u64 id = AssetManager::CreateAsset(type, newSize, newName);
+				state.editedAssets.try_emplace(id, CopyAssetForEditing(id));
+			}
+			ImGui::Separator();
+			ImGui::BeginDisabled(!state.editedAssets.contains(state.currentAsset));
+			if (ImGui::MenuItem("Save")) {
+				EditedAsset& asset = state.editedAssets.at(state.currentAsset);
+				SaveEditedAsset(asset);
+			}
+			if (ImGui::MenuItem("Save all")) {
+				for (auto& kvp : state.editedAssets) {
+					EditedAsset& asset = kvp.second;
+					SaveEditedAsset(asset);
+				}
+			}
+			if (ImGui::MenuItem("Revert changes")) {
+				EditedAsset& asset = state.editedAssets.at(state.currentAsset);
+				RevertEditedAsset(asset);
+			}
+			if (ImGui::MenuItem("Revert all")) {
+				for (auto& kvp : state.editedAssets) {
+					EditedAsset& asset = kvp.second;
+					RevertEditedAsset(asset);
+				}
+			}
+			ImGui::EndDisabled();
+			ImGui::EndMenu();
+		}
+		ImGui::EndMenuBar();
+	}
+
+	const u64 openedAsset = DrawAssetList(type);
+	if (openedAsset != UUID_NULL && !state.editedAssets.contains(openedAsset)) {
+		state.editedAssets.emplace(openedAsset, CopyAssetForEditing(openedAsset));
+	}
+	ImGui::SameLine();
+
+	ImGui::BeginChild("Editor Area");
+	if (ImGui::BeginTabBar("Edited assets")) {
+		std::vector<u64> eraseList;
+		for (auto& kvp : state.editedAssets) {
+			auto& asset = kvp.second;
+
+			// Check if deleted
+			const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(kvp.first);
+			if (!pAssetInfo || pAssetInfo->flags.deleted) {
+				free(asset.data);
+				eraseList.push_back(kvp.first);
+				continue;
+			}
+
+			bool open = true;
+
+			char label[256];
+			if (asset.dirty) {
+				sprintf(label, "%s*###%lld", asset.name, kvp.first);
+			}
+			else {
+				sprintf(label, "%s###%lld", asset.name, kvp.first);
+			}
+
+			if (ImGui::BeginTabItem(label, &open)) {
+				state.currentAsset = kvp.first;
+				drawEditor(asset);
+				ImGui::EndTabItem();
+			}
+
+			if (!open) {
+				// TODO: Popup that asks if the user is sure they want to close this
+				free(asset.data);
+				eraseList.push_back(kvp.first);
+			}
+		}
+		for (u64 id : eraseList) {
+			state.editedAssets.erase(id);
+		}
+		eraseList.clear();
+		ImGui::EndTabBar();
+	}
+	ImGui::EndChild();
+
+	ImGui::End();
+}
 #pragma endregion
 
 #pragma region Debug
@@ -1262,59 +1434,7 @@ static void DrawDebugWindow() {
 #pragma endregion
 
 #pragma region Sprites
-static void DrawMetaspriteList(s32& selection) {
-	static constexpr u32 maxLabelNameLength = METASPRITE_MAX_NAME_LENGTH + 8;
-	char label[maxLabelNameLength];
-
-	Metasprite* pMetasprites = Metasprites::GetMetasprite(0);
-	for (u32 i = 0; i < MAX_METASPRITE_COUNT; i++)
-	{
-		const char* name = Metasprites::GetName(i);
-		ImGui::PushID(i);
-
-		snprintf(label, maxLabelNameLength, "0x%02x: %s", i, name);
-
-		const bool selected = selection == i;
-		if (ImGui::Selectable(label, selected)) {
-			selection = i;
-		}
-
-		if (selected) {
-			ImGui::SetItemDefaultFocus();
-		}
-
-		if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
-		{
-			ImGui::SetDragDropPayload("dd_metasprites", &i, sizeof(u32));
-			ImGui::Text("%s", name);
-
-			ImGui::EndDragDropSource();
-		}
-		if (ImGui::BeginDragDropTarget())
-		{
-			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dd_metasprites"))
-			{
-				int sourceIndex = *(const u32*)payload->Data;
-
-				s32 step = i - sourceIndex;
-
-				ImVector<s32> vec;
-				vec.push_back(sourceIndex);
-
-				const bool canMove = CanMoveElements(MAX_METASPRITE_COUNT, vec, step);
-
-				if (canMove) {
-					MoveElements<Metasprite>(pMetasprites, vec, step);
-					selection = vec[0];
-				}
-			}
-			ImGui::EndDragDropTarget();
-		}
-		ImGui::PopID();
-	}
-}
-
-static void DrawMetaspritePreview(Metasprite& metasprite, ImVector<s32>& spriteSelection, bool selectionLocked, r32 size) {
+static void DrawMetaspritePreview(Metasprite* pMetasprite, ImVector<s32>& spriteSelection, bool selectionLocked, r32 size) {
 	constexpr s32 gridSizeTiles = 8;
 
 	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
@@ -1342,8 +1462,8 @@ static void DrawMetaspritePreview(Metasprite& metasprite, ImVector<s32>& spriteS
 	s32 trySelect = (gridFocused && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) ? -2 : -1; // -2 = deselect all (Clicked outside tiles)
 	ImGuiIO& io = ImGui::GetIO();
 
-	for (s32 i = metasprite.spriteCount - 1; i >= 0; i--) {
-		Sprite& sprite = metasprite.spritesRelativePos[i];
+	for (s32 i = pMetasprite->spriteCount - 1; i >= 0; i--) {
+		Sprite& sprite = pMetasprite->spritesRelativePos[i];
 
 		const u8 index = (u8)sprite.tileId;
 		const bool flipX = sprite.flipHorizontal;
@@ -1405,7 +1525,7 @@ static void DrawMetaspritePreview(Metasprite& metasprite, ImVector<s32>& spriteS
 	}
 }
 
-static void DrawSpriteEditor(Metasprite& metasprite, ImVector<s32>& spriteSelection) {
+static void DrawSpriteEditor(Metasprite* pMetasprite, ImVector<s32>& spriteSelection) {
 	ImGui::SeparatorText("Sprite editor");
 	
 	if (spriteSelection.empty()) {
@@ -1416,7 +1536,7 @@ static void DrawSpriteEditor(Metasprite& metasprite, ImVector<s32>& spriteSelect
 	}
 	else {
 		s32& spriteIndex = spriteSelection[0];
-		Sprite& sprite = metasprite.spritesRelativePos[spriteIndex];
+		Sprite& sprite = pMetasprite->spritesRelativePos[spriteIndex];
 		s32 index = (s32)sprite.tileId;
 
 		bool flipX = sprite.flipHorizontal;
@@ -1476,252 +1596,65 @@ static void DrawSpriteListPreview(const Sprite& sprite) {
 	drawList->AddImage(pContext->chrTexture, topLeft, btmRight, ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
 }
 
-static void DrawMetaspriteEditor(Metasprite& metasprite, ImVector<s32>& spriteSelection, bool& selectionLocked, bool& showColliderPreview) {
-	ImGui::Checkbox("Lock selection", &selectionLocked);
+static void DrawMetaspriteEditor(EditedAsset& asset) {
+	ImGui::BeginChild("Metasprite editor");
 
-	ImGui::BeginDisabled(metasprite.spriteCount == METASPRITE_MAX_SPRITE_COUNT);
-	if (ImGui::Button("+")) {
-		PushElement<Sprite>(metasprite.spritesRelativePos, metasprite.spriteCount);
-	}
-	ImGui::EndDisabled();
-	ImGui::SameLine();
-	ImGui::BeginDisabled(metasprite.spriteCount == 0);
-	if (ImGui::Button("-")) {
-		PopElement<Sprite>(metasprite.spritesRelativePos, metasprite.spriteCount);
-	}
-	ImGui::EndDisabled();
-
-	ImGui::BeginChild("Sprite list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-
-	DrawGenericEditableList<Sprite>(metasprite.spritesRelativePos, metasprite.spriteCount, METASPRITE_MAX_SPRITE_COUNT, spriteSelection, "Sprite", selectionLocked, DrawSpriteListPreview);
-
-	ImGui::EndChild();
-
-	ImGui::SameLine();
-
-	ImGui::BeginChild("Sprite editor");
-	DrawSpriteEditor(metasprite, spriteSelection);
-	ImGui::EndChild();
-}
-
-static void DrawSpriteWindow() {
-	ImGui::Begin("Metasprites", &pContext->spriteWindowOpen, ImGuiWindowFlags_MenuBar);
-
-	static s32 selection = 0;
-
-	Metasprite* pMetasprites = Metasprites::GetMetasprite(0);
-	Metasprite& selectedMetasprite = pMetasprites[selection];
+	Metasprite* pMetasprite = (Metasprite*)asset.data;
 
 	static ImVector<s32> spriteSelection;
 	static bool selectionLocked = false;
 
 	static bool showColliderPreview = false;
 
-	if (ImGui::BeginMenuBar())
-	{
-		if (ImGui::BeginMenu("File"))
-		{
-			if (ImGui::MenuItem("Save")) {
-				Metasprites::Save("assets/metasprites.ass");
-			}
-			if (ImGui::MenuItem("Revert changes")) {
-				Metasprites::Load("assets/metasprites.ass");
-				spriteSelection.clear();
-			}
-			ImGui::EndMenu();
-		}
-		ImGui::EndMenuBar();
+	ImGui::SeparatorText("Properties");
+	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
+		asset.dirty = true;
 	}
-
-	ImGui::BeginChild("Metasprite list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-	s32 newSelection = selection;
-	DrawMetaspriteList(newSelection);
-	if (newSelection != selection) {
-		selection = newSelection;
-		spriteSelection.clear();
-	}
-	ImGui::EndChild();
-
-	ImGui::SameLine();
-
-	ImGui::BeginChild("Metasprite editor");
-
-	char* name = Metasprites::GetName(selection);
-	ImGui::SeparatorText(name);
-	ImGui::InputText("Name", name, METASPRITE_MAX_NAME_LENGTH);
 
 	ImGui::Separator();
 
 	constexpr r32 previewSize = 256;
 	ImGui::BeginChild("Metasprite preview", ImVec2(previewSize, previewSize));
-	DrawMetaspritePreview(selectedMetasprite, spriteSelection, selectionLocked, previewSize);
+	DrawMetaspritePreview(pMetasprite, spriteSelection, selectionLocked, previewSize);
 	ImGui::EndChild();
 
 	ImGui::Separator();
 
 	ImGui::BeginChild("Metasprite properties");
-	DrawMetaspriteEditor(selectedMetasprite, spriteSelection, selectionLocked, showColliderPreview);
+	ImGui::Checkbox("Lock selection", &selectionLocked);
+
+	ImGui::BeginDisabled(pMetasprite->spriteCount == METASPRITE_MAX_SPRITE_COUNT);
+	if (ImGui::Button("+")) {
+		PushElement<Sprite>(pMetasprite->spritesRelativePos, pMetasprite->spriteCount);
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::BeginDisabled(pMetasprite->spriteCount == 0);
+	if (ImGui::Button("-")) {
+		PopElement<Sprite>(pMetasprite->spritesRelativePos, pMetasprite->spriteCount);
+	}
+	ImGui::EndDisabled();
+
+	ImGui::BeginChild("Sprite list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
+
+	DrawGenericEditableList<Sprite>(pMetasprite->spritesRelativePos, pMetasprite->spriteCount, METASPRITE_MAX_SPRITE_COUNT, spriteSelection, "Sprite", selectionLocked, DrawSpriteListPreview);
+
 	ImGui::EndChild();
 
-	ImGui::EndChild();
-
-	// Copy from other metasprite
-	if (ImGui::BeginDragDropTarget())
-	{
-		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dd_metasprites"))
-		{
-			int metaspriteIndex = *(const u32*)payload->Data;
-
-			// Would be nice to have a tooltip here but it didn't work :c
-
-			if (metaspriteIndex != selection) {
-				Metasprites::Copy(metaspriteIndex, selection);
-			}
-		}
-		ImGui::EndDragDropTarget();
-	}
-
-	ImGui::End();
-}
-#pragma endregion
-
-struct EditedAsset {
-	u64 id;
-	char name[MAX_ASSET_NAME_LENGTH];
-	u32 size;
-	void* data;
-
-	bool dirty;
-};
-
-typedef void (*AssetEditorFn)(EditedAsset&);
-
-static EditedAsset CopyAssetForEditing(u64 id) {
-	EditedAsset result{};
-	result.id = id;
-
-	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(id);
-	strcpy(result.name, pAssetInfo->name);
-	result.size = pAssetInfo->size;
-	result.data = malloc(pAssetInfo->size);
-	memcpy(result.data, AssetManager::GetAsset(id), pAssetInfo->size);
-	result.dirty = false;
-
-	return result;
-}
-
-static void SaveEditedAsset(EditedAsset& asset) {
-	// TODO: Recreate asset if size has changed
-	AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
-	memcpy(pAssetInfo->name, asset.name, MAX_ASSET_NAME_LENGTH);
-	void* data = AssetManager::GetAsset(asset.id);
-	memcpy(data, asset.data, asset.size);
-	asset.dirty = false;
-}
-
-static void RevertEditedAsset(EditedAsset& asset) {
-	// TODO: Handle size change
-	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
-	memcpy(asset.name, pAssetInfo->name, MAX_ASSET_NAME_LENGTH);
-	const void* data = AssetManager::GetAsset(asset.id);
-	memcpy(asset.data, data, asset.size);
-	asset.dirty = false;
-}
-
-static void DrawAssetEditor(const char* title, bool& open, AssetType type, u32 newSize, const char* newName, AssetEditorFn drawEditor) {
-	ImGui::Begin(title, &open, ImGuiWindowFlags_MenuBar);
-
-	static std::unordered_map<u64, EditedAsset> editedAssets;
-	static u64 currentAsset = UUID_NULL;
-
-	if (ImGui::BeginMenuBar())
-	{
-		if (ImGui::BeginMenu("Asset"))
-		{
-			if (ImGui::MenuItem("New")) {
-				const u64 id = AssetManager::CreateAsset(type, newSize, newName);
-				editedAssets.try_emplace(id, CopyAssetForEditing(id));
-			}
-			ImGui::Separator();
-			ImGui::BeginDisabled(!editedAssets.contains(currentAsset));
-			if (ImGui::MenuItem("Save")) {
-				EditedAsset& asset = editedAssets.at(currentAsset);
-				SaveEditedAsset(asset);
-			}
-			if (ImGui::MenuItem("Save all")) {
-				for (auto& kvp : editedAssets) {
-					EditedAsset& asset = kvp.second;
-					SaveEditedAsset(asset);
-				}
-			}
-			if (ImGui::MenuItem("Revert changes")) {
-				EditedAsset& asset = editedAssets.at(currentAsset);
-				RevertEditedAsset(asset);
-			}
-			if (ImGui::MenuItem("Revert all")) {
-				for (auto& kvp : editedAssets) {
-					EditedAsset& asset = kvp.second;
-					RevertEditedAsset(asset);
-				}
-			}
-			ImGui::EndDisabled();
-			ImGui::EndMenu();
-		}
-		ImGui::EndMenuBar();
-	}
-
-	const u64 openedAsset = DrawAssetList(ASSET_TYPE_TILESET);
-	if (openedAsset != UUID_NULL && !editedAssets.contains(openedAsset)) {
-		editedAssets.emplace(openedAsset, CopyAssetForEditing(openedAsset));
-	}
 	ImGui::SameLine();
 
-	ImGui::BeginChild("Editor Area");
-	if (ImGui::BeginTabBar("Edited assets")) {
-		std::vector<u64> eraseList;
-		for (auto& kvp : editedAssets) {
-			auto& asset = kvp.second;
-
-			// Check if deleted
-			const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(kvp.first);
-			if (!pAssetInfo || pAssetInfo->flags.deleted) {
-				free(asset.data);
-				eraseList.push_back(kvp.first);
-				continue;
-			}
-
-			bool open = true;
-
-			char label[MAX_ASSET_NAME_LENGTH + 4];
-			if (asset.dirty) {
-				sprintf(label, "%s*###%lld", asset.name, kvp.first);
-			}
-			else {
-				sprintf(label, "%s###%lld", asset.name, kvp.first);
-			}
-
-			if (ImGui::BeginTabItem(label, &open)) {
-				currentAsset = kvp.first;
-				drawEditor(asset);
-				ImGui::EndTabItem();
-			}
-
-			if (!open) {
-				// TODO: Popup that asks if the user is sure they want to close this
-				free(asset.data);
-				eraseList.push_back(kvp.first);
-			}
-		}
-		for (u64 id : eraseList) {
-			editedAssets.erase(id);
-		}
-		eraseList.clear();
-		ImGui::EndTabBar();
-	}
+	ImGui::BeginChild("Sprite editor");
+	DrawSpriteEditor(pMetasprite, spriteSelection);
 	ImGui::EndChild();
-
-	ImGui::End();
+	ImGui::EndChild();
+	ImGui::EndChild();
 }
+
+static void DrawSpriteWindow() {
+	static AssetEditorState state{};
+	DrawAssetEditor("Metasprite editor", pContext->spriteWindowOpen, ASSET_TYPE_METASPRITE, sizeof(Metasprite), "New Metasprite", DrawMetaspriteEditor, state);
+}
+#pragma endregion
 
 #pragma region Tileset
 static void DrawTilesetEditor(EditedAsset& asset) {
@@ -1801,7 +1734,8 @@ static void DrawTilesetEditor(EditedAsset& asset) {
 }
 
 static void DrawTilesetWindow() {
-	DrawAssetEditor("Tileset editor", pContext->tilesetWindowOpen, ASSET_TYPE_TILESET, sizeof(Tileset), "New Tileset", DrawTilesetEditor);
+	static AssetEditorState state{};
+	DrawAssetEditor("Tileset editor", pContext->tilesetWindowOpen, ASSET_TYPE_TILESET, sizeof(Tileset), "New Tileset", DrawTilesetEditor, state);
 }
 #pragma endregion
 
@@ -3516,10 +3450,10 @@ static void DrawMainMenu() {
 			if (ImGui::MenuItem("Asset browser")) {
 				pContext->assetBrowserOpen = true;
 			}
-			if (ImGui::MenuItem("Metasprites")) {
+			if (ImGui::MenuItem("Metasprite editor")) {
 				pContext->spriteWindowOpen = true;
 			}
-			if (ImGui::MenuItem("Tileset")) {
+			if (ImGui::MenuItem("Tileset editor")) {
 				pContext->tilesetWindowOpen = true;
 			}
 			if (ImGui::MenuItem("Room editor")) {
