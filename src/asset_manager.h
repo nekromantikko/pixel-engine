@@ -14,6 +14,8 @@ enum AssetType {
 	ASSET_TYPE_ACTOR_PROTOTYPE,
 	ASSET_TYPE_ROOM,
 	ASSET_TYPE_DUNGEON,
+	ASSET_TYPE_OVERWORLD,
+	ASSET_TYPE_ANIMATION,
 
 	ASSET_TYPE_COUNT,
 };
@@ -39,7 +41,7 @@ typedef std::unordered_map < u64, AssetEntry, std::hash<u64>, std::equal_to<u64>
 #endif
 
 #ifdef EDITOR
-constexpr const char* ASSET_TYPE_NAMES[ASSET_TYPE_COUNT] = { "Chr bank", "Sound", "Tileset", "Metasprite", "Actor prototype", "Room", "Dungeon" };
+constexpr const char* ASSET_TYPE_NAMES[ASSET_TYPE_COUNT] = { "Chr bank", "Sound", "Tileset", "Metasprite", "Actor prototype", "Room", "Dungeon", "Overworld", "Animation" };
 #endif
 
 namespace AssetManager {

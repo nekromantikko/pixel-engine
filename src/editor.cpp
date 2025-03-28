@@ -22,6 +22,7 @@
 #include "random.h"
 #include "dungeon.h"
 #include "overworld.h"
+#include "animation.h"
 #include "asset_manager.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <gtx/matrix_transform_2d.hpp>
@@ -82,6 +83,7 @@ struct EditorContext {
 	bool assetBrowserOpen = false;
 	bool dungeonWindowOpen = false;
 	bool overworldWindowOpen = false;
+	bool animationWindowOpen = false;
 
 	// Debug overlay
 	bool showDebugOverlay = true;
@@ -3424,6 +3426,13 @@ static void DrawAssetBrowser() {
 			if (ImGui::Selectable(pAsset->name, selected, ImGuiSelectableFlags_SpanAllColumns)) {
 				selectedAsset = id;
 			}
+			if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+			{
+				ImGui::SetDragDropPayload("dd_asset", &id, sizeof(u64));
+				ImGui::Text("%s", pAsset->name);
+
+				ImGui::EndDragDropSource();
+			}
 			ImGui::TableNextColumn();
 			ImGui::Text("%llu", id);
 			ImGui::TableNextColumn();
@@ -3439,6 +3448,203 @@ static void DrawAssetBrowser() {
 }
 #pragma endregion
 
+#pragma region Animation
+static void DrawAnimationPreview(const AnimationNew* pAnimation, s32 frameIndex, r32 size) {
+	constexpr s32 gridSizeTiles = 8;
+
+	const AnimationFrame& frame = pAnimation->frames[frameIndex];
+
+	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
+	const r32 gridStepPixels = TILE_DIM_PIXELS * renderScale;
+	ImVec2 gridPos = DrawTileGrid(ImVec2(size, size), gridStepPixels);
+	ImVec2 origin = ImVec2(gridPos.x + size / 2, gridPos.y + size / 2);
+
+	const Metasprite* pMetasprite = (Metasprite*)AssetManager::GetAsset(frame.metaspriteId);
+	if (!pMetasprite) {
+		return;
+	}
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	drawList->AddLine(ImVec2(origin.x - 10, origin.y), ImVec2(origin.x + 10, origin.y), IM_COL32(200, 200, 200, 255));
+	drawList->AddLine(ImVec2(origin.x, origin.y - 10), ImVec2(origin.x, origin.y + 10), IM_COL32(200, 200, 200, 255));
+
+	DrawMetasprite(pMetasprite, origin, renderScale);
+}
+
+static void DrawAnimationEditor(EditedAsset& asset) {
+	ImGui::BeginChild("Animation editor");
+
+	AnimationNew* pAnimation = (AnimationNew*)asset.data;
+
+	ImGui::SeparatorText("Properties");
+	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
+		asset.dirty = true;
+	}
+
+	static const s16 step = 1;
+	if (ImGui::InputScalar("Frame count", ImGuiDataType_U16, &pAnimation->frameCount, &step)) {
+		asset.dirty = true;
+	}
+	pAnimation->frameCount = glm::clamp(pAnimation->frameCount, u16(0), u16(ANIMATION_MAX_FRAME_COUNT));
+
+	if (ImGui::InputScalar("Loop point", ImGuiDataType_S16, &pAnimation->loopPoint, &step)) {
+		asset.dirty = true;
+	}
+	pAnimation->loopPoint = glm::clamp(pAnimation->loopPoint, s16(-1), s16(pAnimation->frameCount - 1));
+
+	if (ImGui::InputScalar("Frame length", ImGuiDataType_U8, &pAnimation->frameLength, &step)) {
+		asset.dirty = true;
+	}
+
+	// Playback
+	static bool isPlaying = false;
+	static s32 currentTick = 0;
+	static r32 accumulator = 0.0f;
+
+	const s32 totalTicks = pAnimation->frameCount * pAnimation->frameLength;
+	constexpr r32 tickTime = 1.0f / 60.0f;
+
+	static r32 previousTime = pContext->secondsElapsed;
+	r32 currentTime = pContext->secondsElapsed;
+	r32 deltaTime = currentTime - previousTime;
+	previousTime = currentTime;
+
+	if (isPlaying) {
+		accumulator += deltaTime;
+		while (accumulator >= tickTime) {
+			accumulator -= tickTime;
+			currentTick++;
+		}
+	}
+
+	while (currentTick >= totalTicks && currentTick != 0) {
+		if (pAnimation->loopPoint < 0) {
+			isPlaying = false;
+			currentTick = 0;
+			break;
+		}
+		currentTick -= (pAnimation->frameCount - pAnimation->loopPoint) * pAnimation->frameLength;
+	}
+
+	s32 currentFrame = pAnimation->frameLength == 0 ? 0 : currentTick / pAnimation->frameLength;
+
+	ImGui::SeparatorText("Preview");
+	constexpr r32 previewSize = 256;
+	ImGui::BeginChild("Animation preview", ImVec2(previewSize, previewSize));
+
+	DrawAnimationPreview(pAnimation, currentFrame, previewSize);
+
+	ImGui::EndChild();
+
+	ImGui::SeparatorText("Timeline");
+
+	ImGui::BeginChild("TimelineArea", ImVec2(0, 128.0f), ImGuiChildFlags_Border);
+
+	ImGuiStyle& style = ImGui::GetStyle();
+	const ImVec2 contentSize = ImGui::GetContentRegionAvail();
+	const r32 timelineHeight = 64.0f;
+	const ImVec2 timelineSize(contentSize.x, timelineHeight);
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	const ImVec2 topLeft = ImGui::GetCursorScreenPos();
+	const ImVec2 btmRight = ImVec2(topLeft.x + timelineSize.x, topLeft.y + timelineSize.y);
+	const r32 yHalf = (topLeft.y + btmRight.y) / 2.0f;
+
+	ImGui::InvisibleButton("##canvas", timelineSize);
+
+	const ImU32 color = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Border]);
+	drawList->AddLine(ImVec2(topLeft.x, btmRight.y), ImVec2(btmRight.x, btmRight.y), color);
+
+	const r32 frameWidth = timelineSize.x / pAnimation->frameCount;
+	for (u32 i = 0; i < pAnimation->frameCount; i++) {
+		const r32 x = i * frameWidth + topLeft.x;
+
+		drawList->AddLine(ImVec2(x, topLeft.y), ImVec2(x, btmRight.y), color, 2.0f);
+
+		for (u32 s = 0; s < pAnimation->frameLength; s++) {
+			const r32 xSmallNormalized = (r32)s / pAnimation->frameLength;
+			const r32 xSmall = xSmallNormalized * frameWidth + x;
+
+			drawList->AddLine(ImVec2(xSmall, yHalf), ImVec2(xSmall, btmRight.y), color, 1.0f);
+		}
+	}
+
+	
+	const r32 xCurrentPosNormalized = r32(currentTick) / totalTicks;
+	const r32 xCurrentPos = xCurrentPosNormalized * timelineSize.x + topLeft.x;
+	drawList->AddCircleFilled(ImVec2(xCurrentPos, btmRight.y), 8.0f, IM_COL32(255, 255, 0, 255));
+
+	const r32 xLoopPointNormalized = r32(pAnimation->loopPoint * pAnimation->frameLength) / totalTicks;
+	const r32 xLoopPoint = xLoopPointNormalized * timelineSize.x + topLeft.x;
+	drawList->AddCircleFilled(ImVec2(xLoopPoint, btmRight.y), 8.0f, IM_COL32(128, 0, 255, 255));
+
+	ImGui::EndChild();
+
+	const ImVec2 frameAreaTopLeft(topLeft.x, topLeft.y + timelineHeight);
+	const ImVec2 frameAreaSize(contentSize.x, contentSize.y - timelineHeight);
+	const r32 frameBoxSize = contentSize.y - timelineHeight;
+
+	for (u32 i = 0; i < pAnimation->frameCount; i++) {
+		const r32 x = i * frameWidth + topLeft.x;
+
+		AnimationFrame& frame = pAnimation->frames[i];
+
+		const ImVec2 frameMin(x, topLeft.y + timelineHeight + style.ItemSpacing.y);
+		const ImVec2 frameMax(frameMin.x + frameBoxSize, frameMin.y + frameBoxSize);
+		ImGui::SetCursorScreenPos(frameMin);
+
+		ImGui::PushID(i);
+
+		ImGui::Selectable("", false, 0, ImVec2(frameBoxSize, frameBoxSize));
+		if (ImGui::BeginDragDropTarget())
+		{
+			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dd_asset", ImGuiDragDropFlags_AcceptBeforeDelivery))
+			{
+				const u64 assetId = *(const u64*)payload->Data;
+				
+				const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(assetId);
+				const bool isValidMetasprite = pAssetInfo && pAssetInfo->flags.type == ASSET_TYPE_METASPRITE;
+
+				if (isValidMetasprite && payload->IsDelivery()) {
+					frame.metaspriteId = assetId;
+					asset.dirty = true;
+				}
+			}
+			ImGui::EndDragDropTarget();
+		}
+
+		ImGui::PopID();
+
+		drawList->AddRect(frameMin, frameMax, IM_COL32(255, 255, 255, 255), 4.0f);
+		if (frame.metaspriteId != UUID_NULL) {
+			const Metasprite* pMetasprite = (Metasprite*)AssetManager::GetAsset(frame.metaspriteId);
+			if (pMetasprite) {
+				DrawMetasprite(pMetasprite, ImVec2(frameMin.x + frameBoxSize * 0.5f, frameMin.y + frameBoxSize * 0.5f), 1.0f);
+			}
+		}
+	}
+	ImGui::NewLine();
+
+	// Playback controls
+	if (ImGui::Button(isPlaying ? "Pause" : "Play")) {
+		isPlaying = !isPlaying;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Stop")) {
+		isPlaying = false;
+		currentTick = 0;
+		accumulator = 0.0f;
+	}
+
+	ImGui::EndChild();
+}
+
+static void DrawAnimationWindow() {
+	static AssetEditorState state{};
+	DrawAssetEditor("Animation editor", pContext->tilesetWindowOpen, ASSET_TYPE_ANIMATION, sizeof(AnimationNew), "New Animation", DrawAnimationEditor, state);
+}
+#pragma endregion
+
 #pragma region Main Menu
 static void DrawMainMenu() {
 	if (ImGui::BeginMainMenuBar()) {
@@ -3447,11 +3653,18 @@ static void DrawMainMenu() {
 			if (ImGui::MenuItem("Debug")) {
 				pContext->debugWindowOpen = true;
 			}
+			if (ImGui::MenuItem("Audio")) {
+				pContext->audioWindowOpen = true;
+			}
 			if (ImGui::MenuItem("Asset browser")) {
 				pContext->assetBrowserOpen = true;
 			}
+			ImGui::Separator();
 			if (ImGui::MenuItem("Metasprite editor")) {
 				pContext->spriteWindowOpen = true;
+			}
+			if (ImGui::MenuItem("Animation editor")) {
+				pContext->animationWindowOpen = true;
 			}
 			if (ImGui::MenuItem("Tileset editor")) {
 				pContext->tilesetWindowOpen = true;
@@ -3467,9 +3680,6 @@ static void DrawMainMenu() {
 			}
 			if (ImGui::MenuItem("Actor prototypes")) {
 				pContext->actorWindowOpen = true;
-			}
-			if (ImGui::MenuItem("Audio")) {
-				pContext->audioWindowOpen = true;
 			}
 			ImGui::Separator();
 			if (ImGui::MenuItem("ImGui Demo")) {
@@ -3582,6 +3792,10 @@ void Editor::Render(r64 dt) {
 
 	if (pContext->assetBrowserOpen) {
 		DrawAssetBrowser();
+	}
+
+	if (pContext->animationWindowOpen) {
+		DrawAnimationWindow();
 	}
 
 	ImGui::Render();
