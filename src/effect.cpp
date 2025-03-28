@@ -15,7 +15,7 @@ static u32 ItoaSigned(s16 value, char* str) {
     return strlen(str);
 }
 
-static bool DrawDmgNumbers(const Actor* pActor) {
+static bool DrawDmgNumbers(const Actor* pActor, const ActorPrototypeNew* pPrototype) {
     const Damage& damage = pActor->state.dmgNumberState.damage;
 
     static char numberStr[16]{};
@@ -62,15 +62,15 @@ static bool DrawDmgNumbers(const Actor* pActor) {
     return result;
 }
 
-static void UpdateExplosion(Actor* pActor) {
+static void UpdateExplosion(Actor* pActor, const ActorPrototypeNew* pPrototype) {
     if (!Game::UpdateCounter(pActor->state.effectState.lifetimeCounter)) {
         pActor->flags.pendingRemoval = true;
     }
 
-    Game::AdvanceCurrentAnimation(pActor);
+    Game::AdvanceCurrentAnimation(pActor, pPrototype);
 }
 
-static void UpdateDmgNumbers(Actor* pActor) {
+static void UpdateDmgNumbers(Actor* pActor, const ActorPrototypeNew* pPrototype) {
     if (!Game::UpdateCounter(pActor->state.dmgNumberState.base.lifetimeCounter)) {
         pActor->flags.pendingRemoval = true;
     }
@@ -78,7 +78,7 @@ static void UpdateDmgNumbers(Actor* pActor) {
     pActor->position.y += pActor->velocity.y;
 }
 
-static void UpdateFeather(Actor* pActor) {
+static void UpdateFeather(Actor* pActor, const ActorPrototypeNew* pPrototype) {
     if (!Game::UpdateCounter(pActor->state.effectState.lifetimeCounter)) {
         pActor->flags.pendingRemoval = true;
     }
@@ -103,13 +103,13 @@ static void InitEffectState(EffectState& state, const EffectData& data) {
     state.lifetimeCounter = data.lifetime;
 }
 
-static void InitDmgNumbers(Actor* pActor, const PersistedActorData* pPersistData) {
-    return InitEffectState(pActor->state.dmgNumberState.base, pActor->pPrototype->data.effectData);
+static void InitDmgNumbers(Actor* pActor, const ActorPrototypeNew* pPrototype, const PersistedActorData* pPersistData) {
+    return InitEffectState(pActor->state.dmgNumberState.base, pPrototype->data.effectData);
 }
 
-static void InitBaseEffect(Actor* pActor, const PersistedActorData* pPersistData) {
+static void InitBaseEffect(Actor* pActor, const ActorPrototypeNew* pPrototype, const PersistedActorData* pPersistData) {
 	pActor->drawState.layer = SPRITE_LAYER_FX;
-    return InitEffectState(pActor->state.effectState, pActor->pPrototype->data.effectData);
+    return InitEffectState(pActor->state.effectState, pPrototype->data.effectData);
 }
 
 constexpr ActorInitFn Game::effectInitTable[EFFECT_TYPE_COUNT] = {

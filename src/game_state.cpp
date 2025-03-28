@@ -10,11 +10,12 @@
 #include "actor_prototypes.h"
 #include "dungeon.h"
 #include "overworld.h"
+#include "asset_manager.h"
 
 // TODO: Define in editor in game settings 
-constexpr s32 playerPrototypeIndex = 0;
-constexpr s32 playerOverworldPrototypeIndex = 0x03;
-constexpr s32 xpRemnantPrototypeIndex = 0x0c;
+constexpr ActorPrototypeHandle playerPrototypeId = 18154189127814674930;
+constexpr ActorPrototypeHandle playerOverworldPrototypeId = 6197846074548071416;
+constexpr ActorPrototypeHandle xpRemnantPrototypeId = 11197223615879147344;
 
 // Map drawing
 static constexpr glm::ivec2 mapViewportOffset = { 7, 4 };
@@ -123,18 +124,28 @@ static const RoomTemplate* GetCurrentRoomTemplate() {
 static void CorrectPlayerSpawnY(const RoomTemplate* pTemplate, Actor* pPlayer) {
     HitResult hit{};
 
+    const ActorPrototypeNew* pPrototype = (ActorPrototypeNew*)AssetManager::GetAsset(pPlayer->prototypeId);
+    if (!pPrototype) {
+        return;
+    }
+
     const r32 dy = VIEWPORT_HEIGHT_METATILES / 2.0f;  // Sweep downwards to find a floor
 
-    Collision::SweepBoxVertical(&pTemplate->tilemap, pPlayer->pPrototype->hitbox, pPlayer->position, dy, hit);
+    Collision::SweepBoxVertical(&pTemplate->tilemap, pPrototype->hitbox, pPlayer->position, dy, hit);
     while (hit.startPenetrating) {
         pPlayer->position.y -= 1.0f;
-        Collision::SweepBoxVertical(&pTemplate->tilemap, pPlayer->pPrototype->hitbox, pPlayer->position, dy, hit);
+        Collision::SweepBoxVertical(&pTemplate->tilemap, pPrototype->hitbox, pPlayer->position, dy, hit);
     }
     pPlayer->position = hit.location;
 }
 
 static bool ActorIsCheckpoint(const Actor* pActor) {
-    return pActor->pPrototype->type == ACTOR_TYPE_INTERACTABLE && pActor->pPrototype->subtype == INTERACTABLE_TYPE_CHECKPOINT;
+    const ActorPrototypeNew* pPrototype = (ActorPrototypeNew*)AssetManager::GetAsset(pActor->prototypeId);
+    if (!pPrototype) {
+        return false;
+    }
+
+    return pPrototype->type == ACTOR_TYPE_INTERACTABLE && pPrototype->subtype == INTERACTABLE_TYPE_CHECKPOINT;
 }
 
 static bool SpawnPlayerAtCheckpoint() {
@@ -143,7 +154,7 @@ static bool SpawnPlayerAtCheckpoint() {
         return false;
     }
 
-    Actor* pPlayer = Game::SpawnActor(playerPrototypeIndex, pCheckpoint->position);
+    Actor* pPlayer = Game::SpawnActor(playerPrototypeId, pCheckpoint->position);
     if (pPlayer) {
         pPlayer->state.playerState.flags.mode = PLAYER_MODE_SITTING;
         return true;
@@ -169,7 +180,7 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
     r32 x = (screenIndex % ROOM_MAX_DIM_SCREENS) * VIEWPORT_WIDTH_METATILES;
     r32 y = (screenIndex / ROOM_MAX_DIM_SCREENS) * VIEWPORT_HEIGHT_METATILES;
 
-    Actor* pPlayer = Game::SpawnActor(playerPrototypeIndex, glm::vec2(x, y));
+    Actor* pPlayer = Game::SpawnActor(playerPrototypeId, glm::vec2(x, y));
     if (pPlayer == nullptr) {
         return false;
     }
@@ -940,7 +951,7 @@ bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
         spawnPos += overworldDir;
     }
 
-    Actor* pPlayer = Game::SpawnActor(playerOverworldPrototypeIndex, spawnPos);
+    Actor* pPlayer = Game::SpawnActor(playerOverworldPrototypeId, spawnPos);
     if (!pPlayer) {
         return false;
     }
@@ -1024,7 +1035,7 @@ bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
     if (gameData.expRemnant.dungeonIndex == currentDungeonIndex && currentDungeonIndex >= 0) {
         const RoomInstance* pRoom = GetDungeonRoom(currentDungeonIndex, gameData.expRemnant.gridOffset);
         if (pRoom->id == pCurrentRoom->id) {
-            Actor* pRemnant = SpawnActor(xpRemnantPrototypeIndex, gameData.expRemnant.position);
+            Actor* pRemnant = SpawnActor(xpRemnantPrototypeId, gameData.expRemnant.position);
             pRemnant->state.pickupState.value = gameData.expRemnant.value;
         }
     }

@@ -3,7 +3,7 @@
 #include "game_state.h"
 #include "game_rendering.h"
 
-static void UpdateCheckpoint(Actor* pActor) {
+static void UpdateCheckpoint(Actor* pActor, const ActorPrototypeNew* pPrototype) {
     if (pActor->state.checkpointState.activated) {
         pActor->drawState.animIndex = 1;
     }
@@ -12,18 +12,18 @@ static void UpdateCheckpoint(Actor* pActor) {
     }
 }
 
-static void UpdateNPC(Actor* pActor) {
+static void UpdateNPC(Actor* pActor, const ActorPrototypeNew* pPrototype) {
 
 }
 
-static void InitCheckpoint(Actor* pActor, const PersistedActorData* pPersistData) {
+static void InitCheckpoint(Actor* pActor, const ActorPrototypeNew* pPrototype, const PersistedActorData* pPersistData) {
 	if (pPersistData && pPersistData->activated) {
 		pActor->state.checkpointState.activated = true;
 	}
 	pActor->drawState.layer = SPRITE_LAYER_BG;
 }
 
-static void InitNPC(Actor* pActor, const PersistedActorData* pPersistData) {
+static void InitNPC(Actor* pActor, const ActorPrototypeNew* pPrototype, const PersistedActorData* pPersistData) {
 
 }
 

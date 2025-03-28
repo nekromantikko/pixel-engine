@@ -49,7 +49,7 @@ struct ActorPrototypeNew {
 	u32 animCount;
 	AnimationHandle animations[ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT];
 
-	ActorPrototypeData data;
+	ActorPrototypeDataNew data;
 };
 
 namespace Assets {

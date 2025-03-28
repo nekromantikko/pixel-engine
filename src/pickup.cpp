@@ -3,8 +3,9 @@
 #include "actor_prototypes.h"
 #include "game_rendering.h"
 #include "game_state.h"
+#include "animation.h"
 
-static void UpdateExpHalo(Actor* pActor) {
+static void UpdateExpHalo(Actor* pActor, const ActorPrototypeNew* pPrototype) {
     Actor* pPlayer = Game::GetPlayer();
 
     const glm::vec2 playerVec = pPlayer->position - pActor->position;
@@ -43,14 +44,14 @@ static void UpdateExpHalo(Actor* pActor) {
     }
 
     // Smoothstep animation when inside specified radius from player
-    const Animation& currentAnim = pActor->pPrototype->animations[0];
+    const AnimationNew* pCurrentAnim = Game::GetActorCurrentAnim(pActor, pPrototype);
     constexpr r32 animRadius = 4.0f;
 
-    pActor->drawState.frameIndex = glm::floor((1.0f - glm::smoothstep(0.0f, animRadius, playerDist)) * currentAnim.frameCount);
+    pActor->drawState.frameIndex = glm::floor((1.0f - glm::smoothstep(0.0f, animRadius, playerDist)) * pCurrentAnim->frameCount);
     pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
 }
 
-static void UpdateExpRemnant(Actor* pActor) {
+static void UpdateExpRemnant(Actor* pActor, const ActorPrototypeNew* pPrototype) {
     Actor* pPlayer = Game::GetPlayer();
     if (pPlayer && Game::ActorsColliding(pActor, pPlayer)) {
         //Audio::PlaySFX(&expSfx, CHAN_ID_PULSE0);
@@ -63,10 +64,10 @@ static void UpdateExpRemnant(Actor* pActor) {
     }
 }
 
-static void UpdateHealing(Actor* pActor) {
+static void UpdateHealing(Actor* pActor, const ActorPrototypeNew* pPrototype) {
     Game::ApplyGravity(pActor);
     HitResult hit{};
-    if (Game::ActorMoveHorizontal(pActor, hit)) {
+    if (Game::ActorMoveHorizontal(pActor, pPrototype, hit)) {
         pActor->velocity = glm::reflect(pActor->velocity, hit.impactNormal);
         pActor->velocity *= 0.5f; // Apply damping
     }
@@ -74,7 +75,7 @@ static void UpdateHealing(Actor* pActor) {
     // Reset in air flag
     pActor->flags.inAir = true;
 
-    if (Game::ActorMoveVertical(pActor, hit)) {
+    if (Game::ActorMoveVertical(pActor, pPrototype, hit)) {
         pActor->velocity = glm::reflect(pActor->velocity, hit.impactNormal);
         pActor->velocity *= 0.5f; // Apply damping
 
@@ -92,14 +93,14 @@ static void UpdateHealing(Actor* pActor) {
     if (pPlayer && Game::ActorsColliding(pActor, pPlayer)) {
         pActor->flags.pendingRemoval = true;
 
-        const u16 newHealth = Game::ActorHeal(pPlayer, pActor->pPrototype->data.pickupData.value, Game::GetPlayerHealth(), Game::GetPlayerMaxHealth());
+        const u16 newHealth = Game::ActorHeal(pPlayer, pPrototype->data.pickupData.value, Game::GetPlayerHealth(), Game::GetPlayerMaxHealth());
         Game::SetPlayerHealth(newHealth);
 
         return;
     }
 }
 
-static void InitializePickup(Actor* pActor, const PersistedActorData* pPersistData) {
+static void InitializePickup(Actor* pActor, const ActorPrototypeNew* pPrototype, const PersistedActorData* pPersistData) {
     pActor->drawState.layer = SPRITE_LAYER_FG;
 }
 

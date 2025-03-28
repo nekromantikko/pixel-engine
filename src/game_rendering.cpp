@@ -7,6 +7,7 @@
 #include "metasprite.h"
 #include "rendering_util.h"
 #include "game.h"
+#include "asset_manager.h"
 
 static constexpr s32 BUFFER_DIM_METATILES = 2;
 static constexpr u32 LAYER_SPRITE_COUNT = MAX_SPRITE_COUNT / SPRITE_LAYER_COUNT;
@@ -262,8 +263,12 @@ bool Game::Rendering::DrawSprite(u8 layerIndex, const Sprite& sprite) {
     return true;
 }
 
-bool Game::Rendering::DrawMetaspriteSprite(u8 layerIndex, u32 metaspriteIndex, u32 spriteIndex, glm::i16vec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
-    const Metasprite* pMetasprite = Metasprites::GetMetasprite(metaspriteIndex);
+bool Game::Rendering::DrawMetaspriteSprite(u8 layerIndex, MetaspriteHandle metaspriteId, u32 spriteIndex, glm::i16vec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
+    const Metasprite* pMetasprite = (Metasprite*)AssetManager::GetAsset(metaspriteId);
+    if (!pMetasprite) {
+        return false;
+    }
+
 	if (spriteIndex >= pMetasprite->spriteCount) {
 		return false;
 	}
@@ -278,8 +283,12 @@ bool Game::Rendering::DrawMetaspriteSprite(u8 layerIndex, u32 metaspriteIndex, u
 	return true;
 }
 
-bool Game::Rendering::DrawMetasprite(u8 layerIndex, u32 metaspriteIndex, glm::i16vec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
-    const Metasprite* pMetasprite = Metasprites::GetMetasprite(metaspriteIndex);
+bool Game::Rendering::DrawMetasprite(u8 layerIndex, MetaspriteHandle metaspriteId, glm::i16vec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
+    const Metasprite* pMetasprite = (Metasprite*)AssetManager::GetAsset(metaspriteId);
+    if (!pMetasprite) {
+        return false;
+    }
+
     Sprite* outSprites = GetNextFreeSprite(layerIndex, pMetasprite->spriteCount);
 	if (outSprites == nullptr) {
 		return false;

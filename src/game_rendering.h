@@ -1,6 +1,7 @@
 #pragma once
 #include "typedef.h"
 #include "rendering.h"
+#include "asset_types.h"
 #define GLM_FORCE_RADIANS
 #include <glm.hpp>
 
@@ -36,8 +37,8 @@ namespace Game {
 		Sprite* GetNextFreeSprite(u8 layerIndex, u32 count = 1);
 
 		bool DrawSprite(u8 layerIndex, const Sprite& sprite);
-		bool DrawMetaspriteSprite(u8 layerIndex, u32 metaspriteIndex, u32 spriteIndex, glm::i16vec2 pos, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1);
-		bool DrawMetasprite(u8 layerIndex, u32 metaspriteIndex, glm::i16vec2 pos, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1);
+		bool DrawMetaspriteSprite(u8 layerIndex, MetaspriteHandle metaspriteId, u32 spriteIndex, glm::i16vec2 pos, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1);
+		bool DrawMetasprite(u8 layerIndex, MetaspriteHandle metaspriteId, glm::i16vec2 pos, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1);
 		void CopyBankTiles(u32 bankIndex, u32 bankOffset, u32 sheetIndex, u32 sheetOffset, u32 count);
 
 		void GetPalettePresetColors(u8 presetIndex, u8* pOutColors);

@@ -44,7 +44,7 @@ void Assets::ClearActorPrototypes() {
 }
 
 void Assets::LoadActorPrototypes(const char* fname) {
-	FILE* pFile;
+	/*FILE* pFile;
 	fopen_s(&pFile, fname, "rb");
 
 	if (pFile == NULL) {
@@ -57,9 +57,9 @@ void Assets::LoadActorPrototypes(const char* fname) {
 	fread(prototypes, sizeof(ActorPrototype), MAX_ACTOR_PROTOTYPE_COUNT, pFile);
 	fread(prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, ACTOR_PROTOTYPE_MAX_NAME_LENGTH, pFile);
 
-	fclose(pFile);
+	fclose(pFile);*/
 
-	for (u32 i = 0; i < 18; i++) {
+	/*for (u32 i = 0; i < 18; i++) {
 		const char* name = prototypeNames[i];
 		ActorPrototypeHandle handle = AssetManager::CreateAsset<ASSET_TYPE_ACTOR_PROTOTYPE>(sizeof(ActorPrototypeNew), name);
 		ActorPrototypeNew* pPrototype = (ActorPrototypeNew*)AssetManager::GetAsset(handle);
@@ -70,8 +70,8 @@ void Assets::LoadActorPrototypes(const char* fname) {
 		pPrototype->subtype = old.subtype;
 		pPrototype->hitbox = old.hitbox;
 		pPrototype->animCount = old.animCount;
-		pPrototype->data = old.data;
-	}
+		memcpy(pPrototype->data.raw, old.data.raw, ACTOR_PROTOTYPE_DATA_SIZE);
+	}*/
 }
 
 void Assets::SaveActorPrototypes(const char* fname) {

@@ -2,32 +2,33 @@
 #include "actors.h"
 #include "actor_prototypes.h"
 #include "random.h"
+#include "asset_manager.h"
 
-static void InitSpawner(Actor* pActor, const PersistedActorData* pPersistData) {
+static void InitSpawner(Actor* pActor, const ActorPrototypeNew* pPrototype, const PersistedActorData* pPersistData) {
     
 }
 
-static void UpdateExpSpawner(Actor* pActor) {
+static void UpdateExpSpawner(Actor* pActor, const ActorPrototypeNew* pPrototype) {
     u16& remainingValue = pActor->state.expSpawner.remainingValue;
     if (remainingValue == 0) {
         pActor->flags.pendingRemoval = true;
         return;
     }
 
-    const u16 largeExpValue = Assets::GetActorPrototype(pActor->pPrototype->data.expSpawner.large)->data.pickupData.value;
-    const u16 smallExpValue = Assets::GetActorPrototype(pActor->pPrototype->data.expSpawner.small)->data.pickupData.value;
+    const u16 largeExpValue = ((ActorPrototypeNew*)AssetManager::GetAsset(pPrototype->data.expSpawner.large))->data.pickupData.value;
+    const u16 smallExpValue = ((ActorPrototypeNew*)AssetManager::GetAsset(pPrototype->data.expSpawner.small))->data.pickupData.value;
 
     u16 spawnedValue = remainingValue >= largeExpValue ? largeExpValue : smallExpValue;
-    s32 prototypeIndex = spawnedValue >= largeExpValue ? pActor->pPrototype->data.expSpawner.large : pActor->pPrototype->data.expSpawner.small;
+    ActorPrototypeHandle prototypeId = spawnedValue >= largeExpValue ? pPrototype->data.expSpawner.large : pPrototype->data.expSpawner.small;
 
     const r32 speed = Random::GenerateReal(0.1f, 0.3f);
     const glm::vec2 velocity = Random::GenerateDirection() * speed;
 
-    Actor* pSpawned = Game::SpawnActor(prototypeIndex, pActor->position, velocity);
+    Actor* pSpawned = Game::SpawnActor(prototypeId, pActor->position, velocity);
 
     pSpawned->state.pickupState.lingerCounter = 30;
     pSpawned->flags.facingDir = (s8)Random::GenerateInt(-1, 1);
-    pSpawned->state.pickupState.value = pSpawned->pPrototype->data.pickupData.value;
+    pSpawned->state.pickupState.value = pPrototype->data.pickupData.value;
 
     if (remainingValue < spawnedValue) {
         remainingValue = 0;
@@ -35,16 +36,16 @@ static void UpdateExpSpawner(Actor* pActor) {
     else remainingValue -= spawnedValue;
 }
 
-static void UpdateEnemySpawner(Actor* pActor) {
+static void UpdateEnemySpawner(Actor* pActor, const ActorPrototypeNew* pPrototype) {
 
 }
 
 // Drops loot and deletes itself
-static void UpdateLootSpawner(Actor* pActor) {
-    const LootSpawnerData& data = pActor->pPrototype->data.lootSpawner;
+static void UpdateLootSpawner(Actor* pActor, const ActorPrototypeNew* pPrototype) {
+    const LootSpawnerData& data = pPrototype->data.lootSpawner;
 
     for (u32 i = 0; i < data.typeCount; i++) {
-        u32 lootType = data.types[i];
+        ActorPrototypeHandle lootType = data.types[i];
         const u8 spawnRate = data.spawnRates[i];
 
         if (Random::GenerateInt(0, 127) < spawnRate) {
@@ -58,7 +59,7 @@ static void UpdateLootSpawner(Actor* pActor) {
     pActor->flags.pendingRemoval = true;
 }
 
-static bool DrawNoOp(const Actor* pActor) {
+static bool DrawNoOp(const Actor* pActor, const ActorPrototypeNew* pPrototype) {
     return false;
 }
 

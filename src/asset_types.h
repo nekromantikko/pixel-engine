@@ -19,9 +19,9 @@ struct AssetHandle {
 	static constexpr AssetType type = T;
 	u64 id;
 
-	AssetHandle() = default;
-	AssetHandle(const AssetHandle& other) = default;
-	AssetHandle(u64 id) : id(id) {}
+	constexpr AssetHandle() = default;
+	constexpr AssetHandle(const AssetHandle& other) = default;
+	constexpr AssetHandle(u64 id) : id(id) {}
 
 	bool operator==(const AssetHandle& other) const {
 		return id == other.id;

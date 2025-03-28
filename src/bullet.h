@@ -1,5 +1,6 @@
 #pragma once
 #include "typedef.h"
+#include "asset_types.h"
 
 enum BulletType : TActorSubtype {
 	BULLET_TYPE_DEFAULT,
@@ -10,7 +11,7 @@ enum BulletType : TActorSubtype {
 
 struct BulletData {
 	u16 lifetime;
-	TActorPrototypeIndex deathEffect;
+	ActorPrototypeHandle deathEffect;
 };
 
 struct BulletState {

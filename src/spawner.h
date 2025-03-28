@@ -1,5 +1,6 @@
 #pragma once
 #include "typedef.h"
+#include "asset_types.h"
 
 enum SpawnerType : TActorSubtype {
 	SPAWNER_TYPE_EXP,
@@ -10,8 +11,8 @@ enum SpawnerType : TActorSubtype {
 };
 
 struct ExpSpawnerData {
-	TActorPrototypeIndex large;
-	TActorPrototypeIndex small;
+	ActorPrototypeHandle large;
+	ActorPrototypeHandle small;
 };
 
 struct ExpSpawnerState {
@@ -21,7 +22,7 @@ struct ExpSpawnerState {
 struct LootSpawnerData {
 	u8 typeCount;
 	u8 spawnRates[4];
-	TActorPrototypeIndex types[4];
+	ActorPrototypeHandle types[4];
 };
 
 namespace Game {

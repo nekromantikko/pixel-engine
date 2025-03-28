@@ -55,6 +55,7 @@ static bool CreateEmptyArchive(const std::filesystem::path& path) {
 	};
 	fwrite(&header, sizeof(ArchiveHeader), 1, pFile);
 	fclose(pFile);
+	return true;
 }
 
 #pragma region Public API

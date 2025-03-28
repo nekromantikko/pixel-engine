@@ -35,6 +35,21 @@ union ActorPrototypeData {
 	u8 raw[ACTOR_PROTOTYPE_DATA_SIZE];
 };
 
+constexpr u32 ACTOR_PROTOTYPE_DATA_SIZE_NEW = 256;
+
+union ActorPrototypeDataNew {
+	EnemyData enemyData;
+	FireballData fireballData;
+	BulletData bulletData;
+	PickupData pickupData;
+	EffectData effectData;
+	CheckpointData checkpointData;
+	ExpSpawnerData expSpawner;
+	LootSpawnerData lootSpawner;
+
+	u8 raw[ACTOR_PROTOTYPE_DATA_SIZE_NEW];
+};
+
 constexpr u32 ACTOR_STATE_SIZE = 32;
 
 union ActorState {

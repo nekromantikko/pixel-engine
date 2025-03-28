@@ -8,6 +8,7 @@
 #include "room.h"
 #include "dungeon.h"
 #include "overworld.h"
+#include "animation.h"
 
 enum PlayerHeadFrame : u8 {
     PLAYER_HEAD_IDLE,
@@ -63,9 +64,9 @@ constexpr u16 sitAnimIndex = 1;
 constexpr u16 deathAnimIndex = 2;
 
 // TODO: These should be set in editor somehow
-constexpr s32 playerGrenadePrototypeIndex = 1;
-constexpr s32 playerArrowPrototypeIndex = 4;
-constexpr s32 featherPrototypeIndex = 0x0e;
+constexpr ActorPrototypeHandle playerGrenadePrototypeId = 5433896513301451046;
+constexpr ActorPrototypeHandle playerArrowPrototypeId = 13929813062463858187;
+constexpr ActorPrototypeHandle featherPrototypeId = 4150894991750855816;
 
 // TODO: Would it be possible to define these in the editor?
 constexpr u8 playerWingFrameBankOffsets[4] = { 0x00, 0x08, 0x10, 0x18 };
@@ -88,15 +89,12 @@ constexpr u8 playerHandFrameTileCount = 2;
 constexpr u8 playerWeaponFrameTileCount = 8;
 
 constexpr glm::ivec2 playerBowOffsets[3] = { { 10, -4 }, { 9, -14 }, { 10, 4 } };
-constexpr u32 playerBowFwdMetaspriteIndex = 8;
-constexpr u32 playerBowDiagMetaspriteIndex = 9;
-constexpr u32 playerBowArrowFwdMetaspriteIndex = 3;
-constexpr u32 playerBowArrowDiagMetaspriteIndex = 4;
+constexpr MetaspriteHandle playerBowFwdMetaspriteId = 14903895514375038294;
+constexpr MetaspriteHandle playerBowDiagMetaspriteId = 13305472537268631013;
 
 constexpr glm::ivec2 playerLauncherOffsets[3] = { { 5, -5 }, { 7, -12 }, { 8, 1 } };
-constexpr u32 playerLauncherFwdMetaspriteIndex = 10;
-constexpr u32 playerLauncherDiagMetaspriteIndex = 11;
-constexpr u32 playerLauncherGrenadeMetaspriteIndex = 12;
+constexpr MetaspriteHandle playerLauncherFwdMetaspriteId = 11359313821138079876;
+constexpr MetaspriteHandle playerLauncherDiagMetaspriteId = 10921545440614489200;
 
 static void AnimateWings(Actor* pPlayer, u16 frameLength) {
     pPlayer->state.playerState.wingCounter = glm::clamp(pPlayer->state.playerState.wingCounter, u16(0), frameLength);
@@ -260,8 +258,10 @@ static void SpawnFeathers(Actor* pPlayer, u32 count) {
         };
 
         const glm::vec2 velocity = Random::GenerateDirection() * 0.0625f;
-        Actor* pSpawned = Game::SpawnActor(featherPrototypeIndex, pPlayer->position + spawnOffset, velocity);
-        pSpawned->drawState.frameIndex = Random::GenerateInt(0, pSpawned->pPrototype->animations[0].frameCount - 1);
+        Actor* pSpawned = Game::SpawnActor(featherPrototypeId, pPlayer->position + spawnOffset, velocity);
+        const ActorPrototypeNew* pSpawnedPrototype = Game::GetActorPrototype(pSpawned);
+        const AnimationNew* pSpawnedCurrentAnim = Game::GetActorCurrentAnim(pSpawned, pSpawnedPrototype);
+        pSpawned->drawState.frameIndex = Random::GenerateInt(0, pSpawnedCurrentAnim->frameCount - 1);
     }
 }
 
@@ -288,7 +288,8 @@ static void TriggerInteraction(Actor* pPlayer, Actor* pInteractable) {
         return;
     }
 
-    if (pInteractable->pPrototype->subtype == INTERACTABLE_TYPE_CHECKPOINT) {
+    const ActorPrototypeNew* pInteractablePrototype = Game::GetActorPrototype(pInteractable);
+    if (pInteractablePrototype->subtype == INTERACTABLE_TYPE_CHECKPOINT) {
         pInteractable->state.checkpointState.activated = true;
 
         Game::ActivateCheckpoint(pInteractable);
@@ -318,8 +319,8 @@ static void PlayerShoot(Actor* pPlayer) {
         playerState.shootCounter = shootDelay;
 
         const u16 playerWeapon = Game::GetPlayerWeapon();
-        const s32 prototypeIndex = playerWeapon == PLAYER_WEAPON_LAUNCHER ? playerGrenadePrototypeIndex : playerArrowPrototypeIndex;
-        Actor* pBullet = Game::SpawnActor(prototypeIndex, pPlayer->position);
+        const ActorPrototypeHandle prototypeId = playerWeapon == PLAYER_WEAPON_LAUNCHER ? playerGrenadePrototypeId : playerArrowPrototypeId;
+        Actor* pBullet = Game::SpawnActor(prototypeId, pPlayer->position);
         if (pBullet == nullptr) {
             return;
         }
@@ -575,7 +576,7 @@ static void UpdateSidescrollerMode(Actor* pActor) {
     }
 }
 
-static void UpdatePlayerSidescroller(Actor* pActor) {
+static void UpdatePlayerSidescroller(Actor* pActor, const ActorPrototypeNew* pPrototype) {
     // Reset slow fall
     pActor->state.playerState.flags.slowFall = false;
 
@@ -586,7 +587,7 @@ static void UpdatePlayerSidescroller(Actor* pActor) {
     UpdateSidescrollerMode(pActor);
 
     HitResult hit{};
-    if (Game::ActorMoveHorizontal(pActor, hit)) {
+    if (Game::ActorMoveHorizontal(pActor, pPrototype, hit)) {
         pActor->velocity.x = 0.0f;
     }
 
@@ -601,7 +602,7 @@ static void UpdatePlayerSidescroller(Actor* pActor) {
     // Reset in air flag
     pActor->flags.inAir = true;
 
-    if (Game::ActorMoveVertical(pActor, hit)) {
+    if (Game::ActorMoveVertical(pActor, pPrototype, hit)) {
         pActor->velocity.y = 0.0f;
 
         if (hit.impactNormal.y < 0.0f) {
@@ -640,7 +641,7 @@ static glm::ivec2 GetOverworldInputDir() {
     return result;
 }
 
-static void UpdatePlayerOverworld(Actor* pPlayer) {
+static void UpdatePlayerOverworld(Actor* pPlayer, const ActorPrototypeNew* pPrototype) {
     static constexpr u16 movementRate = 1;
     static constexpr u16 movementSteps = METATILE_DIM_PIXELS * movementRate;
     static constexpr r32 movementStepLength = 1.0f / movementSteps;
@@ -699,19 +700,19 @@ static bool DrawPlayerGun(const Actor* pPlayer) {
     // Draw weapon first
     glm::i16vec2 weaponOffset{};
     u8 weaponFrameBankOffset;
-    u32 weaponMetaspriteIndex;
+    MetaspriteHandle weaponMetaspriteId;
     const u16 playerWeapon = Game::GetPlayerWeapon();
     switch (playerWeapon) {
     case PLAYER_WEAPON_BOW: {
         weaponOffset = playerBowOffsets[pPlayer->state.playerState.flags.aimMode];
         weaponFrameBankOffset = playerBowFrameBankOffsets[pPlayer->state.playerState.flags.aimMode];
-        weaponMetaspriteIndex = pPlayer->state.playerState.flags.aimMode == PLAYER_AIM_FWD ? playerBowFwdMetaspriteIndex : playerBowDiagMetaspriteIndex;
+        weaponMetaspriteId = pPlayer->state.playerState.flags.aimMode == PLAYER_AIM_FWD ? playerBowFwdMetaspriteId : playerBowDiagMetaspriteId;
         break;
     }
     case PLAYER_WEAPON_LAUNCHER: {
         weaponOffset = playerLauncherOffsets[pPlayer->state.playerState.flags.aimMode];
         weaponFrameBankOffset = playerLauncherFrameBankOffsets[pPlayer->state.playerState.flags.aimMode];
-        weaponMetaspriteIndex = pPlayer->state.playerState.flags.aimMode == PLAYER_AIM_FWD ? playerLauncherFwdMetaspriteIndex : playerLauncherDiagMetaspriteIndex;
+        weaponMetaspriteId = pPlayer->state.playerState.flags.aimMode == PLAYER_AIM_FWD ? playerLauncherFwdMetaspriteId : playerLauncherDiagMetaspriteId;
         break;
     }
     default:
@@ -720,23 +721,23 @@ static bool DrawPlayerGun(const Actor* pPlayer) {
     weaponOffset.x *= pPlayer->flags.facingDir;
 
     Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, weaponFrameBankOffset, 4, playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
-    return Game::Rendering::DrawMetasprite(SPRITE_LAYER_FG, weaponMetaspriteIndex, drawPos + weaponOffset, drawState.hFlip, drawState.vFlip, -1);
+    return Game::Rendering::DrawMetasprite(SPRITE_LAYER_FG, weaponMetaspriteId, drawPos + weaponOffset, drawState.hFlip, drawState.vFlip, -1);
 }
 
-static bool DrawPlayerSidescroller(const Actor* pPlayer) {
+static bool DrawPlayerSidescroller(const Actor* pPlayer, const ActorPrototypeNew* pPrototype) {
     if (pPlayer->state.playerState.flags.mode == PLAYER_MODE_NORMAL || 
         pPlayer->state.playerState.flags.mode == PLAYER_MODE_DAMAGED ||
         pPlayer->state.playerState.flags.mode == PLAYER_MODE_ENTERING) {
         DrawPlayerGun(pPlayer);
     }
-    return Game::DrawActorDefault(pPlayer);
+    return Game::DrawActorDefault(pPlayer, pPrototype);
 }
 
-static bool DrawPlayerOverworld(const Actor* pPlayer) {
-    return Game::DrawActorDefault(pPlayer);
+static bool DrawPlayerOverworld(const Actor* pPlayer, const ActorPrototypeNew* pPrototype) {
+    return Game::DrawActorDefault(pPlayer, pPrototype);
 }
 
-static void InitPlayerSidescroller(Actor* pPlayer, const PersistedActorData* pPersistData) {
+static void InitPlayerSidescroller(Actor* pPlayer, const ActorPrototypeNew* pPrototype, const PersistedActorData* pPersistData) {
     pPlayer->state.playerState.modeTransitionCounter = 0;
     pPlayer->state.playerState.staminaRecoveryCounter = 0;
 
@@ -748,7 +749,7 @@ static void InitPlayerSidescroller(Actor* pPlayer, const PersistedActorData* pPe
     pPlayer->drawState.layer = SPRITE_LAYER_FG;
 }
 
-static void InitPlayerOverworld(Actor* pPlayer, const PersistedActorData* pPersistData) {
+static void InitPlayerOverworld(Actor* pPlayer, const ActorPrototypeNew* pPrototype, const PersistedActorData* pPersistData) {
     pPlayer->state.playerOverworld.movementCounter = 0;
     pPlayer->state.playerOverworld.facingDir = { 0, 1 };
     pPlayer->position = glm::roundEven(pPlayer->position);

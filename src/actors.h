@@ -4,6 +4,7 @@
 #define GLM_FORCE_RADIANS
 #include <glm.hpp>
 #include "memory_pool.h"
+#include "asset_types.h"
 
 enum ActorFacingDir : s8 {
 	ACTOR_FACING_LEFT = -1, // 0b11
@@ -48,7 +49,7 @@ struct Actor {
 
 	ActorState state;
 
-	const ActorPrototype* pPrototype;
+	ActorPrototypeHandle prototypeId;
 };
 
 typedef PoolHandle<Actor> ActorHandle;
@@ -62,12 +63,15 @@ typedef void (*ActorCollisionCallbackFn)(Actor*, Actor*);
 typedef bool (*ActorFilterFn)(const Actor*);
 
 struct RoomActor;
+struct AnimationNew;
 
 namespace Game {
 	Actor* SpawnActor(const RoomActor* pTemplate, u32 roomId);
-	Actor* SpawnActor(const s32 prototypeIndex, const glm::vec2& position, const glm::vec2& velocity = {0.0f, 0.0f});
+	Actor* SpawnActor(const ActorPrototypeHandle& prototypeId, const glm::vec2& position, const glm::vec2& velocity = {0.0f, 0.0f});
 	void ClearActors();
 
+	const ActorPrototypeNew* GetActorPrototype(const Actor* pActor);
+	const AnimationNew* GetActorCurrentAnim(const Actor* pActor, const ActorPrototypeNew* pPrototype);
 	bool ActorValid(const Actor* pActor);
 	bool ActorsColliding(const Actor* pActor, const Actor* pOther);
 	void ForEachActorCollision(Actor* pActor, TActorType type, ActorCollisionCallbackFn callback);
@@ -83,13 +87,13 @@ namespace Game {
 
 	bool UpdateCounter(u16& counter);
 	void SetDamagePaletteOverride(Actor* pActor, u16 damageCounter);
-	void GetAnimFrameFromDirection(Actor* pActor);
+	void GetAnimFrameFromDirection(Actor* pActor, const ActorPrototypeNew* pPrototype);
 	void AdvanceAnimation(u16& animCounter, u16& frameIndex, u16 frameCount, u8 frameLength, s16 loopPoint);
-	void AdvanceCurrentAnimation(Actor* pActor);
+	void AdvanceCurrentAnimation(Actor* pActor, const ActorPrototypeNew* pPrototype);
 
 	void ActorFacePlayer(Actor* pActor);
-	bool ActorMoveHorizontal(Actor* pActor, HitResult& outHit);
-	bool ActorMoveVertical(Actor* pActor, HitResult& outHit);
+	bool ActorMoveHorizontal(Actor* pActor, const ActorPrototypeNew* pPrototype, HitResult& outHit);
+	bool ActorMoveVertical(Actor* pActor, const ActorPrototypeNew* pPrototype, HitResult& outHit);
 	void ApplyGravity(Actor* pActor, r32 gravity = 0.01f);
 
 	Damage CalculateDamage(Actor* pActor, u16 baseDamage);
@@ -98,6 +102,6 @@ namespace Game {
 
 	DynamicActorPool* GetActors(); // TEMP
 	void UpdateActors();
-	bool DrawActorDefault(const Actor* pActor);
+	bool DrawActorDefault(const Actor* pActor, const ActorPrototypeNew* pPrototype);
 	void DrawActors();
 }

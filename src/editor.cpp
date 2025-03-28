@@ -964,8 +964,9 @@ static void DrawGenericEditableList(T* elements, u32& count, u32 maxCount, ImVec
 }
 
 template <typename T>
-static void DrawTypeSelectionCombo(const char* label, const char* const* const typeNames, u32 typeCount, T& selection) {
+static bool DrawTypeSelectionCombo(const char* label, const char* const* const typeNames, u32 typeCount, T& selection) {
 	static_assert(std::is_integral<T>::value);
+	const T oldSelection = selection;
 
 	const char* noSelectionLabel = "NONE";
 	const char* noItemsLabel = "NO ITEMS";
@@ -991,6 +992,8 @@ static void DrawTypeSelectionCombo(const char* label, const char* const* const t
 		}
 		ImGui::EndCombo();
 	}
+
+	return oldSelection != selection;
 }
 #pragma endregion
 
@@ -1296,7 +1299,10 @@ static void DrawActorDebugInfo(const ImVec2& pos, const ImVec2& size) {
 		const ImVec2 drawPos = ImVec2(pos.x + pixelOffset.x * renderScale, pos.y + pixelOffset.y * renderScale);
 
 		if (pContext->drawActorHitboxes) {
-			DrawHitbox(&pActor->pPrototype->hitbox, drawPos, renderScale);
+			const ActorPrototypeNew* pPrototype = Game::GetActorPrototype(pActor);
+			if (pPrototype) {
+				DrawHitbox(&pPrototype->hitbox, drawPos, renderScale);
+			}
 		}
 		if (pContext->drawActorPositions) {
 			char positionText[64];
@@ -1565,7 +1571,7 @@ static void DrawMetaspritePreview(Metasprite* pMetasprite, ImVector<s32>& sprite
 	}
 }
 
-static void DrawSpriteEditor(Metasprite* pMetasprite, ImVector<s32>& spriteSelection) {
+static void DrawSpriteEditor(Metasprite* pMetasprite, ImVector<s32>& spriteSelection, bool& dirty) {
 	ImGui::SeparatorText("Sprite editor");
 	
 	if (spriteSelection.empty()) {
@@ -1592,6 +1598,7 @@ static void DrawSpriteEditor(Metasprite* pMetasprite, ImVector<s32>& spriteSelec
 
 		if (newId != sprite.tileId) {
 			sprite.tileId = (u16)newId;
+			dirty = true;
 		}
 
 		ImGui::SameLine();
@@ -1601,6 +1608,7 @@ static void DrawSpriteEditor(Metasprite* pMetasprite, ImVector<s32>& spriteSelec
 				ImGui::PushID(i);
 				if (DrawPaletteButton(i + BG_PALETTE_COUNT)) {
 					sprite.palette = i;
+					dirty = true;
 				}
 				ImGui::PopID();
 			}
@@ -1611,10 +1619,12 @@ static void DrawSpriteEditor(Metasprite* pMetasprite, ImVector<s32>& spriteSelec
 
 		if (ImGui::Checkbox("Flip horizontal", &flipX)) {
 			sprite.flipHorizontal = flipX;
+			dirty = true;
 		}
 		ImGui::SameLine();
 		if (ImGui::Checkbox("Flip vertical", &flipY)) {
 			sprite.flipVertical = flipY;
+			dirty = true;
 		}
 	}
 }
@@ -1666,12 +1676,14 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 	ImGui::BeginDisabled(pMetasprite->spriteCount == METASPRITE_MAX_SPRITE_COUNT);
 	if (ImGui::Button("+")) {
 		PushElement<Sprite>(pMetasprite->spritesRelativePos, pMetasprite->spriteCount);
+		asset.dirty = true;
 	}
 	ImGui::EndDisabled();
 	ImGui::SameLine();
 	ImGui::BeginDisabled(pMetasprite->spriteCount == 0);
 	if (ImGui::Button("-")) {
 		PopElement<Sprite>(pMetasprite->spritesRelativePos, pMetasprite->spriteCount);
+		asset.dirty = true;
 	}
 	ImGui::EndDisabled();
 
@@ -1684,7 +1696,7 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 	ImGui::SameLine();
 
 	ImGui::BeginChild("Sprite editor");
-	DrawSpriteEditor(pMetasprite, spriteSelection);
+	DrawSpriteEditor(pMetasprite, spriteSelection, asset.dirty);
 	ImGui::EndChild();
 	ImGui::EndChild();
 	ImGui::EndChild();
@@ -2184,68 +2196,26 @@ static ImVec2 DrawActorPreview(const ActorPrototypeNew* pPrototype, s32 animInde
 	return gridPos;
 }
 
-static void DrawActorPrototypeList(s32& selection) {
-	static constexpr u32 maxLabelNameLength = ACTOR_PROTOTYPE_MAX_NAME_LENGTH + 8;
-	char label[maxLabelNameLength];
-
-	ActorPrototype* pPrototypes = Assets::GetActorPrototype(0);
-	for (u32 i = 0; i < MAX_ACTOR_PROTOTYPE_COUNT; i++)
-	{
-		ImGui::PushID(i);
-
-		const auto name = Assets::GetActorPrototypeName(i);
-		snprintf(label, maxLabelNameLength, "0x%02x: %s", i, name);
-
-		const bool selected = selection == i;
-		if (ImGui::Selectable(label, selected)) {
-			selection = i;
-		}
-
-		if (selected) {
-			ImGui::SetItemDefaultFocus();
-		}
-
-		if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
-		{
-			const TActorPrototypeIndex index = TActorPrototypeIndex(i);
-			ImGui::SetDragDropPayload("dd_actor_prototype", &index, sizeof(TActorPrototypeIndex));
-			ImGui::Text("%s", name);
-
-			ImGui::EndDragDropSource();
-		}
-		ImGui::PopID();
-	}
-}
-
-static void DrawActorPrototypeSelector(const char* label, const char* const* prototypeNames, TActorPrototypeIndex& selection) {
-	DrawTypeSelectionCombo(label, prototypeNames, MAX_ACTOR_PROTOTYPE_COUNT, selection);
-	if (ImGui::BeginDragDropTarget()) {
-		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dd_actor_prototype"))
-		{
-			const TActorPrototypeIndex sourceIndex = *(const TActorPrototypeIndex*)payload->Data;
-			selection = sourceIndex;
-		}
-		ImGui::EndDragDropTarget();
-	}
-}
-
-static void DrawActorPrototypeProperty(const ActorEditorProperty& property, ActorPrototypeData& data, const char* const* prototypeNames) {
+static bool DrawActorPrototypeProperty(const ActorEditorProperty& property, ActorPrototypeDataNew& data) {
 	void* propertyData = (u8*)&data + property.offset;
+	bool result = false;
 
 	switch (property.type) {
 	case ACTOR_EDITOR_PROPERTY_SCALAR: {
-		ImGui::InputScalarN(property.name, property.dataType, propertyData, property.components);
+		result = ImGui::InputScalarN(property.name, property.dataType, propertyData, property.components);
 		break;
 	}
 	case ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX: {
-		TActorPrototypeIndex& prototypeIndex = *(TActorPrototypeIndex*)propertyData;
-		DrawActorPrototypeSelector(property.name, prototypeNames, prototypeIndex);
+		ActorPrototypeHandle& prototypeHandle = *(ActorPrototypeHandle*)propertyData;
+		result = DrawAssetField(property.name, ASSET_TYPE_ACTOR_PROTOTYPE, prototypeHandle.id);
 		break;
 	}
 	default: {
 		break;
 	}
 	}
+
+	return result;
 }
 
 static void DrawActorEditor(EditedAsset& asset) {
@@ -2289,21 +2259,24 @@ static void DrawActorEditor(EditedAsset& asset) {
 		if (ImGui::BeginTabBar("Actor editor tabs")) {
 			if (ImGui::BeginTabItem("Behaviour")) {
 
-				DrawTypeSelectionCombo("Type", Editor::actorTypeNames, ACTOR_TYPE_COUNT, pPrototype->type);
+				if (DrawTypeSelectionCombo("Type", Editor::actorTypeNames, ACTOR_TYPE_COUNT, pPrototype->type)) {
+					asset.dirty = true;
+				}
 				const auto& editorData = Editor::actorEditorData[pPrototype->type];
 
 				u32 subtypeCount = editorData.GetSubtypeCount();
 				pPrototype->subtype = glm::clamp(pPrototype->subtype, u16(0), u16(subtypeCount - 1));
-				DrawTypeSelectionCombo("Subtype", editorData.GetSubtypeNames(), subtypeCount, pPrototype->subtype);
+				if (DrawTypeSelectionCombo("Subtype", editorData.GetSubtypeNames(), subtypeCount, pPrototype->subtype)) {
+					asset.dirty = true;
+				}
 
 				ImGui::SeparatorText("Type data");
 
-				const char* prototypeNames[MAX_ACTOR_PROTOTYPE_COUNT]{};
-				Assets::GetActorPrototypeNames(prototypeNames);
-
 				u32 propCount = editorData.GetPropertyCount(pPrototype->subtype);
 				for (u32 i = 0; i < propCount; i++) {
-					DrawActorPrototypeProperty(editorData.GetProperty(pPrototype->subtype, i), pPrototype->data, prototypeNames);
+					if (DrawActorPrototypeProperty(editorData.GetProperty(pPrototype->subtype, i), pPrototype->data)) {
+						asset.dirty = true;
+					}
 				}
 
 				ImGui::EndTabItem();
