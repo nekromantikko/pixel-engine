@@ -1,5 +1,6 @@
 #include "overworld.h"
 #include "debug.h"
+#include "asset_manager.h"
 #include <cstdio>
 
 static Overworld overworld;
@@ -7,6 +8,46 @@ static Overworld overworld;
 struct OverworldHeader {
 	char signature[4];
 };
+
+void Assets::InitOverworld(void* data) {
+    constexpr u32 keyAreaOffset = sizeof(OverworldHeader2);
+    constexpr u32 tilesOffset = keyAreaOffset + MAX_OVERWORLD_KEY_AREA_COUNT * sizeof(OverworldKeyAreaNew);
+
+    TilemapHeader tilemapHeader{
+        .width = OVERWORLD_WIDTH_METATILES,
+        .height = OVERWORLD_HEIGHT_METATILES,
+        .tilesetId = 0,
+        .tilesOffset = tilesOffset - offsetof(OverworldHeader2, tilemapHeader),
+    };
+
+    OverworldHeader2 newHeader{
+        .tilemapHeader = tilemapHeader,
+        .keyAreaOffset = keyAreaOffset,
+    };
+
+    memcpy(data, &newHeader, sizeof(OverworldHeader2));
+
+    OverworldKeyAreaNew* pKeyAreas = GetOverworldKeyAreas((OverworldHeader2*)data);
+    for (u32 i = 0; i < MAX_OVERWORLD_KEY_AREA_COUNT; i++) {
+        pKeyAreas[i].position = { -1, -1 };
+    }
+}
+
+OverworldKeyAreaNew* Assets::GetOverworldKeyAreas(const OverworldHeader2* pHeader) {
+    if (!pHeader) {
+        return nullptr;
+    }
+
+    return (OverworldKeyAreaNew*)((u8*)pHeader + pHeader->keyAreaOffset);
+}
+
+u32 Assets::GetOverworldSize() {
+    u32 result = sizeof(OverworldHeader2);
+    constexpr u32 tilemapSize = OVERWORLD_METATILE_COUNT;
+    result += tilemapSize;
+    result += MAX_OVERWORLD_KEY_AREA_COUNT * sizeof(OverworldKeyAreaNew);
+    return result;
+}
 
 Overworld* Assets::GetOverworld() {
 	return &overworld;
@@ -47,6 +88,26 @@ bool Assets::LoadOverworld(const char* fname) {
     fread(overworld.keyAreas, sizeof(OverworldKeyArea), MAX_OVERWORLD_KEY_AREA_COUNT, pFile);
 
     fclose(pFile);
+
+    /*OverworldHandle handle = AssetManager::CreateAsset<ASSET_TYPE_OVERWORLD>(GetOverworldSize(), "Default");
+    void* data = AssetManager::GetAsset(handle);
+    InitOverworld(data);
+    OverworldKeyAreaNew* pKeyAreas = GetOverworldKeyAreas((OverworldHeader2*)data);
+    for (u32 i = 0; i < MAX_OVERWORLD_KEY_AREA_COUNT; i++) {
+        pKeyAreas[i] = {
+            .dungeonId = 0,
+            .position = overworld.keyAreas[i].position,
+            .targetGridCell = overworld.keyAreas[i].targetGridCell,
+            .flags = {
+                .flipDirection = overworld.keyAreas[i].flipDirection,
+                .passthrough = overworld.keyAreas[i].passthrough
+}
+        };
+    }
+
+    TilemapHeader* pTilemapHeader = &((OverworldHeader2*)data)->tilemapHeader;
+    memcpy((u8*)pTilemapHeader + pTilemapHeader->tilesOffset, overworld.tilemap.tiles, OVERWORLD_METATILE_COUNT);*/
+
     return true;
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 #include "typedef.h"
 #include "tiles.h"
+#include "asset_types.h"
 
 constexpr u32 OVERWORLD_WIDTH_METATILES = 128;
 constexpr u32 OVERWORLD_HEIGHT_METATILES = 128;
@@ -20,7 +21,28 @@ struct Overworld {
 	OverworldKeyArea keyAreas[MAX_OVERWORLD_KEY_AREA_COUNT];
 };
 
+struct OverworldKeyAreaFlags {
+	u8 flipDirection : 1;
+	u8 passthrough : 1;
+};
+
+struct OverworldKeyAreaNew {
+	DungeonHandle dungeonId;
+	glm::i8vec2 position = { -1, -1 };
+	glm::i8vec2 targetGridCell = { 0, 0 };
+	OverworldKeyAreaFlags flags;
+};
+
+struct OverworldHeader2 {
+	TilemapHeader tilemapHeader;
+	u32 keyAreaOffset;
+};
+
 namespace Assets {
+	void InitOverworld(void* data);
+	OverworldKeyAreaNew* GetOverworldKeyAreas(const OverworldHeader2* pHeader);
+	u32 GetOverworldSize();
+
 	Overworld* GetOverworld();
 	bool LoadOverworld(const char* fname);
 	bool SaveOverworld(const char* fname);

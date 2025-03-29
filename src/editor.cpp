@@ -3162,29 +3162,29 @@ static void DrawDungeonWindow() {
 #pragma endregion
 
 #pragma region Overworld editor
-static void DrawOverworldWindow() {
-	ImGui::Begin("Overworld editor", &pContext->overworldWindowOpen, ImGuiWindowFlags_MenuBar);
+struct OverworldEditorData {
+	u32 editMode = OW_EDIT_MODE_NONE;
+	glm::vec2 viewportPos = glm::vec2(0.0f);
+	TilemapClipboard clipboard{};
+};
 
-	static u32 editMode = OW_EDIT_MODE_NONE;
-	static glm::vec2 viewportPos(0.0f);
-	static TilemapClipboard clipboard{};
-
-	Overworld* pOverworld = Assets::GetOverworld();
-
-	if (ImGui::BeginMenuBar())
-	{
-		if (ImGui::BeginMenu("File"))
-		{
-			if (ImGui::MenuItem("Save")) {
-				Assets::SaveOverworld("assets/overworld.ass");
-			}
-			if (ImGui::MenuItem("Revert changes")) {
-				Assets::LoadOverworld("assets/overworld.ass");
-			}
-			ImGui::EndMenu();
-		}
-		ImGui::EndMenuBar();
+static void PopulateOverworldEditorData(void* assetData, void** pUserData) {
+	if (*pUserData) {
+		delete* pUserData;
 	}
+
+	*pUserData = new OverworldEditorData();
+}
+
+static void DeleteOverworldEditorData(void* userData) {
+	delete userData;
+}
+
+static void DrawOverworldEditor(EditedAsset& asset) {
+	ImGui::BeginChild("Overworld editor");
+
+	OverworldHeader2* pHeader = (OverworldHeader2*)asset.data;
+	OverworldEditorData* pEditorData = (OverworldEditorData*)asset.userData;
 
 	const bool showToolsWindow = true;
 	const r32 toolWindowWidth = showToolsWindow ? 350.0f : 0.0f;
@@ -3200,17 +3200,25 @@ static void DrawOverworldWindow() {
 	const ImVec2 btmRight(topLeft.x + contentWidth, topLeft.y + contentHeight);
 	const r32 tileDrawSize = METATILE_DIM_PIXELS * renderScale;
 
-	DrawTilemapEditor(&pOverworld->tilemap, topLeft, renderScale, viewportPos, clipboard, editMode == OW_EDIT_MODE_TILES);
+	// HACK!
+	Tilemap temp{
+		.width = u8(pHeader->tilemapHeader.width),
+		.height = u8(pHeader->tilemapHeader.height),
+		.tilesetIndex = 0,
+		.tiles = (u8*)&pHeader->tilemapHeader + pHeader->tilemapHeader.tilesOffset
+	};
+	DrawTilemapEditor(&temp, topLeft, renderScale, pEditorData->viewportPos, pEditorData->clipboard, pEditorData->editMode == OW_EDIT_MODE_TILES);
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	drawList->PushClipRect(topLeft, btmRight, true);
 
+	OverworldKeyAreaNew* pKeyAreas = Assets::GetOverworldKeyAreas(pHeader);
 	for (u32 i = 0; i < MAX_OVERWORLD_KEY_AREA_COUNT; i++) {
-		OverworldKeyArea& area = pOverworld->keyAreas[i];
+		OverworldKeyAreaNew& area = pKeyAreas[i];
 
 		char label[8];
 		snprintf(label, 8, "%#02x", i);
-		const ImVec2 areaPosInPixelCoords = ImVec2((area.position.x - viewportPos.x) * tileDrawSize + topLeft.x, (area.position.y - viewportPos.y) * tileDrawSize + topLeft.y);
+		const ImVec2 areaPosInPixelCoords = ImVec2((area.position.x - pEditorData->viewportPos.x) * tileDrawSize + topLeft.x, (area.position.y - pEditorData->viewportPos.y) * tileDrawSize + topLeft.y);
 		drawList->AddText(areaPosInPixelCoords, IM_COL32(255, 255, 255, 255), label);
 	}
 
@@ -3219,20 +3227,19 @@ static void DrawOverworldWindow() {
 
 	ImGui::SameLine();
 
-	editMode = OW_EDIT_MODE_NONE;
+	pEditorData->editMode = OW_EDIT_MODE_NONE;
 	if (showToolsWindow) {
 		ImGui::BeginChild("Overworld tools", ImVec2(toolWindowWidth, 0));
 		if (ImGui::BeginTabBar("Overworld tool tabs")) {
 			if (ImGui::BeginTabItem("Tilemap")) {
-				editMode = OW_EDIT_MODE_TILES;
-				TilesetHandle temp = 0;
-				DrawTilemapTools(clipboard, temp);
+				pEditorData->editMode = OW_EDIT_MODE_TILES;
+				DrawTilemapTools(pEditorData->clipboard, pHeader->tilemapHeader.tilesetId);
 
 				ImGui::EndTabItem();
 			}
-			
+
 			if (ImGui::BeginTabItem("Key areas")) {
-				editMode = OW_EDIT_MODE_AREAS;
+				pEditorData->editMode = OW_EDIT_MODE_AREAS;
 				static u8 selectedArea = 0;
 
 				char label[8];
@@ -3259,25 +3266,28 @@ static void DrawOverworldWindow() {
 
 				ImGui::SeparatorText("Area properties");
 
-				OverworldKeyArea& area = pOverworld->keyAreas[selectedArea];
+				OverworldKeyAreaNew& area = pKeyAreas[selectedArea];
 
 				ImGui::InputScalarN("Position", ImGuiDataType_S8, &area.position, 2);
 
-				s32 dungeonIndex = area.dungeonIndex;
-				if (ImGui::InputInt("Target dungeon", &dungeonIndex)) {
-					area.dungeonIndex = dungeonIndex;
+				if (DrawAssetField("Target dungeon", ASSET_TYPE_DUNGEON, area.dungeonId.id)) {
+					asset.dirty = true;
 				}
 
-				ImGui::InputScalarN("Target grid cell", ImGuiDataType_S8, &area.targetGridCell, 2);
+				if (ImGui::InputScalarN("Target grid cell", ImGuiDataType_S8, &area.targetGridCell, 2)) {
+					asset.dirty = true;
+				}
 
-				bool flipDirection = area.flipDirection;
+				bool flipDirection = area.flags.flipDirection;
 				if (ImGui::Checkbox("Flip direction", &flipDirection)) {
-					area.flipDirection = flipDirection;
+					area.flags.flipDirection = flipDirection;
+					asset.dirty = true;
 				}
 
-				bool passthrough = area.passthrough;
+				bool passthrough = area.flags.passthrough;
 				if (ImGui::Checkbox("Passthrough", &passthrough)) {
-					area.passthrough = passthrough;
+					area.flags.passthrough = passthrough;
+					asset.dirty = true;
 				}
 
 				ImGui::EndTabItem();
@@ -3288,7 +3298,12 @@ static void DrawOverworldWindow() {
 		ImGui::EndChild();
 	}
 
-	ImGui::End();
+	ImGui::EndChild();
+}
+
+static void DrawOverworldWindow() {
+	static AssetEditorState state{};
+	DrawAssetEditor("Overworld editor", pContext->overworldWindowOpen, ASSET_TYPE_OVERWORLD, Assets::GetOverworldSize(), "New Overworld", DrawOverworldEditor, state, Assets::InitOverworld, PopulateOverworldEditorData, nullptr, DeleteOverworldEditorData);
 }
 #pragma endregion
 
