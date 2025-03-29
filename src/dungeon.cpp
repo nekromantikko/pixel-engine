@@ -1,5 +1,6 @@
 #include "dungeon.h"
 #include "debug.h"
+#include "asset_manager.h"
 #include <cstdio>
 
 static Dungeon dungeons[MAX_DUNGEON_COUNT];
@@ -31,6 +32,22 @@ void Assets::LoadDungeons(const char* fname) {
     /*for (u32 i = 0; i < MAX_DUNGEON_COUNT; i++) {
         Dungeon& dungeon = dungeons[i];
         dungeon.name = &nameMemory[i * DUNGEON_MAX_NAME_LENGTH];
+    }*/
+
+    /*for (u32 i = 0; i < 4; i++) {
+        Dungeon& dungeon = dungeons[i];
+
+        DungeonHandle dungeonId = AssetManager::CreateAsset<ASSET_TYPE_DUNGEON>(sizeof(DungeonNew), "Untitled Dungeon");
+        DungeonNew* pNew = (DungeonNew*)AssetManager::GetAsset(dungeonId);
+
+        pNew->roomCount = dungeon.roomCount;
+        memcpy(pNew->grid, dungeon.grid, sizeof(dungeon.grid));
+        for (u32 j = 0; j < MAX_DUNGEON_ROOM_COUNT; j++) {
+            RoomInstance& old = dungeon.rooms[j];
+            RoomInstanceNew& njew = pNew->rooms[j];
+            njew.id = old.id;
+            njew.templateId = 0;
+        }
     }*/
 }
 void Assets::SaveDungeons(const char* fname) {

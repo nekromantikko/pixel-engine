@@ -210,6 +210,7 @@ bool AssetManager::ResizeAsset(u64 id, u32 newSize) {
 	DEBUG_LOG("Resizing asset %lld (%d -> %d)\n", id, oldSize, newSize);
 
 	if (newSize > oldSize) {
+		// TODO: This could reserve more space than needed to avoid repeated resizes that fragment the memory
 		if (!ReserveMemory(newSize)) {
 			return false;
 		}
@@ -240,6 +241,14 @@ AssetEntry* AssetManager::GetAssetInfo(u64 id) {
 		return nullptr;
 	}
 	return &it->second;
+}
+
+const char* AssetManager::GetAssetName(u64 id) {
+	const AssetEntry* pAssetInfo = GetAssetInfo(id);
+	if (!pAssetInfo) {
+		return nullptr;
+	}
+	return pAssetInfo->name;
 }
 
 u32 AssetManager::GetAssetCount() {

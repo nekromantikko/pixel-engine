@@ -2627,7 +2627,7 @@ enum DungeonNodeType {
 };
 
 struct DungeonRoomData {
-	const RoomTemplate* pTemplate;
+	const RoomTemplateHandle templateId;
 };
 
 struct DungeonExitData {
@@ -2647,27 +2647,29 @@ struct DungeonNode {
 };
 
 struct EditorDungeon {
-	//char* name;
 	std::unordered_map<u32, DungeonNode> nodes;
 };
 
-static EditorDungeon ConvertFromDungeon(u32 dungeonIndex) {
+struct DungeonEditorData {
+	EditorDungeon dungeon;
+	u32 selectedNodeId = UUID_NULL;
+};
+
+static EditorDungeon ConvertFromDungeon(const DungeonNew* pDungeon) {
 	EditorDungeon outDungeon{};
-	const Dungeon& dungeon = *Assets::GetDungeon(dungeonIndex);
-	//outDungeon.name = dungeon.name;
 
 	for (u32 i = 0; i < DUNGEON_GRID_SIZE; i++) {
-		const DungeonCell& cell = dungeon.grid[i];
+		const DungeonCell& cell = pDungeon->grid[i];
 		const glm::vec2 pos(i % DUNGEON_GRID_DIM, i / DUNGEON_GRID_DIM);
 
 		if (cell.roomIndex >= 0 && cell.screenIndex == 0) {
-			const RoomInstance& room = dungeon.rooms[cell.roomIndex];
+			const RoomInstanceNew& room = pDungeon->rooms[cell.roomIndex];
 
 			outDungeon.nodes.emplace(room.id, DungeonNode {
 				.id = room.id,
 				.type = DUNGEON_NODE_ROOM,
 				.roomData = {
-					.pTemplate = Assets::GetRoomTemplate(room.templateIndex),
+					.templateId = room.templateId,
 				},
 				.gridPos = pos
 				});
@@ -2691,18 +2693,20 @@ static EditorDungeon ConvertFromDungeon(u32 dungeonIndex) {
 	return outDungeon;
 }
 
-static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon) {
+static void ConvertToDungeon(const EditorDungeon& dungeon, DungeonNew* pOutDungeon) {
 
 	s8 roomIndex = 0;
 	for (auto& [id, node] : dungeon.nodes) {
 		if (node.type == DUNGEON_NODE_ROOM) {
-			pOutDungeon->rooms[roomIndex] = RoomInstance{
+			pOutDungeon->rooms[roomIndex] = RoomInstanceNew{
 				.id = node.id,
-				.templateIndex = Assets::GetRoomTemplateIndex(node.roomData.pTemplate)
+				.templateId = node.roomData.templateId
 			};
 
-			const u32 width = node.roomData.pTemplate->width;
-			const u32 height = node.roomData.pTemplate->height;
+			RoomTemplateHeader* pRoomHeader = (RoomTemplateHeader*)AssetManager::GetAsset(node.roomData.templateId);
+
+			const u32 width = pRoomHeader ? pRoomHeader->width : 1;
+			const u32 height = pRoomHeader ? pRoomHeader->height : 1;
 
 			for (u32 y = 0; y < height; y++) {
 				for (u32 x = 0; x < width; x++) {
@@ -2731,6 +2735,28 @@ static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon)
 	pOutDungeon->roomCount = roomIndex;
 }
 
+static void PopulateDungeonEditorData(void* assetData, void** pUserData) {
+	if (*pUserData) {
+		delete *pUserData;
+	}
+
+	*pUserData = new DungeonEditorData();
+	DungeonEditorData* pEditorData = (DungeonEditorData*)*pUserData;
+	DungeonNew* pDungeon = (DungeonNew*)assetData;
+	pEditorData->dungeon = ConvertFromDungeon(pDungeon);
+}
+
+static void ApplyDungeonEditorData(void* assetData, const void* userData) {
+	const DungeonEditorData* pEditorData = (DungeonEditorData*)userData;
+	DungeonNew* pDungeon = (DungeonNew*)assetData;
+
+	ConvertToDungeon(pEditorData->dungeon, pDungeon);
+}
+
+static void DeleteDungeonEditorData(void* userData) {
+	delete userData;
+}
+
 static u32 GetRoomCount(const EditorDungeon& dungeon) {
 	u32 result = 0;
 	for (auto& [id, node] : dungeon.nodes) {
@@ -2744,14 +2770,17 @@ static u32 GetRoomCount(const EditorDungeon& dungeon) {
 }
 
 static glm::ivec2 GetDungeonNodeSize(const DungeonNode& node) {
+	glm::ivec2 result(1, 1);
+
 	if (node.type == DUNGEON_NODE_ROOM) {
-		return {
-			node.roomData.pTemplate->width,
-			node.roomData.pTemplate->height
-		};
+		RoomTemplateHeader* pRoomHeader = (RoomTemplateHeader*)AssetManager::GetAsset(node.roomData.templateId);
+		if (pRoomHeader) {
+			result.x = pRoomHeader->width;
+			result.y = pRoomHeader->height;
+		}
 	}
 	
-	return { 1, 1 };
+	return result;
 }
 
 static void DrawDungeonNode(const DungeonNode& node, const glm::mat3& gridToScreen, bool selected, bool& outHovered) {
@@ -2777,9 +2806,25 @@ static void DrawDungeonNode(const DungeonNode& node, const glm::mat3& gridToScre
 	constexpr r32 outlineHoveredThickness = 2.0f;
 
 	if (node.type == DUNGEON_NODE_ROOM) {
-		DrawTilemap(&node.roomData.pTemplate->tilemap, ImVec2(0,0), ImVec2(nodeSize.x * VIEWPORT_WIDTH_METATILES, nodeSize.y * VIEWPORT_HEIGHT_METATILES), nodeDrawMin, scale);
-		drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0, 0, 0, 0x80));
-		drawList->AddText(ImVec2(nodeDrawMin.x + 10, nodeDrawMin.y + 10), IM_COL32(255, 255, 255, 255), node.roomData.pTemplate->name);
+		RoomTemplateHeader* pRoomHeader = (RoomTemplateHeader*)AssetManager::GetAsset(node.roomData.templateId);
+		if (pRoomHeader) {
+			// HACK!
+			Tilemap temp{
+				.width = u8(pRoomHeader->tilemapHeader.width),
+				.height = u8(pRoomHeader->tilemapHeader.height),
+				.tilesetIndex = 0,
+				.tiles = (u8*)&pRoomHeader->tilemapHeader + pRoomHeader->tilemapHeader.tilesOffset
+			};
+
+			DrawTilemap(&temp, ImVec2(0,0), ImVec2(nodeSize.x * VIEWPORT_WIDTH_METATILES, nodeSize.y * VIEWPORT_HEIGHT_METATILES), nodeDrawMin, scale);
+			drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0, 0, 0, 0x80));
+			drawList->AddText(ImVec2(nodeDrawMin.x + 10, nodeDrawMin.y + 10), IM_COL32(255, 255, 255, 255), AssetManager::GetAssetName(node.roomData.templateId.id));
+		}
+		else {
+			drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0xc, 0xc, 0xc, 255));
+			drawList->AddText(ImVec2(nodeDrawMin.x + 10, nodeDrawMin.y + 10), IM_COL32(255, 0, 0, 255), "ERROR");
+		}
+
 	}
 	else {
 		drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0xc, 0xc, 0xc, 255));
@@ -2835,7 +2880,10 @@ static bool DrawDungeonDragDropPreview(u32 roomId, const glm::ivec2& pos, const 
 	return posFree;
 }
 
-static void DrawDungeonCanvas(EditorDungeon& dungeon, u32& selectedNodeId) {
+static void DrawDungeonCanvas(EditedAsset& asset) {
+	DungeonEditorData* pEditorData = (DungeonEditorData*)asset.userData;
+	EditorDungeon& dungeon = pEditorData->dungeon;
+
 	// NOTE: ImGui examples -> custom rendering -> canvas
 	ImVec2 canvas_p0 = ImGui::GetCursorScreenPos();
 	ImVec2 canvas_sz = ImGui::GetContentRegionAvail();
@@ -2915,29 +2963,37 @@ static void DrawDungeonCanvas(EditorDungeon& dungeon, u32& selectedNodeId) {
 
 	if (ImGui::BeginDragDropTarget())
 	{
-		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dd_rooms", ImGuiDragDropFlags_AcceptBeforeDelivery))
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dd_asset", ImGuiDragDropFlags_AcceptBeforeDelivery))
 		{
-			s32 roomInd = *(const s32*)payload->Data;
-			const RoomTemplate* pTemplate = Assets::GetRoomTemplate(roomInd);
+			const u64 assetId = *(const u64*)payload->Data;
 
-			const glm::ivec2 roomTopLeft = hoveredCellPos;
-			const glm::ivec2 roomDim = { pTemplate->width, pTemplate->height };
+			const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(assetId);
+			const bool isValidRoomTemplate = pAssetInfo && pAssetInfo->flags.type == ASSET_TYPE_ROOM_TEMPLATE;
 
-			const bool posFree = DrawDungeonDragDropPreview(UUID_NULL, roomTopLeft, roomDim, gridToScreen, dungeon);
+			if (isValidRoomTemplate) {
+				RoomTemplateHandle handle = assetId;
+				RoomTemplateHeader* pRoomHeader = (RoomTemplateHeader*)AssetManager::GetAsset(handle);
 
-			if (posFree && payload->IsDelivery()) {
-				const u32 nodeId = Random::GenerateUUID32();
-				if (GetRoomCount(dungeon) < MAX_DUNGEON_ROOM_COUNT) {
-					dungeon.nodes.emplace(nodeId, DungeonNode{
-						.id = nodeId,
-						.type = DUNGEON_NODE_ROOM,
-						.roomData = {
-							.pTemplate = pTemplate,
-						},
-						.gridPos = roomTopLeft
-						});
+				const glm::ivec2 roomTopLeft = hoveredCellPos;
+				const glm::ivec2 roomDim = { pRoomHeader->width, pRoomHeader->height };
+
+				const bool posFree = DrawDungeonDragDropPreview(UUID_NULL, roomTopLeft, roomDim, gridToScreen, dungeon);
+
+				if (posFree && payload->IsDelivery()) {
+					const u32 nodeId = Random::GenerateUUID32();
+					if (GetRoomCount(dungeon) < MAX_DUNGEON_ROOM_COUNT) {
+						dungeon.nodes.emplace(nodeId, DungeonNode{
+							.id = nodeId,
+							.type = DUNGEON_NODE_ROOM,
+							.roomData = {
+								.templateId = assetId,
+							},
+							.gridPos = roomTopLeft
+							});
+					}
 				}
 			}
+
 		}
 		ImGui::EndDragDropTarget();
 	}
@@ -2967,14 +3023,14 @@ static void DrawDungeonCanvas(EditorDungeon& dungeon, u32& selectedNodeId) {
 	}
 
 	for (auto& [id, node] : dungeon.nodes) {
-		const bool selected = id == selectedNodeId;
+		const bool selected = id == pEditorData->selectedNodeId;
 		bool nodeHovered;
 		DrawDungeonNode(node, gridToScreen, selected, nodeHovered);
 
 		if (active && nodeHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 			draggedNode = id;
 			dragStartPos = node.gridPos;
-			selectedNodeId = id;
+			pEditorData->selectedNodeId = id;
 		}
 
 		if (active && nodeHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
@@ -3020,53 +3076,27 @@ static void DrawDungeonCanvas(EditorDungeon& dungeon, u32& selectedNodeId) {
 	drawList->PopClipRect();
 }
 
-static void DrawDungeonTools(EditorDungeon& dungeon, u32 selectedNodeId) {
-	//ImGui::SeparatorText(dungeon.name);
+static void DrawDungeonTools(EditedAsset& asset) {
+	DungeonEditorData* pEditorData = (DungeonEditorData*)asset.userData;
 
-	//ImGui::InputText("Name", dungeon.name, DUNGEON_MAX_NAME_LENGTH);
 	if (ImGui::BeginTabBar("Dungeon tools")) {
-		if (ImGui::BeginTabItem("Room list")) {
-				ImGui::BeginChild("Room list", ImVec2(0, 0), ImGuiChildFlags_Border);
-				{
-					static s32 selection = 0;
+		if (ImGui::BeginTabItem("Properties")) {
 
-					static constexpr u32 maxLabelNameLength = ROOM_MAX_NAME_LENGTH + 8;
-					char label[maxLabelNameLength];
-
-					for (u32 i = 0; i < MAX_ROOM_TEMPLATE_COUNT; i++) {
-						const RoomTemplate& room = *Assets::GetRoomTemplate(i);
-
-						ImGui::PushID(i);
-
-						snprintf(label, maxLabelNameLength, "%#04x: %s", i, room.name);
-
-						const bool selected = selection == i;
-						if (ImGui::Selectable(label, selected)) {
-							selection = i;
-						}
-
-						if (selected) {
-							ImGui::SetItemDefaultFocus();
-						}
-
-						if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
-						{
-							ImGui::SetDragDropPayload("dd_rooms", &i, sizeof(s32));
-							ImGui::Text("%s", room.name);
-
-							ImGui::EndDragDropSource();
-						}
-						ImGui::PopID();
-					}
-				}
-				ImGui::EndChild();
+			if (ImGui::InputText("Name", asset.name, DUNGEON_MAX_NAME_LENGTH)) {
+				asset.dirty = true;
+			}
 
 			ImGui::EndTabItem();
 		}
 
+		if (ImGui::BeginTabItem("Room list")) {
+			DrawAssetList(ASSET_TYPE_ROOM_TEMPLATE);
+			ImGui::EndTabItem();
+		}
+
 		if (ImGui::BeginTabItem("Node Info")) {
-			const auto it = dungeon.nodes.find(selectedNodeId);
-			if (it == dungeon.nodes.end()) {
+			const auto it = pEditorData->dungeon.nodes.find(pEditorData->selectedNodeId);
+			if (it == pEditorData->dungeon.nodes.end()) {
 				ImGui::Text("No node selected!");
 			}
 			else {
@@ -3077,7 +3107,7 @@ static void DrawDungeonTools(EditorDungeon& dungeon, u32 selectedNodeId) {
 				if (node.type == DUNGEON_NODE_ROOM) {
 					ImGui::Text("Node Type: ROOM");
 
-					ImGui::Text("Room: %s", node.roomData.pTemplate->name);
+					ImGui::Text("Room: %s", AssetManager::GetAssetName(node.roomData.templateId.id));
 				}
 				else {
 					ImGui::Text("Node Type: EXIT");
@@ -3085,10 +3115,14 @@ static void DrawDungeonTools(EditorDungeon& dungeon, u32 selectedNodeId) {
 					constexpr const char* exitDirNames[4] = { "Right", "Left", "Bottom", "Top" };
 
 					s32 dir = node.exitData.direction;
-					DrawTypeSelectionCombo("Exit direction", exitDirNames, 4, dir);
+					if (DrawTypeSelectionCombo("Exit direction", exitDirNames, 4, dir)) {
+						asset.dirty = true;
+					}
 					node.exitData.direction = dir;
 
-					ImGui::InputScalar("Target area", ImGuiDataType_U8, &node.exitData.keyArea);
+					if (ImGui::InputScalar("Target area", ImGuiDataType_U8, &node.exitData.keyArea)) {
+						asset.dirty = true;
+					}
 				}
 			}
 
@@ -3101,78 +3135,29 @@ static void DrawDungeonTools(EditorDungeon& dungeon, u32 selectedNodeId) {
 
 }
 
-static void DrawDungeonWindow() {
-	ImGui::Begin("Dungeon editor", &pContext->dungeonWindowOpen, ImGuiWindowFlags_MenuBar);
-
-	static u32 selectedDungeon = 0;
-	static EditorDungeon editedDungeon = ConvertFromDungeon(selectedDungeon);
-	static u32 selectedNodeId = UUID_NULL;
-
-	if (ImGui::BeginMenuBar())
-	{
-		if (ImGui::BeginMenu("File"))
-		{
-			if (ImGui::MenuItem("Save")) {
-				Dungeon* pEdited = Assets::GetDungeon(selectedDungeon);
-				ConvertToDungeon(editedDungeon, pEdited);
-				Assets::SaveDungeons("assets/dungeons.ass");
-			}
-			if (ImGui::MenuItem("Revert changes")) {
-				Assets::LoadDungeons("assets/dungeons.ass");
-				editedDungeon = ConvertFromDungeon(selectedDungeon);
-			}
-			ImGui::EndMenu();
-		}
-		ImGui::EndMenuBar();
-	}
-
-	ImGui::BeginChild("Dungeon list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-	{
-		static constexpr u32 maxLabelNameLength = DUNGEON_MAX_NAME_LENGTH + 8;
-		char label[maxLabelNameLength];
-
-		for (u32 i = 0; i < MAX_DUNGEON_COUNT; i++)
-		{
-			Dungeon* pDungeon = Assets::GetDungeon(i);
-			ImGui::PushID(i);
-
-			snprintf(label, maxLabelNameLength, "%#04x: %s", i, "Untitled");
-
-			const bool selected = selectedDungeon == i;
-
-			if (ImGui::Selectable(label, selected)) {
-				Dungeon* pEdited = Assets::GetDungeon(selectedDungeon);
-				ConvertToDungeon(editedDungeon, pEdited);
-				selectedDungeon = i;
-				editedDungeon = ConvertFromDungeon(selectedDungeon);
-			}
-
-			if (selected) {
-				ImGui::SetItemDefaultFocus();
-			}
-
-			ImGui::PopID();
-		}
-	}
-	ImGui::EndChild();
-
-	ImGui::SameLine();
+static void DrawDungeonEditor(EditedAsset& asset) {
+	ImGui::BeginChild("Dungeon editor");
 
 	const r32 toolWindowWidth = 350.0f;
 	ImGuiStyle& style = ImGui::GetStyle();
 	const r32 canvasViewWidth = ImGui::GetContentRegionAvail().x - style.WindowPadding.x - toolWindowWidth;
 
 	ImGui::BeginChild("Node graph", ImVec2(canvasViewWidth, 0));
-	DrawDungeonCanvas(editedDungeon, selectedNodeId);
+	DrawDungeonCanvas(asset);
 	ImGui::EndChild();
 
 	ImGui::SameLine();
 
 	ImGui::BeginChild("Dungeon tools", ImVec2(toolWindowWidth, 0));
-	DrawDungeonTools(editedDungeon, selectedNodeId);
+	DrawDungeonTools(asset);
 	ImGui::EndChild();
 
-	ImGui::End();
+	ImGui::EndChild();
+}
+
+static void DrawDungeonWindow() {
+	static AssetEditorState state{};
+	DrawAssetEditor("Dungeon editor", pContext->dungeonWindowOpen, ASSET_TYPE_DUNGEON, sizeof(DungeonNew), "New Dungeon", DrawDungeonEditor, state, nullptr, PopulateDungeonEditorData, ApplyDungeonEditorData, DeleteDungeonEditorData);
 }
 #pragma endregion
 
