@@ -247,7 +247,7 @@ static void PlayerDie(Actor* pPlayer) {
 
     // Transition to checkpoint
     const Checkpoint checkpoint = Game::GetCheckpoint();
-    Game::TriggerLevelTransition(checkpoint.dungeonIndex, checkpoint.gridOffset, SCREEN_EXIT_DIR_DEATH_WARP);
+    Game::TriggerLevelTransition(checkpoint.dungeonId, checkpoint.gridOffset, SCREEN_EXIT_DIR_DEATH_WARP);
 }
 
 static void SpawnFeathers(Actor* pPlayer, u32 count) {
@@ -259,9 +259,11 @@ static void SpawnFeathers(Actor* pPlayer, u32 count) {
 
         const glm::vec2 velocity = Random::GenerateDirection() * 0.0625f;
         Actor* pSpawned = Game::SpawnActor(featherPrototypeId, pPlayer->position + spawnOffset, velocity);
-        const ActorPrototypeNew* pSpawnedPrototype = Game::GetActorPrototype(pSpawned);
-        const AnimationNew* pSpawnedCurrentAnim = Game::GetActorCurrentAnim(pSpawned, pSpawnedPrototype);
-        pSpawned->drawState.frameIndex = Random::GenerateInt(0, pSpawnedCurrentAnim->frameCount - 1);
+        const ActorPrototype* pSpawnedPrototype = Game::GetActorPrototype(pSpawned);
+        const Animation* pSpawnedCurrentAnim = Game::GetActorCurrentAnim(pSpawned, pSpawnedPrototype);
+        if (pSpawnedCurrentAnim) {
+            pSpawned->drawState.frameIndex = Random::GenerateInt(0, pSpawnedCurrentAnim->frameCount - 1);
+        }
     }
 }
 
@@ -288,7 +290,7 @@ static void TriggerInteraction(Actor* pPlayer, Actor* pInteractable) {
         return;
     }
 
-    const ActorPrototypeNew* pInteractablePrototype = Game::GetActorPrototype(pInteractable);
+    const ActorPrototype* pInteractablePrototype = Game::GetActorPrototype(pInteractable);
     if (pInteractablePrototype->subtype == INTERACTABLE_TYPE_CHECKPOINT) {
         pInteractable->state.checkpointState.activated = true;
 
@@ -576,7 +578,7 @@ static void UpdateSidescrollerMode(Actor* pActor) {
     }
 }
 
-static void UpdatePlayerSidescroller(Actor* pActor, const ActorPrototypeNew* pPrototype) {
+static void UpdatePlayerSidescroller(Actor* pActor, const ActorPrototype* pPrototype) {
     // Reset slow fall
     pActor->state.playerState.flags.slowFall = false;
 
@@ -641,7 +643,7 @@ static glm::ivec2 GetOverworldInputDir() {
     return result;
 }
 
-static void UpdatePlayerOverworld(Actor* pPlayer, const ActorPrototypeNew* pPrototype) {
+static void UpdatePlayerOverworld(Actor* pPlayer, const ActorPrototype* pPrototype) {
     static constexpr u16 movementRate = 1;
     static constexpr u16 movementSteps = METATILE_DIM_PIXELS * movementRate;
     static constexpr r32 movementStepLength = 1.0f / movementSteps;
@@ -652,10 +654,10 @@ static void UpdatePlayerOverworld(Actor* pPlayer, const ActorPrototypeNew* pProt
         pPlayer->position += pPlayer->velocity;
 
         if (!Game::UpdateCounter(state.movementCounter)) {
-            const Overworld* pOverworld = Assets::GetOverworld();
-
+            const Overworld* pOverworld = Game::GetOverworld();
+            const OverworldKeyArea* pKeyAreas = Assets::GetOverworldKeyAreas(pOverworld);
             for (u32 i = 0; i < MAX_OVERWORLD_KEY_AREA_COUNT; i++) {
-                const OverworldKeyArea& area = pOverworld->keyAreas[i];
+                const OverworldKeyArea& area = pKeyAreas[i];
 
                 if (area.position != glm::i8vec2(pPlayer->position)) {
                     continue;
@@ -724,7 +726,7 @@ static bool DrawPlayerGun(const Actor* pPlayer) {
     return Game::Rendering::DrawMetasprite(SPRITE_LAYER_FG, weaponMetaspriteId, drawPos + weaponOffset, drawState.hFlip, drawState.vFlip, -1);
 }
 
-static bool DrawPlayerSidescroller(const Actor* pPlayer, const ActorPrototypeNew* pPrototype) {
+static bool DrawPlayerSidescroller(const Actor* pPlayer, const ActorPrototype* pPrototype) {
     if (pPlayer->state.playerState.flags.mode == PLAYER_MODE_NORMAL || 
         pPlayer->state.playerState.flags.mode == PLAYER_MODE_DAMAGED ||
         pPlayer->state.playerState.flags.mode == PLAYER_MODE_ENTERING) {
@@ -733,11 +735,11 @@ static bool DrawPlayerSidescroller(const Actor* pPlayer, const ActorPrototypeNew
     return Game::DrawActorDefault(pPlayer, pPrototype);
 }
 
-static bool DrawPlayerOverworld(const Actor* pPlayer, const ActorPrototypeNew* pPrototype) {
+static bool DrawPlayerOverworld(const Actor* pPlayer, const ActorPrototype* pPrototype) {
     return Game::DrawActorDefault(pPlayer, pPrototype);
 }
 
-static void InitPlayerSidescroller(Actor* pPlayer, const ActorPrototypeNew* pPrototype, const PersistedActorData* pPersistData) {
+static void InitPlayerSidescroller(Actor* pPlayer, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
     pPlayer->state.playerState.modeTransitionCounter = 0;
     pPlayer->state.playerState.staminaRecoveryCounter = 0;
 
@@ -749,7 +751,7 @@ static void InitPlayerSidescroller(Actor* pPlayer, const ActorPrototypeNew* pPro
     pPlayer->drawState.layer = SPRITE_LAYER_FG;
 }
 
-static void InitPlayerOverworld(Actor* pPlayer, const ActorPrototypeNew* pPrototype, const PersistedActorData* pPersistData) {
+static void InitPlayerOverworld(Actor* pPlayer, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
     pPlayer->state.playerOverworld.movementCounter = 0;
     pPlayer->state.playerOverworld.facingDir = { 0, 1 };
     pPlayer->position = glm::roundEven(pPlayer->position);

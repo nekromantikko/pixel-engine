@@ -34,19 +34,7 @@ struct Tileset {
 	TilesetTile tiles[TILESET_SIZE];
 };
 
-struct TileIndexRun {
-	u8 tile;
-	u8 length;
-};
-
 struct Tilemap {
-	u8 width;
-	u8 height;
-	u8 tilesetIndex;
-	u8* tiles;
-};
-
-struct TilemapHeader {
 	u32 width;
 	u32 height;
 	TilesetHandle tilesetId;
@@ -62,13 +50,9 @@ namespace Tiles {
 	const TilesetTile* GetTilesetTile(const Tilemap* pTilemap, const glm::ivec2& pos);
 	bool SetTilesetTile(Tilemap* pTilemap, s32 tileIndex, const s32& tilesetTileIndex);
 	bool SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& tilesetTileIndex);
+}
 
-	// Temp until we have an asset manager
-	void LoadTileset(const char* fname);
-	void SaveTileset(const char* fname);
-	Tileset* GetTileset();
-
-	// Compression
-	bool CompressTiles(const u8* tiles, u32 count, std::vector<TileIndexRun>& outCompressed);
-	bool DecompressTiles(const std::vector<TileIndexRun>& compressed, u8* outTiles);
+namespace Assets {
+	u8* GetTilemapData(const Tilemap* pHeader);
+	Tileset* GetTilemapTileset(const Tilemap* pHeader);
 }

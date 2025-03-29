@@ -78,8 +78,12 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
     const s32 yStart = currMetatile.y - BUFFER_DIM_METATILES;
     const s32 yEnd = VIEWPORT_HEIGHT_METATILES + currMetatile.y + BUFFER_DIM_METATILES;
 
-    const Tileset* pTileset = Tiles::GetTileset();
     const Tilemap* pTilemap = Game::GetCurrentTilemap();
+    const Tileset* pTileset = Assets::GetTilemapTileset(pTilemap);
+
+    if (!pTilemap || !pTileset) {
+        return;
+    }
 
     for (s32 x = xStart; x < xEnd; x++) {
         for (s32 y = yStart; y < yEnd; y++) {
@@ -184,8 +188,12 @@ void Game::Rendering::RefreshViewport() {
     const s32 yStart = viewportPos.y - BUFFER_DIM_METATILES;
     const s32 yEnd = VIEWPORT_HEIGHT_METATILES + viewportPos.y + BUFFER_DIM_METATILES;
 
-    const Tileset* pTileset = Tiles::GetTileset();
     const Tilemap* pTilemap = Game::GetCurrentTilemap();
+    const Tileset* pTileset = Assets::GetTilemapTileset(pTilemap);
+
+    if (!pTilemap || !pTileset) {
+        return;
+    }
 
     for (s32 x = xStart; x < xEnd; x++) {
         for (s32 y = yStart; y < yEnd; y++) {

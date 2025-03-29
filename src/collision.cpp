@@ -68,7 +68,7 @@ namespace Collision {
 		}
 	}
 
-	void SweepBoxVertical(const Tilemap *pTilemap, const AABB& hitbox, const glm::vec2& pos, r32 dy, HitResult& outHit) {
+	void SweepBoxVertical(const Tilemap* pTilemap, const AABB& hitbox, const glm::vec2& pos, r32 dy, HitResult& outHit) {
 		outHit.blockingHit = false;
 		outHit.distance = glm::abs(dy);
 		outHit.location = glm::vec2{ pos.x, pos.y + dy };

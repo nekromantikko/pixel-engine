@@ -44,7 +44,6 @@ set(SOURCES
 		src/collision.cpp
 		src/game.cpp
 		src/input.cpp
-		src/metasprite.cpp
 		src/rendering_util.cpp
 		src/rendering_vulkan.cpp
 		src/system.cpp
@@ -58,7 +57,6 @@ set(SOURCES
 		src/game_input.cpp
 		src/game_state.cpp
 		src/game_ui.cpp
-		src/actor_prototypes.cpp
 		src/player.cpp
 		src/enemy.cpp
 		src/bullet.cpp
@@ -67,7 +65,6 @@ set(SOURCES
 		src/interactable.cpp
 		src/actor_types.cpp
 		src/spawner.cpp
-		src/dungeon.cpp
 		src/debug.cpp
 		src/room.cpp
 		src/overworld.cpp

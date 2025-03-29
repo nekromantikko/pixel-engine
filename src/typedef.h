@@ -39,12 +39,12 @@ typedef real32 r32;
 typedef real64 r64;
 
 struct Actor;
-struct ActorPrototypeNew;
+struct ActorPrototype;
 struct PersistedActorData;
 
-typedef void (*ActorInitFn)(Actor*, const ActorPrototypeNew*, const PersistedActorData*);
-typedef void (*ActorUpdateFn)(Actor*, const ActorPrototypeNew*);
-typedef bool (*ActorDrawFn)(const Actor*, const ActorPrototypeNew*);
+typedef void (*ActorInitFn)(Actor*, const ActorPrototype*, const PersistedActorData*);
+typedef void (*ActorUpdateFn)(Actor*, const ActorPrototype*);
+typedef bool (*ActorDrawFn)(const Actor*, const ActorPrototype*);
 
 typedef u16 TActorType;
 typedef u16 TActorSubtype;

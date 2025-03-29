@@ -35,7 +35,7 @@ s32 Tiles::GetTilesetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
 		return -1;
 	}
 
-    return pTilemap->tiles[i];
+	return Assets::GetTilemapData(pTilemap)[i];
 }
 
 const TilesetTile* Tiles::GetTilesetTile(const Tilemap* pTilemap, const s32& tilesetTileIndex) {
@@ -43,7 +43,7 @@ const TilesetTile* Tiles::GetTilesetTile(const Tilemap* pTilemap, const s32& til
         return nullptr;
     }
 
-	const Tileset* pTileset = GetTileset();
+	const Tileset* pTileset = Assets::GetTilemapTileset(pTilemap);
 	if (!pTileset) {
 		return nullptr;
 	}
@@ -65,7 +65,7 @@ bool Tiles::SetTilesetTile(Tilemap* pTilemap, s32 tileIndex, const s32& tilesetT
         return false;
     }
 
-    pTilemap->tiles[tileIndex] = tilesetTileIndex;
+	Assets::GetTilemapData(pTilemap)[tileIndex] = tilesetTileIndex;
     return true;
 }
 
@@ -83,86 +83,14 @@ bool Tiles::SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& 
 }
 #pragma endregion
 
-static constexpr u32 tilesetMaxNameLength = 256;
-static char name[tilesetMaxNameLength];
-
-static Tileset tileset;
-
-void Tiles::LoadTileset(const char* fname) {
-	FILE* pFile;
-	fopen_s(&pFile, fname, "rb");
-
-	if (pFile == NULL) {
-		DEBUG_ERROR("Failed to load tile collision file\n");
-	}
-
-	const char signature[4]{};
-	fread((void*)signature, sizeof(u8), 4, pFile);
-	fread((void*)name, sizeof(char), tilesetMaxNameLength, pFile);
-	fread((void*)&tileset.tiles, sizeof(TilesetTile), TILESET_SIZE, pFile);
-
-	fclose(pFile);
-
-	//u64 id = AssetManager::CreateAsset(ASSET_TYPE_TILESET, sizeof(Tileset), "Debug tileset");
-	//void* assetData = AssetManager::GetAsset(id);
-	//memcpy(assetData, &tileset, sizeof(Tileset));
+u8* Assets::GetTilemapData(const Tilemap* pHeader) {
+	return (u8*)pHeader + pHeader->tilesOffset;
 }
 
-void Tiles::SaveTileset(const char* fname) {
-	FILE* pFile;
-	fopen_s(&pFile, fname, "wb");
-
-	if (pFile == NULL) {
-		DEBUG_ERROR("Failed to write tileset file\n");
+Tileset* Assets::GetTilemapTileset(const Tilemap* pHeader) {
+	if (!pHeader) {
+		return nullptr;
 	}
 
-	const char signature[4] = "TIL";
-	fwrite(signature, sizeof(u8), 4, pFile);
-	fwrite(name, sizeof(char), tilesetMaxNameLength, pFile);
-	fwrite(&tileset.tiles, sizeof(TilesetTile), TILESET_SIZE, pFile);
-
-	fclose(pFile);
+	return (Tileset*)AssetManager::GetAsset(pHeader->tilesetId);
 }
-
-Tileset* Tiles::GetTileset() {
-	return &tileset;
-}
-
-#pragma region Compression
-bool Tiles::CompressTiles(const u8* tiles, u32 count, std::vector<TileIndexRun>& outCompressed) {
-	if (tiles == nullptr) {
-		return false;
-	}
-
-	outCompressed.clear();
-	
-	for (u32 i = 0; i < count;) {
-		u8 tile = tiles[i];
-		u16 length = 1;
-
-		while (i + length < count && tiles[i + length] == tile && length < UCHAR_MAX) {
-			length++;
-		}
-
-		outCompressed.emplace_back(tile, length);
-		i += length;
-	}
-
-	return true;
-}
-
-bool Tiles::DecompressTiles(const std::vector<TileIndexRun>& compressed, u8* outTiles) {
-	if (outTiles == nullptr) {
-		return false;
-	}
-
-	u32 index = 0;
-	for (auto& tileRun : compressed) {
-		for (u32 i = 0; i < tileRun.length; i++) {
-			outTiles[index++] = tileRun.tile;
-		}
-	}
-
-	return true;
-}
-#pragma endregion

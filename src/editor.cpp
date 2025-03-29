@@ -423,7 +423,11 @@ static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, c
 	constexpr r32 invBgColorIndex = 1.0f / (PALETTE_COUNT * PALETTE_COLOR_COUNT);
 	drawList->AddImage(pContext->paletteTexture, pos, ImVec2(pos.x + metatileSize.x * scale, pos.y + metatileSize.y * scale), ImVec2(0, 0), ImVec2(invBgColorIndex, 1.0f));
 
-	const Tileset* pTileset = Tiles::GetTileset();
+	const Tileset* pTileset = Assets::GetTilemapTileset(pTilemap);
+	if (!pTileset) {
+		return;
+	}
+
 	const u32 tileCount = metatileSize.x * metatileSize.y * METATILE_TILE_COUNT;
 
 	drawList->PushTextureID(pContext->chrTexture);
@@ -440,7 +444,7 @@ static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, c
 	for (u32 y = 0; y < metatileSize.y; y++) {
 		for (u32 x = 0; x < metatileSize.x; x++) {
 			const u32 i = (x + xOffsetInt) + (y + yOffsetInt) * pTilemap->width;
-			const u8 tilesetTileIndex = pTilemap->tiles[i];
+			const u8 tilesetTileIndex = Assets::GetTilemapData(pTilemap)[i];
 			const TilesetTile& tilesetTile = pTileset->tiles[tilesetTileIndex];
 			const Metatile& metatile = tilesetTile.metatile;
 
@@ -511,20 +515,20 @@ static void DrawMetasprite(const Metasprite* pMetasprite, const ImVec2& origin, 
 	}
 }
 
-static AABB GetActorBoundingBox(const RoomActorNew* pActor) {
+static AABB GetActorBoundingBox(const RoomActor* pActor) {
 	AABB result(-0.5f, 0.5f, -0.5f, 0.5f);
 	if (pActor == nullptr) {
 		return result;
 	}
 	
-	const ActorPrototypeNew* pPrototype = (ActorPrototypeNew*)AssetManager::GetAsset(pActor->prototypeId);
+	const ActorPrototype* pPrototype = (ActorPrototype*)AssetManager::GetAsset(pActor->prototypeId);
 	if (!pPrototype) {
 		return result;
 	}
 
 	// TODO: What if animation changes bounds?
 	const AnimationHandle& animHandle = pPrototype->animations[0];
-	const AnimationNew* pAnimation = (AnimationNew*)AssetManager::GetAsset(animHandle);
+	const Animation* pAnimation = (Animation*)AssetManager::GetAsset(animHandle);
 	if (!pAnimation) {
 		return result;
 	}
@@ -552,9 +556,9 @@ static AABB GetActorBoundingBox(const RoomActorNew* pActor) {
 	return result;
 }
 
-static void DrawActor(const ActorPrototypeNew* pPrototype, const ImVec2& origin, r32 renderScale, s32 animIndex = 0, s32 frameIndex = 0, ImU32 color = IM_COL32(255, 255, 255, 255)) {
+static void DrawActor(const ActorPrototype* pPrototype, const ImVec2& origin, r32 renderScale, s32 animIndex = 0, s32 frameIndex = 0, ImU32 color = IM_COL32(255, 255, 255, 255)) {
 	const AnimationHandle& animHandle = pPrototype->animations[animIndex];
-	const AnimationNew* pAnimation = (AnimationNew*)AssetManager::GetAsset(animHandle);
+	const Animation* pAnimation = (Animation*)AssetManager::GetAsset(animHandle);
 	if (!pAnimation) {
 		return;
 	}
@@ -572,26 +576,6 @@ static void DrawHitbox(const AABB* pHitbox, const ImVec2 origin, const r32 rende
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	drawList->AddRectFilled(pMin, pMax, color);
-}
-
-static void swap(Metasprite& a, Metasprite& b) {
-	char* nameA = Metasprites::GetName(&a);
-	char* nameB = Metasprites::GetName(&b);
-
-	u32 tempSpriteCount = a.spriteCount;
-	char tempName[METASPRITE_MAX_NAME_LENGTH];
-	Sprite tempSprites[METASPRITE_MAX_SPRITE_COUNT];
-
-	memcpy(tempName, nameA, METASPRITE_MAX_NAME_LENGTH);
-	memcpy(tempSprites, a.spritesRelativePos, METASPRITE_MAX_SPRITE_COUNT * sizeof(Sprite));
-
-	a.spriteCount = b.spriteCount;
-	memcpy(nameA, nameB, METASPRITE_MAX_NAME_LENGTH);
-	memcpy(a.spritesRelativePos, a.spritesRelativePos, METASPRITE_MAX_SPRITE_COUNT * sizeof(Sprite));
-
-	b.spriteCount = tempSpriteCount;
-	memcpy(nameB, tempName, METASPRITE_MAX_NAME_LENGTH);
-	memcpy(b.spritesRelativePos, tempSprites, METASPRITE_MAX_SPRITE_COUNT * sizeof(Sprite));
 }
 
 // Callback for displaying waveform in audio window
@@ -1303,13 +1287,15 @@ static bool DrawTilemapEditor(Tilemap* pTilemap, ImVec2 topLeft, r32 renderScale
 					const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
 					const u8 metatileIndex = clipboard.clipboard[clipboardIndex];
 
-					const Tileset* pTileset = Tiles::GetTileset();
-					const Metatile& metatile = pTileset->tiles[metatileIndex].metatile;
-					DrawMetatile(metatile, metatileInPixelCoords, tileDrawSize, IM_COL32(255, 255, 255, 127));
+					const Tileset* pTileset = Assets::GetTilemapTileset(pTilemap);
+					if (pTileset) {
+						const Metatile& metatile = pTileset->tiles[metatileIndex].metatile;
+						DrawMetatile(metatile, metatileInPixelCoords, tileDrawSize, IM_COL32(255, 255, 255, 127));
 
-					// Paint metatiles
-					if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
-						Tiles::SetTilesetTile(pTilemap, metatileWorldPos, metatileIndex);
+						// Paint metatiles
+						if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
+							Tiles::SetTilesetTile(pTilemap, metatileWorldPos, metatileIndex);
+						}
 					}
 				}
 			}
@@ -1369,7 +1355,7 @@ static void DrawActorDebugInfo(const ImVec2& pos, const ImVec2& size) {
 		const ImVec2 drawPos = ImVec2(pos.x + pixelOffset.x * renderScale, pos.y + pixelOffset.y * renderScale);
 
 		if (pContext->drawActorHitboxes) {
-			const ActorPrototypeNew* pPrototype = Game::GetActorPrototype(pActor);
+			const ActorPrototype* pPrototype = Game::GetActorPrototype(pActor);
 			if (pPrototype) {
 				DrawHitbox(&pPrototype->hitbox, drawPos, renderScale);
 			}
@@ -1863,8 +1849,8 @@ static void DrawTilesetWindow() {
 
 #pragma region Room editor
 struct RoomEditorData {
-	Pool<RoomActorNew, 1024> actors;
-	PoolHandle<RoomActorNew> selectedActorHandle = PoolHandle<RoomActorNew>::Null();
+	Pool<RoomActor, 1024> actors;
+	PoolHandle<RoomActor> selectedActorHandle = PoolHandle<RoomActor>::Null();
 
 	u32 editMode = ROOM_EDIT_MODE_NONE;
 	TilemapClipboard clipboard{};
@@ -1881,7 +1867,7 @@ static void PopulateRoomEditorData(void* assetData, void** pUserData) {
 	RoomEditorData* pEditorData = (RoomEditorData*)*pUserData;
 
 	const RoomTemplateHeader* pHeader = (RoomTemplateHeader*)assetData;
-	const RoomActorNew* pActors = Assets::GetRoomTemplateActors(pHeader);
+	const RoomActor* pActors = Assets::GetRoomTemplateActors(pHeader);
 	for (u32 i = 0; i < pHeader->actorCount; i++) {
 		pEditorData->actors.Add(pActors[i]);
 	}
@@ -1890,7 +1876,7 @@ static void PopulateRoomEditorData(void* assetData, void** pUserData) {
 static void ApplyRoomEditorData(void* assetData, const void* userData) {
 	const RoomEditorData* pEditorData = (RoomEditorData*)userData;
 	RoomTemplateHeader* pHeader = (RoomTemplateHeader*)assetData;
-	RoomActorNew* pActors = Assets::GetRoomTemplateActors(pHeader);
+	RoomActor* pActors = Assets::GetRoomTemplateActors(pHeader);
 
 	pHeader->actorCount = pEditorData->actors.Count();
 	for (u32 i = 0; i < pHeader->actorCount; i++) {
@@ -1937,12 +1923,12 @@ static void DrawRoomOverlay(const glm::vec2& viewportPos, const ImVec2 topLeft, 
 	}
 }
 
-static PoolHandle<RoomActorNew> GetHoveredActorHandle(const RoomEditorData* pEditorData, const ImVec2& mousePosInWorldCoords) {
-	auto result = PoolHandle<RoomActorNew>::Null();
+static PoolHandle<RoomActor> GetHoveredActorHandle(const RoomEditorData* pEditorData, const ImVec2& mousePosInWorldCoords) {
+	auto result = PoolHandle<RoomActor>::Null();
 	// TODO: Some quadtree action needed desperately
 	for (u32 i = 0; i < pEditorData->actors.Count(); i++) {
-		PoolHandle<RoomActorNew> handle = pEditorData->actors.GetHandle(i);
-		const RoomActorNew* pActor = pEditorData->actors.Get(handle);
+		PoolHandle<RoomActor> handle = pEditorData->actors.GetHandle(i);
+		const RoomActor* pActor = pEditorData->actors.Get(handle);
 
 		const AABB bounds = GetActorBoundingBox(pActor);
 		if (Collision::PointInsideBox({ mousePosInWorldCoords.x, mousePosInWorldCoords.y }, bounds, pActor->position)) {
@@ -1966,14 +1952,7 @@ static void DrawRoomView(EditedAsset& asset) {
 	ImVec2 btmRight = ImVec2(topLeft.x + contentWidth, topLeft.y + contentHeight);
 	const r32 tileDrawSize = METATILE_DIM_PIXELS * renderScale;
 	
-	// HACK!
-	Tilemap temp{
-		.width = u8(pHeader->tilemapHeader.width),
-		.height = u8(pHeader->tilemapHeader.height),
-		.tilesetIndex = 0,
-		.tiles = (u8*)&pHeader->tilemapHeader + pHeader->tilemapHeader.tilesOffset
-	};
-	const bool scrolling = DrawTilemapEditor(&temp, topLeft, renderScale, pEditorData->viewportPos, pEditorData->clipboard, pEditorData->editMode == ROOM_EDIT_MODE_TILES);
+	const bool scrolling = DrawTilemapEditor(&pHeader->tilemapHeader, topLeft, renderScale, pEditorData->viewportPos, pEditorData->clipboard, pEditorData->editMode == ROOM_EDIT_MODE_TILES);
 
 	// Clamp scrolling to room size
 	const glm::vec2 scrollMax = {
@@ -2000,8 +1979,8 @@ static void DrawRoomView(EditedAsset& asset) {
 	const glm::vec2 viewportPixelPos = pEditorData->viewportPos * r32(METATILE_DIM_PIXELS);
 	for (u32 i = 0; i < pEditorData->actors.Count(); i++)
 	{
-		PoolHandle<RoomActorNew> handle = pEditorData->actors.GetHandle(i);
-		const RoomActorNew* pActor = pEditorData->actors.Get(handle);
+		PoolHandle<RoomActor> handle = pEditorData->actors.GetHandle(i);
+		const RoomActor* pActor = pEditorData->actors.Get(handle);
 
 		const glm::vec2 actorPixelPos = pActor->position * (r32)METATILE_DIM_PIXELS;
 		const glm::vec2 pixelOffset = actorPixelPos - viewportPixelPos;
@@ -2009,7 +1988,7 @@ static void DrawRoomView(EditedAsset& asset) {
 
 		const u8 opacity = pEditorData->editMode == ROOM_EDIT_MODE_ACTORS ? 255 : 80;
 
-		const ActorPrototypeNew* pPrototype = (ActorPrototypeNew*)AssetManager::GetAsset(pActor->prototypeId);
+		const ActorPrototype* pPrototype = (ActorPrototype*)AssetManager::GetAsset(pActor->prototypeId);
 		if (!pPrototype) {
 			// Draw a placeholder thingy
 			drawList->AddText(drawPos, IM_COL32(255, 0, 0, opacity), "ERROR");
@@ -2024,9 +2003,9 @@ static void DrawRoomView(EditedAsset& asset) {
 	const ImVec2 mousePosInWorldCoords = ImVec2(mousePosInViewportCoords.x + pEditorData->viewportPos.x, mousePosInViewportCoords.y + pEditorData->viewportPos.y);
 
 	if (pEditorData->editMode == ROOM_EDIT_MODE_ACTORS) {
-		RoomActorNew* pActor = pEditorData->actors.Get(pEditorData->selectedActorHandle);
+		RoomActor* pActor = pEditorData->actors.Get(pEditorData->selectedActorHandle);
 		const AABB actorBounds = GetActorBoundingBox(pActor);
-		PoolHandle<RoomActorNew> hoveredActorHandle = GetHoveredActorHandle(pEditorData, mousePosInWorldCoords);
+		PoolHandle<RoomActor> hoveredActorHandle = GetHoveredActorHandle(pEditorData, mousePosInWorldCoords);
 
 		// Selection
 		if (!scrolling) {
@@ -2046,7 +2025,7 @@ static void DrawRoomView(EditedAsset& asset) {
 		}
 
 		if (ImGui::BeginPopup("ActorContextMenu")) {
-			if (pEditorData->selectedActorHandle != PoolHandle<RoomActorNew>::Null()) {
+			if (pEditorData->selectedActorHandle != PoolHandle<RoomActor>::Null()) {
 				if (ImGui::MenuItem("Remove actor")) {
 					pEditorData->actors.Remove(pEditorData->selectedActorHandle);
 
@@ -2056,8 +2035,8 @@ static void DrawRoomView(EditedAsset& asset) {
 				}
 			}
 			else if (ImGui::MenuItem("Add actor")) {
-				PoolHandle<RoomActorNew> handle = pEditorData->actors.Add();
-				RoomActorNew* pNewActor = pEditorData->actors.Get(handle);
+				PoolHandle<RoomActor> handle = pEditorData->actors.Add();
+				RoomActor* pNewActor = pEditorData->actors.Get(handle);
 				pNewActor->prototypeId = UUID_NULL;
 				pNewActor->id = Random::GenerateUUID32();
 				pNewActor->position = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
@@ -2192,7 +2171,7 @@ static void DrawRoomTools(EditedAsset& asset) {
 		if (ImGui::BeginTabItem("Actors")) {
 			pEditorData->editMode = ROOM_EDIT_MODE_ACTORS;
 
-			RoomActorNew* pActor = pEditorData->actors.Get(pEditorData->selectedActorHandle);
+			RoomActor* pActor = pEditorData->actors.Get(pEditorData->selectedActorHandle);
 			if (pActor == nullptr) {
 				ImGui::Text("No actor selected");
 			}
@@ -2248,7 +2227,7 @@ static void DrawRoomWindow() {
 #pragma endregion
 
 #pragma region Actor prototypes
-static ImVec2 DrawActorPreview(const ActorPrototypeNew* pPrototype, s32 animIndex, s32 frameIndex, r32 size) {
+static ImVec2 DrawActorPreview(const ActorPrototype* pPrototype, s32 animIndex, s32 frameIndex, r32 size) {
 	constexpr s32 gridSizeTiles = 8;
 
 	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
@@ -2295,7 +2274,7 @@ static void DrawActorEditor(EditedAsset& asset) {
 		static ImVector<s32> selectedAnims;
 		static s32 currentAnim = 0;
 
-		ActorPrototypeNew* pPrototype = (ActorPrototypeNew*)asset.data;
+		ActorPrototype* pPrototype = (ActorPrototype*)asset.data;
 
 		ImGui::SeparatorText("Properties");
 
@@ -2655,7 +2634,7 @@ struct DungeonEditorData {
 	u32 selectedNodeId = UUID_NULL;
 };
 
-static EditorDungeon ConvertFromDungeon(const DungeonNew* pDungeon) {
+static EditorDungeon ConvertFromDungeon(const Dungeon* pDungeon) {
 	EditorDungeon outDungeon{};
 
 	for (u32 i = 0; i < DUNGEON_GRID_SIZE; i++) {
@@ -2663,7 +2642,7 @@ static EditorDungeon ConvertFromDungeon(const DungeonNew* pDungeon) {
 		const glm::vec2 pos(i % DUNGEON_GRID_DIM, i / DUNGEON_GRID_DIM);
 
 		if (cell.roomIndex >= 0 && cell.screenIndex == 0) {
-			const RoomInstanceNew& room = pDungeon->rooms[cell.roomIndex];
+			const RoomInstance& room = pDungeon->rooms[cell.roomIndex];
 
 			outDungeon.nodes.emplace(room.id, DungeonNode {
 				.id = room.id,
@@ -2693,12 +2672,12 @@ static EditorDungeon ConvertFromDungeon(const DungeonNew* pDungeon) {
 	return outDungeon;
 }
 
-static void ConvertToDungeon(const EditorDungeon& dungeon, DungeonNew* pOutDungeon) {
+static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon) {
 
 	s8 roomIndex = 0;
 	for (auto& [id, node] : dungeon.nodes) {
 		if (node.type == DUNGEON_NODE_ROOM) {
-			pOutDungeon->rooms[roomIndex] = RoomInstanceNew{
+			pOutDungeon->rooms[roomIndex] = RoomInstance{
 				.id = node.id,
 				.templateId = node.roomData.templateId
 			};
@@ -2742,13 +2721,13 @@ static void PopulateDungeonEditorData(void* assetData, void** pUserData) {
 
 	*pUserData = new DungeonEditorData();
 	DungeonEditorData* pEditorData = (DungeonEditorData*)*pUserData;
-	DungeonNew* pDungeon = (DungeonNew*)assetData;
+	Dungeon* pDungeon = (Dungeon*)assetData;
 	pEditorData->dungeon = ConvertFromDungeon(pDungeon);
 }
 
 static void ApplyDungeonEditorData(void* assetData, const void* userData) {
 	const DungeonEditorData* pEditorData = (DungeonEditorData*)userData;
-	DungeonNew* pDungeon = (DungeonNew*)assetData;
+	Dungeon* pDungeon = (Dungeon*)assetData;
 
 	ConvertToDungeon(pEditorData->dungeon, pDungeon);
 }
@@ -2808,15 +2787,7 @@ static void DrawDungeonNode(const DungeonNode& node, const glm::mat3& gridToScre
 	if (node.type == DUNGEON_NODE_ROOM) {
 		RoomTemplateHeader* pRoomHeader = (RoomTemplateHeader*)AssetManager::GetAsset(node.roomData.templateId);
 		if (pRoomHeader) {
-			// HACK!
-			Tilemap temp{
-				.width = u8(pRoomHeader->tilemapHeader.width),
-				.height = u8(pRoomHeader->tilemapHeader.height),
-				.tilesetIndex = 0,
-				.tiles = (u8*)&pRoomHeader->tilemapHeader + pRoomHeader->tilemapHeader.tilesOffset
-			};
-
-			DrawTilemap(&temp, ImVec2(0,0), ImVec2(nodeSize.x * VIEWPORT_WIDTH_METATILES, nodeSize.y * VIEWPORT_HEIGHT_METATILES), nodeDrawMin, scale);
+			DrawTilemap(&pRoomHeader->tilemapHeader, ImVec2(0,0), ImVec2(nodeSize.x * VIEWPORT_WIDTH_METATILES, nodeSize.y * VIEWPORT_HEIGHT_METATILES), nodeDrawMin, scale);
 			drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0, 0, 0, 0x80));
 			drawList->AddText(ImVec2(nodeDrawMin.x + 10, nodeDrawMin.y + 10), IM_COL32(255, 255, 255, 255), AssetManager::GetAssetName(node.roomData.templateId.id));
 		}
@@ -3082,7 +3053,7 @@ static void DrawDungeonTools(EditedAsset& asset) {
 	if (ImGui::BeginTabBar("Dungeon tools")) {
 		if (ImGui::BeginTabItem("Properties")) {
 
-			if (ImGui::InputText("Name", asset.name, DUNGEON_MAX_NAME_LENGTH)) {
+			if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
 				asset.dirty = true;
 			}
 
@@ -3157,7 +3128,7 @@ static void DrawDungeonEditor(EditedAsset& asset) {
 
 static void DrawDungeonWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Dungeon editor", pContext->dungeonWindowOpen, ASSET_TYPE_DUNGEON, sizeof(DungeonNew), "New Dungeon", DrawDungeonEditor, state, nullptr, PopulateDungeonEditorData, ApplyDungeonEditorData, DeleteDungeonEditorData);
+	DrawAssetEditor("Dungeon editor", pContext->dungeonWindowOpen, ASSET_TYPE_DUNGEON, sizeof(Dungeon), "New Dungeon", DrawDungeonEditor, state, nullptr, PopulateDungeonEditorData, ApplyDungeonEditorData, DeleteDungeonEditorData);
 }
 #pragma endregion
 
@@ -3183,7 +3154,7 @@ static void DeleteOverworldEditorData(void* userData) {
 static void DrawOverworldEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Overworld editor");
 
-	OverworldHeader2* pHeader = (OverworldHeader2*)asset.data;
+	Overworld* pHeader = (Overworld*)asset.data;
 	OverworldEditorData* pEditorData = (OverworldEditorData*)asset.userData;
 
 	const bool showToolsWindow = true;
@@ -3200,21 +3171,14 @@ static void DrawOverworldEditor(EditedAsset& asset) {
 	const ImVec2 btmRight(topLeft.x + contentWidth, topLeft.y + contentHeight);
 	const r32 tileDrawSize = METATILE_DIM_PIXELS * renderScale;
 
-	// HACK!
-	Tilemap temp{
-		.width = u8(pHeader->tilemapHeader.width),
-		.height = u8(pHeader->tilemapHeader.height),
-		.tilesetIndex = 0,
-		.tiles = (u8*)&pHeader->tilemapHeader + pHeader->tilemapHeader.tilesOffset
-	};
-	DrawTilemapEditor(&temp, topLeft, renderScale, pEditorData->viewportPos, pEditorData->clipboard, pEditorData->editMode == OW_EDIT_MODE_TILES);
+	DrawTilemapEditor(&pHeader->tilemapHeader, topLeft, renderScale, pEditorData->viewportPos, pEditorData->clipboard, pEditorData->editMode == OW_EDIT_MODE_TILES);
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	drawList->PushClipRect(topLeft, btmRight, true);
 
-	OverworldKeyAreaNew* pKeyAreas = Assets::GetOverworldKeyAreas(pHeader);
+	OverworldKeyArea* pKeyAreas = Assets::GetOverworldKeyAreas(pHeader);
 	for (u32 i = 0; i < MAX_OVERWORLD_KEY_AREA_COUNT; i++) {
-		OverworldKeyAreaNew& area = pKeyAreas[i];
+		OverworldKeyArea& area = pKeyAreas[i];
 
 		char label[8];
 		snprintf(label, 8, "%#02x", i);
@@ -3266,7 +3230,7 @@ static void DrawOverworldEditor(EditedAsset& asset) {
 
 				ImGui::SeparatorText("Area properties");
 
-				OverworldKeyAreaNew& area = pKeyAreas[selectedArea];
+				OverworldKeyArea& area = pKeyAreas[selectedArea];
 
 				ImGui::InputScalarN("Position", ImGuiDataType_S8, &area.position, 2);
 
@@ -3433,7 +3397,7 @@ static void DrawAssetBrowser() {
 #pragma endregion
 
 #pragma region Animation
-static void DrawAnimationPreview(const AnimationNew* pAnimation, s32 frameIndex, r32 size) {
+static void DrawAnimationPreview(const Animation* pAnimation, s32 frameIndex, r32 size) {
 	constexpr s32 gridSizeTiles = 8;
 
 	const AnimationFrame& frame = pAnimation->frames[frameIndex];
@@ -3458,7 +3422,7 @@ static void DrawAnimationPreview(const AnimationNew* pAnimation, s32 frameIndex,
 static void DrawAnimationEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Animation editor");
 
-	AnimationNew* pAnimation = (AnimationNew*)asset.data;
+	Animation* pAnimation = (Animation*)asset.data;
 
 	ImGui::SeparatorText("Properties");
 	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
@@ -3625,7 +3589,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 
 static void DrawAnimationWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Animation editor", pContext->tilesetWindowOpen, ASSET_TYPE_ANIMATION, sizeof(AnimationNew), "New Animation", DrawAnimationEditor, state);
+	DrawAssetEditor("Animation editor", pContext->tilesetWindowOpen, ASSET_TYPE_ANIMATION, sizeof(Animation), "New Animation", DrawAnimationEditor, state);
 }
 #pragma endregion
 
@@ -3662,7 +3626,7 @@ static void DrawMainMenu() {
 			if (ImGui::MenuItem("Overworld editor")) {
 				pContext->overworldWindowOpen = true;
 			}
-			if (ImGui::MenuItem("Actor prototypes")) {
+			if (ImGui::MenuItem("Actor editor")) {
 				pContext->actorWindowOpen = true;
 			}
 			ImGui::Separator();

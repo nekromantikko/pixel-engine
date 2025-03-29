@@ -71,12 +71,6 @@ namespace Game {
         Rendering::Init();
 
         AssetManager::LoadArchive("assets.npak");
-        Tiles::LoadTileset("assets/tileset.ass");
-        Metasprites::Load("assets/metasprites.ass");
-        Assets::LoadRoomTemplates("assets/rooms.ass");
-        Assets::LoadActorPrototypes("assets/actors.ass");
-        Assets::LoadDungeons("assets/dungeons.ass");
-        Assets::LoadOverworld("assets/overworld.ass");
 
         // TEMP SOUND STUFF
         jumpSfx = Audio::LoadSound("assets/jump.nsf");
@@ -91,7 +85,7 @@ namespace Game {
         InitGameState(GAME_STATE_DUNGEON);
 
         // TODO: Level should load palettes and tileset?
-        LoadRoom(1, { 14, 14 });
+        LoadRoom(4648186456448694858, { 14, 14 });
     }
 
     void Free() {

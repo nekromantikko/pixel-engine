@@ -8,7 +8,7 @@ struct AnimationFrame {
 	MetaspriteHandle metaspriteId;
 };
 
-struct AnimationNew {
+struct Animation {
 	u8 frameLength;
 	s16 loopPoint;
 	u16 frameCount;

@@ -5,13 +5,13 @@
 #include "game_state.h"
 #include "random.h"
 
-static void BulletDie(Actor* pBullet, const ActorPrototypeNew* pPrototype, const glm::vec2& effectPos) {
+static void BulletDie(Actor* pBullet, const ActorPrototype* pPrototype, const glm::vec2& effectPos) {
     pBullet->flags.pendingRemoval = true;
     Game::SpawnActor(pPrototype->data.bulletData.deathEffect, effectPos);
 }
 
-static void HandleBulletEnemyCollision(Actor* pBullet, const ActorPrototypeNew* pPrototype, Actor* pEnemy) {
-    const ActorPrototypeNew* pEnemyPrototype = Game::GetActorPrototype(pEnemy);
+static void HandleBulletEnemyCollision(Actor* pBullet, const ActorPrototype* pPrototype, Actor* pEnemy) {
+    const ActorPrototype* pEnemyPrototype = Game::GetActorPrototype(pEnemy);
 
     if (pEnemy == nullptr || pEnemyPrototype->subtype == ENEMY_TYPE_FIREBALL) {
         return;
@@ -30,7 +30,7 @@ static void HandleBulletEnemyCollision(Actor* pBullet, const ActorPrototypeNew* 
     pEnemy->state.enemyState.health = newHealth;
 }
 
-static void UpdateDefaultBullet(Actor* pActor, const ActorPrototypeNew* pPrototype) {
+static void UpdateDefaultBullet(Actor* pActor, const ActorPrototype* pPrototype) {
     if (!Game::UpdateCounter(pActor->state.bulletState.lifetimeCounter)) {
         BulletDie(pActor, pPrototype, pActor->position);
         return;
@@ -60,7 +60,7 @@ static void BulletRicochet(glm::vec2& velocity, const glm::vec2& normal) {
     //Audio::PlaySFX(&ricochetSfx, CHAN_ID_PULSE0);
 }
 
-static void UpdateGrenade(Actor* pActor, const ActorPrototypeNew* pPrototype) {
+static void UpdateGrenade(Actor* pActor, const ActorPrototype* pPrototype) {
     if (!Game::UpdateCounter(pActor->state.bulletState.lifetimeCounter)) {
         BulletDie(pActor, pPrototype, pActor->position);
         return;
@@ -86,7 +86,7 @@ static void UpdateGrenade(Actor* pActor, const ActorPrototypeNew* pPrototype) {
     Game::GetAnimFrameFromDirection(pActor, pPrototype);
 }
 
-static void InitializeBullet(Actor* pActor, const ActorPrototypeNew* pPrototype, const PersistedActorData* pPersistData) {
+static void InitializeBullet(Actor* pActor, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
     pActor->state.bulletState.lifetimeCounter = pPrototype->data.bulletData.lifetime;
     pActor->drawState.layer = SPRITE_LAYER_FG;;
 }

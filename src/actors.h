@@ -63,15 +63,15 @@ typedef void (*ActorCollisionCallbackFn)(Actor*, Actor*);
 typedef bool (*ActorFilterFn)(const Actor*);
 
 struct RoomActor;
-struct AnimationNew;
+struct Animation;
 
 namespace Game {
 	Actor* SpawnActor(const RoomActor* pTemplate, u32 roomId);
 	Actor* SpawnActor(const ActorPrototypeHandle& prototypeId, const glm::vec2& position, const glm::vec2& velocity = {0.0f, 0.0f});
 	void ClearActors();
 
-	const ActorPrototypeNew* GetActorPrototype(const Actor* pActor);
-	const AnimationNew* GetActorCurrentAnim(const Actor* pActor, const ActorPrototypeNew* pPrototype);
+	const ActorPrototype* GetActorPrototype(const Actor* pActor);
+	const Animation* GetActorCurrentAnim(const Actor* pActor, const ActorPrototype* pPrototype);
 	bool ActorValid(const Actor* pActor);
 	bool ActorsColliding(const Actor* pActor, const Actor* pOther);
 	void ForEachActorCollision(Actor* pActor, TActorType type, ActorCollisionCallbackFn callback);
@@ -87,13 +87,13 @@ namespace Game {
 
 	bool UpdateCounter(u16& counter);
 	void SetDamagePaletteOverride(Actor* pActor, u16 damageCounter);
-	void GetAnimFrameFromDirection(Actor* pActor, const ActorPrototypeNew* pPrototype);
+	void GetAnimFrameFromDirection(Actor* pActor, const ActorPrototype* pPrototype);
 	void AdvanceAnimation(u16& animCounter, u16& frameIndex, u16 frameCount, u8 frameLength, s16 loopPoint);
-	void AdvanceCurrentAnimation(Actor* pActor, const ActorPrototypeNew* pPrototype);
+	void AdvanceCurrentAnimation(Actor* pActor, const ActorPrototype* pPrototype);
 
 	void ActorFacePlayer(Actor* pActor);
-	bool ActorMoveHorizontal(Actor* pActor, const ActorPrototypeNew* pPrototype, HitResult& outHit);
-	bool ActorMoveVertical(Actor* pActor, const ActorPrototypeNew* pPrototype, HitResult& outHit);
+	bool ActorMoveHorizontal(Actor* pActor, const ActorPrototype* pPrototype, HitResult& outHit);
+	bool ActorMoveVertical(Actor* pActor, const ActorPrototype* pPrototype, HitResult& outHit);
 	void ApplyGravity(Actor* pActor, r32 gravity = 0.01f);
 
 	Damage CalculateDamage(Actor* pActor, u16 baseDamage);
@@ -102,6 +102,6 @@ namespace Game {
 
 	DynamicActorPool* GetActors(); // TEMP
 	void UpdateActors();
-	bool DrawActorDefault(const Actor* pActor, const ActorPrototypeNew* pPrototype);
+	bool DrawActorDefault(const Actor* pActor, const ActorPrototype* pPrototype);
 	void DrawActors();
 }

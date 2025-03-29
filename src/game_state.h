@@ -1,14 +1,15 @@
 #pragma once
 #include "typedef.h"
 #include "fixed_hash_map.h"
+#include "asset_types.h"
 
 struct Checkpoint {
-    s32 dungeonIndex;
+    DungeonHandle dungeonId;
     glm::i8vec2 gridOffset;
 };
 
 struct ExpRemnant {
-    s32 dungeonIndex = -1;
+    DungeonHandle dungeonId = UUID_NULL;
     glm::i8vec2 gridOffset;
 
     glm::vec2 position;
@@ -49,9 +50,10 @@ enum GameState {
 
 struct Actor;
 struct Dungeon;
-struct RoomTemplate;
+struct RoomTemplateHeader;
 struct RoomInstance;
 struct Tilemap;
+struct Overworld;
 
 namespace Game {
     void InitGameData();
@@ -82,14 +84,14 @@ namespace Game {
     PersistedActorData* GetPersistedActorData(u64 id);
     void SetPersistedActorData(u64 id, const PersistedActorData& data);
 
+    const Overworld* GetOverworld();
     bool LoadOverworld(u8 keyAreaIndex, u8 direction);
     void EnterOverworldArea(u8 keyAreaIndex, const glm::ivec2& direction);
 
-    bool LoadRoom(const RoomInstance* pRoom, const glm::i8vec2 screenOffset = {0,0}, u8 direction = 0);
-    bool LoadRoom(s32 dungeonIndex, const glm::i8vec2 gridCell, u8 direction = 0);
+    bool LoadRoom(DungeonHandle dungeonId, const glm::i8vec2 gridCell, u8 direction = 0);
     void UnloadRoom();
     bool ReloadRoom(const glm::i8vec2 screenOffset = { 0,0 }, u8 direction = 0);
-    s32 GetCurrentDungeon();
+    DungeonHandle GetCurrentDungeon();
     glm::i8vec2 GetCurrentRoomOffset();
     const RoomInstance* GetCurrentRoom();
     glm::i8vec2 GetDungeonGridCell(const glm::vec2& worldPos);
@@ -104,5 +106,5 @@ namespace Game {
     void StepFrame();
 
     void TriggerScreenShake(s16 magnitude, u16 duration, bool freezeGameplay);
-    void TriggerLevelTransition(s32 targetDungeon, glm::i8vec2 targetGridCell, u8 enterDirection, void (*callback)() = nullptr);
+    void TriggerLevelTransition(DungeonHandle targetDungeon, glm::i8vec2 targetGridCell, u8 enterDirection, void (*callback)() = nullptr);
 }

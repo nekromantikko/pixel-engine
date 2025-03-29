@@ -17,6 +17,8 @@ constexpr ActorPrototypeHandle playerPrototypeId = 18154189127814674930;
 constexpr ActorPrototypeHandle playerOverworldPrototypeId = 6197846074548071416;
 constexpr ActorPrototypeHandle xpRemnantPrototypeId = 11197223615879147344;
 
+constexpr OverworldHandle overworldId = 17959228201269526891;
+
 // Map drawing
 static constexpr glm::ivec2 mapViewportOffset = { 7, 4 };
 static constexpr glm::ivec2 mapDialogViewportOffset = mapViewportOffset - 1;
@@ -41,9 +43,8 @@ static GameState state;
 // TODO: Store bitfield instead
 static bool discoveredScreens[DUNGEON_GRID_SIZE]{};
 
-static s32 currentDungeonIndex;
+static DungeonHandle currentDungeonId;
 static glm::i8vec2 currentRoomOffset;
-static const RoomInstance* pCurrentRoom;
 
 static u8 currentOverworldArea;
 static glm::ivec2 overworldAreaEnterDir;
@@ -69,8 +70,8 @@ static const DungeonCell* GetDungeonCell(const Dungeon* pDungeon, const glm::i8v
     return &pDungeon->grid[cellIndex];
 }
 
-static const DungeonCell* GetDungeonCell(s32 dungeonIndex, const glm::i8vec2 offset) {
-    const Dungeon* pDungeon = Assets::GetDungeon(dungeonIndex);
+static const DungeonCell* GetDungeonCell(DungeonHandle dungeonId, const glm::i8vec2 offset) {
+    const Dungeon* pDungeon = (Dungeon*)AssetManager::GetAsset(dungeonId);
     if (!pDungeon) {
         return nullptr;
     }
@@ -78,8 +79,8 @@ static const DungeonCell* GetDungeonCell(s32 dungeonIndex, const glm::i8vec2 off
     return GetDungeonCell(pDungeon, offset);
 }
 
-static const RoomInstance* GetDungeonRoom(s32 dungeonIndex, const glm::i8vec2 offset, glm::i8vec2* pOutRoomOffset = nullptr) {
-    const Dungeon* pDungeon = Assets::GetDungeon(dungeonIndex);
+static const RoomInstance* GetDungeonRoom(DungeonHandle dungeonId, const glm::i8vec2 offset, glm::i8vec2* pOutRoomOffset = nullptr) {
+    const Dungeon* pDungeon = (Dungeon*)AssetManager::GetAsset(dungeonId);
     if (!pDungeon) {
         return nullptr;
     }
@@ -111,36 +112,37 @@ static const glm::i8vec2 RoomPosToDungeonGridOffset(const glm::i8vec2& roomOffse
     return gridOffset;
 }
 
-static const RoomTemplate* GetCurrentRoomTemplate() {
+static const RoomTemplateHeader* GetCurrentRoomTemplate() {
+    const RoomInstance* pCurrentRoom = Game::GetCurrentRoom();
     if (!pCurrentRoom) {
         return nullptr;
     }
 
-    return Assets::GetRoomTemplate(pCurrentRoom->templateIndex);
+    return (RoomTemplateHeader*)AssetManager::GetAsset(pCurrentRoom->templateId);
 }
 #pragma endregion
 
 #pragma region Dungeon Gameplay
-static void CorrectPlayerSpawnY(const RoomTemplate* pTemplate, Actor* pPlayer) {
+static void CorrectPlayerSpawnY(const RoomTemplateHeader* pTemplate, Actor* pPlayer) {
     HitResult hit{};
 
-    const ActorPrototypeNew* pPrototype = (ActorPrototypeNew*)AssetManager::GetAsset(pPlayer->prototypeId);
+    const ActorPrototype* pPrototype = (ActorPrototype*)AssetManager::GetAsset(pPlayer->prototypeId);
     if (!pPrototype) {
         return;
     }
 
     const r32 dy = VIEWPORT_HEIGHT_METATILES / 2.0f;  // Sweep downwards to find a floor
 
-    Collision::SweepBoxVertical(&pTemplate->tilemap, pPrototype->hitbox, pPlayer->position, dy, hit);
+    Collision::SweepBoxVertical(&pTemplate->tilemapHeader, pPrototype->hitbox, pPlayer->position, dy, hit);
     while (hit.startPenetrating) {
         pPlayer->position.y -= 1.0f;
-        Collision::SweepBoxVertical(&pTemplate->tilemap, pPrototype->hitbox, pPlayer->position, dy, hit);
+        Collision::SweepBoxVertical(&pTemplate->tilemapHeader, pPrototype->hitbox, pPlayer->position, dy, hit);
     }
     pPlayer->position = hit.location;
 }
 
 static bool ActorIsCheckpoint(const Actor* pActor) {
-    const ActorPrototypeNew* pPrototype = (ActorPrototypeNew*)AssetManager::GetAsset(pActor->prototypeId);
+    const ActorPrototype* pPrototype = (ActorPrototype*)AssetManager::GetAsset(pActor->prototypeId);
     if (!pPrototype) {
         return false;
     }
@@ -172,7 +174,7 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
     }
 
     u8 screenIndex = 0;
-    const DungeonCell* pCell = GetDungeonCell(currentDungeonIndex, currentRoomOffset + screenOffset);
+    const DungeonCell* pCell = GetDungeonCell(currentDungeonId, currentRoomOffset + screenOffset);
     if (pCell) {
         screenIndex = pCell->screenIndex;
     }
@@ -186,7 +188,7 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
     }
 
     constexpr r32 initialHSpeed = 0.0625f;
-    const RoomTemplate* pTemplate = GetCurrentRoomTemplate();
+    const RoomTemplateHeader* pTemplate = GetCurrentRoomTemplate();
 
     switch (direction) {
     case SCREEN_EXIT_DIR_RIGHT: {
@@ -342,7 +344,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
     const glm::ivec2 tileMin(worldTileBounds.x, worldTileBounds.y);
     const glm::ivec2 tileMax(worldTileBounds.z, worldTileBounds.w);
 
-    const Dungeon* pDungeon = Assets::GetDungeon(currentDungeonIndex);
+    const Dungeon* pDungeon = (Dungeon*)AssetManager::GetAsset(currentDungeonId);
     if (!pDungeon) {
         return;
     }
@@ -481,7 +483,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
             }
 
             const RoomInstance& roomInstance = pDungeon->rooms[cell.roomIndex];
-            const RoomTemplate* pTemplate = Assets::GetRoomTemplate(roomInstance.templateIndex);
+            const RoomTemplateHeader* pTemplate = (RoomTemplateHeader*)AssetManager::GetAsset(roomInstance.templateId);
 
             u32 roomWidthScreens = pTemplate->width;
             u32 roomHeightScreens = pTemplate->height;
@@ -490,13 +492,14 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
             const u32 roomY = cell.screenIndex / ROOM_MAX_DIM_SCREENS;
 
             // Room width = 2;
+            const BgTile* pMapTiles = Assets::GetRoomTemplateMapTiles(pTemplate);
             for (u32 i = 0; i < 2; i++) {
                 const u32 xTile = (x * 2) + tileMin.x + i - scrollOffset.x;
 
                 // Clipping: Check if tile is within worldTileBounds
                 if (xTile >= tileMin.x && xTile < tileMax.x) {
                     const u32 roomTileIndex = (roomX * 2 + i) + roomY * ROOM_MAX_DIM_SCREENS * 2;
-                    const BgTile& tile = pTemplate->mapTiles[roomTileIndex];
+                    const BgTile& tile = pMapTiles[roomTileIndex];
                     Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tile);
                 }
             }
@@ -510,7 +513,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
     }
 
     // Draw dropped exp with placeholder graphics
-    if (gameData.expRemnant.dungeonIndex == currentDungeonIndex) {
+    if (gameData.expRemnant.dungeonId == currentDungeonId) {
         DrawMapIcon(gameData.expRemnant.gridOffset, 0x68, 0x00, scrollOffset, worldBounds);
     }
 
@@ -690,7 +693,7 @@ enum LevelTransitionStatus : u8 {
 };
 
 struct LevelTransitionState {
-    s32 nextDungeon;
+    DungeonHandle nextDungeon;
     glm::i8vec2 nextGridCell;
     u8 nextDirection;
 
@@ -779,7 +782,7 @@ void Game::InitGameData() {
 
 	// TODO: Initialize first checkpoint
 
-	gameData.expRemnant.dungeonIndex = -1;
+	gameData.expRemnant.dungeonId = UUID_NULL;
 
 	gameData.persistedActorData.Clear();
 }
@@ -849,10 +852,10 @@ void Game::SetPlayerWeapon(u16 weapon) {
 
 #pragma region ExpRemnant
 void Game::ClearExpRemnant() {
-    gameData.expRemnant.dungeonIndex = -1;
+    gameData.expRemnant.dungeonId = UUID_NULL;
 }
 void Game::SetExpRemnant(const glm::vec2& position, u16 value) {
-    gameData.expRemnant.dungeonIndex = currentDungeonIndex;
+    gameData.expRemnant.dungeonId = currentDungeonId;
     gameData.expRemnant.gridOffset = RoomPosToDungeonGridOffset(currentRoomOffset, position);
 	gameData.expRemnant.position = position;
 	gameData.expRemnant.value = value;
@@ -877,7 +880,7 @@ void Game::ActivateCheckpoint(const Actor* pCheckpoint) {
 
     // Set checkpoint data
     gameData.checkpoint = {
-        .dungeonIndex = currentDungeonIndex,
+        .dungeonId = currentDungeonId,
         .gridOffset = RoomPosToDungeonGridOffset(currentRoomOffset, pCheckpoint->position)
     };
 
@@ -930,24 +933,28 @@ static glm::ivec2 GetOverworldDir(const OverworldKeyArea& area, u8 direction) {
         result *= -1;
     }
 
-    if (area.flipDirection) {
+    if (area.flags.flipDirection) {
         result *= -1;
     }
 
     return result;
 }
 
+const Overworld* Game::GetOverworld() {
+    return (Overworld*)AssetManager::GetAsset(overworldId);
+}
+
 bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
     state = GAME_STATE_OVERWORLD;
-    const Overworld* pOverworld = Assets::GetOverworld();
+    const Overworld* pOverworld = (Overworld*)AssetManager::GetAsset(overworldId);
 
     Rendering::SetViewportPos(glm::vec2(0.0f), false);
     ClearActors();
 
-    const OverworldKeyArea& area = pOverworld->keyAreas[keyAreaIndex];
+    const OverworldKeyArea& area = Assets::GetOverworldKeyAreas(pOverworld)[keyAreaIndex];
     const glm::ivec2 overworldDir = GetOverworldDir(area, direction);
     glm::ivec2 spawnPos = area.position;
-    if (area.passthrough) {
+    if (area.flags.passthrough) {
         spawnPos += overworldDir;
     }
 
@@ -965,27 +972,18 @@ bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
 
 void Game::EnterOverworldArea(u8 keyAreaIndex, const glm::ivec2& direction) {
     currentOverworldArea = keyAreaIndex;
-    const Overworld* pOverworld = Assets::GetOverworld();
-    const OverworldKeyArea& area = pOverworld->keyAreas[keyAreaIndex];
+    const Overworld* pOverworld = (Overworld*)AssetManager::GetAsset(overworldId);
+    const OverworldKeyArea& area = Assets::GetOverworldKeyAreas(pOverworld)[keyAreaIndex];
 
     overworldAreaEnterDir = direction;
-    Game::TriggerLevelTransition(area.dungeonIndex, area.targetGridCell, GetSidescrollingDir(direction, area.flipDirection));
+    Game::TriggerLevelTransition(area.dungeonId, area.targetGridCell, GetSidescrollingDir(direction, area.flags.flipDirection));
 }
 
-bool Game::LoadRoom(const RoomInstance* pRoom, const glm::i8vec2 screenOffset, u8 direction) {
-    currentDungeonIndex = -1;
-    currentRoomOffset = { 0,0 };
-
-    pCurrentRoom = pRoom;
-
-    return ReloadRoom(screenOffset, direction);
-}
-
-bool Game::LoadRoom(s32 dungeonIndex, const glm::i8vec2 gridCell, u8 direction) {
+bool Game::LoadRoom(DungeonHandle dungeonId, const glm::i8vec2 gridCell, u8 direction) {
     glm::i8vec2 roomOffset;
-    const RoomInstance* pNextRoom = GetDungeonRoom(dungeonIndex, gridCell, &roomOffset);
+    const RoomInstance* pNextRoom = GetDungeonRoom(dungeonId, gridCell, &roomOffset);
     if (!pNextRoom) {
-        const DungeonCell* pCell = GetDungeonCell(dungeonIndex, gridCell);
+        const DungeonCell* pCell = GetDungeonCell(dungeonId, gridCell);
         if (!pCell || pCell->roomIndex == -1) {
             return LoadOverworld(currentOverworldArea, direction);
         }
@@ -993,8 +991,7 @@ bool Game::LoadRoom(s32 dungeonIndex, const glm::i8vec2 gridCell, u8 direction) 
         return LoadOverworld(pCell->screenIndex, direction);
     }
 
-    currentDungeonIndex = dungeonIndex;
-    pCurrentRoom = pNextRoom;
+    currentDungeonId = dungeonId;
     currentRoomOffset = roomOffset;
 
     const glm::i8vec2 screenOffset = gridCell - currentRoomOffset;
@@ -1013,17 +1010,17 @@ bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
     state = GAME_STATE_DUNGEON;
     UnloadRoom();
 
-    const RoomTemplate* pTemplate = Assets::GetRoomTemplate(pCurrentRoom->templateIndex);
-
-    for (u32 i = 0; i < pTemplate->actors.Count(); i++)
+    const RoomInstance* pCurrentRoom = GetCurrentRoom();
+    const RoomTemplateHeader* pTemplate = GetCurrentRoomTemplate();
+    const RoomActor* pRoomActors = Assets::GetRoomTemplateActors(pTemplate);
+    for (u32 i = 0; i < pTemplate->actorCount; i++)
     {
-        auto handle = pTemplate->actors.GetHandle(i);
-        const RoomActor* pActor = pTemplate->actors.Get(handle);
+        const RoomActor& actor = pRoomActors[i];
 
-        const u64 combinedId = pActor->id | (u64(pCurrentRoom->id) << 32);
+        const u64 combinedId = actor.id | (u64(pCurrentRoom->id) << 32);
         const PersistedActorData* pPersistData = gameData.persistedActorData.Get(combinedId);
         if (!pPersistData || !(pPersistData->dead || pPersistData->permaDead)) {
-            SpawnActor(pActor, pCurrentRoom->id);
+            SpawnActor(&actor, pCurrentRoom->id);
         }
     }
 
@@ -1032,8 +1029,8 @@ bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
     ViewportFollowPlayer();
 
     // Spawn xp remnant, if it belongs in this room
-    if (gameData.expRemnant.dungeonIndex == currentDungeonIndex && currentDungeonIndex >= 0) {
-        const RoomInstance* pRoom = GetDungeonRoom(currentDungeonIndex, gameData.expRemnant.gridOffset);
+    if (gameData.expRemnant.dungeonId == currentDungeonId && currentDungeonId != UUID_NULL) {
+        const RoomInstance* pRoom = GetDungeonRoom(currentDungeonId, gameData.expRemnant.gridOffset);
         if (pRoom->id == pCurrentRoom->id) {
             Actor* pRemnant = SpawnActor(xpRemnantPrototypeId, gameData.expRemnant.position);
             pRemnant->state.pickupState.value = gameData.expRemnant.value;
@@ -1046,8 +1043,8 @@ bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
     return true;
 }
 
-s32 Game::GetCurrentDungeon() {
-    return currentDungeonIndex;
+DungeonHandle Game::GetCurrentDungeon() {
+    return currentDungeonId;
 }
 
 glm::i8vec2 Game::GetCurrentRoomOffset() {
@@ -1055,11 +1052,11 @@ glm::i8vec2 Game::GetCurrentRoomOffset() {
 }
 
 const RoomInstance* Game::GetCurrentRoom() {
-    return pCurrentRoom;
+    return GetDungeonRoom(currentDungeonId, currentRoomOffset);
 }
 
 glm::i8vec2 Game::GetDungeonGridCell(const glm::vec2& worldPos) {
-    const RoomTemplate* pTemplate = GetCurrentRoomTemplate();
+    const RoomTemplateHeader* pTemplate = GetCurrentRoomTemplate();
     if (!pTemplate) {
         return { -1, -1 };
     }
@@ -1084,16 +1081,15 @@ glm::ivec2 Game::GetCurrentPlayAreaSize() {
     switch (state) {
     case GAME_STATE_DUNGEON:
     case GAME_STATE_DUNGEON_MAP: {
-        if (!pCurrentRoom) {
+        const RoomTemplateHeader* pTemplate = GetCurrentRoomTemplate();
+        if (!pTemplate) {
             break;
         }
-
-        const RoomTemplate* pTemplate = Assets::GetRoomTemplate(pCurrentRoom->templateIndex);
         return { pTemplate->width * VIEWPORT_WIDTH_METATILES, pTemplate->height * VIEWPORT_HEIGHT_METATILES };
     }
     case GAME_STATE_OVERWORLD: {
-        const Overworld* pOverworld = Assets::GetOverworld();
-        return { pOverworld->tilemap.width, pOverworld->tilemap.height };
+        const Overworld* pOverworld = (Overworld*)AssetManager::GetAsset(overworldId);
+        return { pOverworld->tilemapHeader.width, pOverworld->tilemapHeader.height };
     }
     default:
         break;
@@ -1106,16 +1102,15 @@ const Tilemap* Game::GetCurrentTilemap() {
     switch (state) {
     case GAME_STATE_DUNGEON:
     case GAME_STATE_DUNGEON_MAP: {
-        if (!pCurrentRoom) {
+        const RoomTemplateHeader* pTemplate = GetCurrentRoomTemplate();
+        if (!pTemplate) {
             break;
         }
-
-        const RoomTemplate* pTemplate = Assets::GetRoomTemplate(pCurrentRoom->templateIndex);
-        return &pTemplate->tilemap;
+        return &pTemplate->tilemapHeader;
     }
     case GAME_STATE_OVERWORLD: {
-        const Overworld* pOverworld = Assets::GetOverworld();
-        return &pOverworld->tilemap;
+        const Overworld* pOverworld = (Overworld*)AssetManager::GetAsset(overworldId);
+        return &pOverworld->tilemapHeader;
     }
     default:
         break;
@@ -1169,7 +1164,7 @@ void Game::TriggerScreenShake(s16 magnitude, u16 duration, bool freeze) {
     StartCoroutine(ShakeScreenCoroutine, state);
 }
 
-void Game::TriggerLevelTransition(s32 targetDungeon, glm::i8vec2 targetGridCell, u8 enterDirection, void(*callback)()) {
+void Game::TriggerLevelTransition(DungeonHandle targetDungeon, glm::i8vec2 targetGridCell, u8 enterDirection, void(*callback)()) {
     LevelTransitionState state = {
             .nextDungeon = targetDungeon,
             .nextGridCell = targetGridCell,

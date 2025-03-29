@@ -5,7 +5,7 @@
 #include "game_state.h"
 #include "animation.h"
 
-static void UpdateExpHalo(Actor* pActor, const ActorPrototypeNew* pPrototype) {
+static void UpdateExpHalo(Actor* pActor, const ActorPrototype* pPrototype) {
     Actor* pPlayer = Game::GetPlayer();
 
     const glm::vec2 playerVec = pPlayer->position - pActor->position;
@@ -44,14 +44,14 @@ static void UpdateExpHalo(Actor* pActor, const ActorPrototypeNew* pPrototype) {
     }
 
     // Smoothstep animation when inside specified radius from player
-    const AnimationNew* pCurrentAnim = Game::GetActorCurrentAnim(pActor, pPrototype);
+    const Animation* pCurrentAnim = Game::GetActorCurrentAnim(pActor, pPrototype);
     constexpr r32 animRadius = 4.0f;
 
     pActor->drawState.frameIndex = glm::floor((1.0f - glm::smoothstep(0.0f, animRadius, playerDist)) * pCurrentAnim->frameCount);
     pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
 }
 
-static void UpdateExpRemnant(Actor* pActor, const ActorPrototypeNew* pPrototype) {
+static void UpdateExpRemnant(Actor* pActor, const ActorPrototype* pPrototype) {
     Actor* pPlayer = Game::GetPlayer();
     if (pPlayer && Game::ActorsColliding(pActor, pPlayer)) {
         //Audio::PlaySFX(&expSfx, CHAN_ID_PULSE0);
@@ -64,7 +64,7 @@ static void UpdateExpRemnant(Actor* pActor, const ActorPrototypeNew* pPrototype)
     }
 }
 
-static void UpdateHealing(Actor* pActor, const ActorPrototypeNew* pPrototype) {
+static void UpdateHealing(Actor* pActor, const ActorPrototype* pPrototype) {
     Game::ApplyGravity(pActor);
     HitResult hit{};
     if (Game::ActorMoveHorizontal(pActor, pPrototype, hit)) {
@@ -100,7 +100,7 @@ static void UpdateHealing(Actor* pActor, const ActorPrototypeNew* pPrototype) {
     }
 }
 
-static void InitializePickup(Actor* pActor, const ActorPrototypeNew* pPrototype, const PersistedActorData* pPersistData) {
+static void InitializePickup(Actor* pActor, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
     pActor->drawState.layer = SPRITE_LAYER_FG;
 }
 

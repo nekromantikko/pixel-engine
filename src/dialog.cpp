@@ -5,6 +5,7 @@
 #include "game_rendering.h"
 #include "game_input.h"
 #include "room.h"
+#include "asset_manager.h"
 
 enum DialogState {
     DIALOG_CLOSED = 0,
@@ -34,7 +35,7 @@ static void CopyLevelTileToNametable(Nametable* pNametables, const Tilemap* pTil
     const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
 
     const Metatile& metatile = tile->metatile;
-    const Tileset* pTileset = Tiles::GetTileset();
+    const Tileset* pTileset = Assets::GetTilemapTileset(pTilemap);
     Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile);
 }
 
