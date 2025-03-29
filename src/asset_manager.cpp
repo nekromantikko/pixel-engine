@@ -58,6 +58,17 @@ static bool CreateEmptyArchive(const std::filesystem::path& path) {
 	return true;
 }
 
+static bool ReserveMemory(u32 size) {
+	const u32 minCapacity = archiveSize + size;
+	if (archiveCapacity < minCapacity) {
+		if (!ResizeArchive(minCapacity)) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 #pragma region Public API
 bool AssetManager::LoadArchive(const std::filesystem::path& path) {
 	if (!std::filesystem::exists(path)) {
@@ -165,11 +176,10 @@ bool AssetManager::RepackArchive() {
 }
 
 u64 AssetManager::CreateAsset(AssetType type, u32 size, const char* name) {
-	const u32 minCapacity = archiveSize + size;
-	if (archiveCapacity < minCapacity) {
-		if (!ResizeArchive(minCapacity)) {
-			return UUID_NULL;
-		}
+	DEBUG_LOG("Creating new asset of size %d with name %s\n", size, name);
+
+	if (!ReserveMemory(size)) {
+		return UUID_NULL;
 	}
 
 	const u64 id = Random::GenerateUUID();
@@ -187,6 +197,28 @@ u64 AssetManager::CreateAsset(AssetType type, u32 size, const char* name) {
 	archiveSize += size;
 
 	return id;
+}
+
+bool AssetManager::ResizeAsset(u64 id, u32 newSize) {
+	const auto it = assetIndex.find(id);
+	if (it == assetIndex.end()) {
+		return false;
+	}
+	AssetEntry& asset = it->second;
+
+	const u32 oldSize = asset.size;
+	DEBUG_LOG("Resizing asset %lld (%d -> %d)\n", id, oldSize, newSize);
+
+	if (newSize > oldSize) {
+		if (!ReserveMemory(newSize)) {
+			return false;
+		}
+
+		memcpy(archiveData + archiveSize, archiveData + asset.offset, oldSize);
+		asset.offset = archiveSize;
+	}
+
+	asset.size = newSize;
 }
 
 void* AssetManager::GetAsset(u64 id, AssetType type) {

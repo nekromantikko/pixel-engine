@@ -4,6 +4,7 @@
 #include <cassert>
 #include "typedef.h"
 #include "rendering.h"
+#include "asset_types.h"
 #include <vector>
 
 constexpr u32 TILESET_DIM = 16;
@@ -43,6 +44,13 @@ struct Tilemap {
 	u8 height;
 	u8 tilesetIndex;
 	u8* tiles;
+};
+
+struct TilemapHeader {
+	u32 width;
+	u32 height;
+	TilesetHandle tilesetId;
+	u32 tilesOffset;
 };
 
 namespace Tiles {

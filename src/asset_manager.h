@@ -27,10 +27,6 @@ typedef std::unordered_map<u64, AssetEntry> AssetIndex;
 typedef std::unordered_map < u64, AssetEntry, std::hash<u64>, std::equal_to<u64>, DebugAllocator<std::pair<const u64, AssetEntry>>> AssetIndex;
 #endif
 
-#ifdef EDITOR
-constexpr const char* ASSET_TYPE_NAMES[ASSET_TYPE_COUNT] = { "Chr bank", "Sound", "Tileset", "Metasprite", "Actor prototype", "Room", "Dungeon", "Overworld", "Animation" };
-#endif
-
 namespace AssetManager {
 	bool LoadArchive(const std::filesystem::path& path);
 	bool SaveArchive(const std::filesystem::path& path);
@@ -42,6 +38,8 @@ namespace AssetManager {
 		const u64 id = CreateAsset(T, size, name);
 		return AssetHandle<T>{ id };
 	}
+
+	bool ResizeAsset(u64 id, u32 newSize);
 
 	void* GetAsset(u64 id, AssetType type);
 	template <AssetType T>

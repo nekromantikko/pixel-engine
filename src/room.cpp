@@ -1,6 +1,7 @@
 #include "room.h"
 #include "actor_prototypes.h"
 #include "debug.h"
+#include "asset_manager.h"
 #include <cstdio>
 #include <cstring>
 
@@ -10,6 +11,58 @@ static u8 tileMemory[MAX_ROOM_TEMPLATE_COUNT * ROOM_TILE_COUNT];
 struct RoomTemplatesHeader {
     char signature[4];
 };
+
+void Assets::InitRoomTemplate(void* data) {
+    constexpr u32 mapTilesOffset = sizeof(RoomTemplateHeader);
+    constexpr u32 tilesOffset = mapTilesOffset + ROOM_MAP_TILE_COUNT * sizeof(BgTile);
+    constexpr u32 actorsOffset = tilesOffset + ROOM_MAX_SCREEN_COUNT * ROOM_SCREEN_TILE_COUNT;
+
+    TilemapHeader tilemapHeader{
+        .width = ROOM_MAX_DIM_SCREENS * VIEWPORT_WIDTH_METATILES,
+        .height = ROOM_MAX_DIM_SCREENS * VIEWPORT_HEIGHT_METATILES,
+        .tilesetId = 0,
+        .tilesOffset = tilesOffset - offsetof(RoomTemplateHeader, tilemapHeader),
+    };
+
+    RoomTemplateHeader newHeader{
+        .width = 1,
+        .height = 1,
+        .mapTileOffset = mapTilesOffset,
+        .tilemapHeader = tilemapHeader,
+        .actorCount = 0,
+        .actorOffset = actorsOffset
+    };
+
+    memcpy(data, &newHeader, sizeof(RoomTemplateHeader));
+}
+
+u32 Assets::GetRoomTemplateSize(const RoomTemplateHeader* pHeader) {
+    u32 result = sizeof(RoomTemplateHeader);
+    constexpr u32 tilemapSize = ROOM_MAX_SCREEN_COUNT * ROOM_SCREEN_TILE_COUNT;
+    result += tilemapSize;
+    result += ROOM_MAP_TILE_COUNT * sizeof(BgTile);
+    if (pHeader) {
+        result += pHeader->actorCount * sizeof(RoomActorNew);
+    }
+
+    return result;
+}
+
+BgTile* Assets::GetRoomTemplateMapTiles(const RoomTemplateHeader* pHeader) {
+    if (!pHeader) {
+        return nullptr;
+    }
+
+    return (BgTile*)((u8*)pHeader + pHeader->mapTileOffset);
+}
+
+RoomActorNew* Assets::GetRoomTemplateActors(const RoomTemplateHeader* pHeader) {
+    if (!pHeader) {
+        return nullptr;
+    }
+
+    return (RoomActorNew*)((u8*)pHeader + pHeader->actorOffset);
+}
 
 RoomTemplate* Assets::GetRoomTemplate(u32 index) {
     if (index >= MAX_ROOM_TEMPLATE_COUNT) {
@@ -85,6 +138,47 @@ bool Assets::LoadRoomTemplates(const char* fname) {
     }
 
     fclose(pFile);
+
+    /*for (u32 i = 0; i < MAX_ROOM_TEMPLATE_COUNT; i++) {
+        RoomTemplate& room = roomTemplates[i];
+
+        const u32 mapTilesOffset = sizeof(RoomTemplateHeader);
+        const u32 tilesOffset = mapTilesOffset + ROOM_MAP_TILE_COUNT * sizeof(BgTile);
+        const u32 actorsOffset = tilesOffset + ROOM_MAX_SCREEN_COUNT * ROOM_SCREEN_TILE_COUNT;
+
+        TilemapHeader tilemapHeader{
+            .width = ROOM_MAX_DIM_SCREENS * VIEWPORT_WIDTH_METATILES,
+            .height = ROOM_MAX_DIM_SCREENS * VIEWPORT_HEIGHT_METATILES,
+            .tilesetId = 0,
+            .tilesOffset = tilesOffset - offsetof(RoomTemplateHeader, tilemapHeader),
+        };
+
+        RoomTemplateHeader newHeader{
+            .width = room.width,
+            .height = room.height,
+            .mapTileOffset = mapTilesOffset,
+            .tilemapHeader = tilemapHeader,
+            .actorCount = room.actors.Count(),
+            .actorOffset = actorsOffset
+        };
+
+        const u32 dataSize = GetRoomTemplateSize(&newHeader);
+        RoomTemplateHandle handle = AssetManager::CreateAsset<ASSET_TYPE_ROOM_TEMPLATE>(dataSize, room.name);
+        u8* data = (u8*)AssetManager::GetAsset(handle);
+
+        memcpy(data, &newHeader, sizeof(RoomTemplateHeader));
+        memcpy(data + mapTilesOffset, room.mapTiles, ROOM_MAP_TILE_COUNT * sizeof(BgTile));
+        memcpy(data + tilesOffset, room.tilemap.tiles, ROOM_MAX_SCREEN_COUNT * ROOM_SCREEN_TILE_COUNT);
+        for (u32 j = 0; j < room.actors.Count(); j++) {
+            const RoomActor* pActor = room.actors.Get(room.actors.GetHandle(j));
+            RoomActorNew* pNew = (RoomActorNew*)(data + actorsOffset + j * sizeof(RoomActorNew));
+            *pNew = {
+                .id = pActor->id,
+                .prototypeId = 0,
+                .position = pActor->position
+            };
+        }
+    }*/
 
     return true;
 }
