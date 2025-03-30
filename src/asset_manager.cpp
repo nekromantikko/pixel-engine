@@ -91,6 +91,7 @@ bool AssetManager::LoadArchive(const std::filesystem::path& path) {
 	constexpr char validSignature[4] = {'N','P','A','K'};
 	if (memcmp(header.signature, validSignature, 4) != 0) {
 		DEBUG_ERROR("Invalid asset archive file\n");
+		fclose(pFile);
 		return false;
 	}
 
@@ -217,6 +218,7 @@ bool AssetManager::ResizeAsset(u64 id, u32 newSize) {
 
 		memcpy(archiveData + archiveSize, archiveData + asset.offset, oldSize);
 		asset.offset = archiveSize;
+		archiveSize += newSize;
 	}
 
 	asset.size = newSize;

@@ -12,30 +12,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glm)
 
-FetchContent_Declare(
-        imgui
-	GIT_REPOSITORY https://github.com/ocornut/imgui.git
-        GIT_TAG v1.91.8
-)
-FetchContent_MakeAvailable(imgui)
-
-
-set(IMGUI_SOURCES 
-		${imgui_SOURCE_DIR}/imgui.h
-		${imgui_SOURCE_DIR}/imgui.cpp
-		${imgui_SOURCE_DIR}/imconfig.h
-		${imgui_SOURCE_DIR}/imgui_demo.cpp
-		${imgui_SOURCE_DIR}/imgui_draw.cpp
-		${imgui_SOURCE_DIR}/imgui_internal.h
-		${imgui_SOURCE_DIR}/imstb_rectpack.h
-		${imgui_SOURCE_DIR}/imstb_textedit.h
-		${imgui_SOURCE_DIR}/imstb_truetype.h
-		${imgui_SOURCE_DIR}/imgui_tables.cpp
-		${imgui_SOURCE_DIR}/imgui_widgets.cpp
-		${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
-		${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
-		${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp)
-
 find_package(Vulkan REQUIRED)
 find_package(SDL2 REQUIRED)
 
@@ -70,9 +46,6 @@ set(SOURCES
 		src/overworld.cpp
 		src/asset_manager.cpp)
 
-set(EDITOR_SOURCES
-		src/editor.cpp)
-
 set(HEADERS 
 		src/rendering.h
 		src/game.h
@@ -87,13 +60,48 @@ set(HEADERS
 		src/tiles.h
 		src/actors.h)
 
-set(EDITOR_HEADERS
-		src/editor.h)
+option(ENABLE_EDITOR "Enable editor functionality" ON)
 
-add_executable(${PROJECT_NAME} WIN32 ${HEADERS} ${SOURCES} ${IMGUI_SOURCES} ${EDITOR_HEADERS} ${EDITOR_SOURCES})
-target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
+IF(ENABLE_EDITOR)
+	set(EDITOR_INCLUDE_DIRS src/ext/imgui-filebrowser)
+	set(EDITOR_HEADERS src/editor.h)
+	set(EDITOR_SOURCES src/editor.cpp)
+
+	FetchContent_Declare(
+        	imgui
+		GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        	GIT_TAG v1.91.8
+	)
+	FetchContent_MakeAvailable(imgui)
+
+
+	set(IMGUI_SOURCES 
+		${imgui_SOURCE_DIR}/imgui.h
+		${imgui_SOURCE_DIR}/imgui.cpp
+		${imgui_SOURCE_DIR}/imconfig.h
+		${imgui_SOURCE_DIR}/imgui_demo.cpp
+		${imgui_SOURCE_DIR}/imgui_draw.cpp
+		${imgui_SOURCE_DIR}/imgui_internal.h
+		${imgui_SOURCE_DIR}/imstb_rectpack.h
+		${imgui_SOURCE_DIR}/imstb_textedit.h
+		${imgui_SOURCE_DIR}/imstb_truetype.h
+		${imgui_SOURCE_DIR}/imgui_tables.cpp
+		${imgui_SOURCE_DIR}/imgui_widgets.cpp
+		${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
+		${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+		${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp)
+ENDIF()
+
+
+IF(ENABLE_EDITOR)
+	add_executable(${PROJECT_NAME} WIN32 ${HEADERS} ${SOURCES} ${IMGUI_SOURCES} ${EDITOR_HEADERS} ${EDITOR_SOURCES})
+	target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR} ${EDITOR_INCLUDE_DIRS})
+ELSE()
+	add_executable(${PROJECT_NAME} WIN32 ${HEADERS} ${SOURCES})
+	target_include_directories(${PROJECT_NAME} PRIVATE ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
+ENDIF()
 target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2)
-set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 
 # Compile shaders
 set (GLSL_SHADERS
@@ -147,4 +155,6 @@ IF(WIN32)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC PLATFORM_WINDOWS)
 ENDIF()
 
-target_compile_definitions(${PROJECT_NAME} PUBLIC EDITOR)
+IF(ENABLE_EDITOR)
+	target_compile_definitions(${PROJECT_NAME} PUBLIC EDITOR)
+ENDIF()

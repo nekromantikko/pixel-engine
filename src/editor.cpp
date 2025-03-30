@@ -8,6 +8,7 @@
 #include <SDL.h>
 #include <imgui.h>
 #include <imgui_impl_sdl2.h>
+#include <imfilebrowser.h>
 
 #include "tiles.h"
 #include "rendering_util.h"
@@ -868,10 +869,6 @@ static EditedAsset CopyAssetForEditing(u64 id, PopulateAssetEditorDataFn populat
 }
 
 static bool ResizeEditedAsset(EditedAsset& asset, u32 newSize) {
-	if (!AssetManager::ResizeAsset(asset.id, newSize)) {
-		return false;
-	}
-
 	if (newSize > asset.size) {
 		void* newData = malloc(newSize);
 		if (!newData) {
@@ -885,26 +882,31 @@ static bool ResizeEditedAsset(EditedAsset& asset, u32 newSize) {
 	return true;
 }
 
-static void SaveEditedAsset(EditedAsset& asset, ApplyAssetEditorDataFn applyFn) {
-	AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
-	if (pAssetInfo->size != asset.size) {
-		ResizeEditedAsset(asset, pAssetInfo->size);
-	}
-
+static bool SaveEditedAsset(EditedAsset& asset, ApplyAssetEditorDataFn applyFn) {
 	if (applyFn) {
 		applyFn(asset.data, asset.userData);
+	}
+	
+	AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
+	if (pAssetInfo->size != asset.size) {
+		if (!AssetManager::ResizeAsset(asset.id, asset.size)) {
+			return false;
+		}
 	}
 
 	memcpy(pAssetInfo->name, asset.name, MAX_ASSET_NAME_LENGTH);
 	void* data = AssetManager::GetAsset(asset.id, pAssetInfo->flags.type);
 	memcpy(data, asset.data, asset.size);
 	asset.dirty = false;
+	return true;
 }
 
-static void RevertEditedAsset(EditedAsset& asset, PopulateAssetEditorDataFn populateFn) {
+static bool RevertEditedAsset(EditedAsset& asset, PopulateAssetEditorDataFn populateFn) {
 	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
 	if (pAssetInfo->size != asset.size) {
-		ResizeEditedAsset(asset, pAssetInfo->size);
+		if (!ResizeEditedAsset(asset, pAssetInfo->size)) {
+			return false;
+		}
 	}
 
 	memcpy(asset.name, pAssetInfo->name, MAX_ASSET_NAME_LENGTH);
@@ -916,6 +918,7 @@ static void RevertEditedAsset(EditedAsset& asset, PopulateAssetEditorDataFn popu
 		populateFn(asset.data, &asset.userData);
 	}
 	else asset.userData = nullptr;
+	return true;
 }
 
 static void FreeEditedAsset(EditedAsset& asset, DeleteAssetEditorDataFn deleteFn) {
@@ -3601,15 +3604,34 @@ constexpr const char* soundTypeNames[SOUND_TYPE_COUNT] = { "SFX", "Music" };
 static void DrawSoundEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Sound editor");
 
-	ImGui::Button("Create from file");
+	static ImGui::FileBrowser fileBrowser;
+
+	if (ImGui::Button("Create from file")) {
+		fileBrowser.SetTitle("title");
+		fileBrowser.SetTypeFilters({ ".nsf" });
+		fileBrowser.Open();
+	}
+
+	fileBrowser.Display();
+	if (fileBrowser.HasSelected()) {
+		u32 requiredSize{};
+		if (Assets::LoadSoundFromFile(fileBrowser.GetSelected(), requiredSize, nullptr)) {
+			if (requiredSize != asset.size) {
+				ResizeEditedAsset(asset, requiredSize);
+			}
+			Assets::LoadSoundFromFile(fileBrowser.GetSelected(), requiredSize, asset.data);
+			asset.dirty = true;
+		}
+		fileBrowser.ClearSelected();
+	}
+
+	Sound* pSound = (Sound*)asset.data;
 
 	ImGui::SeparatorText("Properties");
 	{
 		if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
 			asset.dirty = true;
 		}
-
-		SoundNew* pSound = (SoundNew*)asset.data;
 
 		if (DrawTypeSelectionCombo("Type", soundTypeNames, SOUND_TYPE_COUNT, pSound->type, false)) {
 			asset.dirty = true;
@@ -3627,11 +3649,23 @@ static void DrawSoundEditor(EditedAsset& asset) {
 		ImGui::EndDisabled();
 	}
 
+	// NOTE: The asset needs to be saved for this to work properly. How to work around?
 	ImGui::SeparatorText("Preview");
 	{
-		ImGui::Button("Play");
+		if (ImGui::Button("Play")) {
+			if (pSound->type == SOUND_TYPE_SFX) {
+				Audio::PlaySFX(asset.id);
+			}
+			else {
+				Audio::PlayMusic(asset.id, true);
+			}
+		}
 		ImGui::SameLine();
-		ImGui::Button("Stop");
+		if (ImGui::Button("Stop")) {
+			if (pSound->type == SOUND_TYPE_MUSIC) {
+				Audio::StopMusic();
+			}
+		}
 	}
 
 	ImGui::EndChild();

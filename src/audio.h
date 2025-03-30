@@ -1,6 +1,8 @@
 #pragma once
 #include <cstdlib>
+#include <filesystem>
 #include "typedef.h"
+#include "asset_types.h"
 
 enum SoundChannelId {
     CHAN_ID_PULSE0 = 0,
@@ -14,12 +16,6 @@ enum SoundChannelId {
 
 struct SoundOperation;
 
-struct Sound {
-    u32 length;
-    u32 loopPoint;
-    SoundOperation* data;
-};
-
 enum SoundType {
     SOUND_TYPE_SFX = 0,
     SOUND_TYPE_MUSIC,
@@ -27,7 +23,7 @@ enum SoundType {
     SOUND_TYPE_COUNT
 };
 
-struct SoundNew {
+struct Sound {
     u32 length;
     u32 loopPoint;
     u16 type;
@@ -43,11 +39,9 @@ namespace Audio {
 
     void WriteChannel(u32 channel, u8 address, u8 data);
 
-    Sound LoadSound(const char* fname);
-    void PlayMusic(const Sound* pSound, bool loop);
+    void PlayMusic(SoundHandle musicHandle, bool loop);
     void StopMusic();
-    void PlaySFX(const Sound* pSound, u32 channel);
-    void FreeSound(Sound* pSound);
+    void PlaySFX(SoundHandle soundHandle);
 
 #ifdef EDITOR
     void ReadChannel(u32 channel, void* outData);
@@ -56,6 +50,8 @@ namespace Audio {
 }
 
 namespace Assets {
-    u32 GetSoundSize(const SoundNew* pSound = nullptr);
     void InitSound(void* data);
+    u32 GetSoundSize(const Sound* pSound = nullptr);
+    SoundOperation* GetSoundData(const Sound* pSound);
+    bool LoadSoundFromFile(const std::filesystem::path& path, u32& dataSize, void* data = nullptr);
 }

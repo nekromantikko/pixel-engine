@@ -4,6 +4,7 @@
 #include "debug.h"
 #include <cassert>
 #include "nes_timing.h"
+#include "asset_manager.h"
 
 static constexpr u32 DEBUG_BUFFER_SIZE = 1024;
 
@@ -167,12 +168,12 @@ struct AudioContext {
     TriangleChannel triangleReserve;
     NoiseChannel noiseReserve;
 
-    const Sound* pMusic = nullptr;
+    SoundHandle music = 0;
     u32 musicPos = 0;
     bool loopMusic;
 
     // Max one sfx per channel can play
-    const Sound* sfx[CHAN_COUNT]{};
+    SoundHandle sfx[CHAN_COUNT]{};
     u32 sfxPos[CHAN_COUNT]{};
 };
 
@@ -335,7 +336,7 @@ static bool ProcessOp(const SoundOperation* operation, PulseChannel* p0, PulseCh
 static void ClearRegisters() {
     for (u32 channel = 0; channel < CHAN_COUNT; channel++) {
         for (u32 i = 0; i < 4; i++) {
-            Audio::WriteChannel(i, i, 0);
+            Audio::WriteChannel(channel, i, 0);
         }
     }
 }
@@ -346,10 +347,12 @@ static bool TickSFX(u32 channel) {
         return false;
     }
 
-    const Sound* pSound = pContext->sfx[channel];
+    const SoundHandle soundHandle = pContext->sfx[channel];
     u32& pos = pContext->sfxPos[channel];
 
+    const Sound* pSound = (Sound*)AssetManager::GetAsset(soundHandle);
     if (pSound == nullptr) {
+        pContext->sfx[channel] = 0;
         return false;
     }
 
@@ -360,7 +363,7 @@ static bool TickSFX(u32 channel) {
 
     bool keepReading = true;
     while (keepReading) {
-        const SoundOperation* operation = pSound->data + pos;
+        const SoundOperation* operation = Assets::GetSoundData(pSound) + pos;
 
         keepReading = ProcessOp(operation, p0, p1, tri, noise);
 
@@ -373,24 +376,30 @@ static bool TickSFX(u32 channel) {
 }
 
 static bool TickMusic() {
-    if (pContext->pMusic == nullptr) {
+    if (pContext->music == 0) {
         return false;
     }
 
-    PulseChannel* p0 = (pContext->sfx[CHAN_ID_PULSE0] == nullptr) ? &pContext->pulse[CHAN_ID_PULSE0] : &pContext->pulseReserve[0];
-    PulseChannel* p1 = (pContext->sfx[CHAN_ID_PULSE1] == nullptr) ? &pContext->pulse[CHAN_ID_PULSE1] : &pContext->pulseReserve[1];
-    TriangleChannel* tri = (pContext->sfx[CHAN_ID_TRIANGLE] == nullptr) ? &pContext->triangle : &pContext->triangleReserve;
-    NoiseChannel* noise = (pContext->sfx[CHAN_ID_NOISE] == nullptr) ? &pContext->noise : &pContext->noiseReserve;
+    const Sound* pSound = (Sound*)AssetManager::GetAsset(pContext->music);
+    if (!pSound) {
+        pContext->music = 0;
+        return false;
+    }
+
+    PulseChannel* p0 = (pContext->sfx[CHAN_ID_PULSE0] == 0) ? &pContext->pulse[CHAN_ID_PULSE0] : &pContext->pulseReserve[0];
+    PulseChannel* p1 = (pContext->sfx[CHAN_ID_PULSE1] == 0) ? &pContext->pulse[CHAN_ID_PULSE1] : &pContext->pulseReserve[1];
+    TriangleChannel* tri = (pContext->sfx[CHAN_ID_TRIANGLE] == 0) ? &pContext->triangle : &pContext->triangleReserve;
+    NoiseChannel* noise = (pContext->sfx[CHAN_ID_NOISE] == 0) ? &pContext->noise : &pContext->noiseReserve;
 
     bool keepReading = true;
     while (keepReading) {
-        const SoundOperation* operation = pContext->pMusic->data + pContext->musicPos;
+        const SoundOperation* operation = Assets::GetSoundData(pSound) + pContext->musicPos;
 
         keepReading = ProcessOp(operation, p0, p1, tri, noise);
 
-        if (++pContext->musicPos == pContext->pMusic->length) {
+        if (++pContext->musicPos == pSound->length) {
             if (pContext->loopMusic) {
-                pContext->musicPos = pContext->pMusic->loopPoint;
+                pContext->musicPos = pSound->loopPoint;
             }
             else {
                 return false;
@@ -403,12 +412,12 @@ static bool TickMusic() {
 
 static void TickSoundPlayer() {
     for (int channel = 0; channel < CHAN_COUNT; channel++) {
-        if (pContext->sfx[channel] == nullptr) {
+        if (pContext->sfx[channel] == 0) {
             continue;
         }
 
         if (!TickSFX(channel)) {
-            pContext->sfx[channel] = nullptr;
+            pContext->sfx[channel] = 0;
 
             // I think this should happen one frame later
             switch (channel) {
@@ -431,7 +440,7 @@ static void TickSoundPlayer() {
     }
 
     if (!TickMusic()) {
-        pContext->pMusic = nullptr;
+        pContext->music = 0;
     }
 }
 
@@ -723,48 +732,35 @@ namespace Audio {
         }
     }
 
-    Sound Audio::LoadSound(const char* fname) {
-        FILE* pFile;
-        fopen_s(&pFile, fname, "rb");
-
-        if (pFile == NULL) {
-            DEBUG_ERROR("Failed to load music file\n");
+    void Audio::PlayMusic(SoundHandle musicHandle, bool loop) {
+        const Sound* pSound = (Sound*)AssetManager::GetAsset(musicHandle);
+        if (!pSound || pSound->type != SOUND_TYPE_MUSIC || pSound->length == 0) {
+            return;
         }
 
-        NSFHeader header{};
-        fread(&header, sizeof(NSFHeader), 1, pFile);
-
-        Sound sound{};
-        sound.length = header.size;
-        sound.loopPoint = header.loopPoint;
-
-        sound.data = (SoundOperation*)calloc(sound.length, sizeof(SoundOperation));
-        fread(sound.data, sizeof(SoundOperation), sound.length, pFile);
-
-        fclose(pFile);
-
-        return sound;
-    }
-
-    void Audio::PlayMusic(const Sound* pSound, bool loop) {
-        pContext->pMusic = pSound;
+        pContext->music = musicHandle;
         pContext->musicPos = 0;
         pContext->loopMusic = loop;
     }
 
     void Audio::StopMusic() {
-        pContext->pMusic = nullptr;
+        pContext->music = 0;
         ClearRegisters();
     }
 
-    void Audio::PlaySFX(const Sound* pSound, u32 channel) {
-        if (channel >= CHAN_COUNT) {
+    void Audio::PlaySFX(SoundHandle soundHandle) {
+        const Sound* pSound = (Sound*)AssetManager::GetAsset(soundHandle);
+        if (!pSound || pSound->type != SOUND_TYPE_SFX || pSound->length == 0) {
+            return;
+        }
+
+        if (pSound->sfxChannel >= CHAN_COUNT) {
             return;
         }
 
         // Save register state to later continue music
-        if (pContext->sfx[channel] == nullptr) {
-            switch (channel) {
+        if (pContext->sfx[pSound->sfxChannel] == 0) {
+            switch (pSound->sfxChannel) {
             case CHAN_ID_PULSE0:
                 pContext->pulseReserve[0] = pContext->pulse[0];
                 break;
@@ -782,14 +778,8 @@ namespace Audio {
             }
         }
 
-        pContext->sfx[channel] = pSound;
-        pContext->sfxPos[channel] = 0;
-    }
-
-    void Audio::FreeSound(Sound* pSound) {
-        if (pSound != nullptr) {
-            free(pSound->data);
-        }
+        pContext->sfx[pSound->sfxChannel] = soundHandle;
+        pContext->sfxPos[pSound->sfxChannel] = 0;
     }
 
 #ifdef EDITOR
@@ -834,8 +824,14 @@ namespace Audio {
 #endif
 }
 
-u32 Assets::GetSoundSize(const SoundNew* pSound) {
-    u32 result = sizeof(SoundNew);
+void Assets::InitSound(void* data) {
+    Sound newSound{};
+    newSound.dataOffset = sizeof(Sound);
+    memcpy(data, &newSound, sizeof(Sound));
+}
+
+u32 Assets::GetSoundSize(const Sound* pSound) {
+    u32 result = sizeof(Sound);
     if (pSound) {
         result += pSound->length * sizeof(SoundOperation);
     }
@@ -843,8 +839,43 @@ u32 Assets::GetSoundSize(const SoundNew* pSound) {
     return result;
 }
 
-void Assets::InitSound(void* data) {
-    SoundNew newSound{};
-    newSound.dataOffset = sizeof(SoundNew);
-    memcpy(data, &newSound, sizeof(SoundNew));
+SoundOperation* Assets::GetSoundData(const Sound* pSound) {
+    return (SoundOperation*)((u8*)pSound + pSound->dataOffset);
+}
+
+// Can be used to just get the size by setting data to nullptr, Vulkan style
+bool Assets::LoadSoundFromFile(const std::filesystem::path& path, u32& dataSize, void* data) {
+    if (!std::filesystem::exists(path)) {
+        DEBUG_ERROR("File (%s) does not exist\n", path.string().c_str());
+        return false;
+    }
+
+    FILE* pFile = fopen(path.string().c_str(), "rb");
+    if (!pFile) {
+        DEBUG_ERROR("Failed to open file\n");
+        return false;
+    }
+
+    NSFHeader header{};
+    fread(&header, sizeof(NSFHeader), 1, pFile);
+    if (strcmp(header.signature, "NSF") != 0) {
+        DEBUG_ERROR("Invalid NSF file\n");
+        fclose(pFile);
+        return false;
+    }
+
+    dataSize = sizeof(Sound) + header.size * sizeof(SoundOperation);
+    
+    if (data) {
+        Sound* pSound = (Sound*)data;
+        pSound->length = header.size;
+        pSound->loopPoint = header.loopPoint;
+
+        SoundOperation* pData = GetSoundData(pSound);
+        fread(pData, sizeof(SoundOperation), header.size, pFile);
+        DEBUG_LOG("Loaded sound data from file\n");
+    }
+
+    fclose(pFile);
+    return true;
 }

@@ -8,7 +8,6 @@
 #include "collision.h"
 #include "metasprite.h"
 #include "tiles.h"
-#include <imgui.h>
 #include <vector>
 #include "audio.h"
 #include "nes_timing.h"
@@ -28,28 +27,8 @@ namespace Game {
     r64 secondsElapsed = 0.0f;
     u32 clockCounter = 0;
 
-    Sound jumpSfx;
-    Sound gunSfx;
-    Sound ricochetSfx;
-    Sound damageSfx;
-    Sound expSfx;
-    Sound enemyDieSfx;
-
-    //Sound bgm;
-    //bool musicPlaying = false;
-
     static void Step() {
         StepFrame();
-
-        /*if (ButtonPressed(BUTTON_START)) {
-            if (!musicPlaying) {
-                Audio::PlayMusic(&bgm, true);
-            }
-            else {
-                Audio::StopMusic();
-            }
-            musicPlaying = !musicPlaying;
-        }*/
 
         // Animate color palette hue
         /*s32 hueShift = (s32)glm::roundEven(gameplayFramesElapsed / 12.f);
@@ -72,15 +51,6 @@ namespace Game {
 
         AssetManager::LoadArchive("assets.npak");
 
-        // TEMP SOUND STUFF
-        jumpSfx = Audio::LoadSound("assets/jump.nsf");
-        gunSfx = Audio::LoadSound("assets/gun1.nsf");
-        ricochetSfx = Audio::LoadSound("assets/ricochet.nsf");
-        damageSfx = Audio::LoadSound("assets/damage.nsf");
-        expSfx = Audio::LoadSound("assets/exp.nsf");
-        enemyDieSfx = Audio::LoadSound("assets/enemydie.nsf");
-        //bgm = Audio::LoadSound("assets/music.nsf");
-
 		InitGameData();
         InitGameState(GAME_STATE_DUNGEON);
 
@@ -88,17 +58,7 @@ namespace Game {
         LoadRoom(4648186456448694858, { 14, 14 });
     }
 
-    void Free() {
-        Audio::StopMusic();
-
-        Audio::FreeSound(&jumpSfx);
-        Audio::FreeSound(&gunSfx);
-        Audio::FreeSound(&ricochetSfx);
-        Audio::FreeSound(&damageSfx);
-        Audio::FreeSound(&expSfx);
-        Audio::FreeSound(&enemyDieSfx);
-        //Audio::FreeSound(&bgm);
-    }
+    void Free() {}
 
     void Update(r64 dt) {
         secondsElapsed += dt;
