@@ -20,6 +20,21 @@ struct Sound {
     SoundOperation* data;
 };
 
+enum SoundType {
+    SOUND_TYPE_SFX = 0,
+    SOUND_TYPE_MUSIC,
+
+    SOUND_TYPE_COUNT
+};
+
+struct SoundNew {
+    u32 length;
+    u32 loopPoint;
+    u16 type;
+    u16 sfxChannel;
+    u32 dataOffset;
+};
+
 namespace Audio {
 	void CreateContext();
     void Init();
@@ -38,4 +53,9 @@ namespace Audio {
     void ReadChannel(u32 channel, void* outData);
     void ReadDebugBuffer(u8* outSamples, u32 count);
 #endif
+}
+
+namespace Assets {
+    u32 GetSoundSize(const SoundNew* pSound = nullptr);
+    void InitSound(void* data);
 }

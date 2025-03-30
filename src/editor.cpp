@@ -84,6 +84,7 @@ struct EditorContext {
 	bool dungeonWindowOpen = false;
 	bool overworldWindowOpen = false;
 	bool animationWindowOpen = false;
+	bool soundWindowOpen = false;
 
 	// Debug overlay
 	bool showDebugOverlay = true;
@@ -792,7 +793,7 @@ static void DrawGenericEditableList(T* elements, u32& count, u32 maxCount, ImVec
 }
 
 template <typename T>
-static bool DrawTypeSelectionCombo(const char* label, const char* const* const typeNames, u32 typeCount, T& selection) {
+static bool DrawTypeSelectionCombo(const char* label, const char* const* const typeNames, u32 typeCount, T& selection, bool allowNone = true) {
 	static_assert(std::is_integral<T>::value);
 	const T oldSelection = selection;
 
@@ -801,7 +802,7 @@ static bool DrawTypeSelectionCombo(const char* label, const char* const* const t
 	const char* selectedLabel = typeCount > 0 ? (selection >= 0 ? typeNames[selection] : noSelectionLabel) : noItemsLabel;
 
 	if (ImGui::BeginCombo(label, selectedLabel)) {
-		if (ImGui::Selectable(noSelectionLabel, selection < 0)) {
+		if (allowNone && ImGui::Selectable(noSelectionLabel, selection < 0)) {
 			selection = -1;
 		}
 
@@ -3593,6 +3594,56 @@ static void DrawAnimationWindow() {
 }
 #pragma endregion
 
+#pragma region Sound editor
+constexpr const char* audioChannelNames[CHAN_COUNT] = { "Pulse 1", "Pulse 2", "Triangle", "Noise" };
+constexpr const char* soundTypeNames[SOUND_TYPE_COUNT] = { "SFX", "Music" };
+
+static void DrawSoundEditor(EditedAsset& asset) {
+	ImGui::BeginChild("Sound editor");
+
+	ImGui::Button("Create from file");
+
+	ImGui::SeparatorText("Properties");
+	{
+		if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
+			asset.dirty = true;
+		}
+
+		SoundNew* pSound = (SoundNew*)asset.data;
+
+		if (DrawTypeSelectionCombo("Type", soundTypeNames, SOUND_TYPE_COUNT, pSound->type, false)) {
+			asset.dirty = true;
+		}
+
+		ImGui::BeginDisabled(true);
+		ImGui::InputScalar("Length", ImGuiDataType_U32, &pSound->length);
+		ImGui::InputScalar("Loop point", ImGuiDataType_U32, &pSound->loopPoint);
+		ImGui::EndDisabled();
+
+		ImGui::BeginDisabled(pSound->type != SOUND_TYPE_SFX);
+		if (DrawTypeSelectionCombo("SFX channel", audioChannelNames, CHAN_COUNT, pSound->sfxChannel, false)) {
+			asset.dirty = true;
+		}
+		ImGui::EndDisabled();
+	}
+
+	ImGui::SeparatorText("Preview");
+	{
+		ImGui::Button("Play");
+		ImGui::SameLine();
+		ImGui::Button("Stop");
+	}
+
+	ImGui::EndChild();
+}
+
+static void DrawSoundWindow() {
+	static AssetEditorState state{};
+	DrawAssetEditor("Sound editor", pContext->soundWindowOpen, ASSET_TYPE_SOUND, Assets::GetSoundSize(), "New Sound", DrawSoundEditor, state, Assets::InitSound);
+}
+
+#pragma endregion
+
 #pragma region Main Menu
 static void DrawMainMenu() {
 	if (ImGui::BeginMainMenuBar()) {
@@ -3628,6 +3679,9 @@ static void DrawMainMenu() {
 			}
 			if (ImGui::MenuItem("Actor editor")) {
 				pContext->actorWindowOpen = true;
+			}
+			if (ImGui::MenuItem("Sound editor")) {
+				pContext->soundWindowOpen = true;
 			}
 			ImGui::Separator();
 			if (ImGui::MenuItem("ImGui Demo")) {
@@ -3744,6 +3798,10 @@ void Editor::Render(r64 dt) {
 
 	if (pContext->animationWindowOpen) {
 		DrawAnimationWindow();
+	}
+
+	if (pContext->soundWindowOpen) {
+		DrawSoundWindow();
 	}
 
 	ImGui::Render();

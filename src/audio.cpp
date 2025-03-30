@@ -833,3 +833,18 @@ namespace Audio {
     }
 #endif
 }
+
+u32 Assets::GetSoundSize(const SoundNew* pSound) {
+    u32 result = sizeof(SoundNew);
+    if (pSound) {
+        result += pSound->length * sizeof(SoundOperation);
+    }
+
+    return result;
+}
+
+void Assets::InitSound(void* data) {
+    SoundNew newSound{};
+    newSound.dataOffset = sizeof(SoundNew);
+    memcpy(data, &newSound, sizeof(SoundNew));
+}
