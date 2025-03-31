@@ -4,10 +4,6 @@
 #include <limits>
 #include <cassert>
 
-#ifdef EDITOR
-#include <imgui.h>
-#endif
-
 constexpr u32 MAX_SPRITE_COUNT = 4096;
 constexpr u32 MAX_SPRITES_PER_SCANLINE = 64;
 
@@ -109,6 +105,8 @@ static constexpr RenderSettings DEFAULT_RENDER_SETTINGS = {
 	true
 };
 
+struct EditorTexture;
+
 namespace Rendering
 {
 	void CreateContext();
@@ -118,7 +116,9 @@ namespace Rendering
 	void DestroyContext();
 
 	// Generic commands
-	void Render();
+	void BeginFrame();
+	void BeginRenderPass();
+	void EndFrame();
 	void WaitForAllCommands();
 	void ResizeSurface(u32 width, u32 height);
 
@@ -132,15 +132,18 @@ namespace Rendering
 
 	// Editor stuff
 #ifdef EDITOR
-	void InitImGui(SDL_Window* sdlWindow);
-	void BeginImGuiFrame();
-	void ShutdownImGui();
+	void InitEditor(SDL_Window* sdlWindow);
+	void BeginEditorFrame();
+	void ShutdownEditor();
 
-	void CreateImGuiChrTexture(ImTextureID* pTexture);
-	void FreeImGuiChrTexture(ImTextureID* pTexture);
-	void CreateImGuiPaletteTexture(ImTextureID* pTexture);
-	void FreeImGuiPaletteTexture(ImTextureID* pTexture);
-	void CreateImGuiGameTexture(ImTextureID* pTexture);
-	void FreeImGuiGameTexture(ImTextureID* pTexture);
+	EditorTexture* CreateEditorTexture(u32 width, u32 height);
+	void FreeEditorTexture(EditorTexture* pTexture);
+	void* GetEditorTextureData(const EditorTexture* pTexture);
+
+	// Software
+	void RenderChrImage(const EditorTexture* pTexture);
+	void RenderPaletteImage(const EditorTexture* pTexture);
+	// Render pass
+	void RenderEditor();
 #endif
 }
