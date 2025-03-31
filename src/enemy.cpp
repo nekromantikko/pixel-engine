@@ -131,7 +131,6 @@ void Game::EnemyDie(Actor* pActor, const ActorPrototype* pPrototype) {
     }
     else SetPersistedActorData(pActor->persistId, { .dead = true });
 
-    //Audio::PlaySFX(&enemyDieSfx, CHAN_ID_NOISE);
     SpawnActor(pPrototype->data.enemyData.deathEffect, pActor->position);
 
     // Spawn exp halos
@@ -164,15 +163,15 @@ constexpr ActorDrawFn Game::enemyDrawTable[ENEMY_TYPE_COUNT] = {
 static const std::initializer_list<ActorEditorProperty> defaultProps = {
     { .name = "Health", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(EnemyData, health) },
     { .name = "Exp value", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(EnemyData, expValue) },
-    { .name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(EnemyData, deathEffect) },
-    { .name = "Projectile", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(EnemyData, projectile) },
-    { .name = "Exp spawner", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(EnemyData, expSpawner) },
-    { .name = "Loot spawner", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(EnemyData, lootSpawner) },
+    { .name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_ACTOR_PROTOTYPE, .offset = offsetof(EnemyData, deathEffect) },
+    { .name = "Projectile", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_ACTOR_PROTOTYPE, .offset = offsetof(EnemyData, projectile) },
+    { .name = "Exp spawner", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_ACTOR_PROTOTYPE, .offset = offsetof(EnemyData, expSpawner) },
+    { .name = "Loot spawner", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_ACTOR_PROTOTYPE, .offset = offsetof(EnemyData, lootSpawner) },
 };
 
 static const std::initializer_list<ActorEditorProperty> fireballProps = {
     {.name = "Lifetime", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(FireballData, lifetime) },
-    {.name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(FireballData, deathEffect) },
+    {.name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_ACTOR_PROTOTYPE, .offset = offsetof(FireballData, deathEffect) },
 };
 
 const ActorEditorData Editor::enemyEditorData(

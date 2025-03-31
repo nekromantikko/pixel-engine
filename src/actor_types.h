@@ -20,9 +20,10 @@ enum ActorType : TActorType {
 	ACTOR_TYPE_COUNT
 };
 
-constexpr u32 ACTOR_PROTOTYPE_DATA_SIZE = 32;
+constexpr u32 ACTOR_PROTOTYPE_DATA_SIZE = 256;
 
 union ActorPrototypeData {
+	PlayerData playerData;
 	EnemyData enemyData;
 	FireballData fireballData;
 	BulletData bulletData;
@@ -33,21 +34,6 @@ union ActorPrototypeData {
 	LootSpawnerData lootSpawner;
 
 	u8 raw[ACTOR_PROTOTYPE_DATA_SIZE];
-};
-
-constexpr u32 ACTOR_PROTOTYPE_DATA_SIZE_NEW = 256;
-
-union ActorPrototypeDataNew {
-	EnemyData enemyData;
-	FireballData fireballData;
-	BulletData bulletData;
-	PickupData pickupData;
-	EffectData effectData;
-	CheckpointData checkpointData;
-	ExpSpawnerData expSpawner;
-	LootSpawnerData lootSpawner;
-
-	u8 raw[ACTOR_PROTOTYPE_DATA_SIZE_NEW];
 };
 
 constexpr u32 ACTOR_STATE_SIZE = 32;

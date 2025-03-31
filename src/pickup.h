@@ -1,5 +1,6 @@
 #pragma once
 #include "typedef.h"
+#include "asset_types.h"
 
 enum PickupType : TActorSubtype {
 	PICKUP_TYPE_EXP,
@@ -11,6 +12,7 @@ enum PickupType : TActorSubtype {
 
 struct PickupData {
 	s16 value;
+	SoundHandle pickupSound;
 };
 
 struct PickupState {

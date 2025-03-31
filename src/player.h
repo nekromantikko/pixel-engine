@@ -1,5 +1,6 @@
 #pragma once
 #include "typedef.h"
+#include "asset_types.h"
 #define GLM_FORCE_RADIANS
 #include <glm.hpp>
 
@@ -25,6 +26,12 @@ enum PlayerModeBits : u8 {
 	PLAYER_MODE_DAMAGED,
 	PLAYER_MODE_ENTERING,
 	PLAYER_MODE_DODGE,
+};
+
+struct PlayerData {
+	SoundHandle jumpSound;
+	SoundHandle damageSound;
+	SoundHandle gunSound; // TEMP!
 };
 
 struct PlayerFlags {

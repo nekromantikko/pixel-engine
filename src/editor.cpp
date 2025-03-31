@@ -2248,7 +2248,7 @@ static ImVec2 DrawActorPreview(const ActorPrototype* pPrototype, s32 animIndex, 
 	return gridPos;
 }
 
-static bool DrawActorPrototypeProperty(const ActorEditorProperty& property, ActorPrototypeDataNew& data) {
+static bool DrawActorPrototypeProperty(const ActorEditorProperty& property, ActorPrototypeData& data) {
 	void* propertyData = (u8*)&data + property.offset;
 	bool result = false;
 
@@ -2257,9 +2257,9 @@ static bool DrawActorPrototypeProperty(const ActorEditorProperty& property, Acto
 		result = ImGui::InputScalarN(property.name, property.dataType, propertyData, property.components);
 		break;
 	}
-	case ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX: {
+	case ACTOR_EDITOR_PROPERTY_ASSET: {
 		ActorPrototypeHandle& prototypeHandle = *(ActorPrototypeHandle*)propertyData;
-		result = DrawAssetField(property.name, ASSET_TYPE_ACTOR_PROTOTYPE, prototypeHandle.id);
+		result = DrawAssetField(property.name, property.assetType, prototypeHandle.id);
 		break;
 	}
 	default: {

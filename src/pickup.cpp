@@ -4,6 +4,14 @@
 #include "game_rendering.h"
 #include "game_state.h"
 #include "animation.h"
+#include "audio.h"
+
+static void OnPickup(Actor* pActor, const PickupData& data) {
+    pActor->flags.pendingRemoval = true;
+    if (data.pickupSound != SoundHandle::Null()) {
+        Audio::PlaySFX(data.pickupSound);
+    }
+}
 
 static void UpdateExpHalo(Actor* pActor, const ActorPrototype* pPrototype) {
     Actor* pPlayer = Game::GetPlayer();
@@ -35,8 +43,7 @@ static void UpdateExpHalo(Actor* pActor, const ActorPrototype* pPrototype) {
     pActor->position += pActor->velocity;
 
     if (pPlayer && Game::ActorsColliding(pActor, pPlayer)) {
-        //Audio::PlaySFX(&expSfx, CHAN_ID_PULSE0);
-        pActor->flags.pendingRemoval = true;
+        OnPickup(pActor, pPrototype->data.pickupData);
 
         Game::AddPlayerExp(pActor->state.pickupState.value);
 
@@ -54,8 +61,7 @@ static void UpdateExpHalo(Actor* pActor, const ActorPrototype* pPrototype) {
 static void UpdateExpRemnant(Actor* pActor, const ActorPrototype* pPrototype) {
     Actor* pPlayer = Game::GetPlayer();
     if (pPlayer && Game::ActorsColliding(pActor, pPlayer)) {
-        //Audio::PlaySFX(&expSfx, CHAN_ID_PULSE0);
-        pActor->flags.pendingRemoval = true;
+        OnPickup(pActor, pPrototype->data.pickupData);
 
         Game::ClearExpRemnant();
         Game::AddPlayerExp(pActor->state.pickupState.value);
@@ -91,7 +97,7 @@ static void UpdateHealing(Actor* pActor, const ActorPrototype* pPrototype) {
 
     Actor* pPlayer = Game::GetPlayer();
     if (pPlayer && Game::ActorsColliding(pActor, pPlayer)) {
-        pActor->flags.pendingRemoval = true;
+        OnPickup(pActor, pPrototype->data.pickupData);
 
         const u16 newHealth = Game::ActorHeal(pPlayer, pPrototype->data.pickupData.value, Game::GetPlayerHealth(), Game::GetPlayerMaxHealth());
         Game::SetPlayerHealth(newHealth);
@@ -124,7 +130,8 @@ constexpr ActorDrawFn Game::pickupDrawTable[PICKUP_TYPE_COUNT] = {
 
 #ifdef EDITOR
 static const std::initializer_list<ActorEditorProperty> defaultProps = {
-    {.name = "Value", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(PickupData, value) }
+    {.name = "Value", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(PickupData, value) },
+    {.name = "Pick up sound", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_SOUND, .components = 1, .offset = offsetof(PickupData, pickupSound)}
 };
 
 const ActorEditorData Editor::pickupEditorData = {

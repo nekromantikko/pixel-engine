@@ -1,18 +1,22 @@
 #pragma once
 #include "imgui.h"
+#include "asset_types.h"
 #include <vector>
 #include <cassert>
 		
 
 enum ActorEditorPropertyType {
 	ACTOR_EDITOR_PROPERTY_SCALAR,
-	ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX
+	ACTOR_EDITOR_PROPERTY_ASSET
 };
 
 struct ActorEditorProperty {
 	const char* name;
 	ActorEditorPropertyType type;
-	ImGuiDataType_ dataType;
+	union {
+		ImGuiDataType_ dataType;
+		AssetType assetType;
+	};
 	s32 components;
 	u32 offset;
 };

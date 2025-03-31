@@ -15,5 +15,5 @@ struct ActorPrototype {
 	u32 animCount;
 	AnimationHandle animations[ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT];
 
-	ActorPrototypeDataNew data;
+	ActorPrototypeData data;
 };

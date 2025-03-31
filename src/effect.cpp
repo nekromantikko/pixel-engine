@@ -2,6 +2,7 @@
 #include "actors.h"
 #include "actor_prototypes.h"
 #include "game_rendering.h"
+#include "audio.h"
 
 // Calls itoa, but adds a plus sign if value is positive
 static u32 ItoaSigned(s16 value, char* str) {
@@ -101,6 +102,9 @@ static void UpdateFeather(Actor* pActor, const ActorPrototype* pPrototype) {
 static void InitEffectState(EffectState& state, const EffectData& data) {
     state.initialLifetime = data.lifetime;
     state.lifetimeCounter = data.lifetime;
+    if (data.sound != SoundHandle::Null()) {
+        Audio::PlaySFX(data.sound);
+    }
 }
 
 static void InitDmgNumbers(Actor* pActor, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
@@ -131,6 +135,7 @@ constexpr ActorDrawFn Game::effectDrawTable[EFFECT_TYPE_COUNT] = {
 #ifdef EDITOR
 static const std::initializer_list<ActorEditorProperty> defaultProps = {
     {.name = "Lifetime", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(EffectData, lifetime) },
+    {.name = "Sound", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_SOUND, .components = 1, .offset = offsetof(EffectData, sound)},
 };
 
 const ActorEditorData Editor::effectEditorData = {

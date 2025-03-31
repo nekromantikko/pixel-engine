@@ -1,5 +1,6 @@
 #pragma once
 #include "typedef.h"
+#include "asset_types.h"
 
 enum EffectType : TActorSubtype {
 	EFFECT_TYPE_NUMBERS,
@@ -11,6 +12,7 @@ enum EffectType : TActorSubtype {
 
 struct EffectData {
 	u16 lifetime;
+	SoundHandle sound;
 };
 
 struct EffectState {

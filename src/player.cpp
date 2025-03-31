@@ -9,6 +9,8 @@
 #include "dungeon.h"
 #include "overworld.h"
 #include "animation.h"
+#include "audio.h"
+#include "asset_manager.h"
 
 enum PlayerHeadFrame : u8 {
     PLAYER_HEAD_IDLE,
@@ -311,7 +313,7 @@ static void TriggerInteraction(Actor* pPlayer, Actor* pInteractable) {
     }
 }
 
-static void PlayerShoot(Actor* pPlayer) {
+static void PlayerShoot(Actor* pPlayer, const PlayerData& data) {
     constexpr s32 shootDelay = 10;
 
     PlayerState& playerState = pPlayer->state.playerState;
@@ -346,7 +348,9 @@ static void PlayerShoot(Actor* pPlayer) {
 
         if (playerWeapon == PLAYER_WEAPON_LAUNCHER) {
             pBullet->velocity = pBullet->velocity * 0.75f;
-            //Audio::PlaySFX(&gunSfx, CHAN_ID_NOISE);
+            if (data.gunSound != SoundHandle::Null()) {
+                Audio::PlaySFX(data.gunSound);
+            }
         }
 
     }
@@ -358,7 +362,7 @@ static void PlayerDecelerate(Actor* pPlayer) {
     }
 }
 
-static bool PlayerJump(Actor* pPlayer) {
+static bool PlayerJump(Actor* pPlayer, const PlayerData& data) {
     if (Game::Input::ButtonPressed(jumpButton) && (!pPlayer->flags.inAir || !pPlayer->state.playerState.flags.doubleJumped)) {
         pPlayer->velocity.y = -0.25f;
 
@@ -366,7 +370,9 @@ static bool PlayerJump(Actor* pPlayer) {
         if (pPlayer->state.playerState.wingFrame == PLAYER_WINGS_ASCEND) {
             SetWingFrame(pPlayer, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
         }
-        //Audio::PlaySFX(&jumpSfx, CHAN_ID_PULSE0);
+        if (data.jumpSound != SoundHandle::Null()) {
+            Audio::PlaySFX(data.jumpSound);
+        }
 
         if (pPlayer->flags.inAir) {
             pPlayer->state.playerState.flags.doubleJumped = true;
@@ -397,7 +403,7 @@ static bool PlayerDodge(Actor* pPlayer) {
     return false;
 }
 
-static void PlayerInput(Actor* pPlayer) {
+static void PlayerInput(Actor* pPlayer, const PlayerData& data) {
     PlayerState& playerState = pPlayer->state.playerState;
     if (Game::Input::ButtonDown(BUTTON_DPAD_LEFT)) {
         pPlayer->velocity.x -= acceleration;
@@ -432,7 +438,7 @@ static void PlayerInput(Actor* pPlayer) {
     if (pInteractable && !pPlayer->flags.inAir && Game::Input::ButtonPressed(interactButton)) {
         TriggerInteraction(pPlayer, pInteractable);
     }
-    else PlayerShoot(pPlayer);
+    else PlayerShoot(pPlayer, data);
 
     // Aim mode
     if (Game::Input::ButtonDown(BUTTON_DPAD_UP)) {
@@ -443,7 +449,7 @@ static void PlayerInput(Actor* pPlayer) {
     }
     else playerState.flags.aimMode = PLAYER_AIM_FWD;
 
-    PlayerJump(pPlayer);
+    PlayerJump(pPlayer, data);
 
     if (pPlayer->velocity.y < 0 && Game::Input::ButtonReleased(jumpButton)) {
         pPlayer->velocity.y *= 0.5f;
@@ -505,7 +511,7 @@ static void TriggerModeTransition(Actor* pActor) {
     }
 }
 
-static void UpdateSidescrollerMode(Actor* pActor) {
+static void UpdateSidescrollerMode(Actor* pActor, const PlayerData& data) {
     PlayerState& state = pActor->state.playerState;
 
     if (state.modeTransitionCounter != 0 && !Game::UpdateCounter(state.modeTransitionCounter)) {
@@ -517,7 +523,7 @@ static void UpdateSidescrollerMode(Actor* pActor) {
     switch (state.flags.mode) {
     case PLAYER_MODE_NORMAL: {
         if (!inputDisabled) {
-            PlayerInput(pActor);
+            PlayerInput(pActor, data);
         }
         else {
             PlayerDecelerate(pActor);
@@ -565,7 +571,7 @@ static void UpdateSidescrollerMode(Actor* pActor) {
     }
     case PLAYER_MODE_DODGE: {
         // Dash cancel
-        if (PlayerJump(pActor)) {
+        if (PlayerJump(pActor, data)) {
             state.flags.mode = PLAYER_MODE_NORMAL;
             state.modeTransitionCounter = 0;
             pActor->velocity.x = glm::clamp(pActor->velocity.x, -maxSpeed, maxSpeed);
@@ -586,7 +592,7 @@ static void UpdatePlayerSidescroller(Actor* pActor, const ActorPrototype* pProto
         Game::AddPlayerStamina(1);
     }
 
-    UpdateSidescrollerMode(pActor);
+    UpdateSidescrollerMode(pActor, pPrototype->data.playerData);
 
     HitResult hit{};
     if (Game::ActorMoveHorizontal(pActor, pPrototype, hit)) {
@@ -767,7 +773,10 @@ bool Game::PlayerInvulnerable(Actor* pPlayer) {
 void Game::PlayerTakeDamage(Actor* pPlayer, const Damage& damage, const glm::vec2& enemyPos) {
     u16 health = GetPlayerHealth();
 
-    //Audio::PlaySFX(&damageSfx, CHAN_ID_PULSE0);
+    ActorPrototype* pPrototype = (ActorPrototype*)AssetManager::GetAsset(pPlayer->prototypeId);
+    if (pPrototype && pPrototype->data.playerData.damageSound != SoundHandle::Null()) {
+        Audio::PlaySFX(pPrototype->data.playerData.damageSound);
+    }
 
     u32 featherCount = Random::GenerateInt(1, 4);
 
@@ -813,8 +822,14 @@ constexpr ActorDrawFn Game::playerDrawTable[PLAYER_TYPE_COUNT] = {
 };
 
 #ifdef EDITOR
+static const std::initializer_list<ActorEditorProperty> sidescrollerProps = {
+    {.name = "Jump sound", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_SOUND, .components = 1, .offset = offsetof(PlayerData, jumpSound)},
+    {.name = "Damage sound", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_SOUND, .components = 1, .offset = offsetof(PlayerData, damageSound)},
+    {.name = "Gun sound (Temp)", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_SOUND, .components = 1, .offset = offsetof(PlayerData, gunSound)}
+};
+
 const ActorEditorData Editor::playerEditorData(
     { "Sidescroller", "Overworld" },
-    { {},{} }
+    { { sidescrollerProps },{} }
 );
 #endif

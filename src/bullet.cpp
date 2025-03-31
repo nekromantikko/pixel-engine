@@ -57,7 +57,6 @@ static void UpdateDefaultBullet(Actor* pActor, const ActorPrototype* pPrototype)
 
 static void BulletRicochet(glm::vec2& velocity, const glm::vec2& normal) {
     velocity = glm::reflect(velocity, normal);
-    //Audio::PlaySFX(&ricochetSfx, CHAN_ID_PULSE0);
 }
 
 static void UpdateGrenade(Actor* pActor, const ActorPrototype* pPrototype) {
@@ -109,7 +108,7 @@ constexpr ActorDrawFn Game::bulletDrawTable[BULLET_TYPE_COUNT] = {
 #ifdef EDITOR
 static const std::initializer_list<ActorEditorProperty> defaultProps = {
     {.name = "Lifetime", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(BulletData, lifetime) },
-    {.name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_PROTOTYPE_INDEX, .offset = offsetof(BulletData, deathEffect) }
+    {.name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_ACTOR_PROTOTYPE, .offset = offsetof(BulletData, deathEffect) }
 };
 
 const ActorEditorData Editor::bulletEditorData = {
