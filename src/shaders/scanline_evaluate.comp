@@ -35,38 +35,23 @@ layout(set = 0, binding = 7) readonly buffer RenderStates
 	RenderState data[];
 } renderStates;
 
-shared ScanlineData sharedData;
-
 void main() {
 	uint scanlineIndex = gl_WorkGroupID.y;
-	uint localSpriteIndex = gl_LocalInvocationID.x;
+	uint globalSpriteIndex = gl_GlobalInvocationID.x;
 
 	// Initialize shared scanline data
-	if (localSpriteIndex == 0) {
-		sharedData.spriteCount = 0;
-		sharedData.scrollX = renderStates.data[scanlineIndex].scrollX;
-		sharedData.scrollY = renderStates.data[scanlineIndex].scrollY;
+	if (globalSpriteIndex == 0) {
+		scanlines.data[scanlineIndex].scrollX = renderStates.data[scanlineIndex].scrollX;
+		scanlines.data[scanlineIndex].scrollY = renderStates.data[scanlineIndex].scrollY;
 	}
-	// Wait for initialization to complete
-	barrier();
 
-	uint spriteCount = sprites.data.length();
-	for (uint globalSpriteIndex = localSpriteIndex; globalSpriteIndex < spriteCount; globalSpriteIndex += MAX_SPRITES_PER_SCANLINE) {
-		Sprite sprite = sprites.data[globalSpriteIndex];
+	Sprite sprite = sprites.data[globalSpriteIndex];
 
-		uint y = bitfieldExtract(sprite.pos, 0, 9);
-		if (scanlineIndex >= y && scanlineIndex < y + 8) {
-			uint scanlineSpriteIndex = atomicAdd(sharedData.spriteCount, 1);
-			if (scanlineSpriteIndex < MAX_SPRITES_PER_SCANLINE) {
-				sharedData.spriteIndices[scanlineSpriteIndex] = globalSpriteIndex;
-			}
+	uint y = bitfieldExtract(sprite.pos, 0, 16);
+	if (scanlineIndex >= y && scanlineIndex < y + 8) {
+		uint scanlineSpriteIndex = atomicAdd(scanlines.data[scanlineIndex].spriteCount, 1);
+		if (scanlineSpriteIndex < MAX_SPRITES_PER_SCANLINE) {
+			scanlines.data[scanlineIndex].spriteIndices[scanlineSpriteIndex] = globalSpriteIndex;
 		}
-	}
-	// Wait for processing to complete
-	barrier();
-	
-
-	if (localSpriteIndex == 0) {
-		scanlines.data[scanlineIndex] = sharedData;
 	}
 }
