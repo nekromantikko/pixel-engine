@@ -36,7 +36,7 @@ struct RoomTemplateHeader {
 };
 
 namespace Assets {
-    void InitRoomTemplate(void* data);
+    void InitRoomTemplate(u64 id, void* data);
 
     u32 GetRoomTemplateSize(const RoomTemplateHeader* pHeader = nullptr);
     BgTile* GetRoomTemplateMapTiles(const RoomTemplateHeader* pHeader);

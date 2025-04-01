@@ -1,7 +1,7 @@
 #include "overworld.h"
 #include "asset_manager.h"
 
-void Assets::InitOverworld(void* data) {
+void Assets::InitOverworld(u64 id, void* data) {
     constexpr u32 keyAreaOffset = sizeof(Overworld);
     constexpr u32 tilesOffset = keyAreaOffset + MAX_OVERWORLD_KEY_AREA_COUNT * sizeof(OverworldKeyArea);
 

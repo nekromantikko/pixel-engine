@@ -1,4 +1,5 @@
 #include "audio.h"
+#include <cstdlib>
 #include <SDL.h>
 #include <vector>
 #include "debug.h"
@@ -824,7 +825,7 @@ namespace Audio {
 #endif
 }
 
-void Assets::InitSound(void* data) {
+void Assets::InitSound(u64 id, void* data) {
     Sound newSound{};
     newSound.dataOffset = sizeof(Sound);
     memcpy(data, &newSound, sizeof(Sound));

@@ -26,7 +26,7 @@ struct Overworld {
 };
 
 namespace Assets {
-	void InitOverworld(void* data);
+	void InitOverworld(u64 id, void* data);
 	OverworldKeyArea* GetOverworldKeyAreas(const Overworld* pHeader);
 	u32 GetOverworldSize();
 }

@@ -1,5 +1,4 @@
 #pragma once
-#include <cstdlib>
 #include <filesystem>
 #include "typedef.h"
 #include "asset_types.h"
@@ -50,7 +49,7 @@ namespace Audio {
 }
 
 namespace Assets {
-    void InitSound(void* data);
+    void InitSound(u64 id, void* data);
     u32 GetSoundSize(const Sound* pSound = nullptr);
     SoundOperation* GetSoundData(const Sound* pSound);
     bool LoadSoundFromFile(const std::filesystem::path& path, u32& dataSize, void* data = nullptr);

@@ -1,7 +1,7 @@
 #include "room.h"
 #include "asset_manager.h"
 
-void Assets::InitRoomTemplate(void* data) {
+void Assets::InitRoomTemplate(u64 id, void* data) {
     constexpr u32 mapTilesOffset = sizeof(RoomTemplateHeader);
     constexpr u32 tilesOffset = mapTilesOffset + ROOM_MAP_TILE_COUNT * sizeof(BgTile);
     constexpr u32 actorsOffset = tilesOffset + ROOM_MAX_SCREEN_COUNT * ROOM_SCREEN_TILE_COUNT;

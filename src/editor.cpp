@@ -24,6 +24,7 @@
 #include "dungeon.h"
 #include "overworld.h"
 #include "animation.h"
+#include "chr_sheet.h"
 #include "asset_manager.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <gtx/matrix_transform_2d.hpp>
@@ -63,8 +64,9 @@ enum OverworldEditMode {
 };
 
 struct EditorContext {
-	EditorTexture* chrTexture;
-	EditorTexture* paletteTexture;
+	EditorRenderData* pChrRenderData;
+	EditorRenderData* pPaletteRenderData;
+	std::unordered_map<u64, EditorRenderData*> chrSheetData;
 
 	// Timing
 	r64 secondsElapsed;
@@ -85,6 +87,7 @@ struct EditorContext {
 	bool overworldWindowOpen = false;
 	bool animationWindowOpen = false;
 	bool soundWindowOpen = false;
+	bool chrWindowOpen = false;
 
 	// Debug overlay
 	bool showDebugOverlay = true;
@@ -95,8 +98,8 @@ struct EditorContext {
 static EditorContext* pContext;
 
 #pragma region Utils
-static ImTextureID GetTextureID(const EditorTexture* pTexture) {
-	return (ImTextureID)Rendering::GetEditorTextureData(pTexture);
+static ImTextureID GetTextureID(const EditorRenderData* pData) {
+	return (ImTextureID)Rendering::GetEditorTextureData(pData);
 }
 
 static inline glm::vec4 NormalizedToChrTexCoord(const glm::vec4& normalized, u8 chrIndex, u8 palette) {
@@ -145,7 +148,7 @@ static ImVec2 DrawTileGrid(ImVec2 size, r32 gridStep, s32* selection = nullptr, 
 	}
 
 	constexpr r32 invBgColorIndex = 1.0f / (PALETTE_COUNT * PALETTE_COLOR_COUNT);
-	drawList->AddImage(GetTextureID(pContext->paletteTexture), topLeft, btmRight, ImVec2(0, 0), ImVec2(invBgColorIndex, 1.0f));
+	drawList->AddImage(GetTextureID(pContext->pPaletteRenderData), topLeft, btmRight, ImVec2(0, 0), ImVec2(invBgColorIndex, 1.0f));
 	for (r32 x = 0; x < size.x; x += gridStep)
 		drawList->AddLine(ImVec2(topLeft.x + x, topLeft.y), ImVec2(topLeft.x + x, btmRight.y), IM_COL32(200, 200, 200, 40));
 	for (r32 y = 0; y < size.y; y += gridStep)
@@ -339,7 +342,7 @@ static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, ImU32 c
 	const r32 tileSize = size / METATILE_DIM_TILES;
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	drawList->PushTextureID(GetTextureID(pContext->chrTexture));
+	drawList->PushTextureID(GetTextureID(pContext->pChrRenderData));
 	drawList->PrimReserve(METATILE_TILE_COUNT * 6, METATILE_TILE_COUNT * 4);
 
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
@@ -371,7 +374,7 @@ static void DrawNametable(ImVec2 size, const Nametable& nametable) {
 
 static bool DrawPaletteButton(u8 palette) {
 	constexpr r32 invPaletteCount = 1.0f / PALETTE_COUNT;
-	return ImGui::ImageButton("", GetTextureID(pContext->paletteTexture), ImVec2(80, 10), ImVec2(invPaletteCount * palette, 0), ImVec2(invPaletteCount * (palette + 1), 1));
+	return ImGui::ImageButton("", GetTextureID(pContext->pPaletteRenderData), ImVec2(80, 10), ImVec2(invPaletteCount * palette, 0), ImVec2(invPaletteCount * (palette + 1), 1));
 }
 
 static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
@@ -385,7 +388,7 @@ static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
 	const ImVec2 chrPos = DrawTileGrid(gridSize, gridStepPixels, selectedTile);
 	const glm::vec4 uvMinMax = NormalizedToChrTexCoord({ 0,0,1,1, }, index, palette);
 
-	drawList->AddImage(GetTextureID(pContext->chrTexture), chrPos, ImVec2(chrPos.x + size, chrPos.y + size), ImVec2(uvMinMax.x, uvMinMax.y), ImVec2(uvMinMax.z, uvMinMax.w));
+	drawList->AddImage(GetTextureID(pContext->pChrRenderData), chrPos, ImVec2(chrPos.x + size, chrPos.y + size), ImVec2(uvMinMax.x, uvMinMax.y), ImVec2(uvMinMax.z, uvMinMax.w));
 	if (selectedTile != nullptr && *selectedTile >= 0) {
 		DrawTileGridSelection(chrPos, gridSize, gridStepPixels, *selectedTile);
 	}
@@ -426,7 +429,7 @@ static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, c
 
 	// Draw background color
 	constexpr r32 invBgColorIndex = 1.0f / (PALETTE_COUNT * PALETTE_COLOR_COUNT);
-	drawList->AddImage(GetTextureID(pContext->paletteTexture), pos, ImVec2(pos.x + metatileSize.x * scale, pos.y + metatileSize.y * scale), ImVec2(0, 0), ImVec2(invBgColorIndex, 1.0f));
+	drawList->AddImage(GetTextureID(pContext->pPaletteRenderData), pos, ImVec2(pos.x + metatileSize.x * scale, pos.y + metatileSize.y * scale), ImVec2(0, 0), ImVec2(invBgColorIndex, 1.0f));
 
 	const Tileset* pTileset = Assets::GetTilemapTileset(pTilemap);
 	if (!pTileset) {
@@ -435,7 +438,7 @@ static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, c
 
 	const u32 tileCount = metatileSize.x * metatileSize.y * METATILE_TILE_COUNT;
 
-	drawList->PushTextureID(GetTextureID(pContext->chrTexture));
+	drawList->PushTextureID(GetTextureID(pContext->pChrRenderData));
 	drawList->PrimReserve(tileCount * 6, tileCount * 4); // NOTE: Seems as if primitives for max. 4096 tiles can be reserved...
 
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
@@ -474,7 +477,7 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 	const u32 tilesetTileDim = TILESET_DIM * METATILE_DIM_TILES;
 	const u32 tilesetTileCount = tilesetTileDim * tilesetTileDim;
 
-	drawList->PushTextureID(GetTextureID(pContext->chrTexture));
+	drawList->PushTextureID(GetTextureID(pContext->pChrRenderData));
 	drawList->PrimReserve(tilesetTileCount * 6, tilesetTileCount * 4);
 
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
@@ -507,7 +510,7 @@ static void DrawSprite(const Sprite& sprite, const ImVec2& pos, r32 renderScale,
 
 	glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex + CHR_PAGE_COUNT, palette);
 
-	drawList->AddImage(GetTextureID(pContext->chrTexture), pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y), color);
+	drawList->AddImage(GetTextureID(pContext->pChrRenderData), pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y), color);
 }
 
 static void DrawMetasprite(const Metasprite* pMetasprite, const ImVec2& origin, r32 renderScale, ImU32 color = IM_COL32(255, 255, 255, 255)) {
@@ -847,8 +850,8 @@ struct AssetEditorState {
 };
 
 typedef void (*AssetEditorFn)(EditedAsset&);
-typedef void (*InitAssetFn)(void*);
-typedef void (*PopulateAssetEditorDataFn)(void*, void**);
+typedef void (*InitAssetFn)(u64, void*);
+typedef void (*PopulateAssetEditorDataFn)(u64, void*, void**);
 typedef void (*ApplyAssetEditorDataFn)(void*, const void*);
 typedef void (*DeleteAssetEditorDataFn)(void*);
 
@@ -864,7 +867,7 @@ static EditedAsset CopyAssetForEditing(u64 id, PopulateAssetEditorDataFn populat
 	result.dirty = false;
 
 	if (populateFn) {
-		populateFn(result.data, &result.userData);
+		populateFn(id, result.data, &result.userData);
 	}
 	else result.userData = nullptr;
 
@@ -918,7 +921,7 @@ static bool RevertEditedAsset(EditedAsset& asset, PopulateAssetEditorDataFn popu
 	asset.dirty = false;
 
 	if (populateFn) {
-		populateFn(asset.data, &asset.userData);
+		populateFn(asset.id, asset.data, &asset.userData);
 	}
 	else asset.userData = nullptr;
 	return true;
@@ -1064,7 +1067,7 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, u32 n
 				const u64 id = AssetManager::CreateAsset(type, newSize, newName);
 				if (initFn) {
 					void* data = AssetManager::GetAsset(id, type);
-					initFn(data);
+					initFn(id, data);
 				}
 				state.editedAssets.try_emplace(id, CopyAssetForEditing(id, populateFn));
 			}
@@ -1593,7 +1596,7 @@ static void DrawMetaspritePreview(Metasprite* pMetasprite, ImVector<s32>& sprite
 		// Move sprite if dragged
 		ImVec2 posWithDrag = selected ? ImVec2(pos.x + dragDelta.x, pos.y + dragDelta.y) : pos;
 
-		drawList->AddImage(GetTextureID(pContext->chrTexture), posWithDrag, ImVec2(posWithDrag.x + gridStepPixels, posWithDrag.y + gridStepPixels), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
+		drawList->AddImage(GetTextureID(pContext->pChrRenderData), posWithDrag, ImVec2(posWithDrag.x + gridStepPixels, posWithDrag.y + gridStepPixels), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
 
 
 		// Commit drag
@@ -1706,7 +1709,7 @@ static void DrawSpriteListPreview(const Sprite& sprite) {
 	const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
 	const ImVec2 topLeft = ImVec2(ImGui::GetItemRectMin().x + 88, ImGui::GetItemRectMin().y + style.FramePadding.y);
 	const ImVec2 btmRight = ImVec2(topLeft.x + itemHeight, topLeft.y + itemHeight);
-	drawList->AddImage(GetTextureID(pContext->chrTexture), topLeft, btmRight, ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
+	drawList->AddImage(GetTextureID(pContext->pChrRenderData), topLeft, btmRight, ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
 }
 
 static void DrawMetaspriteEditor(EditedAsset& asset) {
@@ -1865,7 +1868,7 @@ struct RoomEditorData {
 	glm::vec2 viewportPos = glm::vec2(0.0f);
 };
 
-static void PopulateRoomEditorData(void* assetData, void** pUserData) {
+static void PopulateRoomEditorData(u64 id, void* assetData, void** pUserData) {
 	if (*pUserData) {
 		delete *pUserData;
 	}
@@ -2136,7 +2139,7 @@ static void DrawRoomTools(EditedAsset& asset) {
 					glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex, palette);
 
 					const ImVec2 pos(gridPos.x + x * previewTileSize, gridPos.y + y * previewTileSize);
-					drawList->AddImage(GetTextureID(pContext->chrTexture), pos, ImVec2(pos.x + previewTileSize, pos.y + previewTileSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
+					drawList->AddImage(GetTextureID(pContext->pChrRenderData), pos, ImVec2(pos.x + previewTileSize, pos.y + previewTileSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
 				}
 			}
 
@@ -2721,7 +2724,7 @@ static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon)
 	pOutDungeon->roomCount = roomIndex;
 }
 
-static void PopulateDungeonEditorData(void* assetData, void** pUserData) {
+static void PopulateDungeonEditorData(u64 id, void* assetData, void** pUserData) {
 	if (*pUserData) {
 		delete *pUserData;
 	}
@@ -3146,7 +3149,7 @@ struct OverworldEditorData {
 	TilemapClipboard clipboard{};
 };
 
-static void PopulateOverworldEditorData(void* assetData, void** pUserData) {
+static void PopulateOverworldEditorData(u64 id, void* assetData, void** pUserData) {
 	if (*pUserData) {
 		delete* pUserData;
 	}
@@ -3681,6 +3684,75 @@ static void DrawSoundWindow() {
 
 #pragma endregion
 
+#pragma region Pattern editor
+static void CreateChrSheetRenderData(u64 id, void* data) {
+	EditorRenderData* pEditorData = Rendering::CreateEditorData(EDITOR_RENDER_DATA_USAGE_CHR, CHR_DIM_PIXELS, CHR_DIM_PIXELS, CHR_SIZE_BYTES, data);
+
+	pContext->chrSheetData.emplace(id, pEditorData);
+}
+
+static void UpdateChrSheetRenderData(u64 id, void* data, void** userData) {
+	if (!pContext->chrSheetData.contains(id)) {
+		CreateChrSheetRenderData(id, data);
+	}
+
+	EditorRenderData* pEditorData = pContext->chrSheetData.at(id);
+	Rendering::UpdateEditorData(pEditorData, data);
+}
+
+static void DrawChrEditor(EditedAsset& asset) {
+	ImGui::BeginChild("Chr editor");
+
+	EditorRenderData* pEditorData = pContext->chrSheetData.at(asset.id);
+
+	static ImGui::FileBrowser fileBrowser;
+
+	if (ImGui::Button("Create from file")) {
+		fileBrowser.SetTitle("title");
+		fileBrowser.SetTypeFilters({ ".bmp" });
+		fileBrowser.Open();
+	}
+
+	fileBrowser.Display();
+	if (fileBrowser.HasSelected()) {
+		u32 requiredSize{};
+		if (Assets::LoadChrSheetFromFile(fileBrowser.GetSelected(), asset.data)) {
+			Rendering::UpdateEditorData(pEditorData, asset.data);
+			asset.dirty = true;
+		}
+		fileBrowser.ClearSelected();
+	}
+
+	ImGui::SeparatorText("Properties");
+	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
+		asset.dirty = true;
+	}
+
+	ImGui::SeparatorText("Preview");
+
+	// Copypaska....
+	constexpr s32 gridSizePixels = 512;
+	constexpr s32 gridSizeTiles = CHR_DIM_TILES;
+
+	const r32 renderScale = r32(gridSizePixels) / (gridSizeTiles * TILE_DIM_PIXELS);
+	const r32 gridStepPixels = TILE_DIM_PIXELS * renderScale;
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	const ImVec2 gridSize = ImVec2(gridSizePixels, gridSizePixels);
+	const ImVec2 chrPos = DrawTileGrid(gridSize, gridStepPixels);
+	const glm::vec4 uvMinMax = { 0,0,1,1 };
+
+	drawList->AddImage(GetTextureID(pEditorData), chrPos, ImVec2(chrPos.x + gridSizePixels, chrPos.y + gridSizePixels), ImVec2(uvMinMax.x, uvMinMax.y), ImVec2(uvMinMax.z, uvMinMax.w));
+
+	ImGui::EndChild();
+}
+
+static void DrawChrWindow() {
+	static AssetEditorState state{};
+	DrawAssetEditor("Pattern editor", pContext->chrWindowOpen, ASSET_TYPE_CHR_BANK, sizeof(ChrSheet), "New pattern sheet", DrawChrEditor, state, CreateChrSheetRenderData, UpdateChrSheetRenderData);
+}
+#pragma endregion
+
 #pragma region Main Menu
 static void DrawMainMenu() {
 	if (ImGui::BeginMainMenuBar()) {
@@ -3720,6 +3792,9 @@ static void DrawMainMenu() {
 			if (ImGui::MenuItem("Sound editor")) {
 				pContext->soundWindowOpen = true;
 			}
+			if (ImGui::MenuItem("Pattern editor")) {
+				pContext->chrWindowOpen = true;
+			}
 			ImGui::Separator();
 			if (ImGui::MenuItem("ImGui Demo")) {
 				pContext->demoWindowOpen = true;
@@ -3742,13 +3817,13 @@ void Editor::Init(SDL_Window *pWindow) {
 	Rendering::InitEditor(pWindow);
 
 	constexpr u32 sheetPaletteCount = PALETTE_COUNT / 2;
-	pContext->chrTexture = Rendering::CreateEditorTexture(CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT);
-	pContext->paletteTexture = Rendering::CreateEditorTexture(PALETTE_MEMORY_SIZE, 1);
+	pContext->pChrRenderData = Rendering::CreateEditorData(EDITOR_RENDER_DATA_USAGE_CHR, CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, CHR_MEMORY_SIZE, Rendering::GetChrPtr(0));
+	pContext->pPaletteRenderData = Rendering::CreateEditorData(EDITOR_RENDER_DATA_USAGE_PALETTE, PALETTE_MEMORY_SIZE, 1, PALETTE_MEMORY_SIZE, Rendering::GetPalettePtr(0));
 }
 
 void Editor::Free() {
-	Rendering::FreeEditorTexture(pContext->chrTexture);
-	Rendering::FreeEditorTexture(pContext->paletteTexture);
+	Rendering::FreeEditorData(pContext->pChrRenderData);
+	Rendering::FreeEditorData(pContext->pPaletteRenderData);
 
 	Rendering::ShutdownEditor();
 	ImGui::DestroyContext();
@@ -3781,8 +3856,17 @@ void Editor::ProcessEvent(const SDL_Event* event) {
 }
 
 void Editor::SetupFrame() {
-	Rendering::RenderChrImage(pContext->chrTexture);
-	Rendering::RenderPaletteImage(pContext->paletteTexture);
+	Rendering::UpdateEditorData(pContext->pChrRenderData, Rendering::GetChrPtr(0));
+	Rendering::UpdateEditorData(pContext->pPaletteRenderData, Rendering::GetPalettePtr(0));
+
+	Rendering::RenderEditorData(pContext->pChrRenderData);
+	Rendering::RenderEditorData(pContext->pPaletteRenderData);
+
+	for (auto& kvp : pContext->chrSheetData) {
+		const auto& [id, pData] = kvp;
+
+		Rendering::RenderEditorData(pData);
+	}
 }
 
 void Editor::Render(r64 dt) {
@@ -3843,6 +3927,10 @@ void Editor::Render(r64 dt) {
 
 	if (pContext->soundWindowOpen) {
 		DrawSoundWindow();
+	}
+
+	if (pContext->chrWindowOpen) {
+		DrawChrWindow();
 	}
 
 	ImGui::Render();

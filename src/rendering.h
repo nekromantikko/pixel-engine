@@ -105,7 +105,14 @@ static constexpr RenderSettings DEFAULT_RENDER_SETTINGS = {
 	true
 };
 
-struct EditorTexture;
+#ifdef EDITOR
+enum EditorRenderDataUsage {
+	EDITOR_RENDER_DATA_USAGE_CHR,
+	EDITOR_RENDER_DATA_USAGE_PALETTE
+};
+
+struct EditorRenderData;
+#endif
 
 namespace Rendering
 {
@@ -136,13 +143,13 @@ namespace Rendering
 	void BeginEditorFrame();
 	void ShutdownEditor();
 
-	EditorTexture* CreateEditorTexture(u32 width, u32 height);
-	void FreeEditorTexture(EditorTexture* pTexture);
-	void* GetEditorTextureData(const EditorTexture* pTexture);
+	EditorRenderData* CreateEditorData(EditorRenderDataUsage usage, u32 texWidth, u32 texHeight, u32 dataSize, void* data);
+	void UpdateEditorData(const EditorRenderData* pEditorData, void* data);
+	void* GetEditorTextureData(const EditorRenderData* pEditorData);
+	void FreeEditorData(EditorRenderData* pEditorData);
 
 	// Software
-	void RenderChrImage(const EditorTexture* pTexture);
-	void RenderPaletteImage(const EditorTexture* pTexture);
+	void RenderEditorData(const EditorRenderData* pEditorData);
 	// Render pass
 	void RenderEditor();
 #endif
