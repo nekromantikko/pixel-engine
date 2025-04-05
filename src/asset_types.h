@@ -10,6 +10,7 @@ enum AssetType : u8 {
 	ASSET_TYPE_DUNGEON,
 	ASSET_TYPE_OVERWORLD,
 	ASSET_TYPE_ANIMATION,
+	ASSET_TYPE_PALETTE,
 
 	ASSET_TYPE_COUNT,
 };
@@ -44,7 +45,8 @@ typedef AssetHandle<ASSET_TYPE_ROOM_TEMPLATE> RoomTemplateHandle;
 typedef AssetHandle<ASSET_TYPE_DUNGEON> DungeonHandle;
 typedef AssetHandle<ASSET_TYPE_OVERWORLD> OverworldHandle;
 typedef AssetHandle<ASSET_TYPE_ANIMATION> AnimationHandle;
+typedef AssetHandle<ASSET_TYPE_PALETTE> PaletteHandle;
 
 #ifdef EDITOR
-constexpr const char* ASSET_TYPE_NAMES[ASSET_TYPE_COUNT] = { "Chr bank", "Sound", "Tileset", "Metasprite", "Actor prototype", "Room template", "Dungeon", "Overworld", "Animation" };
+constexpr const char* ASSET_TYPE_NAMES[ASSET_TYPE_COUNT] = { "Chr bank", "Sound", "Tileset", "Metasprite", "Actor prototype", "Room template", "Dungeon", "Overworld", "Animation", "Palette" };
 #endif

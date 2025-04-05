@@ -15,10 +15,6 @@ static constexpr u32 LAYER_SPRITE_COUNT = MAX_SPRITE_COUNT / SPRITE_LAYER_COUNT;
 static glm::vec2 viewportPos;
 static SpriteLayer spriteLayers[SPRITE_LAYER_COUNT];
 
-static u8 paletteColors[PALETTE_MEMORY_SIZE];
-
-static ChrSheet chrBanks[9];
-
 static void UpdateScreenScroll() {
     Scanline* pScanlines = Rendering::GetScanlinePtr(0);
 
@@ -159,8 +155,25 @@ void Game::Rendering::Init() {
     CopyBankTiles(debugTilesetBankHandle, 0, 2, 0, CHR_SIZE_TILES);
     CopyBankTiles(fgBankHandle, 0, 4, 0, CHR_SIZE_TILES);
 
-    ::Rendering::Util::LoadPaletteColorsFromFile("assets/palette.dat", paletteColors);
-    memcpy(::Rendering::GetPalettePtr(0), paletteColors, PALETTE_MEMORY_SIZE);
+    constexpr PaletteHandle debug0PaletteHandle(9826404639351995940);
+    constexpr PaletteHandle debug1PaletteHandle(15753953292764895790);
+    constexpr PaletteHandle worldMapPaletteHandle(235843673484981221);
+    constexpr PaletteHandle dungeonMapPaletteHandle(17785843363754367893);
+    constexpr PaletteHandle freyaPaletteHandle(12681477220579246228);
+    constexpr PaletteHandle freyaDarkPaletteHandle(5947198864976396277);
+    constexpr PaletteHandle checkpointPaletteHandle(17417799732251940800);
+    constexpr PaletteHandle goldBluePaletteHandle(16493657319985968026);
+	constexpr PaletteHandle greenRedPaletteHandle(14621729332936982450);
+
+	CopyPaletteColors(debug0PaletteHandle, 0);
+	CopyPaletteColors(worldMapPaletteHandle, 1);
+	CopyPaletteColors(debug1PaletteHandle, 2);
+	CopyPaletteColors(dungeonMapPaletteHandle, 3);
+    CopyPaletteColors(goldBluePaletteHandle, 8);
+	CopyPaletteColors(freyaPaletteHandle, 9);
+	CopyPaletteColors(freyaDarkPaletteHandle, 10);
+	CopyPaletteColors(greenRedPaletteHandle, 11);
+	CopyPaletteColors(checkpointPaletteHandle, 12);
 }
 
 glm::vec2 Game::Rendering::GetViewportPos() {
@@ -317,16 +330,28 @@ void Game::Rendering::CopyBankTiles(ChrBankHandle bankId, u32 bankOffset, u32 sh
     memcpy(pSheetTiles, pBankTiles, sizeof(ChrTile) * count);
 }
 
-// TODO: Actually implement palette presets
-void Game::Rendering::GetPalettePresetColors(u8 presetIndex, u8* pOutColors) {
-	if (presetIndex >= PALETTE_COUNT) {
-		return;
-	}
+bool Game::Rendering::GetPalettePresetColors(PaletteHandle paletteId, u8* pOutColors) {
+    Palette* pPalette = (Palette*)AssetManager::GetAsset(paletteId);
+    if (!pPalette) {
+        DEBUG_ERROR("Failed to load palette %llu\n", paletteId);
+        return false;
+    }
 
-	memcpy(pOutColors, paletteColors + presetIndex * PALETTE_COLOR_COUNT, PALETTE_COLOR_COUNT);
+	memcpy(pOutColors, pPalette->colors, PALETTE_COLOR_COUNT);
+	return true;
 }
 
 void Game::Rendering::WritePaletteColors(u8 paletteIndex, u8* pColors) {
 	memcpy(::Rendering::GetPalettePtr(paletteIndex)->colors, pColors, PALETTE_COLOR_COUNT);
+}
+
+void Game::Rendering::CopyPaletteColors(PaletteHandle paletteId, u8 paletteIndex) {
+	Palette* pPalette = (Palette*)AssetManager::GetAsset(paletteId);
+	if (!pPalette) {
+		DEBUG_ERROR("Failed to load palette %llu\n", paletteId);
+		return;
+	}
+
+	memcpy(::Rendering::GetPalettePtr(paletteIndex)->colors, pPalette->colors, PALETTE_COLOR_COUNT);
 }
 #pragma endregion

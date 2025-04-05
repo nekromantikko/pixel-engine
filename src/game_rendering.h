@@ -39,7 +39,8 @@ namespace Game {
 		bool DrawMetasprite(u8 layerIndex, MetaspriteHandle metaspriteId, glm::i16vec2 pos, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1);
 		void CopyBankTiles(ChrBankHandle bankId, u32 bankOffset, u32 sheetIndex, u32 sheetOffset, u32 count);
 
-		void GetPalettePresetColors(u8 presetIndex, u8* pOutColors);
+		bool GetPalettePresetColors(PaletteHandle paletteId, u8* pOutColors);
 		void WritePaletteColors(u8 paletteIndex, u8* pColors);
+		void CopyPaletteColors(PaletteHandle paletteId, u8 paletteIndex);
 	}
 }

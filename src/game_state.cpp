@@ -696,18 +696,19 @@ struct LevelTransitionState {
     DungeonHandle nextDungeon;
     glm::i8vec2 nextGridCell;
     u8 nextDirection;
+    u8* cachedPaletteColors;
 
     r32 progress = 0.0f;
     u8 status = TRANSITION_FADE_OUT;
     u8 holdTimer = 12;
 };
 
-static void UpdateFadeToBlack(r32 progress) {
+static void UpdateFadeToBlack(r32 progress, const u8* cachedColors) {
     progress = glm::smoothstep(0.0f, 1.0f, progress);
 
     u8 colors[PALETTE_COLOR_COUNT];
     for (u32 i = 0; i < PALETTE_COUNT; i++) {
-        Game::Rendering::GetPalettePresetColors(i, colors);
+        memcpy(colors, cachedColors + i * PALETTE_COLOR_COUNT, PALETTE_COLOR_COUNT);
         for (u32 j = 0; j < PALETTE_COLOR_COUNT; j++) {
             u8 color = colors[j];
 
@@ -736,7 +737,7 @@ static bool LevelTransitionCoroutine(void* userData) {
     case TRANSITION_FADE_OUT: {
         if (state->progress < 1.0f) {
             state->progress += 0.1f;
-            UpdateFadeToBlack(state->progress);
+            UpdateFadeToBlack(state->progress, state->cachedPaletteColors);
             return true;
         }
         state->status = TRANSITION_LOADING;
@@ -755,7 +756,7 @@ static bool LevelTransitionCoroutine(void* userData) {
     case TRANSITION_FADE_IN: {
         if (state->progress > 0.0f) {
             state->progress -= 0.10f;
-            UpdateFadeToBlack(state->progress);
+            UpdateFadeToBlack(state->progress, state->cachedPaletteColors);
             return true;
         }
         state->status = TRANSITION_COMPLETE;
@@ -1165,10 +1166,15 @@ void Game::TriggerScreenShake(s16 magnitude, u16 duration, bool freeze) {
 }
 
 void Game::TriggerLevelTransition(DungeonHandle targetDungeon, glm::i8vec2 targetGridCell, u8 enterDirection, void(*callback)()) {
+	// This is a bit silly, but can't think of a better way to do this right now
+    static u8 cachedPaletteColors[PALETTE_MEMORY_SIZE];
+	memcpy(cachedPaletteColors, ::Rendering::GetPalettePtr(0), PALETTE_MEMORY_SIZE);
+    
     LevelTransitionState state = {
             .nextDungeon = targetDungeon,
             .nextGridCell = targetGridCell,
             .nextDirection = enterDirection,
+            .cachedPaletteColors = cachedPaletteColors,
     };
     StartCoroutine(LevelTransitionCoroutine, state, callback);
     freezeGameplay = true;

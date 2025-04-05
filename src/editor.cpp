@@ -89,6 +89,7 @@ struct EditorContext {
 	bool animationWindowOpen = false;
 	bool soundWindowOpen = false;
 	bool chrWindowOpen = false;
+	bool paletteWindowOpen = false;
 
 	// Debug overlay
 	bool showDebugOverlay = true;
@@ -177,6 +178,17 @@ static void DrawTileGridSelection(ImVec2 gridPos, ImVec2 gridSize, r32 gridStep,
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	ImVec2 selectedTilePos = ImVec2(gridPos.x + gridStep * (selection % xDivisions), gridPos.y + gridStep * (selection / xDivisions));
 	drawList->AddRect(selectedTilePos, ImVec2(selectedTilePos.x + gridStep, selectedTilePos.y + gridStep), IM_COL32(255, 255, 255, 255));
+}
+
+static ImVec2 DrawColorGrid(ImVec2 size, s32* selection = nullptr, bool* focused = nullptr) {
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+	const ImVec2 gridPos = DrawTileGrid(size, size.x / 16, selection, focused);
+
+	ImTextureID textureId = GetTextureID(pContext->pColorRenderData);
+	drawList->AddImage(textureId, gridPos, ImVec2(gridPos.x + size.x, gridPos.y + size.y), ImVec2(0, 0), ImVec2(1, 1));
+
+	return gridPos;
 }
 
 // See GetMetatileVertices for human-readable version
@@ -1526,17 +1538,8 @@ static void DrawDebugWindow() {
 			ImGui::EndTabItem();
 		}
 		if (ImGui::BeginTabItem("Palette")) {
-			
-			ImDrawList* drawList = ImGui::GetWindowDrawList();
-			ImTextureID textureId = GetTextureID(pContext->pColorRenderData);
-
-			const ImVec2 topLeft = ImGui::GetCursorScreenPos();
 			constexpr ImVec2 size = ImVec2(512, 256);
-
-			// Invisible button to prevent dragging window
-			ImGui::InvisibleButton("##canvas", size);
-
-			drawList->AddImage(textureId, topLeft, ImVec2(topLeft.x + size.x, topLeft.y + size.y), ImVec2(0,0), ImVec2(1,1));
+			DrawColorGrid(size);
 
 			if (ImGui::Button("Save palette to file")) {
 				Rendering::Util::SavePaletteToFile("generated.pal");
@@ -3765,6 +3768,95 @@ static void DrawChrWindow() {
 }
 #pragma endregion
 
+#pragma region Palette editor
+struct PaletteEditorData {
+	s32 selectedColor = -1;
+};
+
+static void InitPalette(u64 id, void* data) {
+	Palette* pPalette = (Palette*)data;
+	for (u32 i = 0; i < PALETTE_COLOR_COUNT; i++) {
+		pPalette->colors[i] = 0;
+	}
+}
+
+static void PopulatePaletteEditorData(u64 id, void* assetData, void** pUserData) {
+	if (*pUserData) {
+		delete *pUserData;
+	}
+
+	*pUserData = new PaletteEditorData();
+}
+
+static void DeletePaletteEditorData(void* userData) {
+	delete userData;
+}
+
+static void DrawPaletteEditor(EditedAsset& asset) {
+	ImGui::BeginChild("Palette editor");
+
+	ImGui::SeparatorText("Properties");
+	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
+		asset.dirty = true;
+	}
+
+	ImGui::SeparatorText("Palette");
+
+	Palette* pPalette = (Palette*)asset.data;
+	PaletteEditorData* pEditorData = (PaletteEditorData*)asset.userData;
+	const s32 selectedColorIndex = pEditorData->selectedColor >= 0 ? pPalette->colors[pEditorData->selectedColor] : -1;
+
+	{
+		ImGui::PushID("Color table");
+		constexpr ImVec2 gridSize = ImVec2(512, 256);
+		s32 newIndex = selectedColorIndex;
+		ImVec2 gridPos = DrawColorGrid(gridSize, &newIndex);
+		DrawTileGridSelection(gridPos, gridSize, 32, newIndex);
+
+		if (newIndex != selectedColorIndex && newIndex >= 0) {
+			pPalette->colors[pEditorData->selectedColor] = newIndex;
+			asset.dirty = true;
+		}
+		ImGui::PopID();
+	}
+	ImGui::Separator();
+	{
+		ImGui::PushID("Palette");
+		constexpr ImVec2 gridSize = ImVec2(512, 64);
+		ImVec2 gridPos = DrawTileGrid(gridSize, 64, &pEditorData->selectedColor);
+
+		for (u32 i = 0; i < PALETTE_COLOR_COUNT; i++) {
+			const u32 color = pPalette->colors[i];
+			const u32 x = color % 16;
+			const u32 y = color / 16;
+
+			const ImVec2 tilePos = ImVec2(gridPos.x + i * 64, gridPos.y);
+			const ImVec2 uvMin = ImVec2(x / 16.0f, y / 8.0f);
+			const ImVec2 uvMax = ImVec2((x + 1) / 16.0f, (y + 1) / 8.0f);
+
+			ImTextureID textureId = GetTextureID(pContext->pColorRenderData);
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			drawList->AddImage(textureId, tilePos, ImVec2(tilePos.x + 64, tilePos.y + 64), uvMin, uvMax);
+			
+			char indexStr[8];
+			sprintf(indexStr, "0x%02x", color);
+			drawList->AddText(ImVec2(tilePos.x + 8.0f, tilePos.y + 8.0f), IM_COL32(255, 255, 255, 255), indexStr);
+		}
+
+		DrawTileGridSelection(gridPos, gridSize, 64, pEditorData->selectedColor);
+		ImGui::PopID();
+	}
+
+	ImGui::EndChild();
+}
+
+static void DrawPaletteWindow() {
+	static AssetEditorState state{};
+	DrawAssetEditor("Palette editor", pContext->paletteWindowOpen, ASSET_TYPE_PALETTE, sizeof(Palette), "New palette", DrawPaletteEditor, state, InitPalette, PopulatePaletteEditorData, nullptr, DeletePaletteEditorData);
+}
+
+#pragma endregion
+
 #pragma region Main Menu
 static void DrawMainMenu() {
 	if (ImGui::BeginMainMenuBar()) {
@@ -3807,6 +3899,9 @@ static void DrawMainMenu() {
 			if (ImGui::MenuItem("Pattern editor")) {
 				pContext->chrWindowOpen = true;
 			}
+			if (ImGui::MenuItem("Palette editor")) {
+				pContext->paletteWindowOpen = true;
+			}
 			ImGui::Separator();
 			if (ImGui::MenuItem("ImGui Demo")) {
 				pContext->demoWindowOpen = true;
@@ -3818,7 +3913,7 @@ static void DrawMainMenu() {
 }
 #pragma endregion
 
-#pragma region Public APIF
+#pragma region Public API
 void Editor::CreateContext() {
 	pContext = new EditorContext{};
 	assert(pContext != nullptr);
@@ -3942,6 +4037,10 @@ void Editor::Render(r64 dt) {
 
 	if (pContext->chrWindowOpen) {
 		DrawChrWindow();
+	}
+
+	if (pContext->paletteWindowOpen) {
+		DrawPaletteWindow();
 	}
 
 	ImGui::Render();
