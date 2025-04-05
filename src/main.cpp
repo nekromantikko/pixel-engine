@@ -1,7 +1,6 @@
 #include <SDL.h>
 #include <cfloat>
 #include "rendering.h"
-#include "system.h"
 #include "game.h"
 #include "input.h"
 #include "audio.h"

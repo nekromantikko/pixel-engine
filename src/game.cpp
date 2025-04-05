@@ -1,27 +1,9 @@
 #include "game.h"
-#include "system.h"
 #include "game_input.h"
 #include "game_state.h"
-#include <cstring>
-#include <cstdio>
 #include "game_rendering.h"
-#include "collision.h"
-#include "metasprite.h"
-#include "tiles.h"
-#include <vector>
-#include "audio.h"
-#include "nes_timing.h"
-#include <gtc/constants.hpp>
-#include "random.h"
-#include "fixed_hash_map.h"
-#include "coroutines.h"
-#include "dialog.h"
-#include "game_ui.h"
-#include "actor_prototypes.h"
-#include "dungeon.h"
-#include "room.h"
-#include "overworld.h"
 #include "asset_manager.h"
+#include "nes_timing.h"
 
 // TEMP
 constexpr DungeonHandle testDungeon(4648186456448694858);

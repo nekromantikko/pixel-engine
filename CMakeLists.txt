@@ -22,7 +22,6 @@ set(SOURCES
 		src/input.cpp
 		src/rendering_util.cpp
 		src/rendering_vulkan.cpp
-		src/system.cpp
 		src/game_rendering.cpp
 		src/tiles.cpp
 		src/actors.cpp
@@ -55,7 +54,6 @@ set(HEADERS
 		src/memory_pool.h
 		src/metasprite.h
 		src/rendering_util.h
-		src/system.h
 		src/typedef.h
 		src/game_rendering.h
 		src/collision.h

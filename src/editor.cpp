@@ -1,6 +1,5 @@
 #include "editor.h"
 #include "editor_actor.h"
-#include "system.h"
 #include "debug.h"
 #include <cassert>
 #include <limits>

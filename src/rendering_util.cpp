@@ -1,5 +1,4 @@
 #include "rendering_util.h"
-#include "system.h"
 #include "debug.h"
 #include <stdio.h>
 #include <gtc/constants.hpp>
@@ -81,18 +80,6 @@ namespace Rendering
 			u16 version;
 			u16 colorCount;
 		};
-
-		void LoadPaletteColorsFromFile(const char* fname, u8* outColors) {
-			u32 palFileSize;
-			char* palData = AllocFileBytes(fname, palFileSize);
-
-			if (palFileSize < PALETTE_MEMORY_SIZE) {
-				DEBUG_ERROR("Invalid palette table file!\n");
-			}
-
-			memcpy(outColors, palData, PALETTE_MEMORY_SIZE);
-			free(palData);
-		}
 
 		void GeneratePaletteColors(u32* data) {
 			for (s32 i = 0; i < COLOR_COUNT; i++) {

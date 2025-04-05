@@ -2,7 +2,6 @@
 #include "game_state.h"
 #include "room.h"
 #include "dungeon.h"
-#include "system.h"
 #include "tiles.h"
 #include "metasprite.h"
 #include "rendering_util.h"
