@@ -21,7 +21,7 @@ struct AssetHandle {
 
 	constexpr AssetHandle() = default;
 	constexpr AssetHandle(const AssetHandle& other) = default;
-	constexpr AssetHandle(u64 id) : id(id) {}
+	explicit constexpr AssetHandle(u64 id) : id(id) {}
 
 	bool operator==(const AssetHandle& other) const {
 		return id == other.id;

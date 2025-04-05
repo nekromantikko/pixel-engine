@@ -13,11 +13,11 @@
 #include "asset_manager.h"
 
 // TODO: Define in editor in game settings 
-constexpr ActorPrototypeHandle playerPrototypeId = 18154189127814674930;
-constexpr ActorPrototypeHandle playerOverworldPrototypeId = 6197846074548071416;
-constexpr ActorPrototypeHandle xpRemnantPrototypeId = 11197223615879147344;
+constexpr ActorPrototypeHandle playerPrototypeId(18154189127814674930);
+constexpr ActorPrototypeHandle playerOverworldPrototypeId(6197846074548071416);
+constexpr ActorPrototypeHandle xpRemnantPrototypeId(11197223615879147344);
 
-constexpr OverworldHandle overworldId = 17959228201269526891;
+constexpr OverworldHandle overworldId(17959228201269526891);
 
 // Map drawing
 static constexpr glm::ivec2 mapViewportOffset = { 7, 4 };
@@ -782,7 +782,7 @@ void Game::InitGameData() {
 
 	// TODO: Initialize first checkpoint
 
-	gameData.expRemnant.dungeonId = UUID_NULL;
+	gameData.expRemnant.dungeonId = DungeonHandle::Null();
 
 	gameData.persistedActorData.Clear();
 }
@@ -852,7 +852,7 @@ void Game::SetPlayerWeapon(u16 weapon) {
 
 #pragma region ExpRemnant
 void Game::ClearExpRemnant() {
-    gameData.expRemnant.dungeonId = UUID_NULL;
+    gameData.expRemnant.dungeonId = DungeonHandle::Null();
 }
 void Game::SetExpRemnant(const glm::vec2& position, u16 value) {
     gameData.expRemnant.dungeonId = currentDungeonId;
@@ -1029,7 +1029,7 @@ bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
     ViewportFollowPlayer();
 
     // Spawn xp remnant, if it belongs in this room
-    if (gameData.expRemnant.dungeonId == currentDungeonId && currentDungeonId != UUID_NULL) {
+    if (gameData.expRemnant.dungeonId == currentDungeonId && currentDungeonId != DungeonHandle::Null()) {
         const RoomInstance* pRoom = GetDungeonRoom(currentDungeonId, gameData.expRemnant.gridOffset);
         if (pRoom->id == pCurrentRoom->id) {
             Actor* pRemnant = SpawnActor(xpRemnantPrototypeId, gameData.expRemnant.position);

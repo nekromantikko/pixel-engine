@@ -10,7 +10,7 @@
 #include <gtc/constants.hpp>
 
 // TODO: Define in editor in game settings or similar
-constexpr ActorPrototypeHandle dmgNumberPrototypeId = 3893478668273870712;
+constexpr ActorPrototypeHandle dmgNumberPrototypeId(3893478668273870712);
 
 static Pool<Actor, MAX_DYNAMIC_ACTOR_COUNT> actors;
 static Pool<ActorHandle, MAX_DYNAMIC_ACTOR_COUNT> actorRemoveList;
@@ -63,7 +63,7 @@ Actor* Game::SpawnActor(const RoomActor* pTemplate, u32 roomId) {
 	return actors.Get(handle);
 }
 Actor* Game::SpawnActor(const ActorPrototypeHandle& prototypeId, const glm::vec2& position, const glm::vec2& velocity) {
-	if (actors.Count() >= MAX_DYNAMIC_ACTOR_COUNT || prototypeId == UUID_NULL) {
+	if (actors.Count() >= MAX_DYNAMIC_ACTOR_COUNT || prototypeId == ActorPrototypeHandle::Null()) {
 		return nullptr;
 	}
 

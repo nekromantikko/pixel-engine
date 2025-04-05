@@ -66,9 +66,10 @@ constexpr u16 sitAnimIndex = 1;
 constexpr u16 deathAnimIndex = 2;
 
 // TODO: These should be set in editor somehow
-constexpr ActorPrototypeHandle playerGrenadePrototypeId = 5433896513301451046;
-constexpr ActorPrototypeHandle playerArrowPrototypeId = 13929813062463858187;
-constexpr ActorPrototypeHandle featherPrototypeId = 4150894991750855816;
+constexpr ChrBankHandle playerBankId(17419163809364512109);
+constexpr ActorPrototypeHandle playerGrenadePrototypeId(5433896513301451046);
+constexpr ActorPrototypeHandle playerArrowPrototypeId(13929813062463858187);
+constexpr ActorPrototypeHandle featherPrototypeId(4150894991750855816);
 
 // TODO: Would it be possible to define these in the editor?
 constexpr u8 playerWingFrameBankOffsets[4] = { 0x00, 0x08, 0x10, 0x18 };
@@ -91,18 +92,18 @@ constexpr u8 playerHandFrameTileCount = 2;
 constexpr u8 playerWeaponFrameTileCount = 8;
 
 constexpr glm::ivec2 playerBowOffsets[3] = { { 10, -4 }, { 9, -14 }, { 10, 4 } };
-constexpr MetaspriteHandle playerBowFwdMetaspriteId = 14903895514375038294;
-constexpr MetaspriteHandle playerBowDiagMetaspriteId = 13305472537268631013;
+constexpr MetaspriteHandle playerBowFwdMetaspriteId(14903895514375038294);
+constexpr MetaspriteHandle playerBowDiagMetaspriteId(13305472537268631013);
 
 constexpr glm::ivec2 playerLauncherOffsets[3] = { { 5, -5 }, { 7, -12 }, { 8, 1 } };
-constexpr MetaspriteHandle playerLauncherFwdMetaspriteId = 11359313821138079876;
-constexpr MetaspriteHandle playerLauncherDiagMetaspriteId = 10921545440614489200;
+constexpr MetaspriteHandle playerLauncherFwdMetaspriteId(11359313821138079876);
+constexpr MetaspriteHandle playerLauncherDiagMetaspriteId(10921545440614489200);
 
 static void AnimateWings(Actor* pPlayer, u16 frameLength) {
     pPlayer->state.playerState.wingCounter = glm::clamp(pPlayer->state.playerState.wingCounter, u16(0), frameLength);
 
     Game::AdvanceAnimation(pPlayer->state.playerState.wingCounter, pPlayer->state.playerState.wingFrame, PLAYER_WING_FRAME_COUNT, frameLength, 0);
-    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerWingFrameBankOffsets[pPlayer->state.playerState.wingFrame], 4, playerWingFrameChrOffset, playerWingFrameTileCount);
+    Game::Rendering::CopyBankTiles(playerBankId, playerWingFrameBankOffsets[pPlayer->state.playerState.wingFrame], 4, playerWingFrameChrOffset, playerWingFrameTileCount);
 }
 
 static void AnimateWingsToTargetPosition(Actor* pPlayer, u8 targetFrame, u16 frameLength) {
@@ -114,11 +115,11 @@ static void AnimateWingsToTargetPosition(Actor* pPlayer, u8 targetFrame, u16 fra
 static void SetWingFrame(Actor* pPlayer, u16 frame, u16 frameLength) {
     pPlayer->state.playerState.wingCounter = frameLength;
     pPlayer->state.playerState.wingFrame = frame;
-    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerWingFrameBankOffsets[pPlayer->state.playerState.wingFrame], 4, playerWingFrameChrOffset, playerWingFrameTileCount);
+    Game::Rendering::CopyBankTiles(playerBankId, playerWingFrameBankOffsets[pPlayer->state.playerState.wingFrame], 4, playerWingFrameChrOffset, playerWingFrameTileCount);
 }
 
 static void AnimateSitting(Actor* pPlayer, u16 frameIdx) {
-    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerSitBankOffsets[frameIdx], 4, playerHeadFrameChrOffset, 8);
+    Game::Rendering::CopyBankTiles(playerBankId, playerSitBankOffsets[frameIdx], 4, playerHeadFrameChrOffset, 8);
 
     // TODO: Custom wing graphics for sitting?
     AnimateWingsToTargetPosition(pPlayer, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
@@ -133,7 +134,7 @@ static void AnimateSitting(Actor* pPlayer, u16 frameIdx) {
 static void AnimateDeath(Actor* pPlayer) {
     u8 frameIdx = !pPlayer->flags.inAir;
 
-    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerDeadBankOffsets[frameIdx], 4, playerHeadFrameChrOffset, 8);
+    Game::Rendering::CopyBankTiles(playerBankId, playerDeadBankOffsets[frameIdx], 4, playerHeadFrameChrOffset, 8);
 
     pPlayer->drawState.animIndex = deathAnimIndex;
     pPlayer->drawState.frameIndex = frameIdx;
@@ -145,8 +146,8 @@ static void AnimateDeath(Actor* pPlayer) {
 static void AnimateStanding(Actor* pPlayer, u8 headFrameIndex, u8 legsFrameIndex, s16 vOffset) {
     const u16 aimFrameIndex = pPlayer->state.playerState.flags.aimMode;
 
-    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerHeadFrameBankOffsets[aimFrameIndex * playerHeadFrameTileCount + headFrameIndex], 4, playerHeadFrameChrOffset, playerHeadFrameTileCount);
-    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, playerLegsFrameBankOffsets[legsFrameIndex], 4, playerLegsFrameChrOffset, playerLegsFrameTileCount);
+    Game::Rendering::CopyBankTiles(playerBankId, playerHeadFrameBankOffsets[aimFrameIndex * playerHeadFrameTileCount + headFrameIndex], 4, playerHeadFrameChrOffset, playerHeadFrameTileCount);
+    Game::Rendering::CopyBankTiles(playerBankId, playerLegsFrameBankOffsets[legsFrameIndex], 4, playerLegsFrameChrOffset, playerLegsFrameTileCount);
 
     pPlayer->drawState.animIndex = 0;
     pPlayer->drawState.frameIndex = aimFrameIndex;
@@ -728,7 +729,7 @@ static bool DrawPlayerGun(const Actor* pPlayer) {
     }
     weaponOffset.x *= pPlayer->flags.facingDir;
 
-    Game::Rendering::CopyBankTiles(PLAYER_BANK_INDEX, weaponFrameBankOffset, 4, playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
+    Game::Rendering::CopyBankTiles(playerBankId, weaponFrameBankOffset, 4, playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
     return Game::Rendering::DrawMetasprite(SPRITE_LAYER_FG, weaponMetaspriteId, drawPos + weaponOffset, drawState.hFlip, drawState.vFlip, -1);
 }
 

@@ -9,7 +9,7 @@ struct Checkpoint {
 };
 
 struct ExpRemnant {
-    DungeonHandle dungeonId = UUID_NULL;
+    DungeonHandle dungeonId = DungeonHandle::Null();
     glm::i8vec2 gridOffset;
 
     glm::vec2 position;

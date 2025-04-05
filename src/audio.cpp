@@ -169,7 +169,7 @@ struct AudioContext {
     TriangleChannel triangleReserve;
     NoiseChannel noiseReserve;
 
-    SoundHandle music = 0;
+    SoundHandle music = SoundHandle::Null();
     u32 musicPos = 0;
     bool loopMusic;
 
@@ -353,7 +353,7 @@ static bool TickSFX(u32 channel) {
 
     const Sound* pSound = (Sound*)AssetManager::GetAsset(soundHandle);
     if (pSound == nullptr) {
-        pContext->sfx[channel] = 0;
+        pContext->sfx[channel] = SoundHandle::Null();
         return false;
     }
 
@@ -377,20 +377,20 @@ static bool TickSFX(u32 channel) {
 }
 
 static bool TickMusic() {
-    if (pContext->music == 0) {
+    if (pContext->music == SoundHandle::Null()) {
         return false;
     }
 
     const Sound* pSound = (Sound*)AssetManager::GetAsset(pContext->music);
     if (!pSound) {
-        pContext->music = 0;
+        pContext->music = SoundHandle::Null();
         return false;
     }
 
-    PulseChannel* p0 = (pContext->sfx[CHAN_ID_PULSE0] == 0) ? &pContext->pulse[CHAN_ID_PULSE0] : &pContext->pulseReserve[0];
-    PulseChannel* p1 = (pContext->sfx[CHAN_ID_PULSE1] == 0) ? &pContext->pulse[CHAN_ID_PULSE1] : &pContext->pulseReserve[1];
-    TriangleChannel* tri = (pContext->sfx[CHAN_ID_TRIANGLE] == 0) ? &pContext->triangle : &pContext->triangleReserve;
-    NoiseChannel* noise = (pContext->sfx[CHAN_ID_NOISE] == 0) ? &pContext->noise : &pContext->noiseReserve;
+    PulseChannel* p0 = (pContext->sfx[CHAN_ID_PULSE0] == SoundHandle::Null()) ? &pContext->pulse[CHAN_ID_PULSE0] : &pContext->pulseReserve[0];
+    PulseChannel* p1 = (pContext->sfx[CHAN_ID_PULSE1] == SoundHandle::Null()) ? &pContext->pulse[CHAN_ID_PULSE1] : &pContext->pulseReserve[1];
+    TriangleChannel* tri = (pContext->sfx[CHAN_ID_TRIANGLE] == SoundHandle::Null()) ? &pContext->triangle : &pContext->triangleReserve;
+    NoiseChannel* noise = (pContext->sfx[CHAN_ID_NOISE] == SoundHandle::Null()) ? &pContext->noise : &pContext->noiseReserve;
 
     bool keepReading = true;
     while (keepReading) {
@@ -413,12 +413,12 @@ static bool TickMusic() {
 
 static void TickSoundPlayer() {
     for (int channel = 0; channel < CHAN_COUNT; channel++) {
-        if (pContext->sfx[channel] == 0) {
+        if (pContext->sfx[channel] == SoundHandle::Null()) {
             continue;
         }
 
         if (!TickSFX(channel)) {
-            pContext->sfx[channel] = 0;
+            pContext->sfx[channel] = SoundHandle::Null();
 
             // I think this should happen one frame later
             switch (channel) {
@@ -441,7 +441,7 @@ static void TickSoundPlayer() {
     }
 
     if (!TickMusic()) {
-        pContext->music = 0;
+        pContext->music = SoundHandle::Null();
     }
 }
 
@@ -745,7 +745,7 @@ namespace Audio {
     }
 
     void Audio::StopMusic() {
-        pContext->music = 0;
+        pContext->music = SoundHandle::Null();
         ClearRegisters();
     }
 
@@ -760,7 +760,7 @@ namespace Audio {
         }
 
         // Save register state to later continue music
-        if (pContext->sfx[pSound->sfxChannel] == 0) {
+        if (pContext->sfx[pSound->sfxChannel] == SoundHandle::Null()) {
             switch (pSound->sfxChannel) {
             case CHAN_ID_PULSE0:
                 pContext->pulseReserve[0] = pContext->pulse[0];

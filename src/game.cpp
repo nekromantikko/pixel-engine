@@ -23,6 +23,9 @@
 #include "overworld.h"
 #include "asset_manager.h"
 
+// TEMP
+constexpr DungeonHandle testDungeon(4648186456448694858);
+
 namespace Game {
     r64 secondsElapsed = 0.0f;
     u32 clockCounter = 0;
@@ -47,15 +50,14 @@ namespace Game {
 
 #pragma region Public API
     void Initialize() {
-        Rendering::Init();
-
         AssetManager::LoadArchive("assets.npak");
+
+        Rendering::Init();
 
 		InitGameData();
         InitGameState(GAME_STATE_DUNGEON);
 
-        // TODO: Level should load palettes and tileset?
-        LoadRoom(4648186456448694858, { 14, 14 });
+        LoadRoom(testDungeon, { 14, 14 });
     }
 
     void Free() {}

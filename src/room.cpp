@@ -9,7 +9,7 @@ void Assets::InitRoomTemplate(u64 id, void* data) {
     Tilemap tilemapHeader{
         .width = ROOM_MAX_DIM_SCREENS * VIEWPORT_WIDTH_METATILES,
         .height = ROOM_MAX_DIM_SCREENS * VIEWPORT_HEIGHT_METATILES,
-        .tilesetId = 0,
+        .tilesetId = TilesetHandle::Null(),
         .tilesOffset = tilesOffset - offsetof(RoomTemplateHeader, tilemapHeader),
     };
 

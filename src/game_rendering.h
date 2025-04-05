@@ -5,8 +5,6 @@
 #define GLM_FORCE_RADIANS
 #include <glm.hpp>
 
-constexpr u32 PLAYER_BANK_INDEX = 8;
-
 enum SpriteLayerType : u8 {
 	SPRITE_LAYER_UI,
 	SPRITE_LAYER_FX,
@@ -39,7 +37,7 @@ namespace Game {
 		bool DrawSprite(u8 layerIndex, const Sprite& sprite);
 		bool DrawMetaspriteSprite(u8 layerIndex, MetaspriteHandle metaspriteId, u32 spriteIndex, glm::i16vec2 pos, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1);
 		bool DrawMetasprite(u8 layerIndex, MetaspriteHandle metaspriteId, glm::i16vec2 pos, bool hFlip = false, bool vFlip = false, s32 paletteOverride = -1);
-		void CopyBankTiles(u32 bankIndex, u32 bankOffset, u32 sheetIndex, u32 sheetOffset, u32 count);
+		void CopyBankTiles(ChrBankHandle bankId, u32 bankOffset, u32 sheetIndex, u32 sheetOffset, u32 count);
 
 		void GetPalettePresetColors(u8 presetIndex, u8* pOutColors);
 		void WritePaletteColors(u8 paletteIndex, u8* pColors);

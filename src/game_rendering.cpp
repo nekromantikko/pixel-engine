@@ -149,20 +149,15 @@ void Game::Rendering::Init() {
     ClearSpriteLayers(true);
 
     // Init chr memory
-    // TODO: Pre-process these instead of loading from bitmap at runtime!
-    ::Rendering::Util::CreateChrSheet("assets/bg0.bmp", &chrBanks[0]);
-	CopyBankTiles(0, 0, 0, 0, CHR_SIZE_TILES);
-    ::Rendering::Util::CreateChrSheet("assets/bg1.bmp", &chrBanks[1]);
-	CopyBankTiles(1, 0, 1, 0, CHR_SIZE_TILES);
-    ::Rendering::Util::CreateChrSheet("assets/bg2.bmp", &chrBanks[2]);
-    CopyBankTiles(2, 0, 2, 0, CHR_SIZE_TILES);
-
-    ::Rendering::Util::CreateChrSheet("assets/fg0.bmp", &chrBanks[4]);
-    CopyBankTiles(4, 0, 4, 0, CHR_SIZE_TILES);
-
-    // Player bank
-    ::Rendering::Util::CreateChrSheet("assets/player.bmp", &chrBanks[8]);
-
+	// TODO: Figure out what to do with these hardcoded values
+    constexpr ChrBankHandle asciiBankHandle(8539419541591404705);
+    constexpr ChrBankHandle mapBankHandle(12884965207213169338);
+    constexpr ChrBankHandle debugTilesetBankHandle(5051829589002943406);
+    constexpr ChrBankHandle fgBankHandle(1554696323931700844);
+	CopyBankTiles(asciiBankHandle, 0, 0, 0, CHR_SIZE_TILES);
+	CopyBankTiles(mapBankHandle, 0, 1, 0, CHR_SIZE_TILES);
+    CopyBankTiles(debugTilesetBankHandle, 0, 2, 0, CHR_SIZE_TILES);
+    CopyBankTiles(fgBankHandle, 0, 4, 0, CHR_SIZE_TILES);
 
     ::Rendering::Util::LoadPaletteColorsFromFile("assets/palette.dat", paletteColors);
     memcpy(::Rendering::GetPalettePtr(0), paletteColors, PALETTE_MEMORY_SIZE);
@@ -309,8 +304,14 @@ bool Game::Rendering::DrawMetasprite(u8 layerIndex, MetaspriteHandle metaspriteI
     return true;
 }
 
-void Game::Rendering::CopyBankTiles(u32 bankIndex, u32 bankOffset, u32 sheetIndex, u32 sheetOffset, u32 count) {
-	const ChrTile* pBankTiles = chrBanks[bankIndex].tiles + bankOffset;
+void Game::Rendering::CopyBankTiles(ChrBankHandle bankId, u32 bankOffset, u32 sheetIndex, u32 sheetOffset, u32 count) {
+	ChrSheet* pBank = (ChrSheet*)AssetManager::GetAsset(bankId);
+	if (!pBank) {
+		DEBUG_ERROR("Failed to load bank %llu\n", bankId);
+		return;
+	}
+
+	const ChrTile* pBankTiles = pBank->tiles + bankOffset;
 	ChrTile* pSheetTiles = ::Rendering::GetChrPtr(sheetIndex)->tiles + sheetOffset;
 
     memcpy(pSheetTiles, pBankTiles, sizeof(ChrTile) * count);

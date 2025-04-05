@@ -19,11 +19,8 @@ namespace Rendering
 		void SetNametableMetatile(Nametable* pNametable, const glm::ivec2& metatileOffset, const Metatile& metatile);
 		void ClearNametable(Nametable* pNametable, BgTile tile);
 
-		void CreateChrSheet(const char* fname, ChrSheet* outSheet);
 		void LoadPaletteColorsFromFile(const char* fname, u8* outColors);
 		void GeneratePaletteColors(u32* data);
 		void SavePaletteToFile(const char* fname);
-		
-		void CopyChrTiles(const ChrTile* src, ChrTile* dst, u32 count);
 	}
 }

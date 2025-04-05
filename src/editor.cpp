@@ -2047,7 +2047,7 @@ static void DrawRoomView(EditedAsset& asset) {
 			else if (ImGui::MenuItem("Add actor")) {
 				PoolHandle<RoomActor> handle = pEditorData->actors.Add();
 				RoomActor* pNewActor = pEditorData->actors.Get(handle);
-				pNewActor->prototypeId = UUID_NULL;
+				pNewActor->prototypeId = ActorPrototypeHandle::Null();
 				pNewActor->id = Random::GenerateUUID32();
 				pNewActor->position = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
 
@@ -2952,7 +2952,7 @@ static void DrawDungeonCanvas(EditedAsset& asset) {
 			const bool isValidRoomTemplate = pAssetInfo && pAssetInfo->flags.type == ASSET_TYPE_ROOM_TEMPLATE;
 
 			if (isValidRoomTemplate) {
-				RoomTemplateHandle handle = assetId;
+				RoomTemplateHandle handle(assetId);
 				RoomTemplateHeader* pRoomHeader = (RoomTemplateHeader*)AssetManager::GetAsset(handle);
 
 				const glm::ivec2 roomTopLeft = hoveredCellPos;
@@ -2967,7 +2967,7 @@ static void DrawDungeonCanvas(EditedAsset& asset) {
 							.id = nodeId,
 							.type = DUNGEON_NODE_ROOM,
 							.roomData = {
-								.templateId = assetId,
+								.templateId = RoomTemplateHandle(assetId),
 							},
 							.gridPos = roomTopLeft
 							});
@@ -3564,7 +3564,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 				const bool isValidMetasprite = pAssetInfo && pAssetInfo->flags.type == ASSET_TYPE_METASPRITE;
 
 				if (isValidMetasprite && payload->IsDelivery()) {
-					frame.metaspriteId = assetId;
+					frame.metaspriteId = MetaspriteHandle(assetId);
 					asset.dirty = true;
 				}
 			}
@@ -3574,7 +3574,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 		ImGui::PopID();
 
 		drawList->AddRect(frameMin, frameMax, IM_COL32(255, 255, 255, 255), 4.0f);
-		if (frame.metaspriteId != UUID_NULL) {
+		if (frame.metaspriteId != MetaspriteHandle::Null()) {
 			const Metasprite* pMetasprite = (Metasprite*)AssetManager::GetAsset(frame.metaspriteId);
 			if (pMetasprite) {
 				DrawMetasprite(pMetasprite, ImVec2(frameMin.x + frameBoxSize * 0.5f, frameMin.y + frameBoxSize * 0.5f), 1.0f);
@@ -3660,10 +3660,10 @@ static void DrawSoundEditor(EditedAsset& asset) {
 	{
 		if (ImGui::Button("Play")) {
 			if (pSound->type == SOUND_TYPE_SFX) {
-				Audio::PlaySFX(asset.id);
+				Audio::PlaySFX(SoundHandle(asset.id));
 			}
 			else {
-				Audio::PlayMusic(asset.id, true);
+				Audio::PlayMusic(SoundHandle(asset.id), true);
 			}
 		}
 		ImGui::SameLine();
