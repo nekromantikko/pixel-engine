@@ -86,6 +86,7 @@ struct RenderContext {
 
 	// Compute stuff
 	Image paletteImage;
+	VkSampler paletteSampler;
 
 	u32 paletteTableOffset;
 	u32 paletteTableSize;
@@ -742,7 +743,9 @@ static void FreeBuffer(Buffer buffer) {
 	}
 }
 
-static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFlags usage, Image& outImage) {
+static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFlags usage, Image& outImage, bool srgb = false) {
+	const VkFormat format = srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+
 	VkImageCreateInfo imageInfo{};
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageInfo.imageType = type;
@@ -751,7 +754,7 @@ static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFla
 	imageInfo.extent.depth = 1;
 	imageInfo.mipLevels = 1;
 	imageInfo.arrayLayers = 1;
-	imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+	imageInfo.format = format;
 	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	imageInfo.usage = usage;
@@ -770,7 +773,7 @@ static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFla
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	viewInfo.image = outImage.image;
 	viewInfo.viewType = (VkImageViewType)type; // A bit sus but probably fine
-	viewInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+	viewInfo.format = format;
 	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	viewInfo.subresourceRange.baseMipLevel = 0;
 	viewInfo.subresourceRange.levelCount = 1;
@@ -822,9 +825,8 @@ static void CreatePalette() {
 	vkMapMemory(pContext->device, stagingBuffer.memory, 0, paletteSize, 0, &data);
 	memcpy(data, paletteData, paletteSize);
 	vkUnmapMemory(pContext->device, stagingBuffer.memory);
-	//free(palBin);
 
-	CreateImage(COLOR_COUNT, 1, VK_IMAGE_TYPE_1D, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, pContext->paletteImage);
+	CreateImage(COLOR_COUNT, 1, VK_IMAGE_TYPE_1D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, pContext->paletteImage, true);
 
 	// Copy buffer to image
 	VkCommandBuffer temp = GetTemporaryCommandBuffer();
@@ -897,6 +899,27 @@ static void CreatePalette() {
 	vkFreeCommandBuffers(pContext->device, pContext->primaryCommandPool, 1, &temp);
 
 	FreeBuffer(stagingBuffer);
+
+	// Create special sampler for the palette
+	VkSamplerCreateInfo samplerInfo{};
+	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	samplerInfo.magFilter = VK_FILTER_NEAREST;
+	samplerInfo.minFilter = VK_FILTER_NEAREST;
+	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	samplerInfo.anisotropyEnable = VK_FALSE;
+	samplerInfo.maxAnisotropy = 1.0f;
+	samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+	samplerInfo.unnormalizedCoordinates = VK_TRUE;
+	samplerInfo.compareEnable = VK_FALSE;
+	samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	samplerInfo.mipLodBias = 0.0f;
+	samplerInfo.minLod = 0.0f;
+	samplerInfo.maxLod = 0.0f;
+
+	vkCreateSampler(pContext->device, &samplerInfo, nullptr, &pContext->paletteSampler);
 }
 
 static constexpr VkDeviceSize PadBufferSize(VkDeviceSize originalSize, const VkDeviceSize minAlignment) {
@@ -1307,7 +1330,7 @@ void Rendering::Init() {
 	VkDescriptorSetLayoutBinding paletteLayoutBinding{};
 	paletteLayoutBinding.binding = 1;
 	paletteLayoutBinding.descriptorCount = 1;
-	paletteLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	paletteLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	paletteLayoutBinding.pImmutableSamplers = nullptr;
 	paletteLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
@@ -1430,7 +1453,7 @@ void Rendering::Init() {
 		VkDescriptorImageInfo paletteBufferInfo{};
 		paletteBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 		paletteBufferInfo.imageView = pContext->paletteImage.view;
-		paletteBufferInfo.sampler = pContext->defaultSampler;
+		paletteBufferInfo.sampler = pContext->paletteSampler;
 
 		VkDescriptorBufferInfo chrBufferInfo{};
 		chrBufferInfo.buffer = pContext->computeBufferDevice[i].buffer;
@@ -1475,7 +1498,7 @@ void Rendering::Init() {
 		descriptorWrite[1].dstSet = pContext->computeDescriptorSets[i];
 		descriptorWrite[1].dstBinding = 1;
 		descriptorWrite[1].dstArrayElement = 0;
-		descriptorWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		descriptorWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		descriptorWrite[1].descriptorCount = 1;
 		descriptorWrite[1].pImageInfo = &paletteBufferInfo;
 
@@ -1567,6 +1590,7 @@ void Rendering::Free() {
 	vkDestroyPipelineLayout(pContext->device, pContext->evaluatePipelineLayout, nullptr);
 	vkDestroyShaderModule(pContext->device, pContext->evaluateShaderModule, nullptr);
 	FreeImage(pContext->paletteImage);
+	vkDestroySampler(pContext->device, pContext->paletteSampler, nullptr);
 
 	for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
 		FreeImage(pContext->colorImages[i]);
@@ -1758,7 +1782,7 @@ static void InitGlobalEditorData() {
 	VkDescriptorSetLayoutBinding paletteLayoutBinding{};
 	paletteLayoutBinding.binding = 1;
 	paletteLayoutBinding.descriptorCount = 1;
-	paletteLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	paletteLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	paletteLayoutBinding.pImmutableSamplers = nullptr;
 	paletteLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
@@ -1857,6 +1881,7 @@ void Rendering::ShutdownEditor() {
 
 struct EditorRenderData {
 	EditorRenderDataUsage usage;
+	EditorRenderDataFlags flags;
 	Buffer srcBuffer;
 	VkDescriptorSet srcSet;
 	Image dstImage;
@@ -1872,27 +1897,36 @@ static void UpdateEditorSrcDescriptorSet(const EditorRenderData* pEditorData) {
 	VkDescriptorImageInfo paletteBufferInfo{};
 	paletteBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 	paletteBufferInfo.imageView = pContext->paletteImage.view;
-	paletteBufferInfo.sampler = pContext->defaultSampler;
+	paletteBufferInfo.sampler = pContext->paletteSampler;
 
 	VkDescriptorBufferInfo chrBufferInfo{};
+	chrBufferInfo.buffer = pContext->computeBufferDevice[pContext->currentCbIndex].buffer;
+	chrBufferInfo.offset = pContext->chrOffset;
+	chrBufferInfo.range = pContext->chrSize;
+
 	VkDescriptorBufferInfo palTableInfo{};
-	if (pEditorData->usage == EDITOR_RENDER_DATA_USAGE_CHR) {
-		chrBufferInfo.buffer = pEditorData->srcBuffer.buffer;
-		chrBufferInfo.offset = 0;
-		chrBufferInfo.range = pEditorData->srcBuffer.size;
+	palTableInfo.buffer = pContext->computeBufferDevice[pContext->currentCbIndex].buffer;
+	palTableInfo.offset = pContext->paletteTableOffset;
+	palTableInfo.range = pContext->paletteTableSize;
 
-		palTableInfo.buffer = pContext->computeBufferDevice[pContext->currentCbIndex].buffer;
-		palTableInfo.offset = pContext->paletteTableOffset;
-		palTableInfo.range = pContext->paletteTableSize;
-	}
-	else {
-		chrBufferInfo.buffer = pContext->computeBufferDevice[pContext->currentCbIndex].buffer;
-		chrBufferInfo.offset = pContext->chrOffset;
-		chrBufferInfo.range = pContext->chrSize;
-
-		palTableInfo.buffer = pEditorData->srcBuffer.buffer;
-		palTableInfo.offset = 0;
-		palTableInfo.range = pEditorData->srcBuffer.size;
+	if (!(pEditorData->flags & EDITOR_RENDER_DATA_FLAG_BUILTIN)) {
+		switch (pEditorData->usage) {
+		case EDITOR_RENDER_DATA_USAGE_COLORS:
+			DEBUG_ERROR("Non-built-in editor data for colors not supported!\n");
+			break;
+		case EDITOR_RENDER_DATA_USAGE_CHR:
+			chrBufferInfo.buffer = pEditorData->srcBuffer.buffer;
+			chrBufferInfo.offset = 0;
+			chrBufferInfo.range = pEditorData->srcBuffer.size;
+			break;
+		case EDITOR_RENDER_DATA_USAGE_PALETTE:
+			palTableInfo.buffer = pEditorData->srcBuffer.buffer;
+			palTableInfo.offset = 0;
+			palTableInfo.range = pEditorData->srcBuffer.size;
+			break;
+		default:
+			break;
+		}
 	}
 
 	VkWriteDescriptorSet descriptorWrite[4]{};
@@ -1908,7 +1942,7 @@ static void UpdateEditorSrcDescriptorSet(const EditorRenderData* pEditorData) {
 	descriptorWrite[1].dstSet = pEditorData->srcSet;
 	descriptorWrite[1].dstBinding = 1;
 	descriptorWrite[1].dstArrayElement = 0;
-	descriptorWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	descriptorWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	descriptorWrite[1].descriptorCount = 1;
 	descriptorWrite[1].pImageInfo = &paletteBufferInfo;
 
@@ -1931,39 +1965,124 @@ static void UpdateEditorSrcDescriptorSet(const EditorRenderData* pEditorData) {
 	vkUpdateDescriptorSets(pContext->device, 4, descriptorWrite, 0, nullptr);
 }
 
-EditorRenderData* Rendering::CreateEditorData(EditorRenderDataUsage usage, u32 texWidth, u32 texHeight, u32 dataSize, void* bufferData) {
-	if (!bufferData) {
+EditorRenderData* Rendering::CreateEditorData(EditorRenderDataUsage usage, u32 texWidth, u32 texHeight, u32 dataSize, u32 flags, void* bufferData) {
+	const bool useCustomBuffer = !(flags & EDITOR_RENDER_DATA_FLAG_BUILTIN);
+	
+	if (useCustomBuffer && usage == EDITOR_RENDER_DATA_USAGE_COLORS) {
+		DEBUG_ERROR("Cannot use custom buffer for colors!\n");
 		return nullptr;
 	}
-
+	
+	
 	EditorRenderData* pEditorData = (EditorRenderData*)calloc(1, sizeof(EditorRenderData));
 	if (!pEditorData) {
+		DEBUG_ERROR("Failed to allocate editor data!\n");
 		return nullptr;
 	}
 
 	pEditorData->usage = usage;
+	pEditorData->flags = (EditorRenderDataFlags)flags;
 
-	AllocateBuffer(dataSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pEditorData->srcBuffer);
-
-	VkDescriptorSetAllocateInfo chrDescriptorSetAllocInfo{};
-	chrDescriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	chrDescriptorSetAllocInfo.descriptorPool = pContext->descriptorPool;
-	chrDescriptorSetAllocInfo.descriptorSetCount = 1;
-	chrDescriptorSetAllocInfo.pSetLayouts = &pContext->debugDescriptorSetLayout;
-
-	VkResult res = vkAllocateDescriptorSets(pContext->device, &chrDescriptorSetAllocInfo, &pEditorData->srcSet);
-
-	CreateImage(texWidth, texHeight, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT, pEditorData->dstImage);
+	CreateImage(texWidth, texHeight, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, pEditorData->dstImage);
 	pEditorData->dstSet = ImGui_ImplVulkan_AddTexture(pContext->defaultSampler, pEditorData->dstImage.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-	UpdateEditorData(pEditorData, bufferData);
-	UpdateEditorSrcDescriptorSet(pEditorData);
+	// Only allocate the src buffer if we are not using built-in data
+	if (useCustomBuffer) {
+		AllocateBuffer(dataSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pEditorData->srcBuffer);
+	}
+
+	if (usage == EDITOR_RENDER_DATA_USAGE_COLORS) {
+		// Blit the palette image to the destination image
+		VkCommandBuffer temp = GetTemporaryCommandBuffer();
+
+		VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		vkBeginCommandBuffer(temp, &beginInfo);
+
+		VkImageMemoryBarrier barrier = GetImageBarrier(&pEditorData->dstImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		vkCmdPipelineBarrier(
+			temp,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+
+		const s32 rowSize = texWidth;
+		const s32 rowCount = COLOR_COUNT / rowSize;
+		const s32 texSize = texWidth * texHeight;
+		const s32 emptyCount = texSize > COLOR_COUNT ? texSize - COLOR_COUNT : 0;
+		VkImageBlit regions[COLOR_COUNT]{};
+		for (s32 i = 0; i < rowCount; i++) {
+			VkImageBlit& region = regions[i];
+			region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			region.srcSubresource.mipLevel = 0;
+			region.srcSubresource.baseArrayLayer = 0;
+			region.srcSubresource.layerCount = 1;
+			region.srcOffsets[0] = { i * rowSize, 0, 0 };
+			region.srcOffsets[1] = { i == rowCount - 1 ? s32(COLOR_COUNT) : (i + 1) * rowSize, 1, 1 };
+			region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			region.dstSubresource.mipLevel = 0;
+			region.dstSubresource.baseArrayLayer = 0;
+			region.dstSubresource.layerCount = 1;
+			region.dstOffsets[0] = { 0, i, 0 };
+			region.dstOffsets[1] = { rowSize, i + 1, 1 };
+		}
+
+		vkCmdBlitImage(temp, pContext->paletteImage.image, VK_IMAGE_LAYOUT_GENERAL, pEditorData->dstImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, rowCount, regions, VK_FILTER_NEAREST);
+
+		barrier = GetImageBarrier(&pEditorData->dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		vkCmdPipelineBarrier(
+			temp,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+
+		vkEndCommandBuffer(temp);
+
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &temp;
+
+		vkQueueSubmit(pContext->primaryQueue, 1, &submitInfo, VK_NULL_HANDLE);
+		vkQueueWaitIdle(pContext->primaryQueue);
+
+		vkFreeCommandBuffers(pContext->device, pContext->primaryCommandPool, 1, &temp);
+	}
+	else {
+		VkDescriptorSetAllocateInfo chrDescriptorSetAllocInfo{};
+		chrDescriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		chrDescriptorSetAllocInfo.descriptorPool = pContext->descriptorPool;
+		chrDescriptorSetAllocInfo.descriptorSetCount = 1;
+		chrDescriptorSetAllocInfo.pSetLayouts = &pContext->debugDescriptorSetLayout;
+
+		VkResult res = vkAllocateDescriptorSets(pContext->device, &chrDescriptorSetAllocInfo, &pEditorData->srcSet);
+		UpdateEditorSrcDescriptorSet(pEditorData);
+
+		if (useCustomBuffer && bufferData) {
+			UpdateEditorData(pEditorData, bufferData);
+		}
+	}
 
 	return pEditorData;
 }
 
 void Rendering::UpdateEditorData(const EditorRenderData* pEditorData, void* bufferData) {
 	if (!pEditorData || !bufferData) {
+		return;
+	}
+
+	if (pEditorData->flags & EDITOR_RENDER_DATA_FLAG_BUILTIN) {
+		DEBUG_ERROR("Cannot update built-in editor data!\n");
 		return;
 	}
 
@@ -1987,11 +2106,22 @@ void Rendering::FreeEditorData(EditorRenderData* pEditorData) {
 
 	ImGui_ImplVulkan_RemoveTexture(pEditorData->dstSet);
 	FreeImage(pEditorData->dstImage);
-	FreeBuffer(pEditorData->srcBuffer);
+
+	if (pEditorData->srcBuffer.buffer != VK_NULL_HANDLE) {
+		FreeBuffer(pEditorData->srcBuffer);
+	}
+	if (pEditorData->srcSet != VK_NULL_HANDLE) {
+		vkFreeDescriptorSets(pContext->device, pContext->descriptorPool, 1, &pEditorData->srcSet);
+	}
 	free(pEditorData);
 }
 
 void Rendering::RenderEditorData(const EditorRenderData* pEditorData) {
+	if (pEditorData->usage == EDITOR_RENDER_DATA_USAGE_COLORS) {
+		DEBUG_ERROR("Cannot render colors!\n");
+		return;
+	}
+
 	VkCommandBuffer cmd = pContext->primaryCommandBuffers[pContext->currentCbIndex];
 
 	VkImageMemoryBarrier barrier = GetImageBarrier(&pEditorData->dstImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);

@@ -66,6 +66,7 @@ enum OverworldEditMode {
 struct EditorContext {
 	EditorRenderData* pChrRenderData;
 	EditorRenderData* pPaletteRenderData;
+	EditorRenderData* pColorRenderData;
 	std::unordered_map<u64, EditorRenderData*> chrSheetData;
 
 	// Timing
@@ -1525,7 +1526,18 @@ static void DrawDebugWindow() {
 			ImGui::EndTabItem();
 		}
 		if (ImGui::BeginTabItem("Palette")) {
-			ImGui::Text("TODO: Render all colors into a texture and display here");
+			
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			ImTextureID textureId = GetTextureID(pContext->pColorRenderData);
+
+			const ImVec2 topLeft = ImGui::GetCursorScreenPos();
+			constexpr ImVec2 size = ImVec2(512, 256);
+
+			// Invisible button to prevent dragging window
+			ImGui::InvisibleButton("##canvas", size);
+
+			drawList->AddImage(textureId, topLeft, ImVec2(topLeft.x + size.x, topLeft.y + size.y), ImVec2(0,0), ImVec2(1,1));
+
 			if (ImGui::Button("Save palette to file")) {
 				Rendering::Util::SavePaletteToFile("generated.pal");
 			}
@@ -3686,7 +3698,7 @@ static void DrawSoundWindow() {
 
 #pragma region Pattern editor
 static void CreateChrSheetRenderData(u64 id, void* data) {
-	EditorRenderData* pEditorData = Rendering::CreateEditorData(EDITOR_RENDER_DATA_USAGE_CHR, CHR_DIM_PIXELS, CHR_DIM_PIXELS, CHR_SIZE_BYTES, data);
+	EditorRenderData* pEditorData = Rendering::CreateEditorData(EDITOR_RENDER_DATA_USAGE_CHR, CHR_DIM_PIXELS, CHR_DIM_PIXELS, CHR_SIZE_BYTES, 0, data);
 
 	pContext->chrSheetData.emplace(id, pEditorData);
 }
@@ -3806,7 +3818,7 @@ static void DrawMainMenu() {
 }
 #pragma endregion
 
-#pragma region Public API
+#pragma region Public APIF
 void Editor::CreateContext() {
 	pContext = new EditorContext{};
 	assert(pContext != nullptr);
@@ -3817,13 +3829,15 @@ void Editor::Init(SDL_Window *pWindow) {
 	Rendering::InitEditor(pWindow);
 
 	constexpr u32 sheetPaletteCount = PALETTE_COUNT / 2;
-	pContext->pChrRenderData = Rendering::CreateEditorData(EDITOR_RENDER_DATA_USAGE_CHR, CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, CHR_MEMORY_SIZE, Rendering::GetChrPtr(0));
-	pContext->pPaletteRenderData = Rendering::CreateEditorData(EDITOR_RENDER_DATA_USAGE_PALETTE, PALETTE_MEMORY_SIZE, 1, PALETTE_MEMORY_SIZE, Rendering::GetPalettePtr(0));
+	pContext->pChrRenderData = Rendering::CreateEditorData(EDITOR_RENDER_DATA_USAGE_CHR, CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, CHR_MEMORY_SIZE, EDITOR_RENDER_DATA_FLAG_BUILTIN, Rendering::GetChrPtr(0));
+	pContext->pPaletteRenderData = Rendering::CreateEditorData(EDITOR_RENDER_DATA_USAGE_PALETTE, PALETTE_MEMORY_SIZE, 1, PALETTE_MEMORY_SIZE, EDITOR_RENDER_DATA_FLAG_BUILTIN, Rendering::GetPalettePtr(0));
+	pContext->pColorRenderData = Rendering::CreateEditorData(EDITOR_RENDER_DATA_USAGE_COLORS, 16, 8, 0, EDITOR_RENDER_DATA_FLAG_BUILTIN, nullptr);
 }
 
 void Editor::Free() {
 	Rendering::FreeEditorData(pContext->pChrRenderData);
 	Rendering::FreeEditorData(pContext->pPaletteRenderData);
+	Rendering::FreeEditorData(pContext->pColorRenderData);
 
 	Rendering::ShutdownEditor();
 	ImGui::DestroyContext();
@@ -3856,9 +3870,6 @@ void Editor::ProcessEvent(const SDL_Event* event) {
 }
 
 void Editor::SetupFrame() {
-	Rendering::UpdateEditorData(pContext->pChrRenderData, Rendering::GetChrPtr(0));
-	Rendering::UpdateEditorData(pContext->pPaletteRenderData, Rendering::GetPalettePtr(0));
-
 	Rendering::RenderEditorData(pContext->pChrRenderData);
 	Rendering::RenderEditorData(pContext->pPaletteRenderData);
 

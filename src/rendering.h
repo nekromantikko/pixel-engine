@@ -108,7 +108,13 @@ static constexpr RenderSettings DEFAULT_RENDER_SETTINGS = {
 #ifdef EDITOR
 enum EditorRenderDataUsage {
 	EDITOR_RENDER_DATA_USAGE_CHR,
-	EDITOR_RENDER_DATA_USAGE_PALETTE
+	EDITOR_RENDER_DATA_USAGE_PALETTE,
+	EDITOR_RENDER_DATA_USAGE_COLORS,
+};
+
+enum EditorRenderDataFlags {
+	EDITOR_RENDER_DATA_FLAG_NONE = 0,
+	EDITOR_RENDER_DATA_FLAG_BUILTIN = 1 << 0,
 };
 
 struct EditorRenderData;
@@ -143,7 +149,7 @@ namespace Rendering
 	void BeginEditorFrame();
 	void ShutdownEditor();
 
-	EditorRenderData* CreateEditorData(EditorRenderDataUsage usage, u32 texWidth, u32 texHeight, u32 dataSize, void* data);
+	EditorRenderData* CreateEditorData(EditorRenderDataUsage usage, u32 texWidth, u32 texHeight, u32 dataSize, u32 flags = 0, void* data = nullptr);
 	void UpdateEditorData(const EditorRenderData* pEditorData, void* data);
 	void* GetEditorTextureData(const EditorRenderData* pEditorData);
 	void FreeEditorData(EditorRenderData* pEditorData);

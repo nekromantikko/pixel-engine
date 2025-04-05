@@ -7,7 +7,7 @@ const ivec2 nametableSizePixels = ivec2(512, 512);
 
 layout(local_size_x = 32, local_size_y = 32, local_size_z = 1) in;
 layout(set = 0, binding = 0, rgba8) uniform writeonly image2D outImage;
-layout(set = 0, binding = 1, rgba8) uniform readonly image1D palette;
+layout(set = 0, binding = 1) uniform sampler1D palette;
 struct ChrTile {
 	uint p0[2];
 	uint p1[2];
@@ -48,10 +48,6 @@ layout(set = 0, binding = 6) readonly buffer Scanlines
 {
     ScanlineData data[];
 } scanlines;
-
-// sRGB to Linear.
-float ToLinear1(float c){return(c<=0.04045)?c/12.92:pow((c+0.055)/1.055,2.4);}
-vec3 ToLinear(vec3 c){return vec3(ToLinear1(c.r),ToLinear1(c.g),ToLinear1(c.b));}
 
 uint ReadNametableWord(int index, int tileOffset) {
 	int coarse = tileOffset >> 1; // Offset to 2 byte block
@@ -210,8 +206,7 @@ void main() {
 	int colorIndex = result.x;
 	int palTableIndex = result.y;
 	uint paletteIndex = ReadPaletteTable(palTableIndex, colorIndex);
-	vec3 outColor = imageLoad(palette, int(paletteIndex)).rgb;
+	vec3 outColor = texture(palette, float(paletteIndex)).rgb;
 	// outColor = RenderDebugGrid(screenPos, outColor);
-	outColor = ToLinear(outColor);
 	imageStore(outImage, screenPos, vec4(outColor, 1.0));
 }

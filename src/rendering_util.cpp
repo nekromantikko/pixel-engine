@@ -129,7 +129,7 @@ namespace Rendering
 				pixelBytes[0] = (u8)(r * 255);
 				pixelBytes[1] = (u8)(g * 255);
 				pixelBytes[2] = (u8)(b * 255);
-				pixelBytes[3] = 0;
+				pixelBytes[3] = 255;
 			}
 		}
 
