@@ -12,6 +12,7 @@
 #include <SDL_vulkan.h>
 #include <cassert>
 #include <vector>
+#include "shader.h"
 
 static constexpr u32 COMMAND_BUFFER_COUNT = 2;
 static constexpr u32 SWAPCHAIN_IMAGE_COUNT = 3;
@@ -463,22 +464,33 @@ static VkShaderModule CreateShaderModule(VkDevice device, const char* code, cons
 	return module;
 }
 
+static VkShaderModule CreateShaderModule(const char* fname) {
+	std::filesystem::path path(fname);
+
+	u32 size;
+	if (!Assets::LoadShaderFromFile(path, size)) {
+		DEBUG_ERROR("Failed to load shader from file (%s)\n", path.string().c_str());
+		return VK_NULL_HANDLE;
+	}
+	char* data = (char*)malloc(size);
+	if (!data) {
+		DEBUG_ERROR("Failed to allocate memory for shader (%s)\n", path.string().c_str());
+		return VK_NULL_HANDLE;
+
+	}
+	if (!Assets::LoadShaderFromFile(path, size, data)) {
+		DEBUG_ERROR("Failed to load shader from file (%s)\n", path.string().c_str());
+		free(data);
+		return VK_NULL_HANDLE;
+	}
+	return CreateShaderModule(pContext->device, data, size);
+}
+
 static void CreateGraphicsPipeline()
 {
-	// TODO: File handling here is bad, move somewhere else
-	u32 vertShaderLength;
-	char* vertShader = AllocFileBytes("assets/shaders/quad.spv", vertShaderLength);
-	u32 rawFragShaderLength;
-	char* rawFragShader = AllocFileBytes("assets/shaders/textured_raw.spv", rawFragShaderLength);
-	u32 CRTFragShaderLength;
-	char* CRTFragShader = AllocFileBytes("assets/shaders/textured_crt.spv", CRTFragShaderLength);
-
-	pContext->blitVertexShaderModule = CreateShaderModule(pContext->device, vertShader, vertShaderLength);
-	pContext->blitRawFragmentShaderModule = CreateShaderModule(pContext->device, rawFragShader, rawFragShaderLength);
-	pContext->blitCRTFragmentShaderModule = CreateShaderModule(pContext->device, CRTFragShader, CRTFragShaderLength);
-	free(vertShader);
-	free(rawFragShader);
-	free(CRTFragShader);
+	pContext->blitVertexShaderModule = CreateShaderModule("shaders/quad.spv");
+	pContext->blitRawFragmentShaderModule = CreateShaderModule("shaders/textured_raw.spv");
+	pContext->blitCRTFragmentShaderModule = CreateShaderModule("shaders/textured_crt.spv");
 
 	VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
 	vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -1367,10 +1379,7 @@ void Rendering::Init() {
 
 	vkCreatePipelineLayout(pContext->device, &evaluatePipelineLayoutInfo, nullptr, &pContext->evaluatePipelineLayout);
 
-	u32 evaluateShaderLength;
-	char* evaluateShader = AllocFileBytes("assets/shaders/scanline_evaluate.spv", evaluateShaderLength);
-	pContext->evaluateShaderModule = CreateShaderModule(pContext->device, evaluateShader, evaluateShaderLength);
-	free(evaluateShader);
+	pContext->evaluateShaderModule = CreateShaderModule("shaders/scanline_evaluate.spv");
 
 	VkPipelineShaderStageCreateInfo evaluateShaderStageInfo{};
 	evaluateShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -1396,11 +1405,7 @@ void Rendering::Init() {
 
 	vkCreatePipelineLayout(pContext->device, &softwarePipelineLayoutInfo, nullptr, &pContext->softwarePipelineLayout);
 
-	// TODO: Handling files here is bad, move somewhere else
-	u32 softwareShaderLength;
-	char* softwareShader = AllocFileBytes("assets/shaders/software.spv", softwareShaderLength);
-	pContext->softwareShaderModule = CreateShaderModule(pContext->device, softwareShader, softwareShaderLength);
-	free(softwareShader);
+	pContext->softwareShaderModule = CreateShaderModule("shaders/software.spv");
 
 	VkPipelineShaderStageCreateInfo compShaderStageInfo{};
 	compShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -1678,11 +1683,7 @@ static void CreateChrPipeline() {
 
 	vkCreatePipelineLayout(pContext->device, &chrPipelineLayoutInfo, nullptr, &pContext->chrPipelineLayout);
 
-	// TODO: Load shader files somewhere else
-	u32 chrShaderLength;
-	char* chrShader = AllocFileBytes("assets/shaders/debug_blit_chr.spv", chrShaderLength);
-	pContext->chrShaderModule = CreateShaderModule(pContext->device, chrShader, chrShaderLength);
-	free(chrShader);
+	pContext->chrShaderModule = CreateShaderModule("shaders/debug_blit_chr.spv");
 
 	VkPipelineShaderStageCreateInfo chrShaderStageInfo{};
 	chrShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -1707,10 +1708,7 @@ static void CreatePalettePipeline() {
 
 	VkResult err = vkCreatePipelineLayout(pContext->device, &chrPipelineLayoutInfo, nullptr, &pContext->palettePipelineLayout);
 
-	u32 chrShaderLength;
-	char* chrShader = AllocFileBytes("assets/shaders/debug_blit_pal.spv", chrShaderLength);
-	pContext->paletteShaderModule = CreateShaderModule(pContext->device, chrShader, chrShaderLength);
-	free(chrShader);
+	pContext->paletteShaderModule = CreateShaderModule("shaders/debug_blit_pal.spv");
 
 	VkPipelineShaderStageCreateInfo chrShaderStageInfo{};
 	chrShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;

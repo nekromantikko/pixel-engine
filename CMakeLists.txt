@@ -45,6 +45,7 @@ set(SOURCES
 		src/room.cpp
 		src/overworld.cpp
 		src/chr_sheet.cpp
+		src/shader.cpp
 		src/asset_manager.cpp)
 
 set(HEADERS 
@@ -108,13 +109,13 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 set (GLSL_SHADERS
         src/shaders/debug_blit_chr.comp
         src/shaders/debug_blit_pal.comp
-		src/shaders/scanline_evaluate.comp
-		src/shaders/software.comp
-		src/shaders/quad.vert
-		src/shaders/textured_crt.frag
-		src/shaders/textured_raw.frag)
+	src/shaders/scanline_evaluate.comp
+	src/shaders/software.comp
+	src/shaders/quad.vert
+	src/shaders/textured_crt.frag
+	src/shaders/textured_raw.frag)
 
-set(SHADER_DEST ${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders)
+set(SHADER_DEST ${CMAKE_CURRENT_BINARY_DIR}/shaders)
 include(${CMAKE_CURRENT_SOURCE_DIR}/glsl_shader.cmake)
 set_source_files_properties(src/shaders/debug_blit_chr.comp PROPERTIES ShaderType "comp")
 set_source_files_properties(src/shaders/debug_blit_pal.comp PROPERTIES ShaderType "comp")
