@@ -106,18 +106,14 @@ static constexpr RenderSettings DEFAULT_RENDER_SETTINGS = {
 };
 
 #ifdef EDITOR
-enum EditorRenderDataUsage {
-	EDITOR_RENDER_DATA_USAGE_CHR,
-	EDITOR_RENDER_DATA_USAGE_PALETTE,
-	EDITOR_RENDER_DATA_USAGE_COLORS,
+enum EditorTextureUsage {
+	EDITOR_TEXTURE_USAGE_CHR,
+	EDITOR_TEXTURE_USAGE_PALETTE,
+	EDITOR_TEXTURE_USAGE_COLOR
 };
 
-enum EditorRenderDataFlags {
-	EDITOR_RENDER_DATA_FLAG_NONE = 0,
-	EDITOR_RENDER_DATA_FLAG_BUILTIN = 1 << 0,
-};
-
-struct EditorRenderData;
+struct EditorRenderTexture;
+struct EditorRenderBuffer;
 #endif
 
 namespace Rendering
@@ -149,13 +145,18 @@ namespace Rendering
 	void BeginEditorFrame();
 	void ShutdownEditor();
 
-	EditorRenderData* CreateEditorData(EditorRenderDataUsage usage, u32 texWidth, u32 texHeight, u32 dataSize, u32 flags = 0, void* data = nullptr);
-	void UpdateEditorData(const EditorRenderData* pEditorData, void* data);
-	void* GetEditorTextureData(const EditorRenderData* pEditorData);
-	void FreeEditorData(EditorRenderData* pEditorData);
+	EditorRenderBuffer* CreateEditorBuffer(u32 size, const void* data = nullptr);
+	bool UpdateEditorBuffer(const EditorRenderBuffer* pBuffer, const void* data);
+	void FreeEditorBuffer(EditorRenderBuffer* pBuffer);
+
+	EditorRenderTexture* CreateEditorTexture(u32 width, u32 height, u32 usage, const EditorRenderBuffer* pChrBuffer = nullptr, const EditorRenderBuffer* pPaletteBuffer = nullptr);
+	bool UpdateEditorTexture(const EditorRenderTexture* pTexture, const EditorRenderBuffer* pChrBuffer = nullptr, const EditorRenderBuffer* pPaletteBuffer = nullptr);
+	void* GetEditorTextureData(const EditorRenderTexture* pTexture);
+	void FreeEditorTexture(EditorRenderTexture* pTexture);
 
 	// Software
-	void RenderEditorData(const EditorRenderData* pEditorData);
+	void RenderEditorTexture(const EditorRenderTexture* pTexture);
+
 	// Render pass
 	void RenderEditor();
 #endif

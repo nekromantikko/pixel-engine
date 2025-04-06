@@ -62,11 +62,20 @@ enum OverworldEditMode {
 	OW_EDIT_MODE_AREAS
 };
 
+struct EditedAssetRenderData {
+	EditorRenderTexture* pTexture;
+	EditorRenderBuffer* pBuffer;
+};
+
 struct EditorContext {
-	EditorRenderData* pChrRenderData;
-	EditorRenderData* pPaletteRenderData;
-	EditorRenderData* pColorRenderData;
-	std::unordered_map<u64, EditorRenderData*> chrSheetData;
+	EditorRenderTexture* pChrTexture;
+	EditorRenderTexture* pPaletteTexture;
+	EditorRenderTexture* pColorTexture;
+
+	std::unordered_map<u64, EditorRenderBuffer*> assetRenderBuffers;
+	std::vector<u64> bufferEraseList;
+	std::unordered_set<EditedAssetRenderData*> tempRenderData;
+	std::vector<EditedAssetRenderData*> tempEraseList;
 
 	// Timing
 	r64 secondsElapsed;
@@ -99,8 +108,8 @@ struct EditorContext {
 static EditorContext* pContext;
 
 #pragma region Utils
-static ImTextureID GetTextureID(const EditorRenderData* pData) {
-	return (ImTextureID)Rendering::GetEditorTextureData(pData);
+static ImTextureID GetTextureID(const EditorRenderTexture* pTexture) {
+	return (ImTextureID)Rendering::GetEditorTextureData(pTexture);
 }
 
 static inline glm::vec4 NormalizedToChrTexCoord(const glm::vec4& normalized, u8 chrIndex, u8 palette) {
@@ -149,7 +158,7 @@ static ImVec2 DrawTileGrid(ImVec2 size, r32 gridStep, s32* selection = nullptr, 
 	}
 
 	constexpr r32 invBgColorIndex = 1.0f / (PALETTE_COUNT * PALETTE_COLOR_COUNT);
-	drawList->AddImage(GetTextureID(pContext->pPaletteRenderData), topLeft, btmRight, ImVec2(0, 0), ImVec2(invBgColorIndex, 1.0f));
+	drawList->AddImage(GetTextureID(pContext->pPaletteTexture), topLeft, btmRight, ImVec2(0, 0), ImVec2(invBgColorIndex, 1.0f));
 	for (r32 x = 0; x < size.x; x += gridStep)
 		drawList->AddLine(ImVec2(topLeft.x + x, topLeft.y), ImVec2(topLeft.x + x, btmRight.y), IM_COL32(200, 200, 200, 40));
 	for (r32 y = 0; y < size.y; y += gridStep)
@@ -184,7 +193,7 @@ static ImVec2 DrawColorGrid(ImVec2 size, s32* selection = nullptr, bool* focused
 
 	const ImVec2 gridPos = DrawTileGrid(size, size.x / 16, selection, focused);
 
-	ImTextureID textureId = GetTextureID(pContext->pColorRenderData);
+	ImTextureID textureId = GetTextureID(pContext->pColorTexture);
 	drawList->AddImage(textureId, gridPos, ImVec2(gridPos.x + size.x, gridPos.y + size.y), ImVec2(0, 0), ImVec2(1, 1));
 
 	return gridPos;
@@ -354,7 +363,7 @@ static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, ImU32 c
 	const r32 tileSize = size / METATILE_DIM_TILES;
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	drawList->PushTextureID(GetTextureID(pContext->pChrRenderData));
+	drawList->PushTextureID(GetTextureID(pContext->pChrTexture));
 	drawList->PrimReserve(METATILE_TILE_COUNT * 6, METATILE_TILE_COUNT * 4);
 
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
@@ -386,7 +395,7 @@ static void DrawNametable(ImVec2 size, const Nametable& nametable) {
 
 static bool DrawPaletteButton(u8 palette) {
 	constexpr r32 invPaletteCount = 1.0f / PALETTE_COUNT;
-	return ImGui::ImageButton("", GetTextureID(pContext->pPaletteRenderData), ImVec2(80, 10), ImVec2(invPaletteCount * palette, 0), ImVec2(invPaletteCount * (palette + 1), 1));
+	return ImGui::ImageButton("", GetTextureID(pContext->pPaletteTexture), ImVec2(80, 10), ImVec2(invPaletteCount * palette, 0), ImVec2(invPaletteCount * (palette + 1), 1));
 }
 
 static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
@@ -400,7 +409,7 @@ static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
 	const ImVec2 chrPos = DrawTileGrid(gridSize, gridStepPixels, selectedTile);
 	const glm::vec4 uvMinMax = NormalizedToChrTexCoord({ 0,0,1,1, }, index, palette);
 
-	drawList->AddImage(GetTextureID(pContext->pChrRenderData), chrPos, ImVec2(chrPos.x + size, chrPos.y + size), ImVec2(uvMinMax.x, uvMinMax.y), ImVec2(uvMinMax.z, uvMinMax.w));
+	drawList->AddImage(GetTextureID(pContext->pChrTexture), chrPos, ImVec2(chrPos.x + size, chrPos.y + size), ImVec2(uvMinMax.x, uvMinMax.y), ImVec2(uvMinMax.z, uvMinMax.w));
 	if (selectedTile != nullptr && *selectedTile >= 0) {
 		DrawTileGridSelection(chrPos, gridSize, gridStepPixels, *selectedTile);
 	}
@@ -441,7 +450,7 @@ static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, c
 
 	// Draw background color
 	constexpr r32 invBgColorIndex = 1.0f / (PALETTE_COUNT * PALETTE_COLOR_COUNT);
-	drawList->AddImage(GetTextureID(pContext->pPaletteRenderData), pos, ImVec2(pos.x + metatileSize.x * scale, pos.y + metatileSize.y * scale), ImVec2(0, 0), ImVec2(invBgColorIndex, 1.0f));
+	drawList->AddImage(GetTextureID(pContext->pPaletteTexture), pos, ImVec2(pos.x + metatileSize.x * scale, pos.y + metatileSize.y * scale), ImVec2(0, 0), ImVec2(invBgColorIndex, 1.0f));
 
 	const Tileset* pTileset = Assets::GetTilemapTileset(pTilemap);
 	if (!pTileset) {
@@ -450,7 +459,7 @@ static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, c
 
 	const u32 tileCount = metatileSize.x * metatileSize.y * METATILE_TILE_COUNT;
 
-	drawList->PushTextureID(GetTextureID(pContext->pChrRenderData));
+	drawList->PushTextureID(GetTextureID(pContext->pChrTexture));
 	drawList->PrimReserve(tileCount * 6, tileCount * 4); // NOTE: Seems as if primitives for max. 4096 tiles can be reserved...
 
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
@@ -489,7 +498,7 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 	const u32 tilesetTileDim = TILESET_DIM * METATILE_DIM_TILES;
 	const u32 tilesetTileCount = tilesetTileDim * tilesetTileDim;
 
-	drawList->PushTextureID(GetTextureID(pContext->pChrRenderData));
+	drawList->PushTextureID(GetTextureID(pContext->pChrTexture));
 	drawList->PrimReserve(tilesetTileCount * 6, tilesetTileCount * 4);
 
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
@@ -522,7 +531,7 @@ static void DrawSprite(const Sprite& sprite, const ImVec2& pos, r32 renderScale,
 
 	glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex + CHR_PAGE_COUNT, palette);
 
-	drawList->AddImage(GetTextureID(pContext->pChrRenderData), pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y), color);
+	drawList->AddImage(GetTextureID(pContext->pChrTexture), pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y), color);
 }
 
 static void DrawMetasprite(const Metasprite* pMetasprite, const ImVec2& origin, r32 renderScale, ImU32 color = IM_COL32(255, 255, 255, 255)) {
@@ -867,6 +876,40 @@ typedef void (*PopulateAssetEditorDataFn)(u64, void*, void**);
 typedef void (*ApplyAssetEditorDataFn)(void*, const void*);
 typedef void (*DeleteAssetEditorDataFn)(void*);
 
+static EditorRenderBuffer* CreateRenderBuffer(u64 id, u32 size, const void* data) {
+	EditorRenderBuffer* pBuffer = Rendering::CreateEditorBuffer(size, data);
+	pContext->assetRenderBuffers.emplace(id, pBuffer);
+	return pBuffer;
+}
+
+static EditorRenderBuffer* GetRenderBuffer(u64 id, AssetType type, u32 dataSize) {
+	if (id == UUID_NULL) {
+		return nullptr;
+	}
+
+	EditorRenderBuffer* pBuffer = nullptr;
+	if (pContext->assetRenderBuffers.contains(id)) {
+		pBuffer = pContext->assetRenderBuffers.at(id);
+	}
+	else {
+		const void* pData = AssetManager::GetAsset(id, type);
+		if (!pData) {
+			return nullptr;
+		}
+		pBuffer = CreateRenderBuffer(id, CHR_SIZE_BYTES, pData);
+	}
+	return pBuffer;
+}
+
+static void UpdateRenderBuffer(u64 id, AssetType type, u32 dataSize, const void* data) {
+	if (type != ASSET_TYPE_CHR_BANK && type != ASSET_TYPE_PALETTE) {
+		return;
+	}
+
+	EditorRenderBuffer* pBuffer = GetRenderBuffer(id, type, dataSize);
+	Rendering::UpdateEditorBuffer(pBuffer, data);
+}
+
 static EditedAsset CopyAssetForEditing(u64 id, PopulateAssetEditorDataFn populateFn) {
 	EditedAsset result{};
 	result.id = id;
@@ -915,6 +958,9 @@ static bool SaveEditedAsset(EditedAsset& asset, ApplyAssetEditorDataFn applyFn) 
 	memcpy(pAssetInfo->name, asset.name, MAX_ASSET_NAME_LENGTH);
 	void* data = AssetManager::GetAsset(asset.id, pAssetInfo->flags.type);
 	memcpy(data, asset.data, asset.size);
+
+	UpdateRenderBuffer(pAssetInfo->id, pAssetInfo->flags.type, pAssetInfo->size, data);
+
 	asset.dirty = false;
 	return true;
 }
@@ -931,6 +977,8 @@ static bool RevertEditedAsset(EditedAsset& asset, PopulateAssetEditorDataFn popu
 	const void* data = AssetManager::GetAsset(asset.id, pAssetInfo->flags.type);
 	memcpy(asset.data, data, asset.size);
 	asset.dirty = false;
+
+	UpdateRenderBuffer(pAssetInfo->id, pAssetInfo->flags.type, pAssetInfo->size, data);
 
 	if (populateFn) {
 		populateFn(asset.id, asset.data, &asset.userData);
@@ -1042,6 +1090,9 @@ static u64 DrawAssetList(AssetType type) {
 		if (ImGui::BeginPopup("AssetPopup")) {
 			if (ImGui::MenuItem("Delete")) {
 				asset.flags.deleted = true;
+				if (pContext->assetRenderBuffers.contains(asset.id)) {
+					pContext->bufferEraseList.push_back(asset.id);
+				}
 			}
 			if (ImGui::MenuItem("Duplicate")) {
 				DuplicateAsset(asset.id);
@@ -1610,7 +1661,7 @@ static void DrawMetaspritePreview(Metasprite* pMetasprite, ImVector<s32>& sprite
 		// Move sprite if dragged
 		ImVec2 posWithDrag = selected ? ImVec2(pos.x + dragDelta.x, pos.y + dragDelta.y) : pos;
 
-		drawList->AddImage(GetTextureID(pContext->pChrRenderData), posWithDrag, ImVec2(posWithDrag.x + gridStepPixels, posWithDrag.y + gridStepPixels), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
+		drawList->AddImage(GetTextureID(pContext->pChrTexture), posWithDrag, ImVec2(posWithDrag.x + gridStepPixels, posWithDrag.y + gridStepPixels), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
 
 
 		// Commit drag
@@ -1723,7 +1774,7 @@ static void DrawSpriteListPreview(const Sprite& sprite) {
 	const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
 	const ImVec2 topLeft = ImVec2(ImGui::GetItemRectMin().x + 88, ImGui::GetItemRectMin().y + style.FramePadding.y);
 	const ImVec2 btmRight = ImVec2(topLeft.x + itemHeight, topLeft.y + itemHeight);
-	drawList->AddImage(GetTextureID(pContext->pChrRenderData), topLeft, btmRight, ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
+	drawList->AddImage(GetTextureID(pContext->pChrTexture), topLeft, btmRight, ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
 }
 
 static void DrawMetaspriteEditor(EditedAsset& asset) {
@@ -2153,7 +2204,7 @@ static void DrawRoomTools(EditedAsset& asset) {
 					glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex, palette);
 
 					const ImVec2 pos(gridPos.x + x * previewTileSize, gridPos.y + y * previewTileSize);
-					drawList->AddImage(GetTextureID(pContext->pChrRenderData), pos, ImVec2(pos.x + previewTileSize, pos.y + previewTileSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
+					drawList->AddImage(GetTextureID(pContext->pChrTexture), pos, ImVec2(pos.x + previewTileSize, pos.y + previewTileSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
 				}
 			}
 
@@ -3699,25 +3750,75 @@ static void DrawSoundWindow() {
 #pragma endregion
 
 #pragma region Pattern editor
-static void CreateChrSheetRenderData(u64 id, void* data) {
-	EditorRenderData* pEditorData = Rendering::CreateEditorData(EDITOR_RENDER_DATA_USAGE_CHR, CHR_DIM_PIXELS, CHR_DIM_PIXELS, CHR_SIZE_BYTES, 0, data);
+struct ChrEditorData {
+	EditedAssetRenderData* pRenderData = nullptr;
+	PaletteHandle selectedPalette = PaletteHandle::Null();
+};
 
-	pContext->chrSheetData.emplace(id, pEditorData);
+static EditorRenderBuffer* GetChrRenderBuffer(u64 id) {
+	return GetRenderBuffer(id, ASSET_TYPE_CHR_BANK, CHR_SIZE_BYTES);
 }
 
-static void UpdateChrSheetRenderData(u64 id, void* data, void** userData) {
-	if (!pContext->chrSheetData.contains(id)) {
-		CreateChrSheetRenderData(id, data);
+static EditorRenderBuffer* GetPaletteRenderBuffer(u64 id) {
+	return GetRenderBuffer(id, ASSET_TYPE_PALETTE, PALETTE_COLOR_COUNT);
+}
+
+static void PopulateChrEditorData(u64 id, void* assetData, void** pUserData) {
+	ChrEditorData*& pEditorData = (ChrEditorData*&)*pUserData;
+	
+	if (!pEditorData) {
+		pEditorData = new ChrEditorData();
+
+		pEditorData->pRenderData = new EditedAssetRenderData();
+		pEditorData->pRenderData->pBuffer = Rendering::CreateEditorBuffer(CHR_SIZE_BYTES, assetData);
+		pEditorData->pRenderData->pTexture = Rendering::CreateEditorTexture(CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, pEditorData->pRenderData->pBuffer);
+		pContext->tempRenderData.insert(pEditorData->pRenderData);
 	}
 
-	EditorRenderData* pEditorData = pContext->chrSheetData.at(id);
-	Rendering::UpdateEditorData(pEditorData, data);
+	Rendering::UpdateEditorBuffer(pEditorData->pRenderData->pBuffer, assetData);
+}
+
+static void DeleteChrEditorData(void* pUserData) {
+	ChrEditorData* pEditorData = (ChrEditorData*)pUserData;
+
+	pContext->tempEraseList.push_back(pEditorData->pRenderData);
+
+	// NOTE: This does not free the render data, so it's potentially leaky
+	// Render data should be freed later when iterating the erase list
+	delete pUserData;
+}
+
+static void DrawEditedChrSheet(r32 size, ImTextureID chrTexture, s8 bgColorIndex) {
+	// Copypaska....
+	constexpr s32 gridSizeTiles = CHR_DIM_TILES;
+
+	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
+	const r32 gridStepPixels = TILE_DIM_PIXELS * renderScale;
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	const ImVec2 gridSize = ImVec2(size, size);
+	const ImVec2 topLeft = DrawTileGrid(gridSize, gridStepPixels);
+	const ImVec2 btmRight(topLeft.x + size, topLeft.y + size);
+	const glm::vec4 uvMinMax = { 0,0,1,1 };
+
+	// DrawTileGrid has a background but it needs to be drawn over with the correct color
+	if (bgColorIndex >= 0) {
+		const ImVec2 colorPos(bgColorIndex % 16, bgColorIndex / 16);
+		const ImVec2 bgUvMin(colorPos.x / 16, colorPos.y / 8);
+		const ImVec2 bgUvMax((colorPos.x + 1.0f) / 16, (colorPos.y + 1.0f) / 8);
+		drawList->AddImage(GetTextureID(pContext->pColorTexture), topLeft, btmRight, bgUvMin, bgUvMax);
+	}
+
+	drawList->AddImage(chrTexture, topLeft, btmRight, ImVec2(uvMinMax.x, uvMinMax.y), ImVec2(uvMinMax.z, uvMinMax.w));
 }
 
 static void DrawChrEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Chr editor");
 
-	EditorRenderData* pEditorData = pContext->chrSheetData.at(asset.id);
+	ChrEditorData* pEditorData = (ChrEditorData*)asset.userData;
+
+	EditorRenderBuffer* pPaletteBuffer = GetPaletteRenderBuffer(pEditorData->selectedPalette.id);
+	Rendering::UpdateEditorTexture(pEditorData->pRenderData->pTexture, pEditorData->pRenderData->pBuffer, pPaletteBuffer);
 
 	static ImGui::FileBrowser fileBrowser;
 
@@ -3731,7 +3832,7 @@ static void DrawChrEditor(EditedAsset& asset) {
 	if (fileBrowser.HasSelected()) {
 		u32 requiredSize{};
 		if (Assets::LoadChrSheetFromFile(fileBrowser.GetSelected(), asset.data)) {
-			Rendering::UpdateEditorData(pEditorData, asset.data);
+			Rendering::UpdateEditorBuffer(pEditorData->pRenderData->pBuffer, asset.data);
 			asset.dirty = true;
 		}
 		fileBrowser.ClearSelected();
@@ -3744,55 +3845,61 @@ static void DrawChrEditor(EditedAsset& asset) {
 
 	ImGui::SeparatorText("Preview");
 
-	// Copypaska....
-	constexpr s32 gridSizePixels = 512;
-	constexpr s32 gridSizeTiles = CHR_DIM_TILES;
-
-	const r32 renderScale = r32(gridSizePixels) / (gridSizeTiles * TILE_DIM_PIXELS);
-	const r32 gridStepPixels = TILE_DIM_PIXELS * renderScale;
-
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	const ImVec2 gridSize = ImVec2(gridSizePixels, gridSizePixels);
-	const ImVec2 chrPos = DrawTileGrid(gridSize, gridStepPixels);
-	const glm::vec4 uvMinMax = { 0,0,1,1 };
-
-	drawList->AddImage(GetTextureID(pEditorData), chrPos, ImVec2(chrPos.x + gridSizePixels, chrPos.y + gridSizePixels), ImVec2(uvMinMax.x, uvMinMax.y), ImVec2(uvMinMax.z, uvMinMax.w));
+	constexpr r32 gridSizePixels = 512.0f;
+	const Palette* pPalette = (Palette*)AssetManager::GetAsset(PaletteHandle(pEditorData->selectedPalette.id));
+	const s8 bgColorIndex = pPalette ? pPalette->colors[0] : -1;
+	DrawEditedChrSheet(gridSizePixels, GetTextureID(pEditorData->pRenderData->pTexture), bgColorIndex);
+	DrawAssetField("Palette", ASSET_TYPE_PALETTE, pEditorData->selectedPalette.id);
 
 	ImGui::EndChild();
 }
 
 static void DrawChrWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Pattern editor", pContext->chrWindowOpen, ASSET_TYPE_CHR_BANK, sizeof(ChrSheet), "New pattern sheet", DrawChrEditor, state, CreateChrSheetRenderData, UpdateChrSheetRenderData);
+	DrawAssetEditor("Pattern editor", pContext->chrWindowOpen, ASSET_TYPE_CHR_BANK, sizeof(ChrSheet), "New pattern sheet", DrawChrEditor, state, nullptr, PopulateChrEditorData, nullptr, DeleteChrEditorData);
 }
 #pragma endregion
 
 #pragma region Palette editor
 struct PaletteEditorData {
+	EditedAssetRenderData* pRenderData = nullptr;
 	s32 selectedColor = -1;
+	ChrBankHandle selectedChrBank = ChrBankHandle::Null();
 };
 
-static void InitPalette(u64 id, void* data) {
-	Palette* pPalette = (Palette*)data;
-	for (u32 i = 0; i < PALETTE_COLOR_COUNT; i++) {
-		pPalette->colors[i] = 0;
-	}
-}
-
 static void PopulatePaletteEditorData(u64 id, void* assetData, void** pUserData) {
-	if (*pUserData) {
-		delete *pUserData;
+	PaletteEditorData*& pEditorData = (PaletteEditorData*&)*pUserData;
+
+	if (!pEditorData) {
+		pEditorData = new PaletteEditorData();
+
+		pEditorData->pRenderData = new EditedAssetRenderData();
+		pEditorData->pRenderData->pBuffer = Rendering::CreateEditorBuffer(PALETTE_COLOR_COUNT, assetData);
+		pEditorData->pRenderData->pTexture = Rendering::CreateEditorTexture(CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, nullptr, pEditorData->pRenderData->pBuffer);
+		pContext->tempRenderData.insert(pEditorData->pRenderData);
 	}
 
-	*pUserData = new PaletteEditorData();
+	Rendering::UpdateEditorBuffer(pEditorData->pRenderData->pBuffer, assetData);
 }
 
-static void DeletePaletteEditorData(void* userData) {
-	delete userData;
+static void DeletePaletteEditorData(void* pUserData) {
+	PaletteEditorData* pEditorData = (PaletteEditorData*)pUserData;
+
+	pContext->tempEraseList.push_back(pEditorData->pRenderData);
+
+	// NOTE: This does not free the render data, so it's potentially leaky
+	// Render data should be freed later when iterating the erase list
+	delete pUserData;
 }
 
 static void DrawPaletteEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Palette editor");
+
+	Palette* pPalette = (Palette*)asset.data;
+	PaletteEditorData* pEditorData = (PaletteEditorData*)asset.userData;
+
+	EditorRenderBuffer* pChrBuffer = GetChrRenderBuffer(pEditorData->selectedChrBank.id);
+	Rendering::UpdateEditorTexture(pEditorData->pRenderData->pTexture, pChrBuffer, pEditorData->pRenderData->pBuffer);
 
 	ImGui::SeparatorText("Properties");
 	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
@@ -3801,8 +3908,6 @@ static void DrawPaletteEditor(EditedAsset& asset) {
 
 	ImGui::SeparatorText("Palette");
 
-	Palette* pPalette = (Palette*)asset.data;
-	PaletteEditorData* pEditorData = (PaletteEditorData*)asset.userData;
 	const s32 selectedColorIndex = pEditorData->selectedColor >= 0 ? pPalette->colors[pEditorData->selectedColor] : -1;
 
 	{
@@ -3814,6 +3919,7 @@ static void DrawPaletteEditor(EditedAsset& asset) {
 
 		if (newIndex != selectedColorIndex && newIndex >= 0) {
 			pPalette->colors[pEditorData->selectedColor] = newIndex;
+			Rendering::UpdateEditorBuffer(pEditorData->pRenderData->pBuffer, pPalette);
 			asset.dirty = true;
 		}
 		ImGui::PopID();
@@ -3833,7 +3939,7 @@ static void DrawPaletteEditor(EditedAsset& asset) {
 			const ImVec2 uvMin = ImVec2(x / 16.0f, y / 8.0f);
 			const ImVec2 uvMax = ImVec2((x + 1) / 16.0f, (y + 1) / 8.0f);
 
-			ImTextureID textureId = GetTextureID(pContext->pColorRenderData);
+			ImTextureID textureId = GetTextureID(pContext->pColorTexture);
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
 			drawList->AddImage(textureId, tilePos, ImVec2(tilePos.x + 64, tilePos.y + 64), uvMin, uvMax);
 			
@@ -3846,12 +3952,19 @@ static void DrawPaletteEditor(EditedAsset& asset) {
 		ImGui::PopID();
 	}
 
+	ImGui::SeparatorText("Preview");
+	{
+		constexpr r32 gridSizePixels = 256.0f;
+		DrawEditedChrSheet(gridSizePixels, GetTextureID(pEditorData->pRenderData->pTexture), pPalette->colors[0]);
+		DrawAssetField("Pattern", ASSET_TYPE_CHR_BANK, pEditorData->selectedChrBank.id);
+	}
+
 	ImGui::EndChild();
 }
 
 static void DrawPaletteWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Palette editor", pContext->paletteWindowOpen, ASSET_TYPE_PALETTE, sizeof(Palette), "New palette", DrawPaletteEditor, state, InitPalette, PopulatePaletteEditorData, nullptr, DeletePaletteEditorData);
+	DrawAssetEditor("Palette editor", pContext->paletteWindowOpen, ASSET_TYPE_PALETTE, sizeof(Palette), "New palette", DrawPaletteEditor, state, nullptr, PopulatePaletteEditorData, nullptr, DeletePaletteEditorData);
 }
 
 #pragma endregion
@@ -3923,15 +4036,15 @@ void Editor::Init(SDL_Window *pWindow) {
 	Rendering::InitEditor(pWindow);
 
 	constexpr u32 sheetPaletteCount = PALETTE_COUNT / 2;
-	pContext->pChrRenderData = Rendering::CreateEditorData(EDITOR_RENDER_DATA_USAGE_CHR, CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, CHR_MEMORY_SIZE, EDITOR_RENDER_DATA_FLAG_BUILTIN, Rendering::GetChrPtr(0));
-	pContext->pPaletteRenderData = Rendering::CreateEditorData(EDITOR_RENDER_DATA_USAGE_PALETTE, PALETTE_MEMORY_SIZE, 1, PALETTE_MEMORY_SIZE, EDITOR_RENDER_DATA_FLAG_BUILTIN, Rendering::GetPalettePtr(0));
-	pContext->pColorRenderData = Rendering::CreateEditorData(EDITOR_RENDER_DATA_USAGE_COLORS, 16, 8, 0, EDITOR_RENDER_DATA_FLAG_BUILTIN, nullptr);
+	pContext->pChrTexture = Rendering::CreateEditorTexture(CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, EDITOR_TEXTURE_USAGE_CHR);
+	pContext->pPaletteTexture = Rendering::CreateEditorTexture(PALETTE_MEMORY_SIZE, 1, EDITOR_TEXTURE_USAGE_PALETTE);
+	pContext->pColorTexture = Rendering::CreateEditorTexture(16, 8, EDITOR_TEXTURE_USAGE_COLOR);
 }
 
 void Editor::Free() {
-	Rendering::FreeEditorData(pContext->pChrRenderData);
-	Rendering::FreeEditorData(pContext->pPaletteRenderData);
-	Rendering::FreeEditorData(pContext->pColorRenderData);
+	Rendering::FreeEditorTexture(pContext->pChrTexture);
+	Rendering::FreeEditorTexture(pContext->pPaletteTexture);
+	Rendering::FreeEditorTexture(pContext->pColorTexture);
 
 	Rendering::ShutdownEditor();
 	ImGui::DestroyContext();
@@ -3963,19 +4076,24 @@ void Editor::ProcessEvent(const SDL_Event* event) {
 	ImGui_ImplSDL2_ProcessEvent(event);
 }
 
-void Editor::SetupFrame() {
-	Rendering::RenderEditorData(pContext->pChrRenderData);
-	Rendering::RenderEditorData(pContext->pPaletteRenderData);
-
-	for (auto& kvp : pContext->chrSheetData) {
-		const auto& [id, pData] = kvp;
-
-		Rendering::RenderEditorData(pData);
-	}
-}
-
-void Editor::Render(r64 dt) {
+void Editor::Update(r64 dt) {
 	pContext->secondsElapsed += dt;
+
+	// Clean up deleted textures
+	for (auto pTempData : pContext->tempEraseList) {
+		pContext->tempRenderData.erase(pTempData);
+		Rendering::FreeEditorTexture(pTempData->pTexture);
+		Rendering::FreeEditorBuffer(pTempData->pBuffer);
+		free(pTempData);
+	}
+	pContext->tempEraseList.clear();
+
+	for (auto id : pContext->bufferEraseList) {
+		EditorRenderBuffer* pBuffer = pContext->assetRenderBuffers.at(id);
+		Rendering::FreeEditorBuffer(pBuffer);
+		pContext->assetRenderBuffers.at(id) = nullptr;
+	}
+	pContext->bufferEraseList.clear();
 
 	Rendering::BeginEditorFrame();
 	ImGui::NewFrame();
@@ -4009,7 +4127,7 @@ void Editor::Render(r64 dt) {
 	if (pContext->actorWindowOpen) {
 		DrawActorWindow();
 	}
-;
+	;
 	if (pContext->audioWindowOpen) {
 		DrawAudioWindow();
 	}
@@ -4041,7 +4159,18 @@ void Editor::Render(r64 dt) {
 	if (pContext->paletteWindowOpen) {
 		DrawPaletteWindow();
 	}
+}
 
+void Editor::SetupFrame() {
+	Rendering::RenderEditorTexture(pContext->pChrTexture);
+	Rendering::RenderEditorTexture(pContext->pPaletteTexture);
+
+	for (auto pTempData : pContext->tempRenderData) {
+		Rendering::RenderEditorTexture(pTempData->pTexture);
+	}
+}
+
+void Editor::Render() {
 	ImGui::Render();
 	Rendering::RenderEditor();
 }

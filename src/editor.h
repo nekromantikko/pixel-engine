@@ -14,6 +14,7 @@ namespace Editor {
 	void ClearLog();
 
 	void ProcessEvent(const SDL_Event* event);
+	void Update(r64 dt);
 	void SetupFrame();
-	void Render(r64 dt);
+	void Render();
 }

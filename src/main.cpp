@@ -114,14 +114,16 @@ int WinMain(int argc, char** args) {
             r64 averageFramerate = GetAverageFramerate(deltaTimeSeconds);
             UpdateWindowTitle(pWindow, averageFramerate, deltaTimeSeconds);
 
-
+#ifdef EDITOR
+			Editor::Update(deltaTimeSeconds);
+#endif
             Rendering::BeginFrame();
 #ifdef EDITOR
             Editor::SetupFrame();
 #endif
             Rendering::BeginRenderPass();
 #ifdef EDITOR
-            Editor::Render(deltaTimeSeconds);
+            Editor::Render();
 #endif
             Rendering::EndFrame();
         }
