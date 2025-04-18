@@ -3383,6 +3383,45 @@ static void SortAssets(std::vector<u64>& assetIds, ImGuiTableSortSpecs* pSortSpe
 	pSortSpecs->SpecsDirty = false; // Mark sorting as done
 }
 
+static void DumpAssetArchive() {
+	const AssetIndex& index = AssetManager::GetIndex();
+
+	struct IntermediateAssetHeader {
+		u64 id;
+		AssetType type;
+		char name[MAX_ASSET_NAME_LENGTH];
+		u32 size;
+	};
+
+	std::filesystem::path directory = "assets_dump";
+	std::filesystem::create_directory(directory);
+	for (const auto& kvp : index) {
+		const u64 id = kvp.first;
+		const AssetEntry* pAsset = AssetManager::GetAssetInfo(id);
+		const void* pData = AssetManager::GetAsset(id, pAsset->flags.type);
+
+		std::filesystem::path filePath = directory / std::filesystem::path(std::to_string(id));
+		filePath.replace_extension(".bin");
+
+		FILE* pFile = fopen(filePath.string().c_str(), "wb");
+		if (!pFile) {
+			DEBUG_ERROR("Failed to open file for writing: %s", filePath.string().c_str());
+			continue;
+		}
+
+		IntermediateAssetHeader header{};
+		header.id = id;
+		header.type = pAsset->flags.type;
+		strncpy(header.name, pAsset->name, MAX_ASSET_NAME_LENGTH);
+		header.size = pAsset->size;
+
+		fwrite((const char*)&header, sizeof(IntermediateAssetHeader), 1, pFile);
+		fwrite(pData, pAsset->size, 1, pFile);
+
+		fclose(pFile);
+	}
+}
+
 static void DrawAssetBrowser() {
 	ImGui::Begin("Asset browser", &pContext->assetBrowserOpen, ImGuiWindowFlags_MenuBar);
 
@@ -3397,6 +3436,9 @@ static void DrawAssetBrowser() {
 			}
 			if (ImGui::MenuItem("Repack archive")) {
 				AssetManager::RepackArchive();
+			}
+			if (ImGui::MenuItem("Dump archive")) {
+				DumpAssetArchive();
 			}
 			ImGui::EndMenu();
 		}
