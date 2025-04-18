@@ -9,17 +9,14 @@ For the final image, I apply a CRT shader originally by Timothy Lottes (https://
 # Building
 - Currently Win32 only
 - Use cmake
-- Copy SDL2.dll to build directory
+- Use ENABLE_EDITOR option to disable/enable editor
+- Copy SDL2.dll and assets.npak to build directory
 
 # Videos:
 
 Gameplay in an early stage of development:
 
 https://github.com/user-attachments/assets/f80a977d-ebd0-4e1d-b281-29598b344289
-
-Node graph for editing and visualizing level connections:
-
-https://github.com/user-attachments/assets/7fec1a8f-b459-4c08-aa30-cc19061b28a3
 
 Emulating the NES APU:
 
@@ -29,5 +26,4 @@ https://github.com/user-attachments/assets/f5381c08-9041-402b-bf1c-d73d582101c6
 
 
 # Currently working on:
-- Node graph for editing and visualizing level connections
-- Actor architecture
+- Playable demo
