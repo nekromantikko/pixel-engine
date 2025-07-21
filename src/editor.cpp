@@ -3739,7 +3739,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 
 static void DrawAnimationWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Animation editor", pContext->tilesetWindowOpen, ASSET_TYPE_ANIMATION, sizeof(Animation), "New Animation", DrawAnimationEditor, state);
+	DrawAssetEditor("Animation editor", pContext->animationWindowOpen, ASSET_TYPE_ANIMATION, sizeof(Animation), "New Animation", DrawAnimationEditor, state);
 }
 #pragma endregion
 
