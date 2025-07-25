@@ -36,6 +36,11 @@ struct AssetHandle {
 	}
 };
 
+template <AssetType T>
+constexpr AssetHandle<T> MakeAssetHandle(u64 id, AssetType type) {
+	return (AssetHandle<type>)(id);
+}
+
 typedef AssetHandle<ASSET_TYPE_CHR_BANK> ChrBankHandle;
 typedef AssetHandle<ASSET_TYPE_SOUND> SoundHandle;
 typedef AssetHandle<ASSET_TYPE_TILESET> TilesetHandle;

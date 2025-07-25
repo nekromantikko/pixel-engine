@@ -14,3 +14,33 @@ struct Animation {
 	u16 frameCount;
 	AnimationFrame frames[ANIMATION_MAX_FRAME_COUNT];
 };
+
+#ifdef EDITOR
+#include <nlohmann/json.hpp>
+
+inline void from_json(const nlohmann::json& j, AnimationFrame& frame) {
+	j.at("metasprite_id").get_to(frame.metaspriteId.id);
+}
+
+inline void to_json(nlohmann::json& j, const AnimationFrame& frame) {
+	j["metasprite_id"] = frame.metaspriteId.id;
+}
+
+inline void from_json(const nlohmann::json& j, Animation& anim) {
+	j.at("frame_length").get_to(anim.frameLength);
+	j.at("loop_point").get_to(anim.loopPoint);
+	anim.frameCount = j.at("frames").size();
+	for (u32 i = 0; i < anim.frameCount; ++i) {
+		anim.frames[i] = j.at("frames").at(i).get<AnimationFrame>();
+	}
+}
+
+inline void to_json(nlohmann::json& j, const Animation& anim) {
+	j["frame_length"] = anim.frameLength;
+	j["loop_point"] = anim.loopPoint;
+	for (u32 i = 0; i < anim.frameCount; ++i) {
+		j["frames"].push_back(anim.frames[i]);
+	}
+}
+
+#endif

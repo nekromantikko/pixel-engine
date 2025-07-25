@@ -75,7 +75,6 @@ IF(ENABLE_EDITOR)
 	)
 	FetchContent_MakeAvailable(imgui)
 
-
 	set(IMGUI_SOURCES 
 		${imgui_SOURCE_DIR}/imgui.h
 		${imgui_SOURCE_DIR}/imgui.cpp
@@ -95,18 +94,25 @@ IF(ENABLE_EDITOR)
 	IF(WIN32)
 		list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp)
 	ENDIF()
+
+    FetchContent_Declare(
+		nlohmann_json
+		GIT_REPOSITORY https://github.com/nlohmann/json.git
+		GIT_TAG v3.12.0
+	)
+	FetchContent_MakeAvailable(nlohmann_json)
 ENDIF()
 
-
-IF(ENABLE_EDITOR)
-	add_executable(${PROJECT_NAME} ${HEADERS} ${SOURCES} ${IMGUI_SOURCES} ${EDITOR_HEADERS} ${EDITOR_SOURCES})
-	target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR} ${EDITOR_INCLUDE_DIRS})
-ELSE()
-	add_executable(${PROJECT_NAME} ${HEADERS} ${SOURCES})
-	target_include_directories(${PROJECT_NAME} PRIVATE ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
-ENDIF()
+add_executable(${PROJECT_NAME} WIN32 ${HEADERS} ${SOURCES})
+target_include_directories(${PROJECT_NAME} PRIVATE ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2 SDL2::SDL2main)
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
+
+IF(ENABLE_EDITOR)
+	target_sources(${PROJECT_NAME} PRIVATE ${IMGUI_SOURCES} ${EDITOR_HEADERS} ${EDITOR_SOURCES})
+	target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${nlohmann_json_INCLUDE_DIRS} ${EDITOR_INCLUDE_DIRS})
+	target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json)
+ENDIF()
 
 if (MSVC)
     target_compile_options(${PROJECT_NAME} PUBLIC /Zc:preprocessor)

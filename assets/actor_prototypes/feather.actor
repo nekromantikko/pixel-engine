@@ -1,0 +1,17 @@
+{
+    "animation_ids": [
+        4630713370299178157
+    ],
+    "hitbox": {
+        "max_x": 0.0,
+        "max_y": 0.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+    },
+    "properties": {
+        "lifetime": 300,
+        "sound": null
+    },
+    "subtype": "Feather",
+    "type": "effect"
+}

@@ -1,0 +1,17 @@
+{
+    "animation_ids": [
+        435452721500550008
+    ],
+    "hitbox": {
+        "max_x": 0.1875,
+        "max_y": 0.1875,
+        "min_x": -0.1875,
+        "min_y": -0.1875
+    },
+    "properties": {
+        "pickupSound": 15369204875459356735,
+        "value": 10
+    },
+    "subtype": "Exp",
+    "type": "pickup"
+}

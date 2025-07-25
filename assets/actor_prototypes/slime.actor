@@ -1,0 +1,21 @@
+{
+    "animation_ids": [
+        5574981247377053422
+    ],
+    "hitbox": {
+        "max_x": 0.375,
+        "max_y": 0.512499988079071,
+        "min_x": -0.375,
+        "min_y": -0.11249999701976776
+    },
+    "properties": {
+        "deathEffect": 8648874738303603352,
+        "expSpawner": 3830411244440486257,
+        "expValue": 50,
+        "health": 10,
+        "lootSpawner": null,
+        "projectile": null
+    },
+    "subtype": "Slime",
+    "type": "enemy"
+}
