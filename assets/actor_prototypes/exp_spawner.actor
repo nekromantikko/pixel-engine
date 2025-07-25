@@ -1,0 +1,17 @@
+{
+    "animation_ids": [
+        0
+    ],
+    "hitbox": {
+        "max_x": 0.0,
+        "max_y": 0.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+    },
+    "properties": {
+        "large": 4066434299938887950,
+        "small": 4188887360013389311
+    },
+    "subtype": " Exp spawner",
+    "type": "spawner"
+}

@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "editor_actor.h"
+#include "editor_serialization.h"
 #include "debug.h"
 #include <cassert>
 #include <limits>
@@ -1052,6 +1053,49 @@ static bool DuplicateAsset(u64 id) {
 	return true;
 }
 
+// These are placeholder functions for testing purposes
+template <typename T>
+static void DrawAssetLoadButton(ImGui::FileBrowser& fileBrowser, EditedAsset& asset, const char* extension) {
+	if (ImGui::Button("Load from file")) {
+		fileBrowser.SetTitle("Load asset from file");
+		fileBrowser.SetTypeFilters({ extension });
+		fileBrowser.Open();
+	}
+
+	fileBrowser.Display();
+	if (fileBrowser.HasSelected()) {
+		u32 requiredSize{};
+		nlohmann::json json;
+		if (Editor::LoadSerializedAssetFromFile(fileBrowser.GetSelected(), json)) {
+			T& assetData = *(T*)asset.data;
+			json.get_to(assetData);
+			asset.dirty = true;
+		}
+		fileBrowser.ClearSelected();
+	}
+}
+
+template <typename T>
+static void DrawAssetSaveButton(ImGui::FileBrowser& saveFileBrowser, EditedAsset& asset, const char* extension) {
+	if (ImGui::Button("Save to file")) {
+		saveFileBrowser.SetTitle("Save asset to file");
+		saveFileBrowser.SetTypeFilters({ extension });
+		saveFileBrowser.Open();
+	}
+
+	saveFileBrowser.Display();
+	if (saveFileBrowser.HasSelected()) {
+		nlohmann::json json;
+		const T& assetData = *(T*)asset.data;
+		json = assetData;
+
+		if (Editor::SaveSerializedAssetToFile(saveFileBrowser.GetSelected(), json, asset.id)) {
+			asset.dirty = false; // No longer dirty after saving
+		}
+		saveFileBrowser.ClearSelected();
+	}
+}
+
 static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 	const u64 oldId = selectedId;
 
@@ -1073,6 +1117,12 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 
 		ids.push_back(id);
 		assetNames.push_back(asset.name);
+	}
+
+	if (selectedId != UUID_NULL && selectedIndex < 0) {
+		// If the selected ID is not in the list, reset it
+		selectedId = UUID_NULL;
+		selectedIndex = -1;
 	}
 
 	if (DrawTypeSelectionCombo(label, assetNames.data(), assetNames.size(), selectedIndex)) {
@@ -1847,6 +1897,12 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 
 	Metasprite* pMetasprite = (Metasprite*)asset.data;
 
+	static ImGui::FileBrowser fileBrowser;
+	DrawAssetLoadButton<Metasprite>(fileBrowser, asset, ".sprite");
+
+	static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+	DrawAssetSaveButton<Metasprite>(saveFileBrowser, asset, ".sprite");
+
 	static ImVector<s32> spriteSelection;
 	static bool selectionLocked = false;
 
@@ -1917,6 +1973,13 @@ static void DrawTilesetEditor(EditedAsset& asset) {
 	constexpr s32 gridSizePixels = gridSizeTiles * gridStepPixels;
 
 	Tileset* pTileset = (Tileset*)asset.data;
+
+	static ImGui::FileBrowser fileBrowser;
+	DrawAssetLoadButton<Tileset>(fileBrowser, asset, ".tset");
+
+	static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+	DrawAssetSaveButton<Tileset>(saveFileBrowser, asset, ".tset");
+
 	DrawTileset(pTileset, gridSizePixels, &selectedMetatileIndex);
 
 	ImGui::SameLine();
@@ -2343,6 +2406,12 @@ static void DrawRoomTools(EditedAsset& asset) {
 static void DrawRoomEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Room editor");
 
+	static ImGui::FileBrowser fileBrowser;
+	DrawAssetLoadButton<RoomTemplateHeader>(fileBrowser, asset, ".room");
+
+	static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+	DrawAssetSaveButton<RoomTemplateHeader>(saveFileBrowser, asset, ".room");
+
 	const r32 toolWindowWidth = 350.0f;
 	ImGuiStyle& style = ImGui::GetStyle();
 	const r32 gameViewWidth = ImGui::GetContentRegionAvail().x - style.WindowPadding.x - toolWindowWidth;
@@ -2410,6 +2479,12 @@ static bool DrawActorPrototypeProperty(const ActorEditorProperty& property, Acto
 static void DrawActorEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Prototype editor");
 	{
+		static ImGui::FileBrowser fileBrowser;
+		DrawAssetLoadButton<ActorPrototype>(fileBrowser, asset, ".actor");
+
+		static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+		DrawAssetSaveButton<ActorPrototype>(saveFileBrowser, asset, ".actor");
+
 		static bool showHitboxPreview = false;
 
 		static ImVector<s32> selectedAnims;
@@ -3233,6 +3308,12 @@ static void DrawDungeonTools(EditedAsset& asset) {
 static void DrawDungeonEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Dungeon editor");
 
+	static ImGui::FileBrowser fileBrowser;
+	DrawAssetLoadButton<Dungeon>(fileBrowser, asset, ".dung");
+
+	static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+	DrawAssetSaveButton<Dungeon>(saveFileBrowser, asset, ".dung");
+
 	const r32 toolWindowWidth = 350.0f;
 	ImGuiStyle& style = ImGui::GetStyle();
 	const r32 canvasViewWidth = ImGui::GetContentRegionAvail().x - style.WindowPadding.x - toolWindowWidth;
@@ -3280,6 +3361,12 @@ static void DrawOverworldEditor(EditedAsset& asset) {
 
 	Overworld* pHeader = (Overworld*)asset.data;
 	OverworldEditorData* pEditorData = (OverworldEditorData*)asset.userData;
+
+	static ImGui::FileBrowser fileBrowser;
+	DrawAssetLoadButton<Overworld>(fileBrowser, asset, ".ow");
+
+	static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+	DrawAssetSaveButton<Overworld>(saveFileBrowser, asset, ".ow");
 
 	const bool showToolsWindow = true;
 	const r32 toolWindowWidth = showToolsWindow ? 350.0f : 0.0f;
@@ -3589,6 +3676,12 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Animation editor");
 
 	Animation* pAnimation = (Animation*)asset.data;
+
+	static ImGui::FileBrowser fileBrowser;
+	DrawAssetLoadButton<Animation>(fileBrowser, asset, ".anim");
+
+	static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+	DrawAssetSaveButton<Animation>(saveFileBrowser, asset, ".anim");
 
 	ImGui::SeparatorText("Properties");
 	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {

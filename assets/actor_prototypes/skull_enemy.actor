@@ -1,0 +1,21 @@
+{
+    "animation_ids": [
+        131735319442288618
+    ],
+    "hitbox": {
+        "max_x": 0.4375,
+        "max_y": 0.4375,
+        "min_x": -0.4375,
+        "min_y": -0.4375
+    },
+    "properties": {
+        "deathEffect": 8648874738303603352,
+        "expSpawner": 3830411244440486257,
+        "expValue": 1234,
+        "health": 10,
+        "lootSpawner": 4217208296074856327,
+        "projectile": 18243256850283701523
+    },
+    "subtype": "Skull",
+    "type": "enemy"
+}
