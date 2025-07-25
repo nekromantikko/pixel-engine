@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "editor_actor.h"
+#include "editor_serialization.h"
 #include "debug.h"
 #include <cassert>
 #include <limits>
@@ -3589,6 +3590,45 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Animation editor");
 
 	Animation* pAnimation = (Animation*)asset.data;
+
+	static ImGui::FileBrowser fileBrowser;
+
+	if (ImGui::Button("Create from file")) {
+		fileBrowser.SetTitle("title");
+		fileBrowser.SetTypeFilters({ ".anim" });
+		fileBrowser.Open();
+	}
+
+	fileBrowser.Display();
+	if (fileBrowser.HasSelected()) {
+		u32 requiredSize{};
+		nlohmann::json json;
+		if (Editor::LoadSerializedAssetFromFile(fileBrowser.GetSelected(), json)) {
+			Animation& anim = *pAnimation;
+			json.get_to(anim);
+			asset.dirty = true;
+		}
+		fileBrowser.ClearSelected();
+	}
+
+	static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+	if (ImGui::Button("Save to file")) {
+		saveFileBrowser.SetTitle("title");
+		saveFileBrowser.SetTypeFilters({ ".anim" });
+		saveFileBrowser.Open();
+	}
+
+	saveFileBrowser.Display();
+	if (saveFileBrowser.HasSelected()) {
+		nlohmann::json json;
+		Animation& anim = *pAnimation;
+		json = anim;
+
+		if (Editor::SaveSerializedAssetToFile(saveFileBrowser.GetSelected(), json, asset.id)) {
+			asset.dirty = false; // No longer dirty after saving
+		}
+		saveFileBrowser.ClearSelected();
+	}
 
 	ImGui::SeparatorText("Properties");
 	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
