@@ -29,7 +29,7 @@ static void to_json(nlohmann::json& j, const AnimationFrame& frame) {
 static void from_json(const nlohmann::json& j, Animation& anim) {
 	j.at("frame_length").get_to(anim.frameLength);
 	j.at("loop_point").get_to(anim.loopPoint);
-	j.at("frame_count").get_to(anim.frameCount);
+	anim.frameCount = j.at("frames").size();
 	for (u32 i = 0; i < anim.frameCount; ++i) {
 		anim.frames[i] = j.at("frames").at(i).get<AnimationFrame>();
 	}
@@ -38,7 +38,6 @@ static void from_json(const nlohmann::json& j, Animation& anim) {
 static void to_json(nlohmann::json& j, const Animation& anim) {
 	j["frame_length"] = anim.frameLength;
 	j["loop_point"] = anim.loopPoint;
-	j["frame_count"] = anim.frameCount;
 	for (u32 i = 0; i < anim.frameCount; ++i) {
 		j["frames"].push_back(anim.frames[i]);
 	}

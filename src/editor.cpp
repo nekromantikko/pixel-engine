@@ -1053,6 +1053,49 @@ static bool DuplicateAsset(u64 id) {
 	return true;
 }
 
+// These are placeholder functions for testing purposes
+template <typename T>
+static void DrawAssetLoadButton(ImGui::FileBrowser& fileBrowser, EditedAsset& asset, const char* extension) {
+	if (ImGui::Button("Load from file")) {
+		fileBrowser.SetTitle("Load asset from file");
+		fileBrowser.SetTypeFilters({ extension });
+		fileBrowser.Open();
+	}
+
+	fileBrowser.Display();
+	if (fileBrowser.HasSelected()) {
+		u32 requiredSize{};
+		nlohmann::json json;
+		if (Editor::LoadSerializedAssetFromFile(fileBrowser.GetSelected(), json)) {
+			T& assetData = *(T*)asset.data;
+			json.get_to(assetData);
+			asset.dirty = true;
+		}
+		fileBrowser.ClearSelected();
+	}
+}
+
+template <typename T>
+static void DrawAssetSaveButton(ImGui::FileBrowser& saveFileBrowser, EditedAsset& asset, const char* extension) {
+	if (ImGui::Button("Save to file")) {
+		saveFileBrowser.SetTitle("Save asset to file");
+		saveFileBrowser.SetTypeFilters({ extension });
+		saveFileBrowser.Open();
+	}
+
+	saveFileBrowser.Display();
+	if (saveFileBrowser.HasSelected()) {
+		nlohmann::json json;
+		const T& assetData = *(T*)asset.data;
+		json = assetData;
+
+		if (Editor::SaveSerializedAssetToFile(saveFileBrowser.GetSelected(), json, asset.id)) {
+			asset.dirty = false; // No longer dirty after saving
+		}
+		saveFileBrowser.ClearSelected();
+	}
+}
+
 static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 	const u64 oldId = selectedId;
 
@@ -1848,6 +1891,12 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 
 	Metasprite* pMetasprite = (Metasprite*)asset.data;
 
+	static ImGui::FileBrowser fileBrowser;
+	DrawAssetLoadButton<Metasprite>(fileBrowser, asset, ".sprite");
+
+	static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+	DrawAssetSaveButton<Metasprite>(saveFileBrowser, asset, ".sprite");
+
 	static ImVector<s32> spriteSelection;
 	static bool selectionLocked = false;
 
@@ -1918,6 +1967,13 @@ static void DrawTilesetEditor(EditedAsset& asset) {
 	constexpr s32 gridSizePixels = gridSizeTiles * gridStepPixels;
 
 	Tileset* pTileset = (Tileset*)asset.data;
+
+	static ImGui::FileBrowser fileBrowser;
+	DrawAssetLoadButton<Tileset>(fileBrowser, asset, ".tset");
+
+	static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+	DrawAssetSaveButton<Tileset>(saveFileBrowser, asset, ".tset");
+
 	DrawTileset(pTileset, gridSizePixels, &selectedMetatileIndex);
 
 	ImGui::SameLine();
@@ -3592,43 +3648,10 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	Animation* pAnimation = (Animation*)asset.data;
 
 	static ImGui::FileBrowser fileBrowser;
-
-	if (ImGui::Button("Create from file")) {
-		fileBrowser.SetTitle("title");
-		fileBrowser.SetTypeFilters({ ".anim" });
-		fileBrowser.Open();
-	}
-
-	fileBrowser.Display();
-	if (fileBrowser.HasSelected()) {
-		u32 requiredSize{};
-		nlohmann::json json;
-		if (Editor::LoadSerializedAssetFromFile(fileBrowser.GetSelected(), json)) {
-			Animation& anim = *pAnimation;
-			json.get_to(anim);
-			asset.dirty = true;
-		}
-		fileBrowser.ClearSelected();
-	}
+	DrawAssetLoadButton<Animation>(fileBrowser, asset, ".anim");
 
 	static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
-	if (ImGui::Button("Save to file")) {
-		saveFileBrowser.SetTitle("title");
-		saveFileBrowser.SetTypeFilters({ ".anim" });
-		saveFileBrowser.Open();
-	}
-
-	saveFileBrowser.Display();
-	if (saveFileBrowser.HasSelected()) {
-		nlohmann::json json;
-		Animation& anim = *pAnimation;
-		json = anim;
-
-		if (Editor::SaveSerializedAssetToFile(saveFileBrowser.GetSelected(), json, asset.id)) {
-			asset.dirty = false; // No longer dirty after saving
-		}
-		saveFileBrowser.ClearSelected();
-	}
+	DrawAssetSaveButton<Animation>(saveFileBrowser, asset, ".anim");
 
 	ImGui::SeparatorText("Properties");
 	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {

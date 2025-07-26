@@ -1,0 +1,40 @@
+{
+    "sprites": [
+        {
+            "flip_horizontal": true,
+            "flip_vertical": false,
+            "palette": 1,
+            "priority": false,
+            "tile_id": 169,
+            "x": 0,
+            "y": 0
+        },
+        {
+            "flip_horizontal": true,
+            "flip_vertical": false,
+            "palette": 1,
+            "priority": false,
+            "tile_id": 168,
+            "x": 8,
+            "y": 0
+        },
+        {
+            "flip_horizontal": true,
+            "flip_vertical": false,
+            "palette": 1,
+            "priority": false,
+            "tile_id": 171,
+            "x": 0,
+            "y": 8
+        },
+        {
+            "flip_horizontal": true,
+            "flip_vertical": false,
+            "palette": 1,
+            "priority": false,
+            "tile_id": 170,
+            "x": 8,
+            "y": 8
+        }
+    ]
+}
