@@ -118,4 +118,21 @@ static void to_json(nlohmann::json& j, const Tileset& tileset) {
 	}
 }
 
+static void to_json(nlohmann::json& j, const Tilemap& tilemap) {
+	j["width"] = tilemap.width;
+	j["height"] = tilemap.height;
+	j["tileset_id"] = tilemap.tilesetId.id;
+	
+	u8* tilemapData = Assets::GetTilemapData(&tilemap);
+	j["tiles"] = nlohmann::json::array();
+	u32 tileCount = tilemap.width * tilemap.height;
+	for (u32 i = 0; i < tileCount; ++i) {
+		j["tiles"].push_back(tilemapData[i]);
+	}
+}
+
+static void from_json(const nlohmann::json& j, Tilemap& tilemap) {
+	// TODO
+}
+
 #endif

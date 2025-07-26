@@ -2367,6 +2367,12 @@ static void DrawRoomTools(EditedAsset& asset) {
 static void DrawRoomEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Room editor");
 
+	static ImGui::FileBrowser fileBrowser;
+	DrawAssetLoadButton<RoomTemplateHeader>(fileBrowser, asset, ".room");
+
+	static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+	DrawAssetSaveButton<RoomTemplateHeader>(saveFileBrowser, asset, ".room");
+
 	const r32 toolWindowWidth = 350.0f;
 	ImGuiStyle& style = ImGui::GetStyle();
 	const r32 gameViewWidth = ImGui::GetContentRegionAvail().x - style.WindowPadding.x - toolWindowWidth;
