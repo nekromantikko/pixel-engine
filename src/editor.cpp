@@ -3296,6 +3296,12 @@ static void DrawDungeonTools(EditedAsset& asset) {
 static void DrawDungeonEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Dungeon editor");
 
+	static ImGui::FileBrowser fileBrowser;
+	DrawAssetLoadButton<Dungeon>(fileBrowser, asset, ".dung");
+
+	static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+	DrawAssetSaveButton<Dungeon>(saveFileBrowser, asset, ".dung");
+
 	const r32 toolWindowWidth = 350.0f;
 	ImGuiStyle& style = ImGui::GetStyle();
 	const r32 canvasViewWidth = ImGui::GetContentRegionAvail().x - style.WindowPadding.x - toolWindowWidth;
