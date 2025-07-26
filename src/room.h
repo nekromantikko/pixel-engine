@@ -42,3 +42,47 @@ namespace Assets {
     BgTile* GetRoomTemplateMapTiles(const RoomTemplateHeader* pHeader);
     RoomActor* GetRoomTemplateActors(const RoomTemplateHeader* pHeader);
 }
+
+#ifdef EDITOR
+#include <nlohmann/json.hpp>
+
+static void from_json(const nlohmann::json& j, RoomActor& actor) {
+	j.at("id").get_to(actor.id);
+	j.at("prototype_id").get_to(actor.prototypeId.id);
+    j.at("x").get_to(actor.position.x);
+	j.at("y").get_to(actor.position.y);
+}
+
+static void to_json(nlohmann::json& j, const RoomActor& actor) {
+	j["id"] = actor.id;
+	j["prototype_id"] = actor.prototypeId.id;
+	j["x"] = actor.position.x;
+	j["y"] = actor.position.y;
+}
+
+static void from_json(const nlohmann::json& j, RoomTemplateHeader& room) {
+	// TODO
+}
+
+static void to_json(nlohmann::json& j, const RoomTemplateHeader& room) {
+	j["width"] = room.width;
+	j["height"] = room.height;
+
+	j["map_tiles"] = nlohmann::json::array();
+	BgTile* mapTiles = Assets::GetRoomTemplateMapTiles(&room);
+	const u32 mapTileCount = room.width * room.height * 2;
+	for (u32 i = 0; i < mapTileCount; ++i) {
+		j["map_tiles"].push_back(mapTiles[i]);
+	}
+
+	j["tilemap"] = room.tilemapHeader;
+
+	RoomActor* actors = Assets::GetRoomTemplateActors(&room);
+	j["actors"] = nlohmann::json::array();
+	for (u32 i = 0; i < room.actorCount; ++i) {
+		j["actors"].push_back(actors[i]);
+	}
+}
+
+#endif
+
