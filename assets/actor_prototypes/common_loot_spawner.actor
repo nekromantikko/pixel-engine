@@ -1,0 +1,26 @@
+{
+    "animation_ids": [
+        0
+    ],
+    "hitbox": {
+        "max_x": 0.0,
+        "max_y": 0.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+    },
+    "properties": {
+        "Loot type 0": 4649032905708007949,
+        "Loot type 1": 4649032905708007949,
+        "Loot type 2": 4649032905708007949,
+        "Loot type 3": 4649032905708007949,
+        "Spawn rates": [
+            32,
+            32,
+            32,
+            32
+        ],
+        "Type count": 4
+    },
+    "subtype": "Loot spawner",
+    "type": "spawner"
+}
