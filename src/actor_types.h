@@ -102,4 +102,16 @@ namespace Editor {
 	};
 }
 
+#include <nlohmann/json.hpp>
+
+NLOHMANN_JSON_SERIALIZE_ENUM(ActorType, {
+	{ ACTOR_TYPE_PLAYER, "player" },
+	{ ACTOR_TYPE_ENEMY, "enemy" },
+	{ ACTOR_TYPE_BULLET, "bullet" },
+	{ ACTOR_TYPE_PICKUP, "pickup" },
+	{ ACTOR_TYPE_EFFECT, "effect" },
+	{ ACTOR_TYPE_INTERACTABLE, "interactable" },
+	{ ACTOR_TYPE_SPAWNER, "spawner" }
+})
+
 #endif

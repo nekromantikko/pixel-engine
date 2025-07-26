@@ -2473,6 +2473,12 @@ static bool DrawActorPrototypeProperty(const ActorEditorProperty& property, Acto
 static void DrawActorEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Prototype editor");
 	{
+		static ImGui::FileBrowser fileBrowser;
+		DrawAssetLoadButton<ActorPrototype>(fileBrowser, asset, ".actor");
+
+		static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+		DrawAssetSaveButton<ActorPrototype>(saveFileBrowser, asset, ".actor");
+
 		static bool showHitboxPreview = false;
 
 		static ImVector<s32> selectedAnims;
@@ -3349,6 +3355,12 @@ static void DrawOverworldEditor(EditedAsset& asset) {
 
 	Overworld* pHeader = (Overworld*)asset.data;
 	OverworldEditorData* pEditorData = (OverworldEditorData*)asset.userData;
+
+	static ImGui::FileBrowser fileBrowser;
+	DrawAssetLoadButton<Overworld>(fileBrowser, asset, ".ow");
+
+	static ImGui::FileBrowser saveFileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+	DrawAssetSaveButton<Overworld>(saveFileBrowser, asset, ".ow");
 
 	const bool showToolsWindow = true;
 	const r32 toolWindowWidth = showToolsWindow ? 350.0f : 0.0f;
