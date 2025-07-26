@@ -1,0 +1,13 @@
+{
+    "sprites": [
+        {
+            "flip_horizontal": false,
+            "flip_vertical": true,
+            "palette": 1,
+            "priority": false,
+            "tile_id": 35,
+            "x": -4,
+            "y": -4
+        }
+    ]
+}
