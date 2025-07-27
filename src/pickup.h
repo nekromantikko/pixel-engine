@@ -18,7 +18,7 @@ struct PickupData {
 
 ACTOR_SUBTYPE_PROPERTIES(PickupData,
 	ACTOR_SUBTYPE_PROPERTY_SCALAR(PickupData, value, S16, 1),
-	ACTOR_SUBTYPE_PROPERTY_ASSET(PickupData, pickupSound, ASSET_TYPE_SOUND)
+	ACTOR_SUBTYPE_PROPERTY_ASSET(PickupData, pickupSound, ASSET_TYPE_SOUND, 1)
 )
 
 struct PickupState {

@@ -17,7 +17,7 @@ struct BulletData {
 
 ACTOR_SUBTYPE_PROPERTIES(BulletData,
 	ACTOR_SUBTYPE_PROPERTY_SCALAR(BulletData, lifetime, U16, 1),
-	ACTOR_SUBTYPE_PROPERTY_ASSET(BulletData, deathEffect, ASSET_TYPE_ACTOR_PROTOTYPE)
+	ACTOR_SUBTYPE_PROPERTY_ASSET(BulletData, deathEffect, ASSET_TYPE_ACTOR_PROTOTYPE, 1)
 )
 
 struct BulletState {
