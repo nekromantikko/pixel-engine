@@ -105,14 +105,7 @@ constexpr ActorDrawFn Game::bulletDrawTable[BULLET_TYPE_COUNT] = {
     Game::DrawActorDefault,
 };
 
-#ifdef EDITOR
-static const std::initializer_list<ActorEditorProperty> defaultProps = {
-    {.name = "Lifetime", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(BulletData, lifetime) },
-    {.name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_ACTOR_PROTOTYPE, .offset = offsetof(BulletData, deathEffect) }
-};
-
-const ActorEditorData Editor::bulletEditorData = {
-    { "Default", "Grenade" },
-    { defaultProps, defaultProps },
-};
-#endif
+DEFINE_ACTOR_EDITOR_DATA(bullet,
+	{ "Bullet", GET_SUBTYPE_PROPERTIES(BulletData) },
+	{ "Grenade", GET_SUBTYPE_PROPERTIES(BulletData) }
+);

@@ -1,6 +1,7 @@
 #pragma once
 #include "typedef.h"
 #include "asset_types.h"
+#include "actor_reflection.h"
 #include <cstddef>
 
 enum NPCSubtype : TActorSubtype {
@@ -21,10 +22,24 @@ struct EnemyData {
 	ActorPrototypeHandle expSpawner;
 };
 
+ACTOR_SUBTYPE_PROPERTIES(EnemyData,
+	ACTOR_SUBTYPE_PROPERTY_SCALAR(EnemyData, health, U16, 1),
+	ACTOR_SUBTYPE_PROPERTY_SCALAR(EnemyData, expValue, U16, 1),
+	ACTOR_SUBTYPE_PROPERTY_ASSET(EnemyData, lootSpawner, ASSET_TYPE_ACTOR_PROTOTYPE),
+	ACTOR_SUBTYPE_PROPERTY_ASSET(EnemyData, deathEffect, ASSET_TYPE_ACTOR_PROTOTYPE),
+	ACTOR_SUBTYPE_PROPERTY_ASSET(EnemyData, projectile, ASSET_TYPE_ACTOR_PROTOTYPE),
+	ACTOR_SUBTYPE_PROPERTY_ASSET(EnemyData, expSpawner, ASSET_TYPE_ACTOR_PROTOTYPE)
+)
+
 struct FireballData {
 	u16 lifetime;
 	ActorPrototypeHandle deathEffect;
 };
+
+ACTOR_SUBTYPE_PROPERTIES(FireballData,
+	ACTOR_SUBTYPE_PROPERTY_SCALAR(FireballData, lifetime, U16, 1),
+	ACTOR_SUBTYPE_PROPERTY_ASSET(FireballData, deathEffect, ASSET_TYPE_ACTOR_PROTOTYPE)
+)
 
 struct EnemyState {
 	u16 health;
@@ -46,10 +61,4 @@ namespace Game {
 	void EnemyDie(Actor* pActor, const ActorPrototype* pPrototype);
 }
 
-#ifdef EDITOR
-#include "editor_actor.h"
-
-namespace Editor {
-	extern const ActorEditorData enemyEditorData;
-}
-#endif
+DECLARE_ACTOR_EDITOR_DATA(enemy)

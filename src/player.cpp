@@ -822,15 +822,7 @@ constexpr ActorDrawFn Game::playerDrawTable[PLAYER_TYPE_COUNT] = {
     DrawPlayerOverworld
 };
 
-#ifdef EDITOR
-static const std::initializer_list<ActorEditorProperty> sidescrollerProps = {
-    {.name = "Jump sound", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_SOUND, .components = 1, .offset = offsetof(PlayerData, jumpSound)},
-    {.name = "Damage sound", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_SOUND, .components = 1, .offset = offsetof(PlayerData, damageSound)},
-    {.name = "Gun sound (Temp)", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_SOUND, .components = 1, .offset = offsetof(PlayerData, gunSound)}
-};
-
-const ActorEditorData Editor::playerEditorData(
-    { "Sidescroller", "Overworld" },
-    { { sidescrollerProps },{} }
-);
-#endif
+DEFINE_ACTOR_EDITOR_DATA(player,
+    { "Sidescroller", GET_SUBTYPE_PROPERTIES(PlayerData) },
+    { "Overworld", GET_SUBTYPE_PROPERTIES(PlayerOverworldData) }
+)

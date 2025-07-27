@@ -1,6 +1,7 @@
 #pragma once
 #include "typedef.h"
 #include "asset_types.h"
+#include "actor_reflection.h"
 #define GLM_FORCE_RADIANS
 #include <glm.hpp>
 
@@ -34,6 +35,12 @@ struct PlayerData {
 	SoundHandle gunSound; // TEMP!
 };
 
+ACTOR_SUBTYPE_PROPERTIES(PlayerData,
+	ACTOR_SUBTYPE_PROPERTY_ASSET(PlayerData, jumpSound, ASSET_TYPE_SOUND),
+	ACTOR_SUBTYPE_PROPERTY_ASSET(PlayerData, damageSound, ASSET_TYPE_SOUND),
+	ACTOR_SUBTYPE_PROPERTY_ASSET(PlayerData, gunSound, ASSET_TYPE_SOUND)
+);
+
 struct PlayerFlags {
 	u8 aimMode : 2;
 	bool slowFall : 1;
@@ -53,6 +60,12 @@ struct PlayerState {
 	u16 staminaRecoveryCounter;
 };
 
+struct PlayerOverworldData {
+
+};
+
+ACTOR_SUBTYPE_PROPERTIES(PlayerOverworldData)
+
 struct PlayerOverworldState {
 	glm::ivec2 facingDir;
 	u16 movementCounter;
@@ -70,10 +83,4 @@ namespace Game {
 	void PlayerTakeDamage(Actor* pPlayer, const Damage& damage, const glm::vec2& enemyPos);
 }
 
-#ifdef EDITOR
-#include "editor_actor.h"
-
-namespace Editor {
-	extern const ActorEditorData playerEditorData;
-}
-#endif
+DECLARE_ACTOR_EDITOR_DATA(player)
