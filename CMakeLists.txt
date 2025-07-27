@@ -65,7 +65,7 @@ option(ENABLE_EDITOR "Enable editor functionality" ON)
 IF(ENABLE_EDITOR)
 	set(EDITOR_INCLUDE_DIRS src/ext/imgui-filebrowser)
 	set(EDITOR_HEADERS src/editor.h)
-	set(EDITOR_SOURCES src/editor.cpp)
+	set(EDITOR_SOURCES src/editor.cpp src/editor_serialization.cpp src/editor_asset_watcher.cpp)
 
 	FetchContent_Declare(
         	imgui
@@ -109,6 +109,10 @@ IF(ENABLE_EDITOR)
 	target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json)
 ENDIF()
 
+# Assets
+set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_SRC_DIR="${ASSETS_SRC_DIR}")
 
 # Compile shaders
 set (GLSL_SHADERS
