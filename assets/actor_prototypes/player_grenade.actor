@@ -1,6 +1,6 @@
 {
     "animation_ids": [
-        10286448626492092599
+        13762016063615361486
     ],
     "hitbox": {
         "max_x": 0.1875,
@@ -10,8 +10,8 @@
     },
     "properties": {
         "deathEffect": 9147915073509735008,
-        "lifetime": 600
+        "lifetime": 60
     },
-    "subtype": "Fireball",
-    "type": "enemy"
+    "subtype": "Grenade",
+    "type": "bullet"
 }

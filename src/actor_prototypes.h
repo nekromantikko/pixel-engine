@@ -87,8 +87,31 @@ inline void to_json(nlohmann::json& j, const ActorPrototype& prototype) {
 			break;
 		}
 		case ACTOR_EDITOR_PROPERTY_ASSET: {
-			u64& id = *(u64*)propertyData;
-			j["properties"][prop.name] = id;
+			if (prop.components == 0) {
+				j["properties"][prop.name] = nullptr;
+				break;
+			}
+
+			const u64* assetIds =(u64*)propertyData;
+			if (prop.components == 1) {
+				if (assetIds[0] == 0)
+				{
+					j["properties"][prop.name] = nullptr;
+					break;
+				}
+				j["properties"][prop.name] = assetIds[0];
+				break;
+			}
+			j["properties"][prop.name] = nlohmann::json::array();
+			for (s32 i = 0; i < prop.components; i++) {
+				u64 id = assetIds[i];
+				if (id == 0) {
+					j["properties"][prop.name].push_back(nullptr);
+				}
+				else {
+					j["properties"][prop.name].push_back(id);
+				}
+			}
 			break;
 		}
 		default:

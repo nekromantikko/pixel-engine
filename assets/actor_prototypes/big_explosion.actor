@@ -1,0 +1,17 @@
+{
+    "animation_ids": [
+        16882686759368831584
+    ],
+    "hitbox": {
+        "max_x": 0.0,
+        "max_y": 0.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+    },
+    "properties": {
+        "lifetime": 32,
+        "sound": 6715427078472658536
+    },
+    "subtype": "Explosion",
+    "type": "effect"
+}

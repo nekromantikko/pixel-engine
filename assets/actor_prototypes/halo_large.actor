@@ -1,6 +1,6 @@
 {
     "animation_ids": [
-        10286448626492092599
+        5955777268034695073
     ],
     "hitbox": {
         "max_x": 0.1875,
@@ -9,9 +9,9 @@
         "min_y": -0.1875
     },
     "properties": {
-        "deathEffect": 9147915073509735008,
-        "lifetime": 600
+        "pickupSound": 15369204875459356735,
+        "value": 500
     },
-    "subtype": "Fireball",
-    "type": "enemy"
+    "subtype": "Exp",
+    "type": "pickup"
 }

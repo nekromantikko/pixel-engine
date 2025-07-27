@@ -1087,6 +1087,12 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 		assetNames.push_back(asset.name);
 	}
 
+	if (selectedId != UUID_NULL && selectedIndex < 0) {
+		// If the selected ID is not in the list, reset it
+		selectedId = UUID_NULL;
+		selectedIndex = -1;
+	}
+
 	if (DrawTypeSelectionCombo(label, assetNames.data(), assetNames.size(), selectedIndex)) {
 		selectedId = selectedIndex >= 0 ? ids[selectedIndex] : UUID_NULL;
 	}
