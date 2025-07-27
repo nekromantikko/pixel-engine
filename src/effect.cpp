@@ -132,14 +132,8 @@ constexpr ActorDrawFn Game::effectDrawTable[EFFECT_TYPE_COUNT] = {
     Game::DrawActorDefault,
 };
 
-#ifdef EDITOR
-static const std::initializer_list<ActorEditorProperty> defaultProps = {
-    {.name = "Lifetime", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(EffectData, lifetime) },
-    {.name = "Sound", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_SOUND, .components = 1, .offset = offsetof(EffectData, sound)},
-};
-
-const ActorEditorData Editor::effectEditorData = {
-    { "Damage numbers", "Explosion", "Feather" },
-    { defaultProps, defaultProps, defaultProps }
-};
-#endif
+DEFINE_ACTOR_EDITOR_DATA(effect,
+    { "Damage numbers", GET_SUBTYPE_PROPERTIES(EffectData) },
+    { "Explosion", GET_SUBTYPE_PROPERTIES(EffectData) },
+    { "Feather", GET_SUBTYPE_PROPERTIES(EffectData) }
+)

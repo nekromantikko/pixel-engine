@@ -159,23 +159,8 @@ constexpr ActorDrawFn Game::enemyDrawTable[ENEMY_TYPE_COUNT] = {
     Game::DrawActorDefault,
 };
 
-#ifdef EDITOR
-static const std::initializer_list<ActorEditorProperty> defaultProps = {
-    { .name = "Health", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(EnemyData, health) },
-    { .name = "Exp value", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(EnemyData, expValue) },
-    { .name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_ACTOR_PROTOTYPE, .offset = offsetof(EnemyData, deathEffect) },
-    { .name = "Projectile", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_ACTOR_PROTOTYPE, .offset = offsetof(EnemyData, projectile) },
-    { .name = "Exp spawner", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_ACTOR_PROTOTYPE, .offset = offsetof(EnemyData, expSpawner) },
-    { .name = "Loot spawner", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_ACTOR_PROTOTYPE, .offset = offsetof(EnemyData, lootSpawner) },
-};
-
-static const std::initializer_list<ActorEditorProperty> fireballProps = {
-    {.name = "Lifetime", .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_U16, .components = 1, .offset = offsetof(FireballData, lifetime) },
-    {.name = "Death effect", .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE_ACTOR_PROTOTYPE, .offset = offsetof(FireballData, deathEffect) },
-};
-
-const ActorEditorData Editor::enemyEditorData(
-    { "Enemy Slime", "Enemy Skull", "Fireball" },
-    { defaultProps, defaultProps, fireballProps }
+DEFINE_ACTOR_EDITOR_DATA(enemy,
+	{ "Slime", GET_SUBTYPE_PROPERTIES(EnemyData) },
+	{ "Skull", GET_SUBTYPE_PROPERTIES(EnemyData) },
+	{ "Fireball", GET_SUBTYPE_PROPERTIES(FireballData) }
 );
-#endif

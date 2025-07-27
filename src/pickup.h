@@ -1,6 +1,7 @@
 #pragma once
 #include "typedef.h"
 #include "asset_types.h"
+#include "actor_reflection.h"
 
 enum PickupType : TActorSubtype {
 	PICKUP_TYPE_EXP,
@@ -15,6 +16,11 @@ struct PickupData {
 	SoundHandle pickupSound;
 };
 
+ACTOR_SUBTYPE_PROPERTIES(PickupData,
+	ACTOR_SUBTYPE_PROPERTY_SCALAR(PickupData, value, S16, 1),
+	ACTOR_SUBTYPE_PROPERTY_ASSET(PickupData, pickupSound, ASSET_TYPE_SOUND)
+)
+
 struct PickupState {
 	s16 value;
 	u16 lingerCounter;
@@ -26,10 +32,4 @@ namespace Game {
 	extern const ActorDrawFn pickupDrawTable[PICKUP_TYPE_COUNT];
 }
 
-#ifdef EDITOR
-#include "editor_actor.h"
-
-namespace Editor {
-	extern const ActorEditorData pickupEditorData;
-}
-#endif
+DECLARE_ACTOR_EDITOR_DATA(pickup)

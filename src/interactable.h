@@ -1,5 +1,6 @@
 #pragma once
 #include "typedef.h"
+#include "actor_reflection.h"
 
 enum CheckpointSubtype : TActorSubtype {
 	INTERACTABLE_TYPE_CHECKPOINT,
@@ -12,9 +13,17 @@ struct CheckpointData {
 
 };
 
+ACTOR_SUBTYPE_PROPERTIES(CheckpointData)
+
 struct CheckpointState {
 	bool activated;
 };
+
+struct NPCData {
+
+};
+
+ACTOR_SUBTYPE_PROPERTIES(NPCData)
 
 #ifdef EDITOR
 constexpr const char* INTERACTABLE_TYPE_NAMES[INTERACTABLE_TYPE_COUNT] = { "Default" };
@@ -26,10 +35,4 @@ namespace Game {
 	extern const ActorDrawFn interactableDrawTable[INTERACTABLE_TYPE_COUNT];
 }
 
-#ifdef EDITOR
-#include "editor_actor.h"
-
-namespace Editor {
-	extern const ActorEditorData interactableEditorData;
-}
-#endif
+DECLARE_ACTOR_EDITOR_DATA(interactable)

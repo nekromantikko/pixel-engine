@@ -1,6 +1,7 @@
 #pragma once
 #include "typedef.h"
 #include "asset_types.h"
+#include "actor_reflection.h"
 
 enum BulletType : TActorSubtype {
 	BULLET_TYPE_DEFAULT,
@@ -14,6 +15,11 @@ struct BulletData {
 	ActorPrototypeHandle deathEffect;
 };
 
+ACTOR_SUBTYPE_PROPERTIES(BulletData,
+	ACTOR_SUBTYPE_PROPERTY_SCALAR(BulletData, lifetime, U16, 1),
+	ACTOR_SUBTYPE_PROPERTY_ASSET(BulletData, deathEffect, ASSET_TYPE_ACTOR_PROTOTYPE)
+)
+
 struct BulletState {
 	u16 lifetimeCounter;
 };
@@ -24,10 +30,4 @@ namespace Game {
 	extern const ActorDrawFn bulletDrawTable[BULLET_TYPE_COUNT];
 }
 
-#ifdef EDITOR
-#include "editor_actor.h"
-
-namespace Editor {
-	extern const ActorEditorData bulletEditorData;
-}
-#endif
+DECLARE_ACTOR_EDITOR_DATA(bullet)

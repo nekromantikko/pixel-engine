@@ -40,9 +40,7 @@ constexpr ActorDrawFn Game::interactableDrawTable[INTERACTABLE_TYPE_COUNT] = {
     Game::DrawActorDefault
 };
 
-#ifdef EDITOR
-const ActorEditorData Editor::interactableEditorData = {
-    { "Checkpoint", "NPC" },
-    { {}, {} }
-};
-#endif
+DEFINE_ACTOR_EDITOR_DATA(interactable,
+	{ "Checkpoint", GET_SUBTYPE_PROPERTIES(CheckpointData) },
+	{ "NPC", GET_SUBTYPE_PROPERTIES(NPCData) }
+);

@@ -2,8 +2,6 @@
 #include "imgui.h"
 #include "asset_types.h"
 #include <vector>
-#include <cassert>
-		
 
 enum ActorEditorPropertyType {
 	ACTOR_EDITOR_PROPERTY_SCALAR,
@@ -23,11 +21,18 @@ struct ActorEditorProperty {
 
 class ActorEditorData {
 private:
-	const std::vector<const char*> subtypeNames;
-	const std::vector<std::vector<ActorEditorProperty>> subtypeProperties;
+	typedef std::pair<const char*, const std::vector<ActorEditorProperty>&> SubtypePropertyPair;
+
+	std::vector<const char*> subtypeNames;
+	std::vector<const std::vector<ActorEditorProperty>*> subtypeProperties;
 public:
-	ActorEditorData(const std::vector<const char*>& names, const std::vector<std::vector<ActorEditorProperty>>& props) : subtypeNames(names), subtypeProperties(props) {
-		assert(subtypeNames.size() == subtypeProperties.size());
+	ActorEditorData(std::vector<SubtypePropertyPair>&& subtypePropertyPairs)
+		: subtypeNames(subtypePropertyPairs.size()), subtypeProperties(subtypePropertyPairs.size()) {
+
+		for (size_t i = 0; i < subtypePropertyPairs.size(); ++i) {
+			subtypeNames[i] = subtypePropertyPairs[i].first;
+			subtypeProperties[i] = &subtypePropertyPairs[i].second;
+		}
 	}
 
 	const u32 GetSubtypeCount() const {
@@ -37,9 +42,9 @@ public:
 		return subtypeNames.data();
 	}
 	u32 GetPropertyCount(u32 subtype) const {
-		return subtypeProperties[subtype].size();
+		return subtypeProperties[subtype]->size();
 	}
 	const ActorEditorProperty& GetProperty(u32 subtype, u32 index) const {
-		return subtypeProperties[subtype][index];
+		return subtypeProperties[subtype]->at(index);
 	}
 };

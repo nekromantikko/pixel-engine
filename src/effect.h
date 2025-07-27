@@ -1,6 +1,7 @@
 #pragma once
 #include "typedef.h"
 #include "asset_types.h"
+#include "actor_reflection.h"
 
 enum EffectType : TActorSubtype {
 	EFFECT_TYPE_NUMBERS,
@@ -14,6 +15,11 @@ struct EffectData {
 	u16 lifetime;
 	SoundHandle sound;
 };
+
+ACTOR_SUBTYPE_PROPERTIES(EffectData,
+	ACTOR_SUBTYPE_PROPERTY_SCALAR(EffectData, lifetime, U16, 1),
+	ACTOR_SUBTYPE_PROPERTY_ASSET(EffectData, sound, ASSET_TYPE_SOUND)
+);
 
 struct EffectState {
 	u16 initialLifetime;
@@ -47,10 +53,4 @@ namespace Game {
 	extern const ActorDrawFn effectDrawTable[EFFECT_TYPE_COUNT];
 }
 
-#ifdef EDITOR
-#include "editor_actor.h"
-
-namespace Editor {
-	extern const ActorEditorData effectEditorData;
-}
-#endif
+DECLARE_ACTOR_EDITOR_DATA(effect)
