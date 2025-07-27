@@ -11,12 +11,12 @@ struct SerializedAssetMetadata {
 	u64 guid;
 };
 
-static void from_json(const nlohmann::json& j, SerializedAssetMetadata& metadata) {
+inline void from_json(const nlohmann::json& j, SerializedAssetMetadata& metadata) {
 	j.at("file_format_version").get_to(metadata.fileFormatVersion);
 	j.at("guid").get_to(metadata.guid);
 }
 
-static void to_json(nlohmann::json& j, const SerializedAssetMetadata& metadata) {
+inline void to_json(nlohmann::json& j, const SerializedAssetMetadata& metadata) {
 	j["file_format_version"] = metadata.fileFormatVersion;
 	j["guid"] = metadata.guid;
 }

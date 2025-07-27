@@ -65,7 +65,7 @@ NLOHMANN_JSON_SERIALIZE_ENUM(TilesetTileType, {
 	{ TILE_SOLID, "solid" }
 })
 
-static void from_json(const nlohmann::json& j, BgTile& tile) {
+inline void from_json(const nlohmann::json& j, BgTile& tile) {
 	tile.tileId = j.at("tile_id").get<u16>();
 	tile.palette = j.at("palette").get<u16>();
 	tile.flipHorizontal = j.at("flip_horizontal").get<bool>();
@@ -73,52 +73,52 @@ static void from_json(const nlohmann::json& j, BgTile& tile) {
 	tile.unused = 0; // Unused bit set to 0
 }
 
-static void to_json(nlohmann::json& j, const BgTile& tile) {
+inline void to_json(nlohmann::json& j, const BgTile& tile) {
 	j["tile_id"] = tile.tileId;
 	j["palette"] = tile.palette;
 	j["flip_horizontal"] = tile.flipHorizontal != 0;
 	j["flip_vertical"] = tile.flipVertical != 0;
 }
 
-static void from_json(const nlohmann::json& j, Metatile& metatile) {
+inline void from_json(const nlohmann::json& j, Metatile& metatile) {
 	for (u32 i = 0; i < METATILE_TILE_COUNT; ++i) {
 		metatile.tiles[i] = j.at("tiles").at(i).get<BgTile>();
 	}
 }
 
-static void to_json(nlohmann::json& j, const Metatile& metatile) {
+inline void to_json(nlohmann::json& j, const Metatile& metatile) {
 	j["tiles"] = nlohmann::json::array();
 	for (u32 i = 0; i < METATILE_TILE_COUNT; ++i) {
 		j["tiles"].push_back(metatile.tiles[i]);
 	}
 }
 
-static void from_json(const nlohmann::json& j, TilesetTile& tile) {
+inline void from_json(const nlohmann::json& j, TilesetTile& tile) {
 	TilesetTileType type;
 	j.at("type").get_to(type);
 	tile.type = (s32)type;
 	j.at("metatile").get_to(tile.metatile);
 }
 
-static void to_json(nlohmann::json& j, const TilesetTile& tile) {
+inline void to_json(nlohmann::json& j, const TilesetTile& tile) {
 	j["type"] = (TilesetTileType)tile.type;
 	j["metatile"] = tile.metatile;
 }
 
-static void from_json(const nlohmann::json& j, Tileset& tileset) {
+inline void from_json(const nlohmann::json& j, Tileset& tileset) {
 	for (u32 i = 0; i < TILESET_SIZE; ++i) {
 		tileset.tiles[i] = j.at("tiles").at(i).get<TilesetTile>();
 	}
 }
 
-static void to_json(nlohmann::json& j, const Tileset& tileset) {
+inline void to_json(nlohmann::json& j, const Tileset& tileset) {
 	j["tiles"] = nlohmann::json::array();
 	for (u32 i = 0; i < TILESET_SIZE; ++i) {
 		j["tiles"].push_back(tileset.tiles[i]);
 	}
 }
 
-static void to_json(nlohmann::json& j, const Tilemap& tilemap) {
+inline void to_json(nlohmann::json& j, const Tilemap& tilemap) {
 	j["width"] = tilemap.width;
 	j["height"] = tilemap.height;
 	j["tileset_id"] = tilemap.tilesetId.id;
@@ -131,7 +131,7 @@ static void to_json(nlohmann::json& j, const Tilemap& tilemap) {
 	}
 }
 
-static void from_json(const nlohmann::json& j, Tilemap& tilemap) {
+inline void from_json(const nlohmann::json& j, Tilemap& tilemap) {
 	// TODO
 }
 
