@@ -1,4 +1,5 @@
 #pragma once
+#include "typedef.h"
 
 enum AssetType : u8 {
 	ASSET_TYPE_CHR_BANK,
