@@ -23,21 +23,21 @@ struct ActorPrototype {
 #include <imgui_internal.h>
 #include <sstream>
 
-static void to_json(nlohmann::json& j, const AABB& aabb) {
+inline void to_json(nlohmann::json& j, const AABB& aabb) {
 	j["min_x"] = aabb.min.x;
 	j["min_y"] = aabb.min.y;
 	j["max_x"] = aabb.max.x;
 	j["max_y"] = aabb.max.y;
 }
 
-static void from_json(const nlohmann::json& j, AABB& aabb) {
+inline void from_json(const nlohmann::json& j, AABB& aabb) {
 	aabb.min.x = j.at("min_x").get<r32>();
 	aabb.min.y = j.at("min_y").get<r32>();
 	aabb.max.x = j.at("max_x").get<r32>();
 	aabb.max.y = j.at("max_y").get<r32>();
 }
 
-static void SerializeScalarActorProperty(nlohmann::json& j_properties, const ActorEditorProperty& prop, void* pData) {
+inline void SerializeScalarActorProperty(nlohmann::json& j_properties, const ActorEditorProperty& prop, void* pData) {
 	if (prop.components == 0) {
 		j_properties[prop.name] = nullptr;
 		return;
@@ -65,7 +65,7 @@ static void SerializeScalarActorProperty(nlohmann::json& j_properties, const Act
 	}
 }
 
-static void to_json(nlohmann::json& j, const ActorPrototype& prototype) {
+inline void to_json(nlohmann::json& j, const ActorPrototype& prototype) {
 	const ActorEditorData& editorData = Editor::actorEditorData[prototype.type];
 
 	j["type"] = (ActorType)prototype.type;
@@ -97,7 +97,7 @@ static void to_json(nlohmann::json& j, const ActorPrototype& prototype) {
 	}
 }
 
-static void from_json(const nlohmann::json& j, ActorPrototype& prototype) {
+inline void from_json(const nlohmann::json& j, ActorPrototype& prototype) {
 	// TODO
 }
 

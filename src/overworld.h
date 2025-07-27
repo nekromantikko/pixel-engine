@@ -34,7 +34,7 @@ namespace Assets {
 #ifdef EDITOR
 #include <nlohmann/json.hpp>
 
-static void from_json(const nlohmann::json& j, OverworldKeyArea& area) {
+inline void from_json(const nlohmann::json& j, OverworldKeyArea& area) {
 	j.at("dungeon_id").get_to(area.dungeonId.id);
 	j.at("x").get_to(area.position.x);
 	j.at("y").get_to(area.position.y);
@@ -44,7 +44,7 @@ static void from_json(const nlohmann::json& j, OverworldKeyArea& area) {
 	area.flags.passthrough = j.value("passthrough", 0);
 }
 
-static void to_json(nlohmann::json& j, const OverworldKeyArea& area) {
+inline void to_json(nlohmann::json& j, const OverworldKeyArea& area) {
 	j["dungeon_id"] = area.dungeonId.id;
 	j["x"] = area.position.x;
 	j["y"] = area.position.y;
@@ -54,7 +54,7 @@ static void to_json(nlohmann::json& j, const OverworldKeyArea& area) {
 	j["passthrough"] = area.flags.passthrough != 0;
 }
 
-static void to_json(nlohmann::json& j, const Overworld& overworld) {
+inline void to_json(nlohmann::json& j, const Overworld& overworld) {
 	j["tilemap"] = overworld.tilemapHeader;
 	j["key_areas"] = nlohmann::json::array();
 	OverworldKeyArea* keyAreas = Assets::GetOverworldKeyAreas(&overworld);
@@ -63,7 +63,7 @@ static void to_json(nlohmann::json& j, const Overworld& overworld) {
 	}
 }
 
-static void from_json(const nlohmann::json& j, Overworld& overworld) {
+inline void from_json(const nlohmann::json& j, Overworld& overworld) {
 	// TODO
 }
 

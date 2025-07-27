@@ -11,7 +11,7 @@ struct Metasprite {
 #ifdef EDITOR
 #include <nlohmann/json.hpp>
 
-static void from_json(const nlohmann::json& j, Sprite& sprite) {
+inline void from_json(const nlohmann::json& j, Sprite& sprite) {
 	sprite.x = j.at("x").get<s16>();
 	sprite.y = j.at("y").get<s16>();
 	sprite.tileId = j.at("tile_id").get<u16>();
@@ -21,7 +21,7 @@ static void from_json(const nlohmann::json& j, Sprite& sprite) {
 	sprite.flipVertical = j.at("flip_vertical").get<bool>() ? 1 : 0;
 }
 
-static void to_json(nlohmann::json& j, const Sprite& sprite) {
+inline void to_json(nlohmann::json& j, const Sprite& sprite) {
 	j["x"] = sprite.x;
 	j["y"] = sprite.y;
 	j["tile_id"] = sprite.tileId;
@@ -31,14 +31,14 @@ static void to_json(nlohmann::json& j, const Sprite& sprite) {
 	j["flip_vertical"] = sprite.flipVertical != 0;
 }
 
-static void to_json(nlohmann::json& j, const Metasprite& metasprite) {
+inline void to_json(nlohmann::json& j, const Metasprite& metasprite) {
 	j["sprites"] = nlohmann::json::array();
 	for (u32 i = 0; i < metasprite.spriteCount; ++i) {
 		j["sprites"].push_back(metasprite.spritesRelativePos[i]);
 	}
 }
 
-static void from_json(const nlohmann::json& j, Metasprite& metasprite) {
+inline void from_json(const nlohmann::json& j, Metasprite& metasprite) {
 	metasprite.spriteCount = j.at("sprites").size();
 	for (u32 i = 0; i < metasprite.spriteCount; ++i) {
 		metasprite.spritesRelativePos[i] = j.at("sprites").at(i).get<Sprite>();
