@@ -1,0 +1,15 @@
+{
+    "animation_ids": [
+        1859238979601871981,
+        14613419311624330787
+    ],
+    "hitbox": {
+        "max_x": 1.0,
+        "max_y": 1.0,
+        "min_x": -1.0,
+        "min_y": -1.0
+    },
+    "properties": {},
+    "subtype": "Checkpoint",
+    "type": "interactable"
+}

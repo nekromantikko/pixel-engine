@@ -1,0 +1,17 @@
+{
+    "animation_ids": [
+        5955777268034695073
+    ],
+    "hitbox": {
+        "max_x": 0.3125,
+        "max_y": 1.0,
+        "min_x": -0.3125,
+        "min_y": -1.0
+    },
+    "properties": {
+        "pickupSound": null,
+        "value": 0
+    },
+    "subtype": "Exp remnant",
+    "type": "pickup"
+}

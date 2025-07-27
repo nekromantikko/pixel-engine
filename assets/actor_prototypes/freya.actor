@@ -1,0 +1,20 @@
+{
+    "animation_ids": [
+        13082980632187544519,
+        12504046258838552586,
+        15582682636008641231
+    ],
+    "hitbox": {
+        "max_x": 0.375,
+        "max_y": 1.0,
+        "min_x": -0.375,
+        "min_y": -1.0
+    },
+    "properties": {
+        "damageSound": 4318088212668472676,
+        "gunSound": 171451846595516656,
+        "jumpSound": 8533409191511070196
+    },
+    "subtype": "Sidescroller",
+    "type": "player"
+}

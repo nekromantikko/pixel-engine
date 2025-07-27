@@ -1,0 +1,17 @@
+{
+    "animation_ids": [
+        0
+    ],
+    "hitbox": {
+        "max_x": 0.125,
+        "max_y": 0.125,
+        "min_x": -0.125,
+        "min_y": -0.125
+    },
+    "properties": {
+        "lifetime": 60,
+        "sound": null
+    },
+    "subtype": "Damage numbers",
+    "type": "effect"
+}
