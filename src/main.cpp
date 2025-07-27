@@ -9,6 +9,7 @@
 
 #ifdef EDITOR
 #include "editor.h"
+#include "editor_asset_watcher.h"
 #endif
 
 static constexpr const char* WINDOW_TITLE = "Nekro Pixel Engine";
@@ -72,6 +73,7 @@ int main(int argc, char** argv) {
 #ifdef EDITOR
     Editor::CreateContext();
     Editor::Init(pWindow);
+    Editor::ListFilesInDirectory(ASSETS_SRC_DIR);
 #endif
 
     const s64 perfFreq = SDL_GetPerformanceFrequency();
