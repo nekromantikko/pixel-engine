@@ -18,7 +18,7 @@ struct EffectData {
 
 ACTOR_SUBTYPE_PROPERTIES(EffectData,
 	ACTOR_SUBTYPE_PROPERTY_SCALAR(EffectData, lifetime, U16, 1),
-	ACTOR_SUBTYPE_PROPERTY_ASSET(EffectData, sound, ASSET_TYPE_SOUND)
+	ACTOR_SUBTYPE_PROPERTY_ASSET(EffectData, sound, ASSET_TYPE_SOUND, 1)
 );
 
 struct EffectState {

@@ -6,6 +6,7 @@
 #include <type_traits>
 #include <SDL.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <imgui_impl_sdl2.h>
 #include <imfilebrowser.h>
 
@@ -1062,6 +1063,38 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 	}
 
 	return oldId != selectedId;
+}
+
+static bool DrawAssetFieldN(const char* label, AssetType type, u64* pSelectedIds, s32 components) {
+	u64* pCurrentId = pSelectedIds;
+	bool valueChanged = false;
+
+	ImGuiStyle& style = ImGui::GetStyle();
+
+	ImGui::BeginGroup();
+	ImGui::PushID(label);
+	ImGui::PushMultiItemsWidths(components, ImGui::CalcItemWidth());
+	for (s32 i = 0; i < components; i++) {
+		ImGui::PushID(i);
+		if (i > 0)
+			ImGui::SameLine(0, style.ItemInnerSpacing.x);
+		valueChanged |= DrawAssetField("", type, *pCurrentId);
+		ImGui::PopID();
+		ImGui::PopItemWidth();
+		
+		pCurrentId++;
+	}
+	ImGui::PopID();
+
+	const char* label_end = ImGui::FindRenderedTextEnd(label);
+	if (label != label_end)
+	{
+		ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
+		ImGui::TextEx(label, label_end);
+	}
+
+	ImGui::EndGroup();
+	return valueChanged;
 }
 
 static u64 DrawAssetList(AssetType type) {
@@ -2329,8 +2362,8 @@ static bool DrawActorPrototypeProperty(const ActorEditorProperty& property, Acto
 		break;
 	}
 	case ACTOR_EDITOR_PROPERTY_ASSET: {
-		ActorPrototypeHandle& prototypeHandle = *(ActorPrototypeHandle*)propertyData;
-		result = DrawAssetField(property.name, property.assetType, prototypeHandle.id);
+		u64* assetIds = (u64*)propertyData;
+		result = DrawAssetFieldN(property.name, property.assetType, assetIds, property.components);
 		break;
 	}
 	default: {
