@@ -38,19 +38,6 @@ enum SoundOpCode : uint8_t {
     OP_ENDFRAME = 0x0f
 };
 
-struct SoundOperation {
-    u8 opCode : 4;
-    u8 address : 4;
-    u8 data;
-};
-
-struct NSFHeader {
-    char signature[4];
-    u32 unused;
-    u32 size;
-    u32 loopPoint;
-};
-
 struct PulseRegister {
     // Address 0
     u8 volume : 4;
@@ -364,7 +351,7 @@ static bool TickSFX(u32 channel) {
 
     bool keepReading = true;
     while (keepReading) {
-        const SoundOperation* operation = Assets::GetSoundData(pSound) + pos;
+        const SoundOperation* operation = Audio::GetSoundData(pSound) + pos;
 
         keepReading = ProcessOp(operation, p0, p1, tri, noise);
 
@@ -394,7 +381,7 @@ static bool TickMusic() {
 
     bool keepReading = true;
     while (keepReading) {
-        const SoundOperation* operation = Assets::GetSoundData(pSound) + pContext->musicPos;
+        const SoundOperation* operation = Audio::GetSoundData(pSound) + pContext->musicPos;
 
         keepReading = ProcessOp(operation, p0, p1, tri, noise);
 
@@ -733,6 +720,10 @@ namespace Audio {
         }
     }
 
+    SoundOperation* GetSoundData(const Sound* pSound) {
+        return (SoundOperation*)((u8*)pSound + pSound->dataOffset);
+    }
+
     void PlayMusic(SoundHandle musicHandle, bool loop) {
         const Sound* pSound = (Sound*)AssetManager::GetAsset(musicHandle);
         if (!pSound || pSound->type != SOUND_TYPE_MUSIC || pSound->length == 0) {
@@ -825,58 +816,3 @@ namespace Audio {
 #endif
 }
 
-void Assets::InitSound(u64 id, void* data) {
-    Sound newSound{};
-    newSound.dataOffset = sizeof(Sound);
-    memcpy(data, &newSound, sizeof(Sound));
-}
-
-u32 Assets::GetSoundSize(const Sound* pSound) {
-    u32 result = sizeof(Sound);
-    if (pSound) {
-        result += pSound->length * sizeof(SoundOperation);
-    }
-
-    return result;
-}
-
-SoundOperation* Assets::GetSoundData(const Sound* pSound) {
-    return (SoundOperation*)((u8*)pSound + pSound->dataOffset);
-}
-
-// Can be used to just get the size by setting data to nullptr, Vulkan style
-bool Assets::LoadSoundFromFile(const std::filesystem::path& path, u32& dataSize, void* data) {
-    if (!std::filesystem::exists(path)) {
-        DEBUG_ERROR("File (%s) does not exist\n", path.string().c_str());
-        return false;
-    }
-
-    FILE* pFile = fopen(path.string().c_str(), "rb");
-    if (!pFile) {
-        DEBUG_ERROR("Failed to open file\n");
-        return false;
-    }
-
-    NSFHeader header{};
-    fread(&header, sizeof(NSFHeader), 1, pFile);
-    if (strcmp(header.signature, "NSF") != 0) {
-        DEBUG_ERROR("Invalid NSF file\n");
-        fclose(pFile);
-        return false;
-    }
-
-    dataSize = sizeof(Sound) + header.size * sizeof(SoundOperation);
-    
-    if (data) {
-        Sound* pSound = (Sound*)data;
-        pSound->length = header.size;
-        pSound->loopPoint = header.loopPoint;
-
-        SoundOperation* pData = GetSoundData(pSound);
-        fread(pData, sizeof(SoundOperation), header.size, pFile);
-        DEBUG_LOG("Loaded sound data from file\n");
-    }
-
-    fclose(pFile);
-    return true;
-}
