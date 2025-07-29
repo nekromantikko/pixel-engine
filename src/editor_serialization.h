@@ -4,28 +4,17 @@
 #include <string>
 #include "debug.h"
 #include "typedef.h"
+#include "asset_types.h"
 
-static constexpr u64 ASSET_FILE_FORMAT_VERSION = 1;
-
-struct SerializedAssetMetadata {
-	u64 fileFormatVersion = ASSET_FILE_FORMAT_VERSION;
-	u64 guid;
-};
-
-inline void from_json(const nlohmann::json& j, SerializedAssetMetadata& metadata) {
-	j.at("file_format_version").get_to(metadata.fileFormatVersion);
-	j.at("guid").get_to(metadata.guid);
-}
-
-inline void to_json(nlohmann::json& j, const SerializedAssetMetadata& metadata) {
-	j["file_format_version"] = metadata.fileFormatVersion;
-	j["guid"] = metadata.guid;
-}
-
-namespace Editor {
+namespace Editor::Assets {
 	std::filesystem::path GetAssetMetadataPath(const std::filesystem::path& path);
-	bool SaveSerializedAssetMetadataToFile(const std::filesystem::path& origPath, const SerializedAssetMetadata& metadata);
+	bool LoadAssetMetadataFromFile(const std::filesystem::path& origPath, nlohmann::json& outJson);
+	bool SaveAssetMetadataToFile(const std::filesystem::path& origPath, const nlohmann::json& json);
+	void InitializeMetadataJson(nlohmann::json& json, u64 id);
 
 	bool LoadSerializedAssetFromFile(const std::filesystem::path& path, nlohmann::json& outJson);
 	bool SaveSerializedAssetToFile(const std::filesystem::path& path, const nlohmann::json& json, const u64 id);
+
+	bool LoadAssetFromFile(const std::filesystem::path& path, AssetType type, const nlohmann::json& metadata, u32& size, void* pOutData);
+	bool SaveAssetToFile(const std::filesystem::path& path, AssetType type, const void* pData);
 }

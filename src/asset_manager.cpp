@@ -200,6 +200,57 @@ u64 AssetManager::CreateAsset(AssetType type, u32 size, const char* name) {
 	return id;
 }
 
+void* AssetManager::AddAsset(u64 id, AssetType type, u32 size, const char* name, void* data) {
+	const auto it = assetIndex.find(id);
+	if (it != assetIndex.end()) {
+		DEBUG_ERROR("Asset with ID %llu already exists\n", id);
+		return nullptr;
+	}
+
+	if (!ReserveMemory(size)) {
+		return nullptr;
+	}
+
+	AssetEntry newEntry{};
+	newEntry.id = id;
+	strcpy(newEntry.name, name);
+	newEntry.offset = archiveSize;
+	newEntry.size = size;
+	newEntry.flags.type = type;
+
+	assetIndex.emplace(id, newEntry);
+
+	if (data) {
+		memcpy(archiveData + archiveSize, data, size);
+	}
+	else {
+		memset(archiveData + archiveSize, 0, size);
+	}
+	archiveSize += size;
+
+	DEBUG_LOG("Added asset %llu (%s) of size %d at offset %d\n", id, name, size, newEntry.offset);
+	return archiveData + newEntry.offset;
+}
+
+bool AssetManager::RemoveAsset(u64 id) {
+	const auto it = assetIndex.find(id);
+	if (it == assetIndex.end()) {
+		DEBUG_ERROR("Asset with ID %llu does not exist\n", id);
+		return false;
+	}
+
+	AssetEntry& asset = it->second;
+	if (asset.flags.deleted) {
+		DEBUG_ERROR("Asset with ID %llu is already marked as deleted\n", id);
+		return false;
+	}
+
+	DEBUG_LOG("Removing asset %llu (%s)\n", id, asset.name);
+	asset.flags.deleted = true;
+
+	return true;
+}
+
 bool AssetManager::ResizeAsset(u64 id, u32 newSize) {
 	const auto it = assetIndex.find(id);
 	if (it == assetIndex.end()) {
