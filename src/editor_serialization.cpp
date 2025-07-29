@@ -200,6 +200,34 @@ static bool SaveSoundToFile(const std::filesystem::path& path, const void* pData
 	return false;
 }
 
+static bool LoadPaletteFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
+	if (!pOutData) {
+		size = sizeof(Palette);
+		return true; // Just return size if no output data is provided
+	}
+
+	if (!std::filesystem::exists(path)) {
+		DEBUG_ERROR("File (%s) does not exist\n", path.string().c_str());
+		return false;
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "rb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file\n");
+		return false;
+	}
+
+	fread(pOutData, sizeof(Palette), 1, pFile);
+
+	fclose(pFile);
+	return true;
+}
+
+static bool SavePaletteToFile(const std::filesystem::path& path, const void* pData) {
+	// TODO
+	return false;
+}
+
 #pragma endregion
 
 std::filesystem::path Editor::Assets::GetAssetMetadataPath(const std::filesystem::path& path) {
@@ -299,6 +327,9 @@ bool Editor::Assets::LoadAssetFromFile(const std::filesystem::path& path, AssetT
 	case (ASSET_TYPE_SOUND): {
 		return LoadSoundFromFile(path, metadata, size, pOutData);
 	}
+	case (ASSET_TYPE_PALETTE): {
+		return LoadPaletteFromFile(path, metadata, size, pOutData);
+	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);
 		return false;
@@ -311,6 +342,9 @@ bool Editor::Assets::SaveAssetToFile(const std::filesystem::path& path, AssetTyp
 	}
 	case (ASSET_TYPE_SOUND): {
 		return SaveSoundToFile(path, pData);
+	}
+	case (ASSET_TYPE_PALETTE): {
+		return SavePaletteToFile(path, pData);
 	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);
