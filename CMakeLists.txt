@@ -43,7 +43,6 @@ set(SOURCES
 		src/debug.cpp
 		src/room.cpp
 		src/overworld.cpp
-		src/chr_sheet.cpp
 		src/shader.cpp
 		src/asset_manager.cpp)
 

@@ -32,7 +32,7 @@ namespace Game {
 
 #pragma region Public API
     void Initialize() {
-        AssetManager::LoadArchive("assets.npak");
+        //AssetManager::LoadArchive("assets.npak");
 
         Rendering::Init();
 

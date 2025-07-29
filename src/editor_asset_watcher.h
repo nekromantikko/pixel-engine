@@ -1,6 +1,6 @@
 #pragma once
 #include <filesystem>
 
-namespace Editor {
+namespace Editor::Assets {
 	bool ListFilesInDirectory(const std::filesystem::path& directory);
 }
