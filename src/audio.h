@@ -13,7 +13,11 @@ enum SoundChannelId {
     CHAN_COUNT
 };
 
-struct SoundOperation;
+struct SoundOperation {
+    u8 opCode : 4;
+    u8 address : 4;
+    u8 data;
+};
 
 enum SoundType {
     SOUND_TYPE_SFX = 0,
@@ -38,6 +42,8 @@ namespace Audio {
 
     void WriteChannel(u32 channel, u8 address, u8 data);
 
+    SoundOperation* GetSoundData(const Sound* pSound);
+
     void PlayMusic(SoundHandle musicHandle, bool loop);
     void StopMusic();
     void PlaySFX(SoundHandle soundHandle);
@@ -46,11 +52,4 @@ namespace Audio {
     void ReadChannel(u32 channel, void* outData);
     void ReadDebugBuffer(u8* outSamples, u32 count);
 #endif
-}
-
-namespace Assets {
-    void InitSound(u64 id, void* data);
-    u32 GetSoundSize(const Sound* pSound = nullptr);
-    SoundOperation* GetSoundData(const Sound* pSound);
-    bool LoadSoundFromFile(const std::filesystem::path& path, u32& dataSize, void* data = nullptr);
 }

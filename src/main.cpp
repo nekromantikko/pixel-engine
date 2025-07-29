@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
 #ifdef EDITOR
     Editor::CreateContext();
     Editor::Init(pWindow);
-    Editor::ListFilesInDirectory(ASSETS_SRC_DIR);
+    Editor::Assets::ListFilesInDirectory(ASSETS_SRC_DIR);
 #endif
 
     const s64 perfFreq = SDL_GetPerformanceFrequency();

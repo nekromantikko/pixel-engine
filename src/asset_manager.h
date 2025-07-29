@@ -39,6 +39,9 @@ namespace AssetManager {
 		return AssetHandle<T>{ id };
 	}
 
+	void* AddAsset(u64 id, AssetType type, u32 size, const char* name, void* data = nullptr);
+	bool RemoveAsset(u64 id);
+
 	bool ResizeAsset(u64 id, u32 newSize);
 
 	void* GetAsset(u64 id, AssetType type);
