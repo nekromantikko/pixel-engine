@@ -1,4 +1,6 @@
 {
     "file_format_version": 1,
-    "guid": 15369204875459356735
+    "guid": 15369204875459356735,
+    "sound_type": "sfx",
+    "sfx_channel": "pulse 1"
 }

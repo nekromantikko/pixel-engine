@@ -1,4 +1,6 @@
 {
     "file_format_version": 1,
-    "guid": 171451846595516656
+    "guid": 171451846595516656,
+    "sound_type": "sfx",
+    "sfx_channel": "noise"
 }
