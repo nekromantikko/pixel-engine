@@ -11,6 +11,7 @@
 #include "dungeon.h"
 #include "overworld.h"
 #include "asset_manager.h"
+#include "debug.h"
 
 // TODO: Define in editor in game settings 
 constexpr ActorPrototypeHandle playerPrototypeId(18154189127814674930);
@@ -946,8 +947,13 @@ const Overworld* Game::GetOverworld() {
 }
 
 bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
-    state = GAME_STATE_OVERWORLD;
     const Overworld* pOverworld = (Overworld*)AssetManager::GetAsset(overworldId);
+    if (!pOverworld) {
+		DEBUG_ERROR("Failed to load overworld asset with ID: %llu", overworldId.id);
+        return false;
+    }
+
+    state = GAME_STATE_OVERWORLD;
 
     Rendering::SetViewportPos(glm::vec2(0.0f), false);
     ClearActors();
@@ -1090,6 +1096,10 @@ glm::ivec2 Game::GetCurrentPlayAreaSize() {
     }
     case GAME_STATE_OVERWORLD: {
         const Overworld* pOverworld = (Overworld*)AssetManager::GetAsset(overworldId);
+		if (!pOverworld) {
+			DEBUG_ERROR("Overworld asset not found: %ull", overworldId.id);
+			break;
+		}
         return { pOverworld->tilemapHeader.width, pOverworld->tilemapHeader.height };
     }
     default:
