@@ -3415,6 +3415,10 @@ static void SortAssets(std::vector<u64>& assetIds, ImGuiTableSortSpecs* pSortSpe
 				if (a.flags.type != b.flags.type) return spec.SortDirection == ImGuiSortDirection_Ascending ? (a.flags.type < b.flags.type) : (a.flags.type > b.flags.type);
 				break;
 			}
+			case 3: { // Sort by Size
+				if (a.size != b.size) return spec.SortDirection == ImGuiSortDirection_Ascending ? (a.size < b.size) : (a.size > b.size);
+				break;
+			}
 			default:
 				break;
 			}
@@ -3492,10 +3496,11 @@ static void DrawAssetBrowser() {
 	static std::vector<u64> assetIds;
 
 	ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_Sortable;
-	if (ImGui::BeginTable("Assets", 3, flags)) {
+	if (ImGui::BeginTable("Assets", 4, flags)) {
 		ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_DefaultSort);
 		ImGui::TableSetupColumn("UUID", ImGuiTableColumnFlags_DefaultSort);
 		ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_DefaultSort);
+		ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_DefaultSort);
 		ImGui::TableSetupScrollFreeze(0, 1); // Make row always visible
 		ImGui::TableHeadersRow();
 
@@ -3544,6 +3549,8 @@ static void DrawAssetBrowser() {
 			ImGui::Text("%llu", id);
 			ImGui::TableNextColumn();
 			ImGui::Text("%s", ASSET_TYPE_NAMES[pAsset->flags.type]);
+			ImGui::TableNextColumn();
+			ImGui::Text("%u bytes", pAsset->size);
 			ImGui::EndDisabled();
 			ImGui::PopID();
 		}
