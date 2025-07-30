@@ -50,7 +50,7 @@ enum GameState {
 
 struct Actor;
 struct Dungeon;
-struct RoomTemplateHeader;
+struct RoomTemplate;
 struct RoomInstance;
 struct Tilemap;
 struct Overworld;

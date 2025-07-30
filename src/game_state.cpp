@@ -113,18 +113,18 @@ static const glm::i8vec2 RoomPosToDungeonGridOffset(const glm::i8vec2& roomOffse
     return gridOffset;
 }
 
-static const RoomTemplateHeader* GetCurrentRoomTemplate() {
+static const RoomTemplate* GetCurrentRoomTemplate() {
     const RoomInstance* pCurrentRoom = Game::GetCurrentRoom();
     if (!pCurrentRoom) {
         return nullptr;
     }
 
-    return (RoomTemplateHeader*)AssetManager::GetAsset(pCurrentRoom->templateId);
+    return (RoomTemplate*)AssetManager::GetAsset(pCurrentRoom->templateId);
 }
 #pragma endregion
 
 #pragma region Dungeon Gameplay
-static void CorrectPlayerSpawnY(const RoomTemplateHeader* pTemplate, Actor* pPlayer) {
+static void CorrectPlayerSpawnY(const RoomTemplate* pTemplate, Actor* pPlayer) {
     HitResult hit{};
 
     const ActorPrototype* pPrototype = (ActorPrototype*)AssetManager::GetAsset(pPlayer->prototypeId);
@@ -134,10 +134,10 @@ static void CorrectPlayerSpawnY(const RoomTemplateHeader* pTemplate, Actor* pPla
 
     const r32 dy = VIEWPORT_HEIGHT_METATILES / 2.0f;  // Sweep downwards to find a floor
 
-    Collision::SweepBoxVertical(&pTemplate->tilemapHeader, pPrototype->hitbox, pPlayer->position, dy, hit);
+    Collision::SweepBoxVertical(&pTemplate->tilemap, pPrototype->hitbox, pPlayer->position, dy, hit);
     while (hit.startPenetrating) {
         pPlayer->position.y -= 1.0f;
-        Collision::SweepBoxVertical(&pTemplate->tilemapHeader, pPrototype->hitbox, pPlayer->position, dy, hit);
+        Collision::SweepBoxVertical(&pTemplate->tilemap, pPrototype->hitbox, pPlayer->position, dy, hit);
     }
     pPlayer->position = hit.location;
 }
@@ -189,7 +189,7 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
     }
 
     constexpr r32 initialHSpeed = 0.0625f;
-    const RoomTemplateHeader* pTemplate = GetCurrentRoomTemplate();
+    const RoomTemplate* pTemplate = GetCurrentRoomTemplate();
 
     switch (direction) {
     case SCREEN_EXIT_DIR_RIGHT: {
@@ -484,7 +484,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
             }
 
             const RoomInstance& roomInstance = pDungeon->rooms[cell.roomIndex];
-            const RoomTemplateHeader* pTemplate = (RoomTemplateHeader*)AssetManager::GetAsset(roomInstance.templateId);
+            const RoomTemplate* pTemplate = (RoomTemplate*)AssetManager::GetAsset(roomInstance.templateId);
 
             u32 roomWidthScreens = pTemplate->width;
             u32 roomHeightScreens = pTemplate->height;
@@ -493,7 +493,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
             const u32 roomY = cell.screenIndex / ROOM_MAX_DIM_SCREENS;
 
             // Room width = 2;
-            const BgTile* pMapTiles = Assets::GetRoomTemplateMapTiles(pTemplate);
+            const BgTile* pMapTiles = pTemplate->GetMapTiles();
             for (u32 i = 0; i < 2; i++) {
                 const u32 xTile = (x * 2) + tileMin.x + i - scrollOffset.x;
 
@@ -1018,8 +1018,8 @@ bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
     UnloadRoom();
 
     const RoomInstance* pCurrentRoom = GetCurrentRoom();
-    const RoomTemplateHeader* pTemplate = GetCurrentRoomTemplate();
-    const RoomActor* pRoomActors = Assets::GetRoomTemplateActors(pTemplate);
+    const RoomTemplate* pTemplate = GetCurrentRoomTemplate();
+    const RoomActor* pRoomActors = pTemplate->GetActors();
     for (u32 i = 0; i < pTemplate->actorCount; i++)
     {
         const RoomActor& actor = pRoomActors[i];
@@ -1063,7 +1063,7 @@ const RoomInstance* Game::GetCurrentRoom() {
 }
 
 glm::i8vec2 Game::GetDungeonGridCell(const glm::vec2& worldPos) {
-    const RoomTemplateHeader* pTemplate = GetCurrentRoomTemplate();
+    const RoomTemplate* pTemplate = GetCurrentRoomTemplate();
     if (!pTemplate) {
         return { -1, -1 };
     }
@@ -1088,7 +1088,7 @@ glm::ivec2 Game::GetCurrentPlayAreaSize() {
     switch (state) {
     case GAME_STATE_DUNGEON:
     case GAME_STATE_DUNGEON_MAP: {
-        const RoomTemplateHeader* pTemplate = GetCurrentRoomTemplate();
+        const RoomTemplate* pTemplate = GetCurrentRoomTemplate();
         if (!pTemplate) {
             break;
         }
@@ -1113,11 +1113,11 @@ const Tilemap* Game::GetCurrentTilemap() {
     switch (state) {
     case GAME_STATE_DUNGEON:
     case GAME_STATE_DUNGEON_MAP: {
-        const RoomTemplateHeader* pTemplate = GetCurrentRoomTemplate();
+        const RoomTemplate* pTemplate = GetCurrentRoomTemplate();
         if (!pTemplate) {
             break;
         }
-        return &pTemplate->tilemapHeader;
+        return &pTemplate->tilemap;
     }
     case GAME_STATE_OVERWORLD: {
         const Overworld* pOverworld = (Overworld*)AssetManager::GetAsset(overworldId);

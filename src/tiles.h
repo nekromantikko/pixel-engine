@@ -39,6 +39,10 @@ struct Tilemap {
 	u32 height;
 	TilesetHandle tilesetId;
 	u32 tilesOffset;
+
+	inline u8* GetTileData() const {
+		return (u8*)this + tilesOffset;
+	}
 };
 
 namespace Tiles {
@@ -53,7 +57,6 @@ namespace Tiles {
 }
 
 namespace Assets {
-	u8* GetTilemapData(const Tilemap* pHeader);
 	Tileset* GetTilemapTileset(const Tilemap* pHeader);
 }
 
@@ -123,7 +126,7 @@ inline void to_json(nlohmann::json& j, const Tilemap& tilemap) {
 	j["height"] = tilemap.height;
 	j["tileset_id"] = tilemap.tilesetId.id;
 	
-	u8* tilemapData = Assets::GetTilemapData(&tilemap);
+	u8* tilemapData = tilemap.GetTileData();
 	j["tiles"] = nlohmann::json::array();
 	u32 tileCount = tilemap.width * tilemap.height;
 	for (u32 i = 0; i < tileCount; ++i) {
