@@ -186,7 +186,7 @@ static bool LoadSoundFromFile(const std::filesystem::path& path, const nlohmann:
 			pSound->sfxChannel = CHAN_ID_PULSE0; // Default to PULSE0 if not specified
 		}
 
-		SoundOperation* pData = Audio::GetSoundData(pSound);
+		SoundOperation* pData = pSound->GetData();
 		fread(pData, sizeof(SoundOperation), header.size, pFile);
 		DEBUG_LOG("Loaded sound data from file\n");
 	}

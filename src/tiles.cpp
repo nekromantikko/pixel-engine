@@ -35,7 +35,7 @@ s32 Tiles::GetTilesetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos) {
 		return -1;
 	}
 
-	return Assets::GetTilemapData(pTilemap)[i];
+	return pTilemap->GetTileData()[i];
 }
 
 const TilesetTile* Tiles::GetTilesetTile(const Tilemap* pTilemap, const s32& tilesetTileIndex) {
@@ -65,7 +65,7 @@ bool Tiles::SetTilesetTile(Tilemap* pTilemap, s32 tileIndex, const s32& tilesetT
         return false;
     }
 
-	Assets::GetTilemapData(pTilemap)[tileIndex] = tilesetTileIndex;
+	pTilemap->GetTileData()[tileIndex] = tilesetTileIndex;
     return true;
 }
 
@@ -82,10 +82,6 @@ bool Tiles::SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& 
     return SetTilesetTile(pTilemap, i, tilesetTileIndex);
 }
 #pragma endregion
-
-u8* Assets::GetTilemapData(const Tilemap* pHeader) {
-	return (u8*)pHeader + pHeader->tilesOffset;
-}
 
 Tileset* Assets::GetTilemapTileset(const Tilemap* pHeader) {
 	if (!pHeader) {
