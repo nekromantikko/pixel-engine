@@ -15,16 +15,16 @@ static void UpdateExpSpawner(Actor* pActor, const ActorPrototype* pPrototype) {
         return;
     }
 
-    const u16 largeExpValue = ((ActorPrototype*)AssetManager::GetAsset(pPrototype->data.expSpawner.large))->data.pickupData.value;
-    const u16 smallExpValue = ((ActorPrototype*)AssetManager::GetAsset(pPrototype->data.expSpawner.small))->data.pickupData.value;
+    const u16 largeExpValue = (AssetManager::GetAsset(pPrototype->data.expSpawner.large))->data.pickupData.value;
+    const u16 smallExpValue = (AssetManager::GetAsset(pPrototype->data.expSpawner.small))->data.pickupData.value;
 
     u16 spawnedValue = remainingValue >= largeExpValue ? largeExpValue : smallExpValue;
-    ActorPrototypeHandle prototypeId = spawnedValue >= largeExpValue ? pPrototype->data.expSpawner.large : pPrototype->data.expSpawner.small;
+    ActorPrototypeHandle prototypeHandle = spawnedValue >= largeExpValue ? pPrototype->data.expSpawner.large : pPrototype->data.expSpawner.small;
 
     const r32 speed = Random::GenerateReal(0.1f, 0.3f);
     const glm::vec2 velocity = Random::GenerateDirection() * speed;
 
-    Actor* pSpawned = Game::SpawnActor(prototypeId, pActor->position, velocity);
+    Actor* pSpawned = Game::SpawnActor(prototypeHandle, pActor->position, velocity);
 
     pSpawned->state.pickupState.lingerCounter = 30;
     pSpawned->flags.facingDir = (s8)Random::GenerateInt(-1, 1);

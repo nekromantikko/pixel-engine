@@ -1,5 +1,6 @@
 #pragma once
 #include "typedef.h"
+#include <type_traits>
 
 enum AssetType : u8 {
 	ASSET_TYPE_CHR_BANK,
@@ -17,8 +18,12 @@ enum AssetType : u8 {
 };
 
 template <AssetType T>
+struct AssetDataType {
+	using Type = void;
+};
+
+template <AssetType T>
 struct AssetHandle {
-	static constexpr AssetType type = T;
 	u64 id;
 
 	constexpr AssetHandle() = default;
@@ -41,6 +46,78 @@ template <AssetType T>
 constexpr AssetHandle<T> MakeAssetHandle(u64 id, AssetType type) {
 	return (AssetHandle<type>)(id);
 }
+
+template <typename T>
+struct AssetHandleTraits : std::false_type {};
+
+template <AssetType T>
+struct AssetHandleTraits<AssetHandle<T>> : std::true_type {
+	using asset_type = std::integral_constant<AssetType, T>;
+	using data_type = typename AssetDataType<T>::Type;
+};
+
+template <typename T>
+concept IsAssetHandle = AssetHandleTraits<T>::value;
+
+struct ChrSheet;
+template <>
+struct AssetDataType<ASSET_TYPE_CHR_BANK> {
+	using Type = ChrSheet;
+};
+
+struct Sound;
+template <>
+struct AssetDataType<ASSET_TYPE_SOUND> {
+	using Type = Sound;
+};
+
+struct Tileset;
+template <>
+struct AssetDataType<ASSET_TYPE_TILESET> {
+	using Type = Tileset;
+};
+
+struct Metasprite;
+template <>
+struct AssetDataType<ASSET_TYPE_METASPRITE> {
+	using Type = Metasprite;
+};
+
+struct ActorPrototype;
+template <>
+struct AssetDataType<ASSET_TYPE_ACTOR_PROTOTYPE> {
+	using Type = ActorPrototype;
+};
+
+struct RoomTemplate;
+template <>
+struct AssetDataType<ASSET_TYPE_ROOM_TEMPLATE> {
+	using Type = RoomTemplate;
+};
+
+struct Dungeon;
+template <>
+struct AssetDataType<ASSET_TYPE_DUNGEON> {
+	using Type = Dungeon;
+};
+
+struct Overworld;
+template <>
+struct AssetDataType<ASSET_TYPE_OVERWORLD> {
+	using Type = Overworld;
+};
+
+struct Animation;
+template <>
+struct AssetDataType<ASSET_TYPE_ANIMATION> {
+	using Type = Animation;
+};
+
+struct Palette;
+template <>
+struct AssetDataType<ASSET_TYPE_PALETTE> {
+	using Type = Palette;
+};
 
 typedef AssetHandle<ASSET_TYPE_CHR_BANK> ChrBankHandle;
 typedef AssetHandle<ASSET_TYPE_SOUND> SoundHandle;

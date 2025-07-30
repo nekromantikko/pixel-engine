@@ -22,7 +22,7 @@ constexpr u32 ROOM_TILE_COUNT = ROOM_MAX_SCREEN_COUNT * ROOM_SCREEN_TILE_COUNT;
 
 struct RoomActor {
     u32 id;
-    ActorPrototypeHandle prototypeId;
+    ActorPrototypeHandle prototypeHandle;
     glm::vec2 position;
 };
 
@@ -58,14 +58,14 @@ namespace Assets {
 
 inline void from_json(const nlohmann::json& j, RoomActor& actor) {
 	j.at("id").get_to(actor.id);
-	j.at("prototype_id").get_to(actor.prototypeId.id);
+	j.at("prototype_id").get_to(actor.prototypeHandle.id);
     j.at("x").get_to(actor.position.x);
 	j.at("y").get_to(actor.position.y);
 }
 
 inline void to_json(nlohmann::json& j, const RoomActor& actor) {
 	j["id"] = actor.id;
-	j["prototype_id"] = actor.prototypeId.id;
+	j["prototype_id"] = actor.prototypeHandle.id;
 	j["x"] = actor.position.x;
 	j["y"] = actor.position.y;
 }

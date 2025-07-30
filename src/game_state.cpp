@@ -14,11 +14,11 @@
 #include "debug.h"
 
 // TODO: Define in editor in game settings 
-constexpr ActorPrototypeHandle playerPrototypeId(18154189127814674930);
-constexpr ActorPrototypeHandle playerOverworldPrototypeId(6197846074548071416);
-constexpr ActorPrototypeHandle xpRemnantPrototypeId(11197223615879147344);
+constexpr ActorPrototypeHandle playerPrototypeHandle(18154189127814674930);
+constexpr ActorPrototypeHandle playerOverworldPrototypeHandle(6197846074548071416);
+constexpr ActorPrototypeHandle xpRemnantPrototypeHandle(11197223615879147344);
 
-constexpr OverworldHandle overworldId(17959228201269526891);
+constexpr OverworldHandle overworldHandle(17959228201269526891);
 
 // Map drawing
 static constexpr glm::ivec2 mapViewportOffset = { 7, 4 };
@@ -71,8 +71,8 @@ static const DungeonCell* GetDungeonCell(const Dungeon* pDungeon, const glm::i8v
     return &pDungeon->grid[cellIndex];
 }
 
-static const DungeonCell* GetDungeonCell(DungeonHandle dungeonId, const glm::i8vec2 offset) {
-    const Dungeon* pDungeon = (Dungeon*)AssetManager::GetAsset(dungeonId);
+static const DungeonCell* GetDungeonCell(DungeonHandle dungeonHandle, const glm::i8vec2 offset) {
+    const Dungeon* pDungeon = AssetManager::GetAsset(dungeonHandle);
     if (!pDungeon) {
         return nullptr;
     }
@@ -80,8 +80,8 @@ static const DungeonCell* GetDungeonCell(DungeonHandle dungeonId, const glm::i8v
     return GetDungeonCell(pDungeon, offset);
 }
 
-static const RoomInstance* GetDungeonRoom(DungeonHandle dungeonId, const glm::i8vec2 offset, glm::i8vec2* pOutRoomOffset = nullptr) {
-    const Dungeon* pDungeon = (Dungeon*)AssetManager::GetAsset(dungeonId);
+static const RoomInstance* GetDungeonRoom(DungeonHandle dungeonHandle, const glm::i8vec2 offset, glm::i8vec2* pOutRoomOffset = nullptr) {
+    const Dungeon* pDungeon = AssetManager::GetAsset(dungeonHandle);
     if (!pDungeon) {
         return nullptr;
     }
@@ -119,7 +119,7 @@ static const RoomTemplate* GetCurrentRoomTemplate() {
         return nullptr;
     }
 
-    return (RoomTemplate*)AssetManager::GetAsset(pCurrentRoom->templateId);
+    return AssetManager::GetAsset(pCurrentRoom->templateId);
 }
 #pragma endregion
 
@@ -127,7 +127,7 @@ static const RoomTemplate* GetCurrentRoomTemplate() {
 static void CorrectPlayerSpawnY(const RoomTemplate* pTemplate, Actor* pPlayer) {
     HitResult hit{};
 
-    const ActorPrototype* pPrototype = (ActorPrototype*)AssetManager::GetAsset(pPlayer->prototypeId);
+    const ActorPrototype* pPrototype = AssetManager::GetAsset(pPlayer->prototypeHandle);
     if (!pPrototype) {
         return;
     }
@@ -143,7 +143,7 @@ static void CorrectPlayerSpawnY(const RoomTemplate* pTemplate, Actor* pPlayer) {
 }
 
 static bool ActorIsCheckpoint(const Actor* pActor) {
-    const ActorPrototype* pPrototype = (ActorPrototype*)AssetManager::GetAsset(pActor->prototypeId);
+    const ActorPrototype* pPrototype = AssetManager::GetAsset(pActor->prototypeHandle);
     if (!pPrototype) {
         return false;
     }
@@ -157,7 +157,7 @@ static bool SpawnPlayerAtCheckpoint() {
         return false;
     }
 
-    Actor* pPlayer = Game::SpawnActor(playerPrototypeId, pCheckpoint->position);
+    Actor* pPlayer = Game::SpawnActor(playerPrototypeHandle, pCheckpoint->position);
     if (pPlayer) {
         pPlayer->state.playerState.flags.mode = PLAYER_MODE_SITTING;
         return true;
@@ -183,7 +183,7 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
     r32 x = (screenIndex % ROOM_MAX_DIM_SCREENS) * VIEWPORT_WIDTH_METATILES;
     r32 y = (screenIndex / ROOM_MAX_DIM_SCREENS) * VIEWPORT_HEIGHT_METATILES;
 
-    Actor* pPlayer = Game::SpawnActor(playerPrototypeId, glm::vec2(x, y));
+    Actor* pPlayer = Game::SpawnActor(playerPrototypeHandle, glm::vec2(x, y));
     if (pPlayer == nullptr) {
         return false;
     }
@@ -345,7 +345,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
     const glm::ivec2 tileMin(worldTileBounds.x, worldTileBounds.y);
     const glm::ivec2 tileMax(worldTileBounds.z, worldTileBounds.w);
 
-    const Dungeon* pDungeon = (Dungeon*)AssetManager::GetAsset(currentDungeonId);
+    const Dungeon* pDungeon = AssetManager::GetAsset(currentDungeonId);
     if (!pDungeon) {
         return;
     }
@@ -484,7 +484,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
             }
 
             const RoomInstance& roomInstance = pDungeon->rooms[cell.roomIndex];
-            const RoomTemplate* pTemplate = (RoomTemplate*)AssetManager::GetAsset(roomInstance.templateId);
+            const RoomTemplate* pTemplate = AssetManager::GetAsset(roomInstance.templateId);
 
             u32 roomWidthScreens = pTemplate->width;
             u32 roomHeightScreens = pTemplate->height;
@@ -943,13 +943,13 @@ static glm::ivec2 GetOverworldDir(const OverworldKeyArea& area, u8 direction) {
 }
 
 const Overworld* Game::GetOverworld() {
-    return (Overworld*)AssetManager::GetAsset(overworldId);
+    return AssetManager::GetAsset(overworldHandle);
 }
 
 bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
-    const Overworld* pOverworld = (Overworld*)AssetManager::GetAsset(overworldId);
+    const Overworld* pOverworld = AssetManager::GetAsset(overworldHandle);
     if (!pOverworld) {
-		DEBUG_ERROR("Failed to load overworld asset with ID: %llu", overworldId.id);
+		DEBUG_ERROR("Failed to load overworld asset with ID: %llu", overworldHandle.id);
         return false;
     }
 
@@ -965,7 +965,7 @@ bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
         spawnPos += overworldDir;
     }
 
-    Actor* pPlayer = Game::SpawnActor(playerOverworldPrototypeId, spawnPos);
+    Actor* pPlayer = Game::SpawnActor(playerOverworldPrototypeHandle, spawnPos);
     if (!pPlayer) {
         return false;
     }
@@ -979,7 +979,7 @@ bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
 
 void Game::EnterOverworldArea(u8 keyAreaIndex, const glm::ivec2& direction) {
     currentOverworldArea = keyAreaIndex;
-    const Overworld* pOverworld = (Overworld*)AssetManager::GetAsset(overworldId);
+    const Overworld* pOverworld = AssetManager::GetAsset(overworldHandle);
     const OverworldKeyArea& area = Assets::GetOverworldKeyAreas(pOverworld)[keyAreaIndex];
 
     overworldAreaEnterDir = direction;
@@ -1039,7 +1039,7 @@ bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
     if (gameData.expRemnant.dungeonId == currentDungeonId && currentDungeonId != DungeonHandle::Null()) {
         const RoomInstance* pRoom = GetDungeonRoom(currentDungeonId, gameData.expRemnant.gridOffset);
         if (pRoom->id == pCurrentRoom->id) {
-            Actor* pRemnant = SpawnActor(xpRemnantPrototypeId, gameData.expRemnant.position);
+            Actor* pRemnant = SpawnActor(xpRemnantPrototypeHandle, gameData.expRemnant.position);
             pRemnant->state.pickupState.value = gameData.expRemnant.value;
         }
     }
@@ -1095,9 +1095,9 @@ glm::ivec2 Game::GetCurrentPlayAreaSize() {
         return { pTemplate->width * VIEWPORT_WIDTH_METATILES, pTemplate->height * VIEWPORT_HEIGHT_METATILES };
     }
     case GAME_STATE_OVERWORLD: {
-        const Overworld* pOverworld = (Overworld*)AssetManager::GetAsset(overworldId);
+        const Overworld* pOverworld = AssetManager::GetAsset(overworldHandle);
 		if (!pOverworld) {
-			DEBUG_ERROR("Overworld asset not found: %ull", overworldId.id);
+			DEBUG_ERROR("Overworld asset not found: %ull", overworldHandle.id);
 			break;
 		}
         return { pOverworld->tilemapHeader.width, pOverworld->tilemapHeader.height };
@@ -1120,7 +1120,7 @@ const Tilemap* Game::GetCurrentTilemap() {
         return &pTemplate->tilemap;
     }
     case GAME_STATE_OVERWORLD: {
-        const Overworld* pOverworld = (Overworld*)AssetManager::GetAsset(overworldId);
+        const Overworld* pOverworld = AssetManager::GetAsset(overworldHandle);
         return &pOverworld->tilemapHeader;
     }
     default:
