@@ -3,7 +3,6 @@
 #include "room.h"
 #include "dungeon.h"
 #include "tiles.h"
-#include "metasprite.h"
 #include "rendering_util.h"
 #include "game.h"
 #include "asset_manager.h"
@@ -113,7 +112,7 @@ static void ClearSprites(Sprite* spr, u32 count) {
 }
 
 static Sprite TransformMetaspriteSprite(const Metasprite* pMetasprite, u32 spriteIndex, glm::i16vec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
-    Sprite sprite = pMetasprite->spritesRelativePos[spriteIndex];
+    Sprite sprite = pMetasprite->GetSprites()[spriteIndex];
 
     // Apply horizontal flip
     if (hFlip) {
