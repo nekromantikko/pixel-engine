@@ -2,31 +2,31 @@
 #include "asset_manager.h"
 
 void Assets::InitRoomTemplate(u64 id, void* data) {
-    constexpr u32 mapTilesOffset = sizeof(RoomTemplateHeader);
+    constexpr u32 mapTilesOffset = sizeof(RoomTemplate);
     constexpr u32 tilesOffset = mapTilesOffset + ROOM_MAP_TILE_COUNT * sizeof(BgTile);
     constexpr u32 actorsOffset = tilesOffset + ROOM_MAX_SCREEN_COUNT * ROOM_SCREEN_TILE_COUNT;
 
-    Tilemap tilemapHeader{
+    Tilemap tilemap{
         .width = ROOM_MAX_DIM_SCREENS * VIEWPORT_WIDTH_METATILES,
         .height = ROOM_MAX_DIM_SCREENS * VIEWPORT_HEIGHT_METATILES,
         .tilesetId = TilesetHandle::Null(),
-        .tilesOffset = tilesOffset - offsetof(RoomTemplateHeader, tilemapHeader),
+        .tilesOffset = tilesOffset - offsetof(RoomTemplate, tilemap),
     };
 
-    RoomTemplateHeader newHeader{
+    RoomTemplate newHeader{
         .width = 1,
         .height = 1,
         .mapTileOffset = mapTilesOffset,
-        .tilemapHeader = tilemapHeader,
+        .tilemap = tilemap,
         .actorCount = 0,
         .actorOffset = actorsOffset
     };
 
-    memcpy(data, &newHeader, sizeof(RoomTemplateHeader));
+    memcpy(data, &newHeader, sizeof(RoomTemplate));
 }
 
-u32 Assets::GetRoomTemplateSize(const RoomTemplateHeader* pHeader) {
-    u32 result = sizeof(RoomTemplateHeader);
+u32 Assets::GetRoomTemplateSize(const RoomTemplate* pHeader) {
+    u32 result = sizeof(RoomTemplate);
     constexpr u32 tilemapSize = ROOM_MAX_SCREEN_COUNT * ROOM_SCREEN_TILE_COUNT;
     result += tilemapSize;
     result += ROOM_MAP_TILE_COUNT * sizeof(BgTile);
@@ -35,20 +35,4 @@ u32 Assets::GetRoomTemplateSize(const RoomTemplateHeader* pHeader) {
     }
 
     return result;
-}
-
-BgTile* Assets::GetRoomTemplateMapTiles(const RoomTemplateHeader* pHeader) {
-    if (!pHeader) {
-        return nullptr;
-    }
-
-    return (BgTile*)((u8*)pHeader + pHeader->mapTileOffset);
-}
-
-RoomActor* Assets::GetRoomTemplateActors(const RoomTemplateHeader* pHeader) {
-    if (!pHeader) {
-        return nullptr;
-    }
-
-    return (RoomActor*)((u8*)pHeader + pHeader->actorOffset);
 }

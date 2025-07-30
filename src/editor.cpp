@@ -506,7 +506,7 @@ static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, c
 	for (u32 y = 0; y < metatileSize.y; y++) {
 		for (u32 x = 0; x < metatileSize.x; x++) {
 			const u32 i = (x + xOffsetInt) + (y + yOffsetInt) * pTilemap->width;
-			const u8 tilesetTileIndex = Assets::GetTilemapData(pTilemap)[i];
+			const u8 tilesetTileIndex = pTilemap->GetTileData()[i];
 			const TilesetTile& tilesetTile = pTileset->tiles[tilesetTileIndex];
 			const Metatile& metatile = tilesetTile.metatile;
 
@@ -2013,23 +2013,23 @@ static void PopulateRoomEditorData(EditedAsset& editedAsset) {
 	editedAsset.userData = new RoomEditorData();
 	RoomEditorData* pEditorData = (RoomEditorData*)editedAsset.userData;
 
-	const RoomTemplateHeader* pHeader = (RoomTemplateHeader*)editedAsset.data;
-	const RoomActor* pActors = Assets::GetRoomTemplateActors(pHeader);
-	for (u32 i = 0; i < pHeader->actorCount; i++) {
+	const RoomTemplate* pTemplate = (RoomTemplate*)editedAsset.data;
+	const RoomActor* pActors = pTemplate->GetActors();
+	for (u32 i = 0; i < pTemplate->actorCount; i++) {
 		pEditorData->actors.Add(pActors[i]);
 	}
 }
 
 static void ApplyRoomEditorData(EditedAsset& editedAsset) {
 	const RoomEditorData* pEditorData = (RoomEditorData*)editedAsset.userData;
-	RoomTemplateHeader* pHeader = (RoomTemplateHeader*)editedAsset.data;
-	pHeader->actorCount = pEditorData->actors.Count();
-	ResizeEditedAsset(editedAsset, Assets::GetRoomTemplateSize(pHeader));
+	RoomTemplate* pTemplate = (RoomTemplate*)editedAsset.data;
+	pTemplate->actorCount = pEditorData->actors.Count();
+	ResizeEditedAsset(editedAsset, Assets::GetRoomTemplateSize(pTemplate));
 
 	// Reassign in case the asset was resized
-	pHeader = (RoomTemplateHeader*)editedAsset.data;
-	RoomActor* pActors = Assets::GetRoomTemplateActors(pHeader);
-	for (u32 i = 0; i < pHeader->actorCount; i++) {
+	pTemplate = (RoomTemplate*)editedAsset.data;
+	RoomActor* pActors = pTemplate->GetActors();
+	for (u32 i = 0; i < pTemplate->actorCount; i++) {
 		pActors[i] = *pEditorData->actors.Get(pEditorData->actors.GetHandle(i));
 	}
 }
@@ -2090,7 +2090,7 @@ static PoolHandle<RoomActor> GetHoveredActorHandle(const RoomEditorData* pEditor
 }
 
 static void DrawRoomView(EditedAsset& asset) {
-	RoomTemplateHeader* pHeader = (RoomTemplateHeader*)asset.data;
+	RoomTemplate* pHeader = (RoomTemplate*)asset.data;
 	RoomEditorData* pEditorData = (RoomEditorData*)asset.userData;
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -2102,7 +2102,7 @@ static void DrawRoomView(EditedAsset& asset) {
 	ImVec2 btmRight = ImVec2(topLeft.x + contentWidth, topLeft.y + contentHeight);
 	const r32 tileDrawSize = METATILE_DIM_PIXELS * renderScale;
 	
-	const bool scrolling = DrawTilemapEditor(&pHeader->tilemapHeader, topLeft, renderScale, pEditorData->viewportPos, pEditorData->clipboard, pEditorData->editMode == ROOM_EDIT_MODE_TILES);
+	const bool scrolling = DrawTilemapEditor(&pHeader->tilemap, topLeft, renderScale, pEditorData->viewportPos, pEditorData->clipboard, pEditorData->editMode == ROOM_EDIT_MODE_TILES);
 
 	// Clamp scrolling to room size
 	const glm::vec2 scrollMax = {
@@ -2209,7 +2209,7 @@ static void DrawRoomView(EditedAsset& asset) {
 }
 
 static void DrawRoomTools(EditedAsset& asset) {
-	RoomTemplateHeader* pHeader = (RoomTemplateHeader*)asset.data;
+	RoomTemplate* pTemplate = (RoomTemplate*)asset.data;
 	RoomEditorData* pEditorData = (RoomEditorData*)asset.userData;
 
 	// Reset edit mode, it will be set by the tools window
@@ -2225,24 +2225,24 @@ static void DrawRoomTools(EditedAsset& asset) {
 				asset.dirty = true;
 			}
 
-			s32 size[2] = { pHeader->width, pHeader->height };
+			s32 size[2] = { pTemplate->width, pTemplate->height };
 			if (ImGui::InputInt2("Size", size)) {
-				pHeader->width = glm::clamp(size[0], 1, s32(ROOM_MAX_DIM_SCREENS));
-				pHeader->height = glm::clamp(size[1], 1, s32(ROOM_MAX_DIM_SCREENS));
+				pTemplate->width = glm::clamp(size[0], 1, s32(ROOM_MAX_DIM_SCREENS));
+				pTemplate->height = glm::clamp(size[1], 1, s32(ROOM_MAX_DIM_SCREENS));
 				asset.dirty = true;
 			}
 
 			ImGui::SeparatorText("Map visuals");
 
 			static s32 selectedTile = 0;
-			if (selectedTile >= pHeader->width * 2 * pHeader->height) {
+			if (selectedTile >= pTemplate->width * 2 * pTemplate->height) {
 				selectedTile = 0;
 			}
-			const s32 xTile = selectedTile % (pHeader->width * 2);
-			const s32 yTile = selectedTile / (pHeader->width * 2);
+			const s32 xTile = selectedTile % (pTemplate->width * 2);
+			const s32 yTile = selectedTile / (pTemplate->width * 2);
 			const s32 roomTileIndex = xTile + yTile * ROOM_MAX_DIM_SCREENS * 2;
 
-			BgTile* mapTiles = Assets::GetRoomTemplateMapTiles(pHeader);
+			BgTile* mapTiles = pTemplate->GetMapTiles();
 
 			s32 tileId = mapTiles[roomTileIndex].tileId;
 			s32 palette = mapTiles[roomTileIndex].palette;
@@ -2258,13 +2258,13 @@ static void DrawRoomTools(EditedAsset& asset) {
 
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
 			constexpr r32 previewTileSize = 32;
-			const ImVec2 gridSize(previewTileSize * pHeader->width * 2, previewTileSize * pHeader->height);
+			const ImVec2 gridSize(previewTileSize * pTemplate->width * 2, previewTileSize * pTemplate->height);
 
 			static bool gridFocused = false;
 			const ImVec2 gridPos = DrawTileGrid(gridSize, previewTileSize, &selectedTile, &gridFocused);
 
-			for (u32 y = 0; y < pHeader->height; y++) {
-				for (u32 x = 0; x < pHeader->width * 2; x++) {
+			for (u32 y = 0; y < pTemplate->height; y++) {
+				for (u32 x = 0; x < pTemplate->width * 2; x++) {
 					const s32 tileIndex = x + y * ROOM_MAX_DIM_SCREENS * 2;
 					const BgTile& tile = mapTiles[tileIndex];
 
@@ -2309,7 +2309,7 @@ static void DrawRoomTools(EditedAsset& asset) {
 
 		if (ImGui::BeginTabItem("Tilemap")) {
 			pEditorData->editMode = ROOM_EDIT_MODE_TILES;
-			if (DrawTilemapTools(pEditorData->clipboard, pHeader->tilemapHeader.tilesetId)) {
+			if (DrawTilemapTools(pEditorData->clipboard, pTemplate->tilemap.tilesetId)) {
 				asset.dirty = true;
 			}
 
@@ -2828,7 +2828,7 @@ static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon)
 				.templateId = node.roomData.templateId
 			};
 
-			RoomTemplateHeader* pRoomHeader = (RoomTemplateHeader*)AssetManager::GetAsset(node.roomData.templateId);
+			RoomTemplate* pRoomHeader = (RoomTemplate*)AssetManager::GetAsset(node.roomData.templateId);
 
 			const u32 width = pRoomHeader ? pRoomHeader->width : 1;
 			const u32 height = pRoomHeader ? pRoomHeader->height : 1;
@@ -2898,7 +2898,7 @@ static glm::ivec2 GetDungeonNodeSize(const DungeonNode& node) {
 	glm::ivec2 result(1, 1);
 
 	if (node.type == DUNGEON_NODE_ROOM) {
-		RoomTemplateHeader* pRoomHeader = (RoomTemplateHeader*)AssetManager::GetAsset(node.roomData.templateId);
+		RoomTemplate* pRoomHeader = (RoomTemplate*)AssetManager::GetAsset(node.roomData.templateId);
 		if (pRoomHeader) {
 			result.x = pRoomHeader->width;
 			result.y = pRoomHeader->height;
@@ -2931,9 +2931,9 @@ static void DrawDungeonNode(const DungeonNode& node, const glm::mat3& gridToScre
 	constexpr r32 outlineHoveredThickness = 2.0f;
 
 	if (node.type == DUNGEON_NODE_ROOM) {
-		RoomTemplateHeader* pRoomHeader = (RoomTemplateHeader*)AssetManager::GetAsset(node.roomData.templateId);
-		if (pRoomHeader) {
-			DrawTilemap(&pRoomHeader->tilemapHeader, ImVec2(0,0), ImVec2(nodeSize.x * VIEWPORT_WIDTH_METATILES, nodeSize.y * VIEWPORT_HEIGHT_METATILES), nodeDrawMin, scale);
+		RoomTemplate* pRoomTemplate = (RoomTemplate*)AssetManager::GetAsset(node.roomData.templateId);
+		if (pRoomTemplate) {
+			DrawTilemap(&pRoomTemplate->tilemap, ImVec2(0,0), ImVec2(nodeSize.x * VIEWPORT_WIDTH_METATILES, nodeSize.y * VIEWPORT_HEIGHT_METATILES), nodeDrawMin, scale);
 			drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0, 0, 0, 0x80));
 			drawList->AddText(ImVec2(nodeDrawMin.x + 10, nodeDrawMin.y + 10), IM_COL32(255, 255, 255, 255), AssetManager::GetAssetName(node.roomData.templateId.id));
 		}
@@ -3089,7 +3089,7 @@ static void DrawDungeonCanvas(EditedAsset& asset) {
 
 			if (isValidRoomTemplate) {
 				RoomTemplateHandle handle(assetId);
-				RoomTemplateHeader* pRoomHeader = (RoomTemplateHeader*)AssetManager::GetAsset(handle);
+				RoomTemplate* pRoomHeader = (RoomTemplate*)AssetManager::GetAsset(handle);
 
 				const glm::ivec2 roomTopLeft = hoveredCellPos;
 				const glm::ivec2 roomDim = { pRoomHeader->width, pRoomHeader->height };
