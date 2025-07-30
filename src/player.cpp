@@ -324,8 +324,8 @@ static void PlayerShoot(Actor* pPlayer, const PlayerData& data) {
         playerState.shootCounter = shootDelay;
 
         const u16 playerWeapon = Game::GetPlayerWeapon();
-        const ActorPrototypeHandle prototypeId = playerWeapon == PLAYER_WEAPON_LAUNCHER ? playerGrenadePrototypeId : playerArrowPrototypeId;
-        Actor* pBullet = Game::SpawnActor(prototypeId, pPlayer->position);
+        const ActorPrototypeHandle prototypeHandle = playerWeapon == PLAYER_WEAPON_LAUNCHER ? playerGrenadePrototypeId : playerArrowPrototypeId;
+        Actor* pBullet = Game::SpawnActor(prototypeHandle, pPlayer->position);
         if (pBullet == nullptr) {
             return;
         }
@@ -774,7 +774,7 @@ bool Game::PlayerInvulnerable(Actor* pPlayer) {
 void Game::PlayerTakeDamage(Actor* pPlayer, const Damage& damage, const glm::vec2& enemyPos) {
     u16 health = GetPlayerHealth();
 
-    ActorPrototype* pPrototype = (ActorPrototype*)AssetManager::GetAsset(pPlayer->prototypeId);
+    ActorPrototype* pPrototype = AssetManager::GetAsset(pPlayer->prototypeHandle);
     if (pPrototype && pPrototype->data.playerData.damageSound != SoundHandle::Null()) {
         Audio::PlaySFX(pPrototype->data.playerData.damageSound);
     }

@@ -278,8 +278,8 @@ bool Game::Rendering::DrawSprite(u8 layerIndex, const Sprite& sprite) {
     return true;
 }
 
-bool Game::Rendering::DrawMetaspriteSprite(u8 layerIndex, MetaspriteHandle metaspriteId, u32 spriteIndex, glm::i16vec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
-    const Metasprite* pMetasprite = (Metasprite*)AssetManager::GetAsset(metaspriteId);
+bool Game::Rendering::DrawMetaspriteSprite(u8 layerIndex, MetaspriteHandle metaspriteHandle, u32 spriteIndex, glm::i16vec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
+    const Metasprite* pMetasprite = AssetManager::GetAsset(metaspriteHandle);
     if (!pMetasprite) {
         return false;
     }
@@ -298,8 +298,8 @@ bool Game::Rendering::DrawMetaspriteSprite(u8 layerIndex, MetaspriteHandle metas
 	return true;
 }
 
-bool Game::Rendering::DrawMetasprite(u8 layerIndex, MetaspriteHandle metaspriteId, glm::i16vec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
-    const Metasprite* pMetasprite = (Metasprite*)AssetManager::GetAsset(metaspriteId);
+bool Game::Rendering::DrawMetasprite(u8 layerIndex, MetaspriteHandle metaspriteHandle, glm::i16vec2 pos, bool hFlip, bool vFlip, s32 paletteOverride) {
+    const Metasprite* pMetasprite = AssetManager::GetAsset(metaspriteHandle);
     if (!pMetasprite) {
         return false;
     }
@@ -316,10 +316,10 @@ bool Game::Rendering::DrawMetasprite(u8 layerIndex, MetaspriteHandle metaspriteI
     return true;
 }
 
-void Game::Rendering::CopyBankTiles(ChrBankHandle bankId, u32 bankOffset, u32 sheetIndex, u32 sheetOffset, u32 count) {
-	ChrSheet* pBank = (ChrSheet*)AssetManager::GetAsset(bankId);
+void Game::Rendering::CopyBankTiles(ChrBankHandle bankHandle, u32 bankOffset, u32 sheetIndex, u32 sheetOffset, u32 count) {
+	ChrSheet* pBank = AssetManager::GetAsset(bankHandle);
 	if (!pBank) {
-		DEBUG_ERROR("Failed to load bank %llu\n", bankId);
+		DEBUG_ERROR("Failed to load bank %llu\n", bankHandle);
 		return;
 	}
 
@@ -329,10 +329,10 @@ void Game::Rendering::CopyBankTiles(ChrBankHandle bankId, u32 bankOffset, u32 sh
     memcpy(pSheetTiles, pBankTiles, sizeof(ChrTile) * count);
 }
 
-bool Game::Rendering::GetPalettePresetColors(PaletteHandle paletteId, u8* pOutColors) {
-    Palette* pPalette = (Palette*)AssetManager::GetAsset(paletteId);
+bool Game::Rendering::GetPalettePresetColors(PaletteHandle paletteHandle, u8* pOutColors) {
+    Palette* pPalette = AssetManager::GetAsset(paletteHandle);
     if (!pPalette) {
-        DEBUG_ERROR("Failed to load palette %llu\n", paletteId);
+        DEBUG_ERROR("Failed to load palette %llu\n", paletteHandle);
         return false;
     }
 
@@ -344,10 +344,10 @@ void Game::Rendering::WritePaletteColors(u8 paletteIndex, u8* pColors) {
 	memcpy(::Rendering::GetPalettePtr(paletteIndex)->colors, pColors, PALETTE_COLOR_COUNT);
 }
 
-void Game::Rendering::CopyPaletteColors(PaletteHandle paletteId, u8 paletteIndex) {
-	Palette* pPalette = (Palette*)AssetManager::GetAsset(paletteId);
+void Game::Rendering::CopyPaletteColors(PaletteHandle paletteHandle, u8 paletteIndex) {
+	Palette* pPalette = AssetManager::GetAsset(paletteHandle);
 	if (!pPalette) {
-		DEBUG_ERROR("Failed to load palette %llu\n", paletteId);
+		DEBUG_ERROR("Failed to load palette %llu\n", paletteHandle);
 		return;
 	}
 

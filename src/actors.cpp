@@ -45,10 +45,10 @@ Actor* Game::SpawnActor(const RoomActor* pTemplate, u32 roomId) {
 	Actor actor{
 		.persistId = pTemplate->id | u64(roomId) << 32,
 		.position = pTemplate->position,
-		.prototypeId = pTemplate->prototypeId,
+		.prototypeHandle = pTemplate->prototypeHandle,
 	};
 
-	const ActorPrototype* pPrototype = (ActorPrototype*)AssetManager::GetAsset(actor.prototypeId);
+	const ActorPrototype* pPrototype = AssetManager::GetAsset(actor.prototypeHandle);
 	if (!pPrototype) {
 		return nullptr;
 	}
@@ -62,8 +62,8 @@ Actor* Game::SpawnActor(const RoomActor* pTemplate, u32 roomId) {
 
 	return actors.Get(handle);
 }
-Actor* Game::SpawnActor(const ActorPrototypeHandle& prototypeId, const glm::vec2& position, const glm::vec2& velocity) {
-	if (actors.Count() >= MAX_DYNAMIC_ACTOR_COUNT || prototypeId == ActorPrototypeHandle::Null()) {
+Actor* Game::SpawnActor(const ActorPrototypeHandle& prototypeHandle, const glm::vec2& position, const glm::vec2& velocity) {
+	if (actors.Count() >= MAX_DYNAMIC_ACTOR_COUNT || prototypeHandle == ActorPrototypeHandle::Null()) {
 		return nullptr;
 	}
 
@@ -71,10 +71,10 @@ Actor* Game::SpawnActor(const ActorPrototypeHandle& prototypeId, const glm::vec2
 		.persistId = UUID_NULL,
 		.position = position,
 		.velocity = velocity,
-		.prototypeId = prototypeId,
+		.prototypeHandle = prototypeHandle,
 	};
 
-	const ActorPrototype* pPrototype = (ActorPrototype*)AssetManager::GetAsset(actor.prototypeId);
+	const ActorPrototype* pPrototype = AssetManager::GetAsset(actor.prototypeHandle);
 	if (!pPrototype) {
 		return nullptr;
 	}
@@ -95,12 +95,12 @@ void Game::ClearActors() {
 }
 
 const ActorPrototype* Game::GetActorPrototype(const Actor* pActor) {
-	return (ActorPrototype*)AssetManager::GetAsset(pActor->prototypeId);
+	return AssetManager::GetAsset(pActor->prototypeHandle);
 }
 
 const Animation* Game::GetActorCurrentAnim(const Actor* pActor, const ActorPrototype* pPrototype) {
 	const AnimationHandle& currentAnimId = pPrototype->animations[pActor->drawState.animIndex];
-	return (Animation*)AssetManager::GetAsset(currentAnimId);
+	return AssetManager::GetAsset(currentAnimId);
 }
 
 bool Game::ActorValid(const Actor* pActor) {
