@@ -98,6 +98,16 @@ struct Metatile {
 	BgTile tiles[METATILE_TILE_COUNT];
 };
 
+struct Metasprite {
+	u32 spriteCount;
+	// Sprite positions are relative to the metasprite origin
+	u32 spritesOffset;
+
+	inline Sprite* GetSprites() const {
+		return (Sprite*)((u8*)this + spritesOffset);
+	}
+};
+
 struct RenderSettings {
 	bool useCRTFilter;
 };
