@@ -37,7 +37,7 @@ struct Tileset {
 struct Tilemap {
 	u32 width;
 	u32 height;
-	TilesetHandle tilesetId;
+	TilesetHandle tilesetHandle;
 	u32 tilesOffset;
 
 	inline u8* GetTileData() const {
@@ -124,7 +124,7 @@ inline void to_json(nlohmann::json& j, const Tileset& tileset) {
 inline void to_json(nlohmann::json& j, const Tilemap& tilemap) {
 	j["width"] = tilemap.width;
 	j["height"] = tilemap.height;
-	j["tileset_id"] = tilemap.tilesetId.id;
+	j["tileset_id"] = tilemap.tilesetHandle.id;
 	
 	u8* tilemapData = tilemap.GetTileData();
 	j["tiles"] = nlohmann::json::array();

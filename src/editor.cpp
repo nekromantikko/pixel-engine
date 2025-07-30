@@ -583,20 +583,20 @@ static AABB GetActorBoundingBox(const RoomActor* pActor) {
 		return result;
 	}
 	
-	const ActorPrototype* pPrototype = (ActorPrototype*)AssetManager::GetAsset(pActor->prototypeId);
+	const ActorPrototype* pPrototype = AssetManager::GetAsset(pActor->prototypeHandle);
 	if (!pPrototype) {
 		return result;
 	}
 
 	// TODO: What if animation changes bounds?
 	const AnimationHandle& animHandle = pPrototype->animations[0];
-	const Animation* pAnimation = (Animation*)AssetManager::GetAsset(animHandle);
+	const Animation* pAnimation = AssetManager::GetAsset(animHandle);
 	if (!pAnimation) {
 		return result;
 	}
 
 	const AnimationFrame& frame = pAnimation->frames[0];
-	const Metasprite* pMetasprite = (Metasprite*)AssetManager::GetAsset(frame.metaspriteId);
+	const Metasprite* pMetasprite = AssetManager::GetAsset(frame.metaspriteId);
 
 	result.x1 = std::numeric_limits<r32>::max();
 	result.x2 = std::numeric_limits<r32>::min();
@@ -620,13 +620,13 @@ static AABB GetActorBoundingBox(const RoomActor* pActor) {
 
 static void DrawActor(const ActorPrototype* pPrototype, const ImVec2& origin, r32 renderScale, s32 animIndex = 0, s32 frameIndex = 0, ImU32 color = IM_COL32(255, 255, 255, 255)) {
 	const AnimationHandle& animHandle = pPrototype->animations[animIndex];
-	const Animation* pAnimation = (Animation*)AssetManager::GetAsset(animHandle);
+	const Animation* pAnimation = AssetManager::GetAsset(animHandle);
 	if (!pAnimation) {
 		return;
 	}
 
 	const AnimationFrame& frame = pAnimation->frames[frameIndex];
-	const Metasprite* pMetasprite = (Metasprite*)AssetManager::GetAsset(frame.metaspriteId);
+	const Metasprite* pMetasprite = AssetManager::GetAsset(frame.metaspriteId);
 	DrawMetasprite(pMetasprite, origin, renderScale, color);
 }
 
@@ -1288,15 +1288,15 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, u32 n
 #pragma endregion
 
 #pragma region Tilemap
-static bool DrawTilemapTools(TilemapClipboard& clipboard, TilesetHandle& tilesetId) {
-	const bool result = DrawAssetField("Tileset", ASSET_TYPE_TILESET, tilesetId.id);
+static bool DrawTilemapTools(TilemapClipboard& clipboard, TilesetHandle& tilesetHandle) {
+	const bool result = DrawAssetField("Tileset", ASSET_TYPE_TILESET, tilesetHandle.id);
 
 	ImGuiStyle& style = ImGui::GetStyle();
 
 	const s32 currentSelection = (clipboard.size.x == 1 && clipboard.size.y == 1) ? clipboard.clipboard[0] : -1;
 	s32 newSelection = currentSelection;
 
-	const Tileset* pTileset = (Tileset*)AssetManager::GetAsset(tilesetId);
+	const Tileset* pTileset = AssetManager::GetAsset(tilesetHandle);
 	if (!pTileset) {
 		ImGui::TextUnformatted("Select a tileset to paint tiles.");
 		return result;
@@ -2138,7 +2138,7 @@ static void DrawRoomView(EditedAsset& asset) {
 
 		const u8 opacity = pEditorData->editMode == ROOM_EDIT_MODE_ACTORS ? 255 : 80;
 
-		const ActorPrototype* pPrototype = (ActorPrototype*)AssetManager::GetAsset(pActor->prototypeId);
+		const ActorPrototype* pPrototype = AssetManager::GetAsset(pActor->prototypeHandle);
 		if (!pPrototype) {
 			// Draw a placeholder thingy
 			drawList->AddText(drawPos, IM_COL32(255, 0, 0, opacity), "ERROR");
@@ -2186,7 +2186,7 @@ static void DrawRoomView(EditedAsset& asset) {
 			else if (ImGui::MenuItem("Add actor")) {
 				PoolHandle<RoomActor> handle = pEditorData->actors.Add();
 				RoomActor* pNewActor = pEditorData->actors.Get(handle);
-				pNewActor->prototypeId = ActorPrototypeHandle::Null();
+				pNewActor->prototypeHandle = ActorPrototypeHandle::Null();
 				pNewActor->id = Random::GenerateUUID32();
 				pNewActor->position = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
 
@@ -2309,7 +2309,7 @@ static void DrawRoomTools(EditedAsset& asset) {
 
 		if (ImGui::BeginTabItem("Tilemap")) {
 			pEditorData->editMode = ROOM_EDIT_MODE_TILES;
-			if (DrawTilemapTools(pEditorData->clipboard, pTemplate->tilemap.tilesetId)) {
+			if (DrawTilemapTools(pEditorData->clipboard, pTemplate->tilemap.tilesetHandle)) {
 				asset.dirty = true;
 			}
 
@@ -2328,7 +2328,7 @@ static void DrawRoomTools(EditedAsset& asset) {
 
 				ImGui::Text("UUID: %lu", pActor->id);
 
-				if (DrawAssetField("Prototype", ASSET_TYPE_ACTOR_PROTOTYPE, pActor->prototypeId.id)) {
+				if (DrawAssetField("Prototype", ASSET_TYPE_ACTOR_PROTOTYPE, pActor->prototypeHandle.id)) {
 					asset.dirty = true;
 				}
 
@@ -2828,7 +2828,7 @@ static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon)
 				.templateId = node.roomData.templateId
 			};
 
-			RoomTemplate* pRoomHeader = (RoomTemplate*)AssetManager::GetAsset(node.roomData.templateId);
+			RoomTemplate* pRoomHeader = AssetManager::GetAsset(node.roomData.templateId);
 
 			const u32 width = pRoomHeader ? pRoomHeader->width : 1;
 			const u32 height = pRoomHeader ? pRoomHeader->height : 1;
@@ -2898,7 +2898,7 @@ static glm::ivec2 GetDungeonNodeSize(const DungeonNode& node) {
 	glm::ivec2 result(1, 1);
 
 	if (node.type == DUNGEON_NODE_ROOM) {
-		RoomTemplate* pRoomHeader = (RoomTemplate*)AssetManager::GetAsset(node.roomData.templateId);
+		RoomTemplate* pRoomHeader = AssetManager::GetAsset(node.roomData.templateId);
 		if (pRoomHeader) {
 			result.x = pRoomHeader->width;
 			result.y = pRoomHeader->height;
@@ -2931,7 +2931,7 @@ static void DrawDungeonNode(const DungeonNode& node, const glm::mat3& gridToScre
 	constexpr r32 outlineHoveredThickness = 2.0f;
 
 	if (node.type == DUNGEON_NODE_ROOM) {
-		RoomTemplate* pRoomTemplate = (RoomTemplate*)AssetManager::GetAsset(node.roomData.templateId);
+		RoomTemplate* pRoomTemplate = AssetManager::GetAsset(node.roomData.templateId);
 		if (pRoomTemplate) {
 			DrawTilemap(&pRoomTemplate->tilemap, ImVec2(0,0), ImVec2(nodeSize.x * VIEWPORT_WIDTH_METATILES, nodeSize.y * VIEWPORT_HEIGHT_METATILES), nodeDrawMin, scale);
 			drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0, 0, 0, 0x80));
@@ -3089,7 +3089,7 @@ static void DrawDungeonCanvas(EditedAsset& asset) {
 
 			if (isValidRoomTemplate) {
 				RoomTemplateHandle handle(assetId);
-				RoomTemplate* pRoomHeader = (RoomTemplate*)AssetManager::GetAsset(handle);
+				RoomTemplate* pRoomHeader = AssetManager::GetAsset(handle);
 
 				const glm::ivec2 roomTopLeft = hoveredCellPos;
 				const glm::ivec2 roomDim = { pRoomHeader->width, pRoomHeader->height };
@@ -3328,7 +3328,7 @@ static void DrawOverworldEditor(EditedAsset& asset) {
 		if (ImGui::BeginTabBar("Overworld tool tabs")) {
 			if (ImGui::BeginTabItem("Tilemap")) {
 				pEditorData->editMode = OW_EDIT_MODE_TILES;
-				DrawTilemapTools(pEditorData->clipboard, pHeader->tilemapHeader.tilesetId);
+				DrawTilemapTools(pEditorData->clipboard, pHeader->tilemapHeader.tilesetHandle);
 
 				ImGui::EndTabItem();
 			}
@@ -3580,7 +3580,7 @@ static void DrawAnimationPreview(const Animation* pAnimation, s32 frameIndex, r3
 	ImVec2 gridPos = DrawTileGrid(ImVec2(size, size), gridStepPixels);
 	ImVec2 origin = ImVec2(gridPos.x + size / 2, gridPos.y + size / 2);
 
-	const Metasprite* pMetasprite = (Metasprite*)AssetManager::GetAsset(frame.metaspriteId);
+	const Metasprite* pMetasprite = AssetManager::GetAsset(frame.metaspriteId);
 	if (!pMetasprite) {
 		return;
 	}
@@ -3738,7 +3738,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 
 		drawList->AddRect(frameMin, frameMax, IM_COL32(255, 255, 255, 255), 4.0f);
 		if (frame.metaspriteId != MetaspriteHandle::Null()) {
-			const Metasprite* pMetasprite = (Metasprite*)AssetManager::GetAsset(frame.metaspriteId);
+			const Metasprite* pMetasprite = AssetManager::GetAsset(frame.metaspriteId);
 			if (pMetasprite) {
 				DrawMetasprite(pMetasprite, ImVec2(frameMin.x + frameBoxSize * 0.5f, frameMin.y + frameBoxSize * 0.5f), 1.0f);
 			}
@@ -3905,7 +3905,7 @@ static void DrawChrEditor(EditedAsset& asset) {
 	ImGui::SeparatorText("Preview");
 
 	constexpr r32 gridSizePixels = 512.0f;
-	const Palette* pPalette = (Palette*)AssetManager::GetAsset(PaletteHandle(pEditorData->selectedPalette.id));
+	const Palette* pPalette = AssetManager::GetAsset(PaletteHandle(pEditorData->selectedPalette.id));
 	const s8 bgColorIndex = pPalette ? pPalette->colors[0] : -1;
 	DrawEditedChrSheet(gridSizePixels, GetTextureID(pEditorData->pRenderData->pTexture), bgColorIndex);
 	DrawAssetField("Palette", ASSET_TYPE_PALETTE, pEditorData->selectedPalette.id);
