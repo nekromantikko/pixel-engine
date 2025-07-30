@@ -20,6 +20,26 @@ NLOHMANN_JSON_SERIALIZE_ENUM(SoundType, {
 	{ SOUND_TYPE_MUSIC, "music" },
 })
 
+static void from_json(const nlohmann::json& j, Sprite& sprite) {
+	sprite.x = j.at("x").get<s16>();
+	sprite.y = j.at("y").get<s16>();
+	sprite.tileId = j.at("tile_id").get<u16>();
+	sprite.palette = j.at("palette").get<u8>();
+	sprite.priority = j.at("priority").get<bool>() ? 1 : 0;
+	sprite.flipHorizontal = j.at("flip_horizontal").get<bool>() ? 1 : 0;
+	sprite.flipVertical = j.at("flip_vertical").get<bool>() ? 1 : 0;
+}
+
+static void to_json(nlohmann::json& j, const Sprite& sprite) {
+	j["x"] = sprite.x;
+	j["y"] = sprite.y;
+	j["tile_id"] = sprite.tileId;
+	j["palette"] = sprite.palette;
+	j["priority"] = sprite.priority != 0;
+	j["flip_horizontal"] = sprite.flipHorizontal != 0;
+	j["flip_vertical"] = sprite.flipVertical != 0;
+}
+
 #pragma endregion
 
 #pragma region Asset serializers
@@ -228,6 +248,44 @@ static bool SavePaletteToFile(const std::filesystem::path& path, const void* pDa
 	return false;
 }
 
+static bool LoadMetaspriteFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
+	if (!std::filesystem::exists(path)) {
+		DEBUG_ERROR("File (%s) does not exist\n", path.string().c_str());
+		return false;
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "rb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file\n");
+		return false;
+	}
+
+	const nlohmann::json json = nlohmann::json::parse(pFile);
+	const nlohmann::json spritesJson = json["sprites"];
+	u32 spriteCount = spritesJson != nullptr && spritesJson.is_array() ? spritesJson.size() : 0;
+	size = sizeof(Metasprite) + spriteCount * sizeof(Sprite);
+
+	if (pOutData) {
+		Metasprite* pMetasprite = (Metasprite*)pOutData;
+		pMetasprite->spriteCount = spriteCount;
+		pMetasprite->spritesOffset = sizeof(Metasprite);
+
+		Sprite* pSprites = pMetasprite->GetSprites();
+		for (u32 i = 0; i < spriteCount; i++) {
+			spritesJson[i].get_to(pSprites[i]);
+		}
+	}
+
+	fclose(pFile);
+	return true;
+
+}
+
+static bool SaveMetaspriteToFile(const std::filesystem::path& path, const void* pData) {
+	// TODO
+	return false;
+}
+
 #pragma endregion
 
 std::filesystem::path Editor::Assets::GetAssetMetadataPath(const std::filesystem::path& path) {
@@ -330,6 +388,9 @@ bool Editor::Assets::LoadAssetFromFile(const std::filesystem::path& path, AssetT
 	case (ASSET_TYPE_PALETTE): {
 		return LoadPaletteFromFile(path, metadata, size, pOutData);
 	}
+	case (ASSET_TYPE_METASPRITE): {
+		return LoadMetaspriteFromFile(path, metadata, size, pOutData);
+	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);
 		return false;
@@ -345,6 +406,9 @@ bool Editor::Assets::SaveAssetToFile(const std::filesystem::path& path, AssetTyp
 	}
 	case (ASSET_TYPE_PALETTE): {
 		return SavePaletteToFile(path, pData);
+	}
+	case (ASSET_TYPE_METASPRITE): {
+		return SaveMetaspriteToFile(path, pData);
 	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);

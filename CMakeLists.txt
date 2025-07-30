@@ -51,7 +51,6 @@ set(HEADERS
 		src/game.h
 		src/input.h
 		src/memory_pool.h
-		src/metasprite.h
 		src/rendering_util.h
 		src/typedef.h
 		src/game_rendering.h

@@ -17,7 +17,6 @@
 
 #include "tiles.h"
 #include "rendering_util.h"
-#include "metasprite.h"
 #include "game.h"
 #include "room.h"
 #include "game_rendering.h"
@@ -571,7 +570,7 @@ static void DrawMetasprite(const Metasprite* pMetasprite, const ImVec2& origin, 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	const r32 tileDrawSize = TILE_DIM_PIXELS * renderScale;
 	for (s32 i = pMetasprite->spriteCount - 1; i >= 0; i--) {
-		const Sprite& sprite = pMetasprite->spritesRelativePos[i];
+		const Sprite& sprite = pMetasprite->GetSprites()[i];
 		const ImVec2 pos = ImVec2(origin.x + renderScale * sprite.x, origin.y + renderScale * sprite.y);
 		DrawSprite(sprite, pos, renderScale, color);
 	}
@@ -606,7 +605,7 @@ static AABB GetActorBoundingBox(const RoomActor* pActor) {
 	constexpr r32 tileWorldDim = 1.0f / METATILE_DIM_TILES;
 
 	for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
-		const Sprite& sprite = pMetasprite->spritesRelativePos[i];
+		const Sprite& sprite = pMetasprite->GetSprites()[i];
 		const glm::vec2 spriteMin = { (r32)sprite.x / METATILE_DIM_PIXELS, (r32)sprite.y / METATILE_DIM_PIXELS };
 		const glm::vec2 spriteMax = { spriteMin.x + tileWorldDim, spriteMin.y + tileWorldDim };
 		result.x1 = glm::min(result.x1, spriteMin.x);
@@ -761,8 +760,9 @@ static bool SelectElement(ImVector<s32>& selection, bool selectionLocked, s32 in
 	return true;
 }
 
+// TODO: This will cause awfulness if elements are added but there's no room in the array. Need to fix
 template <typename T>
-static void DrawGenericEditableList(T* elements, u32& count, u32 maxCount, ImVector<s32>& selection, const char* labelPrefix, bool selectionLocked = false, void (*drawExtraStuff)(const T&) = nullptr) {
+static void DrawGenericEditableList(T* elements, u32& count, ImVector<s32>& selection, const char* labelPrefix, bool selectionLocked = false, void (*drawExtraStuff)(const T&) = nullptr) {
 	ImGuiSelectableFlags selectableFlags = ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap;
 	for (u32 i = 0; i < count; i++) {
 		T& element = elements[i];
@@ -1711,7 +1711,7 @@ static void DrawMetaspritePreview(Metasprite* pMetasprite, ImVector<s32>& sprite
 	ImGuiIO& io = ImGui::GetIO();
 
 	for (s32 i = pMetasprite->spriteCount - 1; i >= 0; i--) {
-		Sprite& sprite = pMetasprite->spritesRelativePos[i];
+		Sprite& sprite = pMetasprite->GetSprites()[i];
 
 		const u8 index = (u8)sprite.tileId;
 		const bool flipX = sprite.flipHorizontal;
@@ -1784,7 +1784,7 @@ static void DrawSpriteEditor(Metasprite* pMetasprite, ImVector<s32>& spriteSelec
 	}
 	else {
 		s32& spriteIndex = spriteSelection[0];
-		Sprite& sprite = pMetasprite->spritesRelativePos[spriteIndex];
+		Sprite& sprite = pMetasprite->GetSprites()[spriteIndex];
 		s32 index = (s32)sprite.tileId;
 
 		bool flipX = sprite.flipHorizontal;
@@ -1875,23 +1875,25 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Metasprite properties");
 	ImGui::Checkbox("Lock selection", &selectionLocked);
 
-	ImGui::BeginDisabled(pMetasprite->spriteCount == METASPRITE_MAX_SPRITE_COUNT);
+	// TODO: Resize asset if sprite count is changed
+	// Better yet, use a dynamic array for sprites for the duration of the editing
+	/*ImGui::BeginDisabled(pMetasprite->spriteCount == METASPRITE_MAX_SPRITE_COUNT);
 	if (ImGui::Button("+")) {
-		PushElement<Sprite>(pMetasprite->spritesRelativePos, pMetasprite->spriteCount);
+		PushElement<Sprite>(pMetasprite->GetSprites(), pMetasprite->spriteCount);
 		asset.dirty = true;
 	}
 	ImGui::EndDisabled();
 	ImGui::SameLine();
 	ImGui::BeginDisabled(pMetasprite->spriteCount == 0);
 	if (ImGui::Button("-")) {
-		PopElement<Sprite>(pMetasprite->spritesRelativePos, pMetasprite->spriteCount);
+		PopElement<Sprite>(pMetasprite->GetSprites(), pMetasprite->spriteCount);
 		asset.dirty = true;
 	}
-	ImGui::EndDisabled();
+	ImGui::EndDisabled();*/
 
 	ImGui::BeginChild("Sprite list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 
-	DrawGenericEditableList<Sprite>(pMetasprite->spritesRelativePos, pMetasprite->spriteCount, METASPRITE_MAX_SPRITE_COUNT, spriteSelection, "Sprite", selectionLocked, DrawSpriteListPreview);
+	DrawGenericEditableList<Sprite>(pMetasprite->GetSprites(), pMetasprite->spriteCount, spriteSelection, "Sprite", selectionLocked, DrawSpriteListPreview);
 
 	ImGui::EndChild();
 
@@ -2493,7 +2495,7 @@ static void DrawActorEditor(EditedAsset& asset) {
 				ImGui::EndDisabled();
 
 				ImGui::BeginChild("Anim list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-				DrawGenericEditableList<AnimationHandle>(pPrototype->animations, pPrototype->animCount, ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT, selectedAnims, "Animation");
+				DrawGenericEditableList<AnimationHandle>(pPrototype->animations, pPrototype->animCount, selectedAnims, "Animation");
 
 				ImGui::EndChild();
 
