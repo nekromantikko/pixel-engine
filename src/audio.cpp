@@ -351,7 +351,7 @@ static bool TickSFX(u32 channel) {
 
     bool keepReading = true;
     while (keepReading) {
-        const SoundOperation* operation = Audio::GetSoundData(pSound) + pos;
+        const SoundOperation* operation = pSound->GetData() + pos;
 
         keepReading = ProcessOp(operation, p0, p1, tri, noise);
 
@@ -381,7 +381,7 @@ static bool TickMusic() {
 
     bool keepReading = true;
     while (keepReading) {
-        const SoundOperation* operation = Audio::GetSoundData(pSound) + pContext->musicPos;
+        const SoundOperation* operation = pSound->GetData() + pContext->musicPos;
 
         keepReading = ProcessOp(operation, p0, p1, tri, noise);
 
@@ -718,10 +718,6 @@ namespace Audio {
         default:
             break;
         }
-    }
-
-    SoundOperation* Audio::GetSoundData(const Sound* pSound) {
-        return (SoundOperation*)((u8*)pSound + pSound->dataOffset);
     }
 
     void Audio::PlayMusic(SoundHandle musicHandle, bool loop) {

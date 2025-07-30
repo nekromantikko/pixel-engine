@@ -26,21 +26,31 @@ struct RoomActor {
     glm::vec2 position;
 };
 
-struct RoomTemplateHeader {
+struct RoomTemplate {
     u8 width;
     u8 height;
     u32 mapTileOffset;
-    Tilemap tilemapHeader;
+    Tilemap tilemap;
     u32 actorCount;
     u32 actorOffset;
+
+	inline u32 GetMapTileCount() const {
+		return width * height * 2; // 2 for each screen
+	}
+
+	inline BgTile* GetMapTiles() const {
+		return (BgTile*)((u8*)this + mapTileOffset);
+	}
+
+	inline RoomActor* GetActors() const {
+		return (RoomActor*)((u8*)this + actorOffset);
+	}
 };
 
 namespace Assets {
     void InitRoomTemplate(u64 id, void* data);
 
-    u32 GetRoomTemplateSize(const RoomTemplateHeader* pHeader = nullptr);
-    BgTile* GetRoomTemplateMapTiles(const RoomTemplateHeader* pHeader);
-    RoomActor* GetRoomTemplateActors(const RoomTemplateHeader* pHeader);
+    u32 GetRoomTemplateSize(const RoomTemplate* pHeader = nullptr);
 }
 
 #ifdef EDITOR
@@ -60,24 +70,24 @@ inline void to_json(nlohmann::json& j, const RoomActor& actor) {
 	j["y"] = actor.position.y;
 }
 
-inline void from_json(const nlohmann::json& j, RoomTemplateHeader& room) {
+inline void from_json(const nlohmann::json& j, RoomTemplate& room) {
 	// TODO
 }
 
-inline void to_json(nlohmann::json& j, const RoomTemplateHeader& room) {
+inline void to_json(nlohmann::json& j, const RoomTemplate& room) {
 	j["width"] = room.width;
 	j["height"] = room.height;
 
 	j["map_tiles"] = nlohmann::json::array();
-	BgTile* mapTiles = Assets::GetRoomTemplateMapTiles(&room);
+	BgTile* mapTiles = room.GetMapTiles();
 	const u32 mapTileCount = ROOM_MAP_TILE_COUNT;
 	for (u32 i = 0; i < mapTileCount; ++i) {
 		j["map_tiles"].push_back(mapTiles[i]);
 	}
 
-	j["tilemap"] = room.tilemapHeader;
+	j["tilemap"] = room.tilemap;
 
-	RoomActor* actors = Assets::GetRoomTemplateActors(&room);
+	RoomActor* actors = room.GetActors();
 	j["actors"] = nlohmann::json::array();
 	for (u32 i = 0; i < room.actorCount; ++i) {
 		j["actors"].push_back(actors[i]);

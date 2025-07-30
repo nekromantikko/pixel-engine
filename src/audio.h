@@ -32,6 +32,10 @@ struct Sound {
     u16 type;
     u16 sfxChannel;
     u32 dataOffset;
+
+	inline SoundOperation* GetData() const {
+		return (SoundOperation*)((u8*)this + dataOffset);
+	}
 };
 
 namespace Audio {
@@ -41,8 +45,6 @@ namespace Audio {
     void DestroyContext();
 
     void WriteChannel(u32 channel, u8 address, u8 data);
-
-    SoundOperation* GetSoundData(const Sound* pSound);
 
     void PlayMusic(SoundHandle musicHandle, bool loop);
     void StopMusic();
