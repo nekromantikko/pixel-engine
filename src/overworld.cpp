@@ -8,7 +8,7 @@ void Assets::InitOverworld(u64 id, void* data) {
     Tilemap tilemapHeader{
         .width = OVERWORLD_WIDTH_METATILES,
         .height = OVERWORLD_HEIGHT_METATILES,
-        .tilesetId = TilesetHandle::Null(),
+        .tilesetHandle = TilesetHandle::Null(),
         .tilesOffset = tilesOffset - offsetof(Overworld, tilemapHeader),
     };
 

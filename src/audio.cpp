@@ -338,7 +338,7 @@ static bool TickSFX(u32 channel) {
     const SoundHandle soundHandle = pContext->sfx[channel];
     u32& pos = pContext->sfxPos[channel];
 
-    const Sound* pSound = (Sound*)AssetManager::GetAsset(soundHandle);
+    const Sound* pSound = AssetManager::GetAsset(soundHandle);
     if (pSound == nullptr) {
         pContext->sfx[channel] = SoundHandle::Null();
         return false;
@@ -368,7 +368,7 @@ static bool TickMusic() {
         return false;
     }
 
-    const Sound* pSound = (Sound*)AssetManager::GetAsset(pContext->music);
+    const Sound* pSound = AssetManager::GetAsset(pContext->music);
     if (!pSound) {
         pContext->music = SoundHandle::Null();
         return false;
@@ -721,7 +721,7 @@ namespace Audio {
     }
 
     void Audio::PlayMusic(SoundHandle musicHandle, bool loop) {
-        const Sound* pSound = (Sound*)AssetManager::GetAsset(musicHandle);
+        const Sound* pSound = AssetManager::GetAsset(musicHandle);
         if (!pSound || pSound->type != SOUND_TYPE_MUSIC || pSound->length == 0) {
             return;
         }
@@ -737,7 +737,7 @@ namespace Audio {
     }
 
     void Audio::PlaySFX(SoundHandle soundHandle) {
-        const Sound* pSound = (Sound*)AssetManager::GetAsset(soundHandle);
+        const Sound* pSound = AssetManager::GetAsset(soundHandle);
         if (!pSound || pSound->type != SOUND_TYPE_SFX || pSound->length == 0) {
             return;
         }

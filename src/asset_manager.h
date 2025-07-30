@@ -33,10 +33,11 @@ namespace AssetManager {
 	bool RepackArchive();
 
 	u64 CreateAsset(AssetType type, u32 size, const char* name);
-	template <AssetType T>
-	AssetHandle<T> CreateAsset(u32 size, const char* name) {
-		const u64 id = CreateAsset(T, size, name);
-		return AssetHandle<T>{ id };
+	template <IsAssetHandle HandleType>
+	HandleType CreateAsset(u32 size, const char* name) {
+		constexpr AssetType assetType = AssetHandleTraits<HandleType>::asset_type::value;
+		const u64 id = CreateAsset(assetType, size, name);
+		return HandleType{ id };
 	}
 
 	void* AddAsset(u64 id, AssetType type, u32 size, const char* name, void* data = nullptr);
@@ -45,9 +46,11 @@ namespace AssetManager {
 	bool ResizeAsset(u64 id, u32 newSize);
 
 	void* GetAsset(u64 id, AssetType type);
-	template <AssetType T>
-	void* GetAsset(const AssetHandle<T>& handle) {
-		return GetAsset(handle.id, T);
+	template <IsAssetHandle HandleType>
+	typename AssetHandleTraits<HandleType>::data_type* GetAsset(const HandleType& handle) {
+		constexpr AssetType assetType = AssetHandleTraits<HandleType>::asset_type::value;
+		using T = typename AssetHandleTraits<HandleType>::data_type;
+		return (T*)GetAsset(handle.id, assetType);
 	}
 
 	AssetEntry* GetAssetInfo(u64 id);

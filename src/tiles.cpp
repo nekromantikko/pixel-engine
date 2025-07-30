@@ -83,10 +83,10 @@ bool Tiles::SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& 
 }
 #pragma endregion
 
-Tileset* Assets::GetTilemapTileset(const Tilemap* pHeader) {
-	if (!pHeader) {
+Tileset* Assets::GetTilemapTileset(const Tilemap* pTilemap) {
+	if (!pTilemap) {
 		return nullptr;
 	}
 
-	return (Tileset*)AssetManager::GetAsset(pHeader->tilesetId);
+	return AssetManager::GetAsset(pTilemap->tilesetHandle);
 }

@@ -49,7 +49,7 @@ struct Actor {
 
 	ActorState state;
 
-	ActorPrototypeHandle prototypeId;
+	ActorPrototypeHandle prototypeHandle;
 };
 
 typedef PoolHandle<Actor> ActorHandle;
@@ -67,7 +67,7 @@ struct Animation;
 
 namespace Game {
 	Actor* SpawnActor(const RoomActor* pTemplate, u32 roomId);
-	Actor* SpawnActor(const ActorPrototypeHandle& prototypeId, const glm::vec2& position, const glm::vec2& velocity = {0.0f, 0.0f});
+	Actor* SpawnActor(const ActorPrototypeHandle& prototypeHandle, const glm::vec2& position, const glm::vec2& velocity = {0.0f, 0.0f});
 	void ClearActors();
 
 	const ActorPrototype* GetActorPrototype(const Actor* pActor);
