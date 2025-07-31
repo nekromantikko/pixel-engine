@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include "rendering.h"
 #include "audio.h"
+#include "tiles.h"
 
 static constexpr u64 ASSET_FILE_FORMAT_VERSION = 1;
 
@@ -38,6 +39,64 @@ static void to_json(nlohmann::json& j, const Sprite& sprite) {
 	j["priority"] = sprite.priority != 0;
 	j["flip_horizontal"] = sprite.flipHorizontal != 0;
 	j["flip_vertical"] = sprite.flipVertical != 0;
+}
+
+NLOHMANN_JSON_SERIALIZE_ENUM(TilesetTileType, {
+	{ TILE_EMPTY, "empty" },
+	{ TILE_SOLID, "solid" }
+})
+
+static void from_json(const nlohmann::json& j, BgTile& tile) {
+	tile.tileId = j.at("tile_id").get<u16>();
+	tile.palette = j.at("palette").get<u16>();
+	tile.flipHorizontal = j.at("flip_horizontal").get<bool>();
+	tile.flipVertical = j.at("flip_vertical").get<bool>();
+	tile.unused = 0; // Unused bit set to 0
+}
+
+static void to_json(nlohmann::json& j, const BgTile& tile) {
+	j["tile_id"] = tile.tileId;
+	j["palette"] = tile.palette;
+	j["flip_horizontal"] = tile.flipHorizontal != 0;
+	j["flip_vertical"] = tile.flipVertical != 0;
+}
+
+static void from_json(const nlohmann::json& j, Metatile& metatile) {
+	for (u32 i = 0; i < METATILE_TILE_COUNT; ++i) {
+		metatile.tiles[i] = j.at("tiles").at(i).get<BgTile>();
+	}
+}
+
+static void to_json(nlohmann::json& j, const Metatile& metatile) {
+	j["tiles"] = nlohmann::json::array();
+	for (u32 i = 0; i < METATILE_TILE_COUNT; ++i) {
+		j["tiles"].push_back(metatile.tiles[i]);
+	}
+}
+
+static void from_json(const nlohmann::json& j, TilesetTile& tile) {
+	TilesetTileType type;
+	j.at("type").get_to(type);
+	tile.type = (s32)type;
+	j.at("metatile").get_to(tile.metatile);
+}
+
+static void to_json(nlohmann::json& j, const TilesetTile& tile) {
+	j["type"] = (TilesetTileType)tile.type;
+	j["metatile"] = tile.metatile;
+}
+
+static void from_json(const nlohmann::json& j, Tileset& tileset) {
+	for (u32 i = 0; i < TILESET_SIZE; ++i) {
+		tileset.tiles[i] = j.at("tiles").at(i).get<TilesetTile>();
+	}
+}
+
+inline void to_json(nlohmann::json& j, const Tileset& tileset) {
+	j["tiles"] = nlohmann::json::array();
+	for (u32 i = 0; i < TILESET_SIZE; ++i) {
+		j["tiles"].push_back(tileset.tiles[i]);
+	}
 }
 
 #pragma endregion
@@ -286,6 +345,35 @@ static bool SaveMetaspriteToFile(const std::filesystem::path& path, const void* 
 	return false;
 }
 
+static bool LoadTilesetFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
+	if (!pOutData) {
+		size = sizeof(Tileset);
+		return true; // Just return size if no output data is provided
+	}
+	
+	if (!std::filesystem::exists(path)) {
+		DEBUG_ERROR("File (%s) does not exist\n", path.string().c_str());
+		return false;
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "rb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file\n");
+		return false;
+	}
+
+	const nlohmann::json json = nlohmann::json::parse(pFile);
+	json.get_to(*(Tileset*)pOutData);
+
+	fclose(pFile);
+	return true;
+}
+
+static bool SaveTilesetToFile(const std::filesystem::path& path, const void* pData) {
+	// TODO
+	return false;
+}
+
 #pragma endregion
 
 std::filesystem::path Editor::Assets::GetAssetMetadataPath(const std::filesystem::path& path) {
@@ -391,6 +479,9 @@ bool Editor::Assets::LoadAssetFromFile(const std::filesystem::path& path, AssetT
 	case (ASSET_TYPE_METASPRITE): {
 		return LoadMetaspriteFromFile(path, metadata, size, pOutData);
 	}
+	case (ASSET_TYPE_TILESET): {
+		return LoadTilesetFromFile(path, metadata, size, pOutData);
+	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);
 		return false;
@@ -409,6 +500,9 @@ bool Editor::Assets::SaveAssetToFile(const std::filesystem::path& path, AssetTyp
 	}
 	case (ASSET_TYPE_METASPRITE): {
 		return SaveMetaspriteToFile(path, pData);
+	}
+	case (ASSET_TYPE_TILESET): {
+		return SaveTilesetToFile(path, pData);
 	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);

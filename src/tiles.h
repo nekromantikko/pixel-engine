@@ -54,63 +54,9 @@ struct Tilemap {
 #ifdef EDITOR
 #include <nlohmann/json.hpp>
 
-NLOHMANN_JSON_SERIALIZE_ENUM(TilesetTileType, {
-	{ TILE_EMPTY, "empty" },
-	{ TILE_SOLID, "solid" }
-})
 
-inline void from_json(const nlohmann::json& j, BgTile& tile) {
-	tile.tileId = j.at("tile_id").get<u16>();
-	tile.palette = j.at("palette").get<u16>();
-	tile.flipHorizontal = j.at("flip_horizontal").get<bool>();
-	tile.flipVertical = j.at("flip_vertical").get<bool>();
-	tile.unused = 0; // Unused bit set to 0
-}
 
-inline void to_json(nlohmann::json& j, const BgTile& tile) {
-	j["tile_id"] = tile.tileId;
-	j["palette"] = tile.palette;
-	j["flip_horizontal"] = tile.flipHorizontal != 0;
-	j["flip_vertical"] = tile.flipVertical != 0;
-}
 
-inline void from_json(const nlohmann::json& j, Metatile& metatile) {
-	for (u32 i = 0; i < METATILE_TILE_COUNT; ++i) {
-		metatile.tiles[i] = j.at("tiles").at(i).get<BgTile>();
-	}
-}
-
-inline void to_json(nlohmann::json& j, const Metatile& metatile) {
-	j["tiles"] = nlohmann::json::array();
-	for (u32 i = 0; i < METATILE_TILE_COUNT; ++i) {
-		j["tiles"].push_back(metatile.tiles[i]);
-	}
-}
-
-inline void from_json(const nlohmann::json& j, TilesetTile& tile) {
-	TilesetTileType type;
-	j.at("type").get_to(type);
-	tile.type = (s32)type;
-	j.at("metatile").get_to(tile.metatile);
-}
-
-inline void to_json(nlohmann::json& j, const TilesetTile& tile) {
-	j["type"] = (TilesetTileType)tile.type;
-	j["metatile"] = tile.metatile;
-}
-
-inline void from_json(const nlohmann::json& j, Tileset& tileset) {
-	for (u32 i = 0; i < TILESET_SIZE; ++i) {
-		tileset.tiles[i] = j.at("tiles").at(i).get<TilesetTile>();
-	}
-}
-
-inline void to_json(nlohmann::json& j, const Tileset& tileset) {
-	j["tiles"] = nlohmann::json::array();
-	for (u32 i = 0; i < TILESET_SIZE; ++i) {
-		j["tiles"].push_back(tileset.tiles[i]);
-	}
-}
 
 inline void to_json(nlohmann::json& j, const Tilemap& tilemap) {
 	j["width"] = tilemap.width;
