@@ -1,6 +1,7 @@
 #include "collision.h"
 #include "rendering.h"
 #include "tiles.h"
+#include "asset_manager.h"
 #include <stdio.h>
 #include <gtc/epsilon.hpp>
 
@@ -16,7 +17,12 @@ namespace Collision {
 		outHit.distance = glm::abs(dx);
 		outHit.location = glm::vec2{ pos.x + dx, pos.y };
 
-		if (pTilemap == nullptr) {
+		if (!pTilemap) {
+			return;
+		}
+
+		const Tileset* pTileset = AssetManager::GetAsset(pTilemap->tilesetHandle);
+		if (!pTileset) {
 			return;
 		}
 
@@ -39,14 +45,16 @@ namespace Collision {
 
 		while (!outHit.blockingHit && dist < glm::abs(dx)) {
 			for (s32 i = 0; i <= yTileDelta; i++) {
-				glm::ivec2 tileCoord = glm::ivec2{ xTile, yTopTile + i };
-
-				const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tileCoord);
-				if (!tile) {
+				const glm::ivec2 metatileCoord = glm::ivec2{ xTile, yTopTile + i };
+				const s32 tileIndex = pTilemap->GetTilesetTileIndex(metatileCoord);
+				
+				if (tileIndex < 0) {
 					continue;
 				}
 
-				if (tile->type == TILE_SOLID) {
+				const TilesetTile& tile = pTileset->tiles[tileIndex];
+
+				if (tile.type == TILE_SOLID) {
 					outHit.blockingHit = true;
 					outHit.startPenetrating = IsNearlyZero(dist);
 					outHit.distance = dist;
@@ -54,7 +62,7 @@ namespace Collision {
 					outHit.impactPoint = glm::vec2{ xSide, pos.y };
 					outHit.location = glm::vec2{ pos.x + glm::sign(dx) * dist, pos.y };
 					outHit.normal = glm::vec2{ glm::sign(dx), 0 };
-					outHit.tileType = tile->type;
+					outHit.tileType = tile.type;
 
 					break;
 				}
@@ -72,7 +80,12 @@ namespace Collision {
 		outHit.distance = glm::abs(dy);
 		outHit.location = glm::vec2{ pos.x, pos.y + dy };
 
-		if (pTilemap == nullptr) {
+		if (!pTilemap) {
+			return;
+		}
+
+		const Tileset* pTileset = AssetManager::GetAsset(pTilemap->tilesetHandle);
+		if (!pTileset) {
 			return;
 		}
 
@@ -95,14 +108,16 @@ namespace Collision {
 
 		while (!outHit.blockingHit && dist < glm::abs(dy)) {
 			for (s32 i = 0; i <= xTileDelta; i++) {
-				glm::ivec2 metatileCoord = glm::ivec2{ xLeftTile + i, yTile };
+				const glm::ivec2 metatileCoord = glm::ivec2{ xLeftTile + i, yTile };
 
-				const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, metatileCoord);
-				if (!tile) {
+				const s32 tileIndex = pTilemap->GetTilesetTileIndex(metatileCoord);
+				if (tileIndex < 0) {
 					continue;
 				}
+
+				const TilesetTile& tile = pTileset->tiles[tileIndex];
 				
-				if (tile->type == TILE_SOLID) {
+				if (tile.type == TILE_SOLID) {
 					outHit.blockingHit = true;
 					outHit.startPenetrating = IsNearlyZero(dist);
 					outHit.distance = dist;
@@ -110,7 +125,7 @@ namespace Collision {
 					outHit.impactPoint = glm::vec2{ pos.x, ySide };
 					outHit.location = glm::vec2{ pos.x, pos.y + glm::sign(dy) * dist };
 					outHit.normal = glm::vec2{ 0, glm::sign(dy) };
-					outHit.tileType = tile->type;
+					outHit.tileType = tile.type;
 
 					break;
 				}

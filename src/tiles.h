@@ -43,22 +43,13 @@ struct Tilemap {
 	inline u8* GetTileData() const {
 		return (u8*)this + tilesOffset;
 	}
+
+	bool PointInBounds(const glm::vec2& pos) const;
+	s32 GetTileIndex(const glm::ivec2& pos) const;
+	s32 GetTilesetTileIndex(const glm::ivec2& pos) const;
+	bool SetTilesetTile(s32 tileIndex, const s32& tilesetTileIndex) const;
+	bool SetTilesetTile(const glm::ivec2& pos, const s32& tilesetTileIndex) const;
 };
-
-namespace Tiles {
-	// New API
-	bool PointInMapBounds(const Tilemap* pTilemap, const glm::vec2& pos);
-	s32 GetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos);
-	s32 GetTilesetTileIndex(const Tilemap* pTilemap, const glm::ivec2& pos);
-	const TilesetTile* GetTilesetTile(const Tilemap* pTilemap, const s32& tilesetTileIndex);
-	const TilesetTile* GetTilesetTile(const Tilemap* pTilemap, const glm::ivec2& pos);
-	bool SetTilesetTile(Tilemap* pTilemap, s32 tileIndex, const s32& tilesetTileIndex);
-	bool SetTilesetTile(Tilemap* pTilemap, const glm::ivec2& pos, const s32& tilesetTileIndex);
-}
-
-namespace Assets {
-	Tileset* GetTilemapTileset(const Tilemap* pHeader);
-}
 
 #ifdef EDITOR
 #include <nlohmann/json.hpp>
