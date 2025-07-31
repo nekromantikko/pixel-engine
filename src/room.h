@@ -53,7 +53,7 @@ namespace Assets {
     u32 GetRoomTemplateSize(const RoomTemplate* pHeader = nullptr);
 }
 
-#ifdef EDITOR
+/*#ifdef EDITOR
 #include <nlohmann/json.hpp>
 
 inline void from_json(const nlohmann::json& j, RoomActor& actor) {
@@ -94,5 +94,5 @@ inline void to_json(nlohmann::json& j, const RoomTemplate& room) {
 	}
 }
 
-#endif
+#endif*/
 
