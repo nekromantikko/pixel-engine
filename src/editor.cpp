@@ -484,7 +484,7 @@ static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, c
 	constexpr r32 invBgColorIndex = 1.0f / (PALETTE_COUNT * PALETTE_COLOR_COUNT);
 	drawList->AddImage(GetTextureID(pContext->pPaletteTexture), pos, ImVec2(pos.x + metatileSize.x * scale, pos.y + metatileSize.y * scale), ImVec2(0, 0), ImVec2(invBgColorIndex, 1.0f));
 
-	const Tileset* pTileset = Assets::GetTilemapTileset(pTilemap);
+	const Tileset* pTileset = AssetManager::GetAsset(pTilemap->tilesetHandle);
 	if (!pTileset) {
 		return;
 	}
@@ -1411,7 +1411,7 @@ static bool DrawTilemapEditor(Tilemap* pTilemap, ImVec2 topLeft, r32 renderScale
 						u32 clipboardIndex = y * selectionWidth + x;
 
 						const glm::ivec2 metatileWorldPos = { selectionTopLeft.x + x, selectionTopLeft.y + y };
-						const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, metatileWorldPos);
+						const s32 tilesetIndex = pTilemap->GetTilesetTileIndex(metatileWorldPos);
 						clipboard.clipboard[clipboardIndex] = tilesetIndex;
 					}
 				}
@@ -1431,14 +1431,14 @@ static bool DrawTilemapEditor(Tilemap* pTilemap, ImVec2 topLeft, r32 renderScale
 					const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
 					const u8 metatileIndex = clipboard.clipboard[clipboardIndex];
 
-					const Tileset* pTileset = Assets::GetTilemapTileset(pTilemap);
+					const Tileset* pTileset = AssetManager::GetAsset(pTilemap->tilesetHandle);
 					if (pTileset) {
 						const Metatile& metatile = pTileset->tiles[metatileIndex].metatile;
 						DrawMetatile(metatile, metatileInPixelCoords, tileDrawSize, IM_COL32(255, 255, 255, 127));
 
 						// Paint metatiles
 						if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
-							Tiles::SetTilesetTile(pTilemap, metatileWorldPos, metatileIndex);
+							pTilemap->SetTilesetTile(metatileWorldPos, metatileIndex);
 						}
 					}
 				}

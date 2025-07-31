@@ -31,11 +31,12 @@ static void CopyLevelTileToNametable(Nametable* pNametables, const Tilemap* pTil
     const u32 nametableIndex = Rendering::Util::GetNametableIndexFromMetatilePos(worldPos);
     const glm::ivec2 nametableOffset = Rendering::Util::GetNametableOffsetFromMetatilePos(worldPos);
 
-    const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, worldPos);
-    const TilesetTile* tile = Tiles::GetTilesetTile(pTilemap, tilesetIndex);
+    const Tileset* pTileset = AssetManager::GetAsset(pTilemap->tilesetHandle);
 
-    const Metatile& metatile = tile->metatile;
-    const Tileset* pTileset = Assets::GetTilemapTileset(pTilemap);
+    const s32 tilesetIndex = pTilemap->GetTilesetTileIndex(worldPos);
+    const TilesetTile& tile = pTileset->tiles[tilesetIndex];
+
+    const Metatile& metatile = tile.metatile;
     Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile);
 }
 
