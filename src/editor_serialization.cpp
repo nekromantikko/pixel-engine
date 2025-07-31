@@ -3,6 +3,7 @@
 #include "rendering.h"
 #include "audio.h"
 #include "tiles.h"
+#include "animation.h"
 
 static constexpr u64 ASSET_FILE_FORMAT_VERSION = 1;
 
@@ -97,6 +98,14 @@ inline void to_json(nlohmann::json& j, const Tileset& tileset) {
 	for (u32 i = 0; i < TILESET_SIZE; ++i) {
 		j["tiles"].push_back(tileset.tiles[i]);
 	}
+}
+
+static void from_json(const nlohmann::json& j, AnimationFrame& frame) {
+	j.at("metasprite_id").get_to(frame.metaspriteId.id);
+}
+
+static void to_json(nlohmann::json& j, const AnimationFrame& frame) {
+	j["metasprite_id"] = frame.metaspriteId.id;
 }
 
 #pragma endregion
@@ -321,7 +330,7 @@ static bool LoadMetaspriteFromFile(const std::filesystem::path& path, const nloh
 
 	const nlohmann::json json = nlohmann::json::parse(pFile);
 	const nlohmann::json spritesJson = json["sprites"];
-	u32 spriteCount = spritesJson != nullptr && spritesJson.is_array() ? spritesJson.size() : 0;
+	const u32 spriteCount = spritesJson != nullptr && spritesJson.is_array() ? spritesJson.size() : 0;
 	size = sizeof(Metasprite) + spriteCount * sizeof(Sprite);
 
 	if (pOutData) {
@@ -370,6 +379,45 @@ static bool LoadTilesetFromFile(const std::filesystem::path& path, const nlohman
 }
 
 static bool SaveTilesetToFile(const std::filesystem::path& path, const void* pData) {
+	// TODO
+	return false;
+}
+
+static bool LoadAnimationFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
+	if (!std::filesystem::exists(path)) {
+		DEBUG_ERROR("File (%s) does not exist\n", path.string().c_str());
+		return false;
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "rb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file\n");
+		return false;
+	}
+
+	const nlohmann::json json = nlohmann::json::parse(pFile);
+	const nlohmann::json framesJson = json["frames"];
+	const u32 frameCount = framesJson != nullptr && framesJson.is_array() ? framesJson.size() : 0;
+	size = sizeof(Animation) + frameCount * sizeof(AnimationFrame);
+
+	if (pOutData) {
+		Animation* pAnim = (Animation*)pOutData;
+		pAnim->frameLength = json["frame_length"].get<u8>();
+		pAnim->loopPoint = json["loop_point"].get<s16>();
+		pAnim->frameCount = frameCount;
+		pAnim->framesOffset = sizeof(Animation);
+
+		AnimationFrame* pFrames = pAnim->GetFrames();
+		for (u32 i = 0; i < frameCount; i++) {
+			framesJson[i].get_to(pFrames[i]);
+		}
+	}
+
+	fclose(pFile);
+	return true;
+}
+
+static bool SaveAnimationToFile(const std::filesystem::path& path, const void* pData) {
 	// TODO
 	return false;
 }
@@ -482,6 +530,9 @@ bool Editor::Assets::LoadAssetFromFile(const std::filesystem::path& path, AssetT
 	case (ASSET_TYPE_TILESET): {
 		return LoadTilesetFromFile(path, metadata, size, pOutData);
 	}
+	case (ASSET_TYPE_ANIMATION): {
+		return LoadAnimationFromFile(path, metadata, size, pOutData);
+	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);
 		return false;
@@ -503,6 +554,9 @@ bool Editor::Assets::SaveAssetToFile(const std::filesystem::path& path, AssetTyp
 	}
 	case (ASSET_TYPE_TILESET): {
 		return SaveTilesetToFile(path, pData);
+	}
+	case (ASSET_TYPE_ANIMATION): {
+		return SaveAnimationToFile(path, pData);
 	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);
