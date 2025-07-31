@@ -562,7 +562,7 @@ static AABB GetActorBoundingBox(const RoomActor* pActor) {
 		return result;
 	}
 
-	const AnimationFrame& frame = pAnimation->frames[0];
+	const AnimationFrame& frame = pAnimation->GetFrames()[0];
 	const Metasprite* pMetasprite = AssetManager::GetAsset(frame.metaspriteId);
 
 	result.x1 = std::numeric_limits<r32>::max();
@@ -592,7 +592,7 @@ static void DrawActor(const ActorPrototype* pPrototype, const ImVec2& origin, r3
 		return;
 	}
 
-	const AnimationFrame& frame = pAnimation->frames[frameIndex];
+	const AnimationFrame& frame = pAnimation->GetFrames()[frameIndex];
 	const Metasprite* pMetasprite = AssetManager::GetAsset(frame.metaspriteId);
 	DrawMetasprite(pMetasprite, origin, renderScale, color);
 }
@@ -3566,7 +3566,7 @@ static void DrawAssetBrowser() {
 static void DrawAnimationPreview(const Animation* pAnimation, s32 frameIndex, r32 size) {
 	constexpr s32 gridSizeTiles = 8;
 
-	const AnimationFrame& frame = pAnimation->frames[frameIndex];
+	const AnimationFrame& frame = pAnimation->GetFrames()[frameIndex];
 
 	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
 	const r32 gridStepPixels = TILE_DIM_PIXELS * renderScale;
@@ -3599,7 +3599,8 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	if (ImGui::InputScalar("Frame count", ImGuiDataType_U16, &pAnimation->frameCount, &step)) {
 		asset.dirty = true;
 	}
-	pAnimation->frameCount = glm::clamp(pAnimation->frameCount, u16(0), u16(ANIMATION_MAX_FRAME_COUNT));
+	// TODO: Resize asset if frame count changes
+	// pAnimation->frameCount = glm::clamp(pAnimation->frameCount, u16(0), u16(ANIMATION_MAX_FRAME_COUNT));
 
 	if (ImGui::InputScalar("Loop point", ImGuiDataType_S16, &pAnimation->loopPoint, &step)) {
 		asset.dirty = true;
@@ -3701,7 +3702,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	for (u32 i = 0; i < pAnimation->frameCount; i++) {
 		const r32 x = i * frameWidth + topLeft.x;
 
-		AnimationFrame& frame = pAnimation->frames[i];
+		AnimationFrame& frame = pAnimation->GetFrames()[i];
 
 		const ImVec2 frameMin(x, topLeft.y + timelineHeight + style.ItemSpacing.y);
 		const ImVec2 frameMax(frameMin.x + frameBoxSize, frameMin.y + frameBoxSize);
