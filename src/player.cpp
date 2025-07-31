@@ -682,7 +682,17 @@ static void UpdatePlayerOverworld(Actor* pPlayer, const ActorPrototype* pPrototy
             state.facingDir = inputDir;
             const glm::ivec2 targetPos = glm::ivec2(pPlayer->position) + state.facingDir;
             pPlayer->velocity = glm::vec2(state.facingDir) * movementStepLength;
-            const TilesetTile* pNextTile = Tiles::GetTilesetTile(Game::GetCurrentTilemap(), targetPos);
+
+			const Tilemap* pTilemap = Game::GetCurrentTilemap();
+			const Tileset* pTileset = AssetManager::GetAsset(pTilemap->tilesetHandle);
+
+			if (!pTilemap || !pTileset) {
+				return;
+			}
+
+			const s32 targetTileIndex = pTilemap->GetTilesetTileIndex(targetPos);
+			const TilesetTile* pNextTile = targetTileIndex >= 0 ? &pTileset->tiles[targetTileIndex] : nullptr;
+
             if (!pNextTile || pNextTile->type != TILE_SOLID) {
                 state.movementCounter = movementSteps;
             }
