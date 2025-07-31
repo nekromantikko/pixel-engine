@@ -531,7 +531,7 @@ bool Game::DrawActorDefault(const Actor* pActor, const ActorPrototype* pPrototyp
 	glm::i16vec2 drawPos = Game::Rendering::WorldPosToScreenPixels(pActor->position) + drawState.pixelOffset;
 	const s32 customPalette = drawState.useCustomPalette ? drawState.palette : -1;
 
-	const AnimationFrame& frame = pCurrentAnim->frames[drawState.frameIndex];
+	const AnimationFrame& frame = pCurrentAnim->GetFrames()[drawState.frameIndex];
 
 	return Game::Rendering::DrawMetasprite(drawState.layer, frame.metaspriteId, drawPos, drawState.hFlip, drawState.vFlip, customPalette);
 }
