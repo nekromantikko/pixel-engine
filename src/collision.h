@@ -6,18 +6,23 @@
 
 struct Tilemap;
 
-union AABB {
-    struct {
-        r32 x1, y1, x2, y2;
-    };
-    struct {
+struct AABB {
+    union {
+        struct {
+            r32 x1, y1;
+        };
         glm::vec2 min;
+    };
+    union {
+        struct {
+            r32 x2, y2;
+        };
         glm::vec2 max;
     };
 
     AABB() : min{}, max{} {}
     AABB(r32 x1, r32 x2, r32 y1, r32 y2) : x1(x1), x2(x2), y1(y1), y2(y2) {}
-    AABB(glm::vec2 min, glm::vec2 max) : min(min), max(max) {}
+    AABB(const glm::vec2& min, const glm::vec2& max) : min(min), max(max) {}
 };
 
 // Blatant plagiarism from unreal engine
