@@ -5,6 +5,7 @@
 #include "tiles.h"
 #include "animation.h"
 #include "actor_prototypes.h"
+#include "room.h"
 
 static constexpr u64 ASSET_FILE_FORMAT_VERSION = 1;
 
@@ -131,6 +132,20 @@ static void from_json(const nlohmann::json& j, AABB& aabb) {
 	aabb.min.y = j.at("min_y").get<r32>();
 	aabb.max.x = j.at("max_x").get<r32>();
 	aabb.max.y = j.at("max_y").get<r32>();
+}
+
+inline void from_json(const nlohmann::json& j, RoomActor& actor) {
+	j.at("id").get_to(actor.id);
+	j.at("prototype_id").get_to(actor.prototypeHandle.id);
+	j.at("x").get_to(actor.position.x);
+	j.at("y").get_to(actor.position.y);
+}
+
+inline void to_json(nlohmann::json& j, const RoomActor& actor) {
+	j["id"] = actor.id;
+	j["prototype_id"] = actor.prototypeHandle.id;
+	j["x"] = actor.position.x;
+	j["y"] = actor.position.y;
 }
 
 #pragma endregion
@@ -629,6 +644,145 @@ static bool SaveActorPrototypeToFile(const std::filesystem::path& path, const vo
 	return false;
 }
 
+static bool ValidateTilemapJson(const nlohmann::json& json, u32& outWidth, u32& outHeight, u32& outTileCount) {
+	if (!json.is_object()) {
+		DEBUG_ERROR("Tilemap JSON is not an object\n");
+		return false;
+	}
+
+	if (!json.contains("width") || !json.contains("height") || !json.contains("tiles")) {
+		DEBUG_ERROR("Tilemap JSON is missing required fields\n");
+		return false;
+	}
+
+	outWidth = json["width"].get<u32>();
+	outHeight = json["height"].get<u32>();
+	const nlohmann::json& tilesJson = json["tiles"];
+	if (!tilesJson.is_array()) {
+		DEBUG_ERROR("Tilemap 'tiles' field is not an array\n");
+		return false;
+	}
+
+	outTileCount = tilesJson.size();
+
+	if (outTileCount != outWidth * outHeight) {
+		DEBUG_ERROR("Tilemap tile count (%u) does not match width (%u) * height (%u)\n", outTileCount, outWidth, outHeight);
+		return false;
+	}
+
+	return true;
+}
+
+static bool LoadRoomTemplateFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
+	if (!std::filesystem::exists(path)) {
+		DEBUG_ERROR("File (%s) does not exist\n", path.string().c_str());
+		return false;
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "rb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file\n");
+		return false;
+	}
+
+	const nlohmann::json json = nlohmann::json::parse(pFile);
+	const u8 width = json["width"] != nullptr ? json["width"].get<u8>() : 0;
+	const u8 height = json["height"] != nullptr ? json["height"].get<u8>() : 0;
+
+	const nlohmann::json mapTilesJson = json["map_tiles"];
+	const u32 mapTileCount = mapTilesJson != nullptr && mapTilesJson.is_array() ? mapTilesJson.size() : 0;
+	const u32 expectedMapTileCount = ROOM_MAP_TILE_COUNT;
+	if (mapTileCount != expectedMapTileCount) {
+		DEBUG_ERROR("Map tile count (%u) does not expected screen count (%u)\n", mapTileCount, expectedMapTileCount);
+		fclose(pFile);
+		return false;
+	}
+
+	const nlohmann::json actorsJson = json["actors"];
+	const u32 actorCount = actorsJson != nullptr && actorsJson.is_array() ? actorsJson.size() : 0;
+	DEBUG_LOG("Actor count in room template: %u\n", actorCount);
+	const nlohmann::json tilemapJson = json["tilemap"];
+	u32 tilemapWidth, tilemapHeight, tileCount;
+	if (!ValidateTilemapJson(tilemapJson, tilemapWidth, tilemapHeight, tileCount)) {
+		DEBUG_ERROR("Tilemap data is missing or invalid\n");
+		fclose(pFile);
+		return false;
+	}
+
+	const u32 expectedTilemapWidth = ROOM_MAX_DIM_SCREENS * VIEWPORT_WIDTH_METATILES;
+	if (tilemapWidth != expectedTilemapWidth) {
+		DEBUG_ERROR("Tilemap width (%u) does not match expected width (%u)\n", tilemapWidth, expectedTilemapWidth);
+		fclose(pFile);
+		return false;
+	}
+
+	const u32 expectedTilemapHeight = ROOM_MAX_DIM_SCREENS * VIEWPORT_HEIGHT_METATILES;
+	if (tilemapHeight != expectedTilemapHeight) {
+		DEBUG_ERROR("Tilemap height (%u) does not match expected height (%u)\n", tilemapHeight, expectedTilemapHeight);
+		fclose(pFile);
+		return false;
+	}
+
+	const u32 expectedTileCount = ROOM_MAX_SCREEN_COUNT * ROOM_SCREEN_TILE_COUNT;
+	if (tileCount != expectedTileCount) {
+		DEBUG_ERROR("Tilemap tile count (%u) does not match expected tile count (%u)\n", tileCount, expectedTileCount);
+		fclose(pFile);
+		return false;
+	}
+
+	size = sizeof(RoomTemplate) +
+		ROOM_MAX_SCREEN_COUNT * ROOM_SCREEN_TILE_COUNT * sizeof(BgTile) +
+		mapTileCount * sizeof(BgTile) +
+		actorCount * sizeof(RoomActor);
+
+	if (pOutData) {
+		const u32 mapTileOffset = sizeof(RoomTemplate);
+		const u32 tilesOffset = mapTileOffset + ROOM_MAP_TILE_COUNT * sizeof(BgTile);
+		const u32 actorOffset = tilesOffset + tileCount;
+
+		RoomTemplate* pRoom = (RoomTemplate*)pOutData;
+		pRoom->width = width;
+		pRoom->height = height;
+		pRoom->mapTileOffset = mapTileOffset;
+
+		Tilemap& tilemap = pRoom->tilemap;
+		tilemap.width = tilemapWidth;
+		tilemap.height = tilemapHeight;
+		tilemap.tilesetHandle.id = tilemapJson["tileset_id"].get<u64>();
+		tilemap.tilesOffset = tilesOffset - offsetof(RoomTemplate, tilemap);
+
+		pRoom->actorCount = actorCount;
+		pRoom->actorOffset = actorOffset;
+
+		// Load map tiles
+		BgTile* pMapTiles = (BgTile*)((u8*)pRoom + mapTileOffset);
+		for (u32 i = 0; i < mapTileCount && i < mapTilesJson.size(); i++) {
+			mapTilesJson[i].get_to(pMapTiles[i]);
+		}
+
+		// Load room tiles
+		u8* pTiles = (u8*)pRoom + tilesOffset;
+		const nlohmann::json& tilesJson = tilemapJson["tiles"];
+		for (u32 i = 0; i < tileCount && i < tilesJson.size(); i++) {
+			tilesJson[i].get_to(pTiles[i]);
+		}
+
+		// Load actors
+		RoomActor* pActors = (RoomActor*)((u8*)pRoom + actorOffset);
+		for (u32 i = 0; i < actorCount; i++) {
+			actorsJson[i].get_to(pActors[i]);
+		}
+	}
+
+	fclose(pFile);
+	return true;
+}
+
+static bool SaveRoomTemplateToFile(const std::filesystem::path& path, const void* pData) {
+	// TODO
+	return false;
+}
+
 #pragma endregion
 
 std::filesystem::path Editor::Assets::GetAssetMetadataPath(const std::filesystem::path& path) {
@@ -743,6 +897,9 @@ bool Editor::Assets::LoadAssetFromFile(const std::filesystem::path& path, AssetT
 	case (ASSET_TYPE_ACTOR_PROTOTYPE): {
 		return LoadActorPrototypeFromFile(path, metadata, size, pOutData);
 	}
+	case (ASSET_TYPE_ROOM_TEMPLATE): {
+		return LoadRoomTemplateFromFile(path, metadata, size, pOutData);
+	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);
 		return false;
@@ -770,6 +927,9 @@ bool Editor::Assets::SaveAssetToFile(const std::filesystem::path& path, AssetTyp
 	}
 	case (ASSET_TYPE_ACTOR_PROTOTYPE): {
 		return SaveActorPrototypeToFile(path, pData);
+	}
+	case (ASSET_TYPE_ROOM_TEMPLATE): {
+		return SaveRoomTemplateToFile(path, pData);
 	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);
