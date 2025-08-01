@@ -47,12 +47,6 @@ struct RoomTemplate {
 	}
 };
 
-namespace Assets {
-    void InitRoomTemplate(u64 id, void* data);
-
-    u32 GetRoomTemplateSize(const RoomTemplate* pHeader = nullptr);
-}
-
 /*#ifdef EDITOR
 #include <nlohmann/json.hpp>
 

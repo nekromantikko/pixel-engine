@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "editor_actor.h"
+#include "editor_assets.h"
 #include "editor_serialization.h"
 #include "debug.h"
 #include <cassert>
@@ -890,6 +891,7 @@ static bool DrawTypeSelectionCombo(const char* label, const char* const* const t
 #pragma region Assets
 struct EditedAsset {
 	u64 id;
+	AssetType type;
 	char name[MAX_ASSET_NAME_LENGTH];
 	u32 size;
 	void* data;
@@ -904,7 +906,6 @@ struct AssetEditorState {
 };
 
 typedef void (*AssetEditorFn)(EditedAsset&);
-typedef void (*InitAssetFn)(u64, void*);
 typedef void (*PopulateAssetEditorDataFn)(EditedAsset&);
 typedef void (*ApplyAssetEditorDataFn)(EditedAsset&);
 typedef void (*DeleteAssetEditorDataFn)(EditedAsset&);
@@ -948,6 +949,7 @@ static EditedAsset CopyAssetForEditing(u64 id, PopulateAssetEditorDataFn populat
 	result.id = id;
 
 	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(id);
+	result.type = pAssetInfo->flags.type;
 	strcpy(result.name, pAssetInfo->name);
 	result.size = pAssetInfo->size;
 	result.data = malloc(pAssetInfo->size);
@@ -1186,8 +1188,7 @@ static u64 DrawAssetList(AssetType type) {
 	return result;
 }
 
-static void DrawAssetEditor(const char* title, bool& open, AssetType type, u32 newSize, const char* newName, AssetEditorFn drawEditor, AssetEditorState& state, 
-	InitAssetFn initFn = nullptr,
+static void DrawAssetEditor(const char* title, bool& open, AssetType type, const char* newName, AssetEditorFn drawEditor, AssetEditorState& state, 
 	PopulateAssetEditorDataFn populateFn = nullptr, 
 	ApplyAssetEditorDataFn applyFn = nullptr, 
 	DeleteAssetEditorDataFn deleteFn = nullptr) {
@@ -1198,11 +1199,10 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, u32 n
 		if (ImGui::BeginMenu("Asset"))
 		{
 			if (ImGui::MenuItem("New")) {
+				const u32 newSize = Editor::Assets::GetAssetSize(type, nullptr);
 				const u64 id = AssetManager::CreateAsset(type, newSize, newName);
-				if (initFn) {
-					void* data = AssetManager::GetAsset(id, type);
-					initFn(id, data);
-				}
+				void* data = AssetManager::GetAsset(id, type);
+				Editor::Assets::InitializeAsset(type, data);
 				state.editedAssets.try_emplace(id, CopyAssetForEditing(id, populateFn));
 			}
 			ImGui::Separator();
@@ -1908,7 +1908,7 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 
 static void DrawSpriteWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Metasprite editor", pContext->spriteWindowOpen, ASSET_TYPE_METASPRITE, sizeof(Metasprite), "New Metasprite", DrawMetaspriteEditor, state);
+	DrawAssetEditor("Metasprite editor", pContext->spriteWindowOpen, ASSET_TYPE_METASPRITE, "New Metasprite", DrawMetaspriteEditor, state);
 }
 #pragma endregion
 
@@ -1992,7 +1992,7 @@ static void DrawTilesetEditor(EditedAsset& asset) {
 
 static void DrawTilesetWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Tileset editor", pContext->tilesetWindowOpen, ASSET_TYPE_TILESET, sizeof(Tileset), "New Tileset", DrawTilesetEditor, state);
+	DrawAssetEditor("Tileset editor", pContext->tilesetWindowOpen, ASSET_TYPE_TILESET, "New Tileset", DrawTilesetEditor, state);
 }
 #pragma endregion
 
@@ -2026,7 +2026,8 @@ static void ApplyRoomEditorData(EditedAsset& editedAsset) {
 	const RoomEditorData* pEditorData = (RoomEditorData*)editedAsset.userData;
 	RoomTemplate* pTemplate = (RoomTemplate*)editedAsset.data;
 	pTemplate->actorCount = pEditorData->actors.Count();
-	ResizeEditedAsset(editedAsset, Assets::GetRoomTemplateSize(pTemplate));
+	const u32 newSize = Editor::Assets::GetAssetSize(editedAsset.type, pTemplate);
+	ResizeEditedAsset(editedAsset, newSize);
 
 	// Reassign in case the asset was resized
 	pTemplate = (RoomTemplate*)editedAsset.data;
@@ -2372,7 +2373,7 @@ static void DrawRoomEditor(EditedAsset& asset) {
 
 static void DrawRoomWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Room editor", pContext->roomWindowOpen, ASSET_TYPE_ROOM_TEMPLATE, Assets::GetRoomTemplateSize(), "New Room", DrawRoomEditor, state, Assets::InitRoomTemplate, PopulateRoomEditorData, ApplyRoomEditorData, DeleteRoomEditorData);
+	DrawAssetEditor("Room editor", pContext->roomWindowOpen, ASSET_TYPE_ROOM_TEMPLATE, "New Room", DrawRoomEditor, state, PopulateRoomEditorData, ApplyRoomEditorData, DeleteRoomEditorData);
 }
 #pragma endregion
 
@@ -2571,7 +2572,7 @@ static void DrawActorEditor(EditedAsset& asset) {
 
 static void DrawActorWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Actor editor", pContext->actorWindowOpen, ASSET_TYPE_ACTOR_PROTOTYPE, sizeof(ActorPrototype), "New actor prototype", DrawActorEditor, state);
+	DrawAssetEditor("Actor editor", pContext->actorWindowOpen, ASSET_TYPE_ACTOR_PROTOTYPE, "New actor prototype", DrawActorEditor, state);
 }
 #pragma endregion
 
@@ -3261,7 +3262,7 @@ static void DrawDungeonEditor(EditedAsset& asset) {
 
 static void DrawDungeonWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Dungeon editor", pContext->dungeonWindowOpen, ASSET_TYPE_DUNGEON, sizeof(Dungeon), "New Dungeon", DrawDungeonEditor, state, nullptr, PopulateDungeonEditorData, ApplyDungeonEditorData, DeleteDungeonEditorData);
+	DrawAssetEditor("Dungeon editor", pContext->dungeonWindowOpen, ASSET_TYPE_DUNGEON, "New Dungeon", DrawDungeonEditor, state, PopulateDungeonEditorData, ApplyDungeonEditorData, DeleteDungeonEditorData);
 }
 #pragma endregion
 
@@ -3399,7 +3400,7 @@ static void DrawOverworldEditor(EditedAsset& asset) {
 
 static void DrawOverworldWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Overworld editor", pContext->overworldWindowOpen, ASSET_TYPE_OVERWORLD, 0, "New Overworld", DrawOverworldEditor, state, nullptr, PopulateOverworldEditorData, nullptr, DeleteOverworldEditorData);
+	DrawAssetEditor("Overworld editor", pContext->overworldWindowOpen, ASSET_TYPE_OVERWORLD, "New Overworld", DrawOverworldEditor, state, PopulateOverworldEditorData, nullptr, DeleteOverworldEditorData);
 }
 #pragma endregion
 
@@ -3771,7 +3772,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 
 static void DrawAnimationWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Animation editor", pContext->animationWindowOpen, ASSET_TYPE_ANIMATION, sizeof(Animation), "New Animation", DrawAnimationEditor, state);
+	DrawAssetEditor("Animation editor", pContext->animationWindowOpen, ASSET_TYPE_ANIMATION, "New Animation", DrawAnimationEditor, state);
 }
 #pragma endregion
 
@@ -3830,7 +3831,7 @@ static void DrawSoundEditor(EditedAsset& asset) {
 
 static void DrawSoundWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Sound editor", pContext->soundWindowOpen, ASSET_TYPE_SOUND, 0, "New Sound", DrawSoundEditor, state);
+	DrawAssetEditor("Sound editor", pContext->soundWindowOpen, ASSET_TYPE_SOUND, "New Sound", DrawSoundEditor, state);
 }
 
 #pragma endregion
@@ -3924,7 +3925,7 @@ static void DrawChrEditor(EditedAsset& asset) {
 
 static void DrawChrWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Pattern editor", pContext->chrWindowOpen, ASSET_TYPE_CHR_BANK, sizeof(ChrSheet), "New pattern sheet", DrawChrEditor, state, nullptr, PopulateChrEditorData, nullptr, DeleteChrEditorData);
+	DrawAssetEditor("Pattern editor", pContext->chrWindowOpen, ASSET_TYPE_CHR_BANK, "New pattern sheet", DrawChrEditor, state, PopulateChrEditorData, nullptr, DeleteChrEditorData);
 }
 #pragma endregion
 
@@ -4032,7 +4033,7 @@ static void DrawPaletteEditor(EditedAsset& asset) {
 
 static void DrawPaletteWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Palette editor", pContext->paletteWindowOpen, ASSET_TYPE_PALETTE, sizeof(Palette), "New palette", DrawPaletteEditor, state, nullptr, PopulatePaletteEditorData, nullptr, DeletePaletteEditorData);
+	DrawAssetEditor("Palette editor", pContext->paletteWindowOpen, ASSET_TYPE_PALETTE, "New palette", DrawPaletteEditor, state, PopulatePaletteEditorData, nullptr, DeletePaletteEditorData);
 }
 
 #pragma endregion
