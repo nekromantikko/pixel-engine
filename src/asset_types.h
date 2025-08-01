@@ -44,7 +44,7 @@ struct AssetHandle {
 
 template <AssetType T>
 constexpr AssetHandle<T> MakeAssetHandle(u64 id, AssetType type) {
-	return (AssetHandle<type>)(id);
+	return AssetHandle<T>(id);
 }
 
 template <typename T>
