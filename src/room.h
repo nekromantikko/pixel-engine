@@ -70,7 +70,7 @@ static void to_json(nlohmann::json& j, const RoomTemplateHeader& room) {
 
 	j["map_tiles"] = nlohmann::json::array();
 	BgTile* mapTiles = Assets::GetRoomTemplateMapTiles(&room);
-	const u32 mapTileCount = room.width * room.height * 2;
+	const u32 mapTileCount = ROOM_MAP_TILE_COUNT;
 	for (u32 i = 0; i < mapTileCount; ++i) {
 		j["map_tiles"].push_back(mapTiles[i]);
 	}
