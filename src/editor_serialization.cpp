@@ -8,6 +8,7 @@
 #include "room.h"
 #include "overworld.h"
 #include "dungeon.h"
+#include "editor_assets.h"
 
 static constexpr u64 ASSET_FILE_FORMAT_VERSION = 1;
 
@@ -258,7 +259,7 @@ static void CreateChrSheetFromBmp(const char* pixels, ChrSheet* pOutSheet) {
 
 static bool LoadChrSheetFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
 	if (!pOutData) {
-		size = sizeof(ChrSheet);
+		size = Editor::Assets::GetAssetSize(ASSET_TYPE_CHR_BANK, nullptr);
 		return true; // Just return size if no output data is provided
 	}
 
@@ -320,15 +321,6 @@ static void InitSound(u64 id, void* data) {
 	Sound newSound{};
 	newSound.dataOffset = sizeof(Sound);
 	memcpy(data, &newSound, sizeof(Sound));
-}
-
-static u32 GetSoundSize(const Sound* pSound) {
-	u32 result = sizeof(Sound);
-	if (pSound) {
-		result += pSound->length * sizeof(SoundOperation);
-	}
-
-	return result;
 }
 
 static bool LoadSoundFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
@@ -393,7 +385,7 @@ static bool SaveSoundToFile(const std::filesystem::path& path, const void* pData
 
 static bool LoadPaletteFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
 	if (!pOutData) {
-		size = sizeof(Palette);
+		size = Editor::Assets::GetAssetSize(ASSET_TYPE_PALETTE, nullptr);
 		return true; // Just return size if no output data is provided
 	}
 
@@ -459,7 +451,7 @@ static bool SaveMetaspriteToFile(const std::filesystem::path& path, const void* 
 
 static bool LoadTilesetFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
 	if (!pOutData) {
-		size = sizeof(Tileset);
+		size = Editor::Assets::GetAssetSize(ASSET_TYPE_TILESET, nullptr);
 		return true; // Just return size if no output data is provided
 	}
 	
@@ -940,7 +932,7 @@ static bool SaveOverworldToFile(const std::filesystem::path& path, const void* p
 
 static bool LoadDungeonFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
 	if (!pOutData) {
-		size = sizeof(Dungeon);
+		size = Editor::Assets::GetAssetSize(ASSET_TYPE_DUNGEON, nullptr);
 		return true; // Just return size if no output data is provided
 	}
 

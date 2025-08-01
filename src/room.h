@@ -47,34 +47,3 @@ struct RoomTemplate {
 	}
 };
 
-/*#ifdef EDITOR
-#include <nlohmann/json.hpp>
-
-
-
-inline void from_json(const nlohmann::json& j, RoomTemplate& room) {
-	// TODO
-}
-
-inline void to_json(nlohmann::json& j, const RoomTemplate& room) {
-	j["width"] = room.width;
-	j["height"] = room.height;
-
-	j["map_tiles"] = nlohmann::json::array();
-	BgTile* mapTiles = room.GetMapTiles();
-	const u32 mapTileCount = ROOM_MAP_TILE_COUNT;
-	for (u32 i = 0; i < mapTileCount; ++i) {
-		j["map_tiles"].push_back(mapTiles[i]);
-	}
-
-	j["tilemap"] = room.tilemap;
-
-	RoomActor* actors = room.GetActors();
-	j["actors"] = nlohmann::json::array();
-	for (u32 i = 0; i < room.actorCount; ++i) {
-		j["actors"].push_back(actors[i]);
-	}
-}
-
-#endif*/
-

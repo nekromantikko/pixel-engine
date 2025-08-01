@@ -52,27 +52,5 @@ struct Tilemap {
 };
 
 #ifdef EDITOR
-#include <nlohmann/json.hpp>
-
-
-
-
-
-inline void to_json(nlohmann::json& j, const Tilemap& tilemap) {
-	j["width"] = tilemap.width;
-	j["height"] = tilemap.height;
-	j["tileset_id"] = tilemap.tilesetHandle.id;
-	
-	u8* tilemapData = tilemap.GetTileData();
-	j["tiles"] = nlohmann::json::array();
-	u32 tileCount = tilemap.width * tilemap.height;
-	for (u32 i = 0; i < tileCount; ++i) {
-		j["tiles"].push_back(tilemapData[i]);
-	}
-}
-
-inline void from_json(const nlohmann::json& j, Tilemap& tilemap) {
-	// TODO
-}
 
 #endif
