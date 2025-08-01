@@ -56,19 +56,7 @@ namespace Assets {
 /*#ifdef EDITOR
 #include <nlohmann/json.hpp>
 
-inline void from_json(const nlohmann::json& j, RoomActor& actor) {
-	j.at("id").get_to(actor.id);
-	j.at("prototype_id").get_to(actor.prototypeHandle.id);
-    j.at("x").get_to(actor.position.x);
-	j.at("y").get_to(actor.position.y);
-}
 
-inline void to_json(nlohmann::json& j, const RoomActor& actor) {
-	j["id"] = actor.id;
-	j["prototype_id"] = actor.prototypeHandle.id;
-	j["x"] = actor.position.x;
-	j["y"] = actor.position.y;
-}
 
 inline void from_json(const nlohmann::json& j, RoomTemplate& room) {
 	// TODO
