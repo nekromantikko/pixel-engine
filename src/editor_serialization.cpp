@@ -7,6 +7,7 @@
 #include "actor_prototypes.h"
 #include "room.h"
 #include "overworld.h"
+#include "dungeon.h"
 
 static constexpr u64 ASSET_FILE_FORMAT_VERSION = 1;
 
@@ -135,21 +136,21 @@ static void from_json(const nlohmann::json& j, AABB& aabb) {
 	aabb.max.y = j.at("max_y").get<r32>();
 }
 
-inline void from_json(const nlohmann::json& j, RoomActor& actor) {
+static void from_json(const nlohmann::json& j, RoomActor& actor) {
 	j.at("id").get_to(actor.id);
 	j.at("prototype_id").get_to(actor.prototypeHandle.id);
 	j.at("x").get_to(actor.position.x);
 	j.at("y").get_to(actor.position.y);
 }
 
-inline void to_json(nlohmann::json& j, const RoomActor& actor) {
+static void to_json(nlohmann::json& j, const RoomActor& actor) {
 	j["id"] = actor.id;
 	j["prototype_id"] = actor.prototypeHandle.id;
 	j["x"] = actor.position.x;
 	j["y"] = actor.position.y;
 }
 
-inline void from_json(const nlohmann::json& j, OverworldKeyArea& area) {
+static void from_json(const nlohmann::json& j, OverworldKeyArea& area) {
 	j.at("dungeon_id").get_to(area.dungeonId.id);
 	j.at("x").get_to(area.position.x);
 	j.at("y").get_to(area.position.y);
@@ -159,7 +160,7 @@ inline void from_json(const nlohmann::json& j, OverworldKeyArea& area) {
 	area.flags.passthrough = j.value("passthrough", 0);
 }
 
-inline void to_json(nlohmann::json& j, const OverworldKeyArea& area) {
+static void to_json(nlohmann::json& j, const OverworldKeyArea& area) {
 	j["dungeon_id"] = area.dungeonId.id;
 	j["x"] = area.position.x;
 	j["y"] = area.position.y;
@@ -167,6 +168,47 @@ inline void to_json(nlohmann::json& j, const OverworldKeyArea& area) {
 	j["target_y"] = area.targetGridCell.y;
 	j["flip_direction"] = area.flags.flipDirection != 0;
 	j["passthrough"] = area.flags.passthrough != 0;
+}
+
+static void from_json(const nlohmann::json& j, DungeonCell& cell) {
+	cell.roomIndex = j.at("room_index").get<s8>();
+	cell.screenIndex = j.at("screen_index").get<u8>();
+}
+
+static void to_json(nlohmann::json& j, const DungeonCell& cell) {
+	j["room_index"] = cell.roomIndex;
+	j["screen_index"] = cell.screenIndex;
+}
+
+static void from_json(const nlohmann::json& j, RoomInstance& room) {
+	room.id = j.at("id").get<u32>();
+	room.templateId.id = j.at("template_id").get<u64>();
+}
+
+static void to_json(nlohmann::json& j, const RoomInstance& room) {
+	j["id"] = room.id;
+	j["template_id"] = room.templateId.id;
+}
+
+static void from_json(const nlohmann::json& j, Dungeon& dungeon) {
+	dungeon.roomCount = j.at("rooms").size();
+	for (u32 i = 0; i < dungeon.roomCount; ++i) {
+		dungeon.rooms[i] = j.at("rooms").at(i).get<RoomInstance>();
+	}
+	for (u32 i = 0; i < DUNGEON_GRID_SIZE; ++i) {
+		dungeon.grid[i] = j.at("grid").at(i).get<DungeonCell>();
+	}
+}
+
+static void to_json(nlohmann::json& j, const Dungeon& dungeon) {
+	j["rooms"] = nlohmann::json::array();
+	for (u32 i = 0; i < dungeon.roomCount; ++i) {
+		j["rooms"].push_back(dungeon.rooms[i]);
+	}
+	j["grid"] = nlohmann::json::array();
+	for (u32 i = 0; i < DUNGEON_GRID_SIZE; ++i) {
+		j["grid"].push_back(dungeon.grid[i]);
+	}
 }
 
 #pragma endregion
@@ -896,6 +938,35 @@ static bool SaveOverworldToFile(const std::filesystem::path& path, const void* p
 	return false;
 }
 
+static bool LoadDungeonFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
+	if (!pOutData) {
+		size = sizeof(Dungeon);
+		return true; // Just return size if no output data is provided
+	}
+
+	if (!std::filesystem::exists(path)) {
+		DEBUG_ERROR("File (%s) does not exist\n", path.string().c_str());
+		return false;
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "rb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file\n");
+		return false;
+	}
+
+	const nlohmann::json json = nlohmann::json::parse(pFile);
+	json.get_to<Dungeon>(*(Dungeon*)pOutData);
+
+	fclose(pFile);
+	return true;
+}
+
+static bool SaveDungeonToFile(const std::filesystem::path& path, const void* pData) {
+	// TODO
+	return false;
+}
+
 #pragma endregion
 
 std::filesystem::path Editor::Assets::GetAssetMetadataPath(const std::filesystem::path& path) {
@@ -1016,6 +1087,9 @@ bool Editor::Assets::LoadAssetFromFile(const std::filesystem::path& path, AssetT
 	case (ASSET_TYPE_OVERWORLD): {
 		return LoadOverworldFromFile(path, metadata, size, pOutData);
 	}
+	case (ASSET_TYPE_DUNGEON): {
+		return LoadDungeonFromFile(path, metadata, size, pOutData);
+	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);
 		return false;
@@ -1048,10 +1122,13 @@ bool Editor::Assets::SaveAssetToFile(const std::filesystem::path& path, AssetTyp
 		return SaveRoomTemplateToFile(path, pData);
 	}
 	case (ASSET_TYPE_OVERWORLD): {
-
+		return SaveOverworldToFile(path, pData);
+	}
+	case (ASSET_TYPE_DUNGEON): {
+		return SaveDungeonToFile(path, pData);
 	}
 	default:
-		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);
+		DEBUG_ERROR("Unsupported asset type for saving: %s\n", ASSET_TYPE_NAMES[type]);
 		return false;
 	}
 }
