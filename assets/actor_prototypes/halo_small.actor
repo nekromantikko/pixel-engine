@@ -12,6 +12,6 @@
         "pickupSound": 15369204875459356735,
         "value": 10
     },
-    "subtype": "Exp",
+    "subtype": "exp",
     "type": "pickup"
 }

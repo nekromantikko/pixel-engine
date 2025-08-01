@@ -12,6 +12,6 @@
         "min_y": 0.125
     },
     "properties": {},
-    "subtype": "Overworld",
+    "subtype": "overworld",
     "type": "player"
 }

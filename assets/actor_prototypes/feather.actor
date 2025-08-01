@@ -10,8 +10,9 @@
     },
     "properties": {
         "lifetime": 300,
-        "sound": null
+        "sound": null,
+	"some_nonexistent_property": 69
     },
-    "subtype": "Feather",
+    "subtype": "feather",
     "type": "effect"
 }

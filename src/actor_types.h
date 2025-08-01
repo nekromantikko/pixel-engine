@@ -20,8 +20,6 @@ enum ActorType : TActorType {
 	ACTOR_TYPE_COUNT
 };
 
-constexpr u32 ACTOR_PROTOTYPE_DATA_SIZE = 256;
-
 union ActorPrototypeData {
 	PlayerData playerData;
 	EnemyData enemyData;
@@ -32,11 +30,7 @@ union ActorPrototypeData {
 	CheckpointData checkpointData;
 	ExpSpawnerData expSpawner;
 	LootSpawnerData lootSpawner;
-
-	u8 raw[ACTOR_PROTOTYPE_DATA_SIZE];
 };
-
-constexpr u32 ACTOR_STATE_SIZE = 32;
 
 union ActorState {
 	PlayerState playerState;
@@ -49,8 +43,6 @@ union ActorState {
 	DamageNumberState dmgNumberState;
 	CheckpointState checkpointState;
 	ExpSpawnerState expSpawner;
-
-	u8 raw[ACTOR_STATE_SIZE];
 };
 
 namespace Game {
@@ -91,7 +83,7 @@ namespace Game {
 namespace Editor {
 	constexpr const char* actorTypeNames[ACTOR_TYPE_COUNT] = { "Player", "Enemy", "Bullet", "Pickup", "Effect", "Interactable", "Spawner" };
 
-	const ActorEditorData actorEditorData[ACTOR_TYPE_COUNT] = {
+	inline static const ActorEditorData actorEditorData[ACTOR_TYPE_COUNT] = {
 		playerEditorData,
 		enemyEditorData,
 		bulletEditorData,
@@ -101,17 +93,5 @@ namespace Editor {
 		spawnerEditorData,
 	};
 }
-
-#include <nlohmann/json.hpp>
-
-NLOHMANN_JSON_SERIALIZE_ENUM(ActorType, {
-	{ ACTOR_TYPE_PLAYER, "player" },
-	{ ACTOR_TYPE_ENEMY, "enemy" },
-	{ ACTOR_TYPE_BULLET, "bullet" },
-	{ ACTOR_TYPE_PICKUP, "pickup" },
-	{ ACTOR_TYPE_EFFECT, "effect" },
-	{ ACTOR_TYPE_INTERACTABLE, "interactable" },
-	{ ACTOR_TYPE_SPAWNER, "spawner" }
-})
 
 #endif
