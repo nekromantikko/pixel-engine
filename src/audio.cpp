@@ -28,6 +28,10 @@ static constexpr u16 NOISE_PERIOD_TABLE[0x10] = {
     4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
 };
 
+static constexpr u16 DPCM_PERIOD_TABLE[0x10] = {
+    428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54
+};
+
 enum SoundOpCode : uint8_t {
     OP_NONE = 0x00,
     OP_WRITE_PULSE0 = 0x01,
@@ -148,6 +152,40 @@ struct NoiseChannel {
     u8 lengthCounter : 5;
 };
 
+struct DPCMRegister {
+    // Address 0
+    u8 frequency : 4;
+    u8 unused0 : 2;
+    u8 loop : 1;
+    u8 irqEnable : 1;
+
+    // Address 1
+    u8 loadCounter : 7;
+    u8 unused1 : 1;
+
+    // Address 2
+    u8 sampleAddress;
+
+    // Address 3
+    u8 sampleLength;
+};
+
+struct DPCMChannel {
+    DPCMRegister reg;
+
+    u16 counter;
+    u8 outputLevel : 7;
+    
+    u16 sampleAddress;
+    u16 bytesRemaining;
+    
+    u8 sampleBuffer;
+    u8 shiftRegister;
+    u8 bitsRemaining;
+    bool sampleBufferEmpty;
+    bool silenceFlag;
+};
+
 struct AudioContext {
     SDL_AudioDeviceID audioDevice;
 
@@ -160,6 +198,7 @@ struct AudioContext {
     PulseChannel pulse[2];
     TriangleChannel triangle;
     NoiseChannel noise;
+    DPCMChannel dpcm;
 
     r64 accumulator;
     s64 clockCounter;
@@ -168,6 +207,7 @@ struct AudioContext {
     PulseChannel pulseReserve[2];
     TriangleChannel triangleReserve;
     NoiseChannel noiseReserve;
+    DPCMChannel dpcmReserve;
 
     SoundHandle music = SoundHandle::Null();
     u32 musicPos = 0;
@@ -294,8 +334,39 @@ static void WriteNoise(u8 address, u8 data) {
     WriteNoise(&noise, address, data);
 }
 
+static void WriteDPCM(DPCMChannel* dpcm, u8 address, u8 data) {
+    if (address > 3) {
+        return;
+    }
+
+    u8* ptr = (u8*)&dpcm->reg + address;
+    *ptr = data;
+
+    // Handle side effects
+    if (address == 0) {
+        // Frequency and flags changed
+    }
+    else if (address == 1) {
+        // Direct load of output level
+        dpcm->outputLevel = dpcm->reg.loadCounter;
+    }
+    else if (address == 2) {
+        // Sample address = $C000 + (N * 64)
+        dpcm->sampleAddress = 0xC000 + (dpcm->reg.sampleAddress * 64);
+    }
+    else if (address == 3) {
+        // Sample length = (N * 16) + 1 bytes
+        dpcm->bytesRemaining = (dpcm->reg.sampleLength * 16) + 1;
+    }
+}
+
+static void WriteDPCM(u8 address, u8 data) {
+    DPCMChannel& dpcm = pContext->dpcm;
+    WriteDPCM(&dpcm, address, data);
+}
+
 // Returns true if keep reading
-static bool ProcessOp(const SoundOperation* operation, PulseChannel* p0, PulseChannel* p1, TriangleChannel* tri, NoiseChannel* noise) {
+static bool ProcessOp(const SoundOperation* operation, PulseChannel* p0, PulseChannel* p1, TriangleChannel* tri, NoiseChannel* noise, DPCMChannel* dpcm) {
     bool keepReading = true;
 
     switch (operation->opCode) {
@@ -320,6 +391,12 @@ static bool ProcessOp(const SoundOperation* operation, PulseChannel* p0, PulseCh
     case OP_WRITE_NOISE: {
         if (noise != nullptr) {
             WriteNoise(noise, operation->address, operation->data);
+        }
+        break;
+    }
+    case OP_WRITE_DPCM: {
+        if (dpcm != nullptr) {
+            WriteDPCM(dpcm, operation->address, operation->data);
         }
         break;
     }
@@ -361,12 +438,13 @@ static bool TickSFX(u32 channel) {
     PulseChannel* p1 = (channel == CHAN_ID_PULSE1) ? &pContext->pulse[1] : nullptr;
     TriangleChannel* tri = (channel == CHAN_ID_TRIANGLE) ? &pContext->triangle : nullptr;
     NoiseChannel* noise = (channel == CHAN_ID_NOISE) ? &pContext->noise : nullptr;
+    DPCMChannel* dpcm = (channel == CHAN_ID_DPCM) ? &pContext->dpcm : nullptr;
 
     bool keepReading = true;
     while (keepReading) {
         const SoundOperation* operation = Assets::GetSoundData(pSound) + pos;
 
-        keepReading = ProcessOp(operation, p0, p1, tri, noise);
+        keepReading = ProcessOp(operation, p0, p1, tri, noise, dpcm);
 
         if (++pos == pSound->length) {
             return false;
@@ -391,12 +469,13 @@ static bool TickMusic() {
     PulseChannel* p1 = (pContext->sfx[CHAN_ID_PULSE1] == SoundHandle::Null()) ? &pContext->pulse[CHAN_ID_PULSE1] : &pContext->pulseReserve[1];
     TriangleChannel* tri = (pContext->sfx[CHAN_ID_TRIANGLE] == SoundHandle::Null()) ? &pContext->triangle : &pContext->triangleReserve;
     NoiseChannel* noise = (pContext->sfx[CHAN_ID_NOISE] == SoundHandle::Null()) ? &pContext->noise : &pContext->noiseReserve;
+    DPCMChannel* dpcm = (pContext->sfx[CHAN_ID_DPCM] == SoundHandle::Null()) ? &pContext->dpcm : &pContext->dpcmReserve;
 
     bool keepReading = true;
     while (keepReading) {
         const SoundOperation* operation = Assets::GetSoundData(pSound) + pContext->musicPos;
 
-        keepReading = ProcessOp(operation, p0, p1, tri, noise);
+        keepReading = ProcessOp(operation, p0, p1, tri, noise, dpcm);
 
         if (++pContext->musicPos == pSound->length) {
             if (pContext->loopMusic) {
@@ -433,6 +512,9 @@ static void TickSoundPlayer() {
                 break;
             case CHAN_ID_NOISE:
                 pContext->noise = pContext->noiseReserve;
+                break;
+            case CHAN_ID_DPCM:
+                pContext->dpcm = pContext->dpcmReserve;
                 break;
             default:
                 break;
@@ -583,6 +665,66 @@ static u8 ClockNoise(NoiseChannel& noise, bool quarterFrame, bool halfFrame) {
     return volume;
 }
 
+static u8 ClockDPCM(DPCMChannel& dpcm) {
+    // DPCM only gets clocked every CPU cycle, not every APU cycle
+    // For now, we'll implement a simplified version that runs at APU rate
+    
+    dpcm.counter--;
+    if (dpcm.counter == 0xFFFF) {
+        dpcm.counter = DPCM_PERIOD_TABLE[dpcm.reg.frequency];
+        
+        if (!dpcm.silenceFlag) {
+            if (dpcm.shiftRegister & 1) {
+                if (dpcm.outputLevel <= 125) {
+                    dpcm.outputLevel += 2;
+                }
+            }
+            else {
+                if (dpcm.outputLevel >= 2) {
+                    dpcm.outputLevel -= 2;
+                }
+            }
+        }
+        
+        dpcm.shiftRegister >>= 1;
+        dpcm.bitsRemaining--;
+        
+        if (dpcm.bitsRemaining == 0) {
+            dpcm.bitsRemaining = 8;
+            
+            if (dpcm.sampleBufferEmpty) {
+                dpcm.silenceFlag = true;
+            }
+            else {
+                dpcm.silenceFlag = false;
+                dpcm.shiftRegister = dpcm.sampleBuffer;
+                dpcm.sampleBufferEmpty = true;
+                
+                // In a real implementation, we would fetch the next sample from memory here
+                // For now, we'll use a simple pattern
+                if (dpcm.bytesRemaining > 0) {
+                    dpcm.bytesRemaining--;
+                    // Simulate sample data - in real implementation this would come from memory at sampleAddress
+                    dpcm.sampleBuffer = (dpcm.sampleAddress & 0xFF); // Simple pattern for testing
+                    dpcm.sampleAddress++;
+                    dpcm.sampleBufferEmpty = false;
+                }
+                
+                if (dpcm.bytesRemaining == 0) {
+                    if (dpcm.reg.loop) {
+                        // Restart sample
+                        dpcm.sampleAddress = 0xC000 + (dpcm.reg.sampleAddress * 64);
+                        dpcm.bytesRemaining = (dpcm.reg.sampleLength * 16) + 1;
+                    }
+                    // Note: IRQ handling would go here if implemented
+                }
+            }
+        }
+    }
+    
+    return dpcm.outputLevel;
+}
+
 static bool Clock(u8& outSample) {
     const r64 sampleTime = 1.0f / 44100.f;
     bool result = false;
@@ -620,9 +762,10 @@ static bool Clock(u8& outSample) {
     r32 tndOut = 0.0f;
     u8 triangle = ClockTriangle(pContext->triangle, quarterFrame, halfFrame);
     u8 noise = ClockNoise(pContext->noise, quarterFrame, halfFrame);
+    u8 dpcm = ClockDPCM(pContext->dpcm);
 
-    if (triangle != 0 || noise != 0) {
-        tndOut = 159.79f / (1 / ((r32)triangle / 8227 + (r32)noise / 12241) + 100);
+    if (triangle != 0 || noise != 0 || dpcm != 0) {
+        tndOut = 159.79f / (1 / ((r32)triangle / 8227 + (r32)noise / 12241 + (r32)dpcm / 22638) + 100);
     }
 
     r32 mix = pulseOut + tndOut;
@@ -728,6 +871,9 @@ namespace Audio {
         case CHAN_ID_NOISE:
             WriteNoise(address, data);
             break;
+        case CHAN_ID_DPCM:
+            WriteDPCM(address, data);
+            break;
         default:
             break;
         }
@@ -774,6 +920,9 @@ namespace Audio {
             case CHAN_ID_NOISE:
                 pContext->noiseReserve = pContext->noise;
                 break;
+            case CHAN_ID_DPCM:
+                pContext->dpcmReserve = pContext->dpcm;
+                break;
             default:
                 break;
             }
@@ -804,6 +953,11 @@ namespace Audio {
         case CHAN_ID_NOISE: {
             NoiseChannel& noise = pContext->noise;
             memcpy(outData, &noise.reg, 4);
+            break;
+        }
+        case CHAN_ID_DPCM: {
+            DPCMChannel& dpcm = pContext->dpcm;
+            memcpy(outData, &dpcm.reg, 4);
             break;
         }
         default:
