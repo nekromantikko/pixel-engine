@@ -8,7 +8,7 @@ enum SoundChannelId {
     CHAN_ID_PULSE1,
     CHAN_ID_TRIANGLE,
     CHAN_ID_NOISE,
-    //CHAN_ID_DPCM,
+    CHAN_ID_DPCM,
 
     CHAN_COUNT
 };
