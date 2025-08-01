@@ -944,9 +944,38 @@ static bool ResizeEditedAsset(EditedAsset& asset, u32 newSize) {
 	return true;
 }
 
+static u32 GetRequiredAssetSize(const EditedAsset& asset) {
+	if (!asset.userData) {
+		return asset.size;
+	}
+
+	// Check if this is a variable-size asset that stores required size in editor data
+	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
+	if (pAssetInfo->flags.type == ASSET_TYPE_METASPRITE) {
+		const MetaspriteEditorData* pEditorData = (const MetaspriteEditorData*)asset.userData;
+		if (pEditorData->requiredSize > 0) {
+			return pEditorData->requiredSize;
+		}
+	}
+	
+	return asset.size;
+}
+
 static bool SaveEditedAsset(EditedAsset& asset, ApplyAssetEditorDataFn applyFn) {
 	if (applyFn) {
 		applyFn(asset.data, asset.userData);
+	}
+	
+	// Check if asset needs resizing based on editor data
+	u32 requiredSize = GetRequiredAssetSize(asset);
+	if (requiredSize != asset.size) {
+		if (!ResizeEditedAsset(asset, requiredSize)) {
+			return false;
+		}
+		// Re-apply after resizing to ensure data is copied to the new buffer
+		if (applyFn) {
+			applyFn(asset.data, asset.userData);
+		}
 	}
 	
 	AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
@@ -1652,6 +1681,7 @@ static void DrawDebugWindow() {
 #pragma region Sprites
 struct MetaspriteEditorData {
 	std::vector<Sprite> sprites;
+	u32 requiredSize = 0;
 };
 
 static void PopulateMetaspriteEditorData(u64 id, void* assetData, void** pUserData) {
@@ -1675,9 +1705,17 @@ static void ApplyMetaspriteEditorData(void* assetData, const void* userData) {
 	const MetaspriteEditorData* pEditorData = (const MetaspriteEditorData*)userData;
 	Metasprite* pMetasprite = (Metasprite*)assetData;
 	
+	// Update sprite count and offset based on editor data
+	u32 newSpriteCount = (u32)pEditorData->sprites.size();
+	pMetasprite->spriteCount = newSpriteCount;
+	pMetasprite->spritesOffset = sizeof(Metasprite);
+	
+	// Store the required size for the framework to handle resizing
+	const_cast<MetaspriteEditorData*>(pEditorData)->requiredSize = CalculateMetaspriteSize(newSpriteCount);
+	
 	// Copy sprite data back to asset
 	Sprite* pSprites = pMetasprite->GetSprites();
-	for (u32 i = 0; i < pMetasprite->spriteCount && i < pEditorData->sprites.size(); i++) {
+	for (u32 i = 0; i < newSpriteCount; i++) {
 		pSprites[i] = pEditorData->sprites[i];
 	}
 }
@@ -1898,25 +1936,7 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 	// Add/remove sprite buttons using dynamic array
 	if (ImGui::Button("+")) {
 		pEditorData->sprites.emplace_back(); // Add empty sprite
-		
-		// Update sprite count and resize asset if needed
-		u32 newSpriteCount = (u32)pEditorData->sprites.size();
-		u32 newSize = CalculateMetaspriteSize(newSpriteCount);
-		if (newSize != asset.size) {
-			if (ResizeEditedAsset(asset, newSize)) {
-				// Update the metasprite structure with new sprite count and offset
-				pMetasprite = (Metasprite*)asset.data;
-				pMetasprite->spriteCount = newSpriteCount;
-				pMetasprite->spritesOffset = sizeof(Metasprite);
-				asset.dirty = true;
-			} else {
-				// Failed to resize, remove the sprite we just added
-				pEditorData->sprites.pop_back();
-			}
-		} else {
-			pMetasprite->spriteCount = newSpriteCount;
-			asset.dirty = true;
-		}
+		asset.dirty = true;
 	}
 	ImGui::SameLine();
 	if (ImGui::Button("-") && !pEditorData->sprites.empty()) {
@@ -1933,22 +1953,7 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 		} else {
 			pEditorData->sprites.pop_back(); // Remove last sprite
 		}
-		
-		// Update sprite count and resize asset if needed
-		u32 newSpriteCount = (u32)pEditorData->sprites.size();
-		u32 newSize = CalculateMetaspriteSize(newSpriteCount);
-		if (newSize != asset.size) {
-			if (ResizeEditedAsset(asset, newSize)) {
-				// Update the metasprite structure with new sprite count and offset
-				pMetasprite = (Metasprite*)asset.data;
-				pMetasprite->spriteCount = newSpriteCount;
-				pMetasprite->spritesOffset = sizeof(Metasprite);
-				asset.dirty = true;
-			}
-		} else {
-			pMetasprite->spriteCount = newSpriteCount;
-			asset.dirty = true;
-		}
+		asset.dirty = true;
 	}
 
 	ImGui::BeginChild("Sprite list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
@@ -1960,20 +1965,7 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 	// If the list function changed the count (which it can through add/remove operations), update our vector
 	if (spriteCount != pEditorData->sprites.size()) {
 		pEditorData->sprites.resize(spriteCount);
-		
-		// Update asset size accordingly
-		u32 newSize = CalculateMetaspriteSize(spriteCount);
-		if (newSize != asset.size) {
-			if (ResizeEditedAsset(asset, newSize)) {
-				pMetasprite = (Metasprite*)asset.data;
-				pMetasprite->spriteCount = spriteCount;
-				pMetasprite->spritesOffset = sizeof(Metasprite);
-				asset.dirty = true;
-			}
-		} else {
-			pMetasprite->spriteCount = spriteCount;
-			asset.dirty = true;
-		}
+		asset.dirty = true;
 	}
 
 	ImGui::EndChild();
