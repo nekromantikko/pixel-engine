@@ -2459,6 +2459,46 @@ static void DrawRoomWindow() {
 #pragma endregion
 
 #pragma region Actor prototypes
+struct ActorPrototypeEditorData {
+	std::vector<AnimationHandle> animations;
+};
+
+static void PopulateActorPrototypeEditorData(u64 id, void* assetData, void** pUserData) {
+	ActorPrototypeEditorData*& pEditorData = (ActorPrototypeEditorData*&)*pUserData;
+	
+	if (!pEditorData) {
+		pEditorData = new ActorPrototypeEditorData();
+	}
+	
+	ActorPrototype* pPrototype = (ActorPrototype*)assetData;
+	pEditorData->animations.clear();
+	pEditorData->animations.reserve(pPrototype->animCount);
+	
+	AnimationHandle* pAnimations = pPrototype->GetAnimations();
+	for (u32 i = 0; i < pPrototype->animCount; i++) {
+		pEditorData->animations.push_back(pAnimations[i]);
+	}
+}
+
+static void ApplyActorPrototypeEditorData(void* assetData, const void* userData) {
+	const ActorPrototypeEditorData* pEditorData = (const ActorPrototypeEditorData*)userData;
+	ActorPrototype* pPrototype = (ActorPrototype*)assetData;
+	
+	// Copy animation data back to asset
+	AnimationHandle* pAnimations = pPrototype->GetAnimations();
+	for (u32 i = 0; i < pPrototype->animCount && i < pEditorData->animations.size(); i++) {
+		pAnimations[i] = pEditorData->animations[i];
+	}
+}
+
+static void DeleteActorPrototypeEditorData(void* userData) {
+	delete (ActorPrototypeEditorData*)userData;
+}
+
+static u32 CalculateActorPrototypeSize(u32 animCount) {
+	return sizeof(ActorPrototype) + animCount * sizeof(AnimationHandle);
+}
+
 static ImVec2 DrawActorPreview(const ActorPrototype* pPrototype, s32 animIndex, s32 frameIndex, r32 size) {
 	constexpr s32 gridSizeTiles = 8;
 
@@ -2507,6 +2547,7 @@ static void DrawActorEditor(EditedAsset& asset) {
 		static s32 currentAnim = 0;
 
 		ActorPrototype* pPrototype = (ActorPrototype*)asset.data;
+		ActorPrototypeEditorData* pEditorData = (ActorPrototypeEditorData*)asset.userData;
 
 		ImGui::SeparatorText("Properties");
 
@@ -2563,21 +2604,86 @@ static void DrawActorEditor(EditedAsset& asset) {
 			}
 
 			if (ImGui::BeginTabItem("Animations")) {
-				// TODO: Resize asset when animation count is changed
-				/*ImGui::BeginDisabled(pPrototype->animCount == ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT);
+				// Add/remove animation buttons using dynamic array
 				if (ImGui::Button("+")) {
-					PushElement<AnimationHandle>(pPrototype->animations, pPrototype->animCount);
+					pEditorData->animations.emplace_back(); // Add empty animation handle
+					
+					// Update animation count and resize asset if needed
+					u32 newAnimCount = (u32)pEditorData->animations.size();
+					u32 newSize = CalculateActorPrototypeSize(newAnimCount);
+					if (newSize != asset.size) {
+						if (ResizeEditedAsset(asset, newSize)) {
+							// Update the prototype structure with new animation count and offset
+							pPrototype = (ActorPrototype*)asset.data;
+							pPrototype->animCount = newAnimCount;
+							pPrototype->animOffset = sizeof(ActorPrototype);
+							asset.dirty = true;
+						} else {
+							// Failed to resize, remove the animation we just added
+							pEditorData->animations.pop_back();
+						}
+					} else {
+						pPrototype->animCount = newAnimCount;
+						asset.dirty = true;
+					}
 				}
-				ImGui::EndDisabled();
 				ImGui::SameLine();
-				ImGui::BeginDisabled(pPrototype->animCount == 1);
-				if (ImGui::Button("-")) {
-					PopElement<AnimationHandle>(pPrototype->animations, pPrototype->animCount);
+				if (ImGui::Button("-") && !pEditorData->animations.empty()) {
+					// Remove selected animations or last animation
+					if (!selectedAnims.empty()) {
+						// Sort selection in descending order to remove from back to front
+						std::sort(selectedAnims.begin(), selectedAnims.end(), std::greater<s32>());
+						for (s32 idx : selectedAnims) {
+							if (idx >= 0 && idx < (s32)pEditorData->animations.size()) {
+								pEditorData->animations.erase(pEditorData->animations.begin() + idx);
+							}
+						}
+						selectedAnims.clear();
+					} else {
+						pEditorData->animations.pop_back(); // Remove last animation
+					}
+					
+					// Update animation count and resize asset if needed
+					u32 newAnimCount = (u32)pEditorData->animations.size();
+					u32 newSize = CalculateActorPrototypeSize(newAnimCount);
+					if (newSize != asset.size) {
+						if (ResizeEditedAsset(asset, newSize)) {
+							// Update the prototype structure with new animation count and offset
+							pPrototype = (ActorPrototype*)asset.data;
+							pPrototype->animCount = newAnimCount;
+							pPrototype->animOffset = sizeof(ActorPrototype);
+							asset.dirty = true;
+						}
+					} else {
+						pPrototype->animCount = newAnimCount;
+						asset.dirty = true;
+					}
 				}
-				ImGui::EndDisabled();*/
 
 				ImGui::BeginChild("Anim list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-				DrawGenericEditableList<AnimationHandle>(pPrototype->GetAnimations(), pPrototype->animCount, selectedAnims, "Animation");
+				
+				// Use a wrapper to make the dynamic array work with the existing list drawing function
+				u32 animCount = (u32)pEditorData->animations.size();
+				DrawGenericEditableList<AnimationHandle>(pEditorData->animations.data(), animCount, selectedAnims, "Animation");
+				
+				// If the list function changed the count (which it can through add/remove operations), update our vector
+				if (animCount != pEditorData->animations.size()) {
+					pEditorData->animations.resize(animCount);
+					
+					// Update asset size accordingly
+					u32 newSize = CalculateActorPrototypeSize(animCount);
+					if (newSize != asset.size) {
+						if (ResizeEditedAsset(asset, newSize)) {
+							pPrototype = (ActorPrototype*)asset.data;
+							pPrototype->animCount = animCount;
+							pPrototype->animOffset = sizeof(ActorPrototype);
+							asset.dirty = true;
+						}
+					} else {
+						pPrototype->animCount = animCount;
+						asset.dirty = true;
+					}
+				}
 
 				ImGui::EndChild();
 
@@ -2594,12 +2700,13 @@ static void DrawActorEditor(EditedAsset& asset) {
 					}
 					else {
 						currentAnim = selectedAnims[0];
-						AnimationHandle& animHandle = pPrototype->GetAnimations()[currentAnim];
+						if (currentAnim >= 0 && currentAnim < (s32)pEditorData->animations.size()) {
+							AnimationHandle& animHandle = pEditorData->animations[currentAnim];
 
-						if (DrawAssetField("Animation", ASSET_TYPE_ANIMATION, animHandle.id)) {
-							asset.dirty = true;
+							if (DrawAssetField("Animation", ASSET_TYPE_ANIMATION, animHandle.id)) {
+								asset.dirty = true;
+							}
 						}
-
 					}
 				}
 				ImGui::EndChild();
@@ -2653,7 +2760,7 @@ static void DrawActorEditor(EditedAsset& asset) {
 
 static void DrawActorWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Actor editor", pContext->actorWindowOpen, ASSET_TYPE_ACTOR_PROTOTYPE, sizeof(ActorPrototype), "New actor prototype", DrawActorEditor, state);
+	DrawAssetEditor("Actor editor", pContext->actorWindowOpen, ASSET_TYPE_ACTOR_PROTOTYPE, sizeof(ActorPrototype), "New actor prototype", DrawActorEditor, state, nullptr, PopulateActorPrototypeEditorData, ApplyActorPrototypeEditorData, DeleteActorPrototypeEditorData);
 }
 #pragma endregion
 
@@ -3962,6 +4069,9 @@ static void DrawSoundEditor(EditedAsset& asset) {
 		ImGui::InputScalar("Length", ImGuiDataType_U32, &pSound->length);
 		ImGui::InputScalar("Loop point", ImGuiDataType_U32, &pSound->loopPoint);
 		ImGui::EndDisabled();
+
+		// TODO: If sound data editing is added in the future, implement dynamic resizing
+		// similar to Animation and Metasprite editors using pSound->GetData() and dataOffset
 
 		ImGui::BeginDisabled(pSound->type != SOUND_TYPE_SFX);
 		if (DrawTypeSelectionCombo("SFX channel", audioChannelNames, CHAN_COUNT, pSound->sfxChannel, false)) {
