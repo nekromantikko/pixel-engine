@@ -2016,9 +2016,12 @@ static void PopulateRoomEditorData(EditedAsset& editedAsset) {
 static void ApplyRoomEditorData(EditedAsset& editedAsset) {
 	const RoomEditorData* pEditorData = (RoomEditorData*)editedAsset.userData;
 	RoomTemplateHeader* pHeader = (RoomTemplateHeader*)editedAsset.data;
-	RoomActor* pActors = Assets::GetRoomTemplateActors(pHeader);
-
 	pHeader->actorCount = pEditorData->actors.Count();
+	ResizeEditedAsset(editedAsset, Assets::GetRoomTemplateSize(pHeader));
+
+	// Reassign in case the asset was resized
+	pHeader = (RoomTemplateHeader*)editedAsset.data;
+	RoomActor* pActors = Assets::GetRoomTemplateActors(pHeader);
 	for (u32 i = 0; i < pHeader->actorCount; i++) {
 		pActors[i] = *pEditorData->actors.Get(pEditorData->actors.GetHandle(i));
 	}
@@ -2170,7 +2173,6 @@ static void DrawRoomView(EditedAsset& asset) {
 					pEditorData->actors.Remove(pEditorData->selectedActorHandle);
 
 					pHeader->actorCount--;
-					ResizeEditedAsset(asset, Assets::GetRoomTemplateSize(pHeader));
 					asset.dirty = true;
 				}
 			}
@@ -2182,7 +2184,6 @@ static void DrawRoomView(EditedAsset& asset) {
 				pNewActor->position = { mousePosInWorldCoords.x, mousePosInWorldCoords.y };
 
 				pHeader->actorCount++;
-				ResizeEditedAsset(asset, Assets::GetRoomTemplateSize(pHeader));
 				asset.dirty = true;
 			}
 			ImGui::EndPopup();
