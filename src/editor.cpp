@@ -200,115 +200,6 @@ static ImVec2 DrawColorGrid(ImVec2 size, s32* selection = nullptr, bool* focused
 	return gridPos;
 }
 
-// See GetMetatileVertices for human-readable version
-static void GetMetatileVerticesAVX(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
-	constexpr r32 TILE_SIZE = 1.0f / METATILE_DIM_TILES;
-	constexpr r32 INV_CHR_COUNT = 1.0f / CHR_COUNT;
-	constexpr r32 INV_CHR_DIM_TILES = 1.0f / CHR_DIM_TILES;
-	constexpr u32 CHR_DIM_TILES_BITS = 0xf;
-	constexpr u32 CHR_DIM_TILES_LOG2 = 4;
-	constexpr r32 INV_SHEET_PALETTE_COUNT = (1.0f / (PALETTE_COUNT / 2));
-
-	const __m256 xMask = _mm256_setr_ps(0, 1, 0, 1, 1, 0, 1, 0);
-	const __m256 yMask = _mm256_setr_ps(0, 0, 0, 0, 1, 1, 1, 1);
-
-	const s32 i0 = metatile.tiles[0].tileId;
-	const s32 i1 = metatile.tiles[1].tileId;
-	const s32 i2 = metatile.tiles[2].tileId;
-	const s32 i3 = metatile.tiles[3].tileId;
-
-	const u32 p0 = metatile.tiles[0].palette;
-	const u32 p1 = metatile.tiles[1].palette;
-	const u32 p2 = metatile.tiles[2].palette;
-	const u32 p3 = metatile.tiles[3].palette;
-
-	const bool hf0 = metatile.tiles[0].flipHorizontal;
-	const bool hf1 = metatile.tiles[1].flipHorizontal;
-	const bool hf2 = metatile.tiles[2].flipHorizontal;
-	const bool hf3 = metatile.tiles[3].flipHorizontal;
-
-	const bool vf0 = metatile.tiles[0].flipVertical;
-	const bool vf1 = metatile.tiles[1].flipVertical;
-	const bool vf2 = metatile.tiles[2].flipVertical;
-	const bool vf3 = metatile.tiles[3].flipVertical;
-
-	const __m256i ti0 = _mm256_setr_epi32(i0, i0, i1, i1, i0, i0, i1, i1);
-	const __m256i ti1 = _mm256_setr_epi32(i2, i2, i3, i3, i2, i2, i3, i3);
-	const __m256 ci = _mm256_set1_ps(INV_CHR_COUNT);
-	const __m256 cit = _mm256_set1_ps(INV_CHR_DIM_TILES);
-	const __m256i cb = _mm256_set1_epi32(CHR_DIM_TILES_BITS);
-
-	const __m256 p0v = _mm256_setr_ps(p0, p0, p1, p1, p0, p0, p1, p1);
-	const __m256 p1v = _mm256_setr_ps(p2, p2, p3, p3, p2, p2, p3, p3);
-
-	const __m256 h0v = _mm256_setr_ps(hf0, hf0, hf1, hf1, hf0, hf0, hf1, hf1);
-	const __m256 h1v = _mm256_setr_ps(hf2, hf2, hf3, hf3, hf2, hf2, hf3, hf3);
-
-	const __m256 v0v = _mm256_setr_ps(vf0, vf0, vf1, vf1, vf0, vf0, vf1, vf1);
-	const __m256 v1v = _mm256_setr_ps(vf2, vf2, vf3, vf3, vf2, vf2, vf3, vf3);
-
-	const __m256 pi = _mm256_set1_ps(INV_SHEET_PALETTE_COUNT);
-
-	const __m256 s = _mm256_set1_ps(scale * TILE_SIZE);
-	const __m256 tx = _mm256_set1_ps(pos.x);
-	const __m256 ty = _mm256_set1_ps(pos.y);
-
-	__m256 x = _mm256_setr_ps(0, 1, 1, 2, 1, 0, 2, 1);
-	x = _mm256_mul_ps(x, s);
-	x = _mm256_add_ps(x, tx);
-
-	__m256 y0 = _mm256_setr_ps(0, 0, 0, 0, 1, 1, 1, 1);
-	y0 = _mm256_mul_ps(y0, s);
-	y0 = _mm256_add_ps(y0, ty);
-
-	const __m256i tix0 = _mm256_and_si256(ti0, cb);
-	const __m256i tiy0 = _mm256_srli_epi32(ti0, CHR_DIM_TILES_LOG2);
-	const __m256 fhMask0 = _mm256_xor_ps(xMask, h0v);
-	__m256 u0 = _mm256_cvtepi32_ps(tix0);
-	u0 = _mm256_add_ps(u0, fhMask0);
-	u0 = _mm256_mul_ps(u0, cit);
-
-	u0 = _mm256_add_ps(u0, p0v);
-	u0 = _mm256_mul_ps(u0, pi);
-
-	const __m256 fvMask0 = _mm256_xor_ps(yMask, v0v);
-	__m256 v0 = _mm256_cvtepi32_ps(tiy0);
-	v0 = _mm256_add_ps(v0, fvMask0);
-	v0 = _mm256_mul_ps(v0, cit);
-
-	v0 = _mm256_mul_ps(v0, ci);
-
-	__m256 y1 = _mm256_setr_ps(1, 1, 1, 1, 2, 2, 2, 2);
-	y1 = _mm256_mul_ps(y1, s);
-	y1 = _mm256_add_ps(y1, ty);
-
-	const __m256i tix1 = _mm256_and_si256(ti1, cb);
-	const __m256i tiy1 = _mm256_srli_epi32(ti1, CHR_DIM_TILES_LOG2);
-	const __m256 fhMask1 = _mm256_xor_ps(xMask, h1v);
-	__m256 u1 = _mm256_cvtepi32_ps(tix1);
-	u1 = _mm256_add_ps(u1, fhMask1);
-	u1 = _mm256_mul_ps(u1, cit);
-
-	u1 = _mm256_add_ps(u1, p1v);
-	u1 = _mm256_mul_ps(u1, pi);
-
-	const __m256 fvMask1 = _mm256_xor_ps(yMask, v1v);
-	__m256 v1 = _mm256_cvtepi32_ps(tiy1);
-	v1 = _mm256_add_ps(v1, fvMask1);
-	v1 = _mm256_mul_ps(v1, cit);
-
-	v1 = _mm256_mul_ps(v1, ci);
-
-	_mm256_store_ps((r32*)outVertices, _mm256_unpacklo_ps(x, y0));
-	_mm256_store_ps((r32*)outVertices + 8, _mm256_unpackhi_ps(x, y0));
-	_mm256_store_ps((r32*)outVertices + 16, _mm256_unpacklo_ps(x, y1));
-	_mm256_store_ps((r32*)outVertices + 24, _mm256_unpackhi_ps(x, y1));
-
-	_mm256_store_ps((r32*)outUV, _mm256_unpacklo_ps(u0, v0));
-	_mm256_store_ps((r32*)outUV + 8, _mm256_unpackhi_ps(u0, v0));
-	_mm256_store_ps((r32*)outUV + 16, _mm256_unpacklo_ps(u1, v1));
-	_mm256_store_ps((r32*)outUV + 24, _mm256_unpackhi_ps(u1, v1));
-}
 
 static void GetMetatileVertices(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
 	constexpr r32 tileSize = 1.0f / METATILE_DIM_TILES;
@@ -370,7 +261,7 @@ static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, ImU32 c
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
 	ImVec2 uv[METATILE_TILE_COUNT * 4];
 
-	GetMetatileVerticesAVX(metatile, pos, size, verts, uv);
+	GetMetatileVertices(metatile, pos, size, verts, uv);
 	WriteMetatile(verts, uv, color);
 
 	drawList->PopTextureID();
@@ -479,7 +370,7 @@ static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, c
 			const Metatile& metatile = tilesetTile.metatile;
 
 			const ImVec2 drawPos = ImVec2(pos.x + (x - xOffsetRemainder) * scale, pos.y + (y - yOffsetRemainder) * scale);
-			GetMetatileVerticesAVX(metatile, drawPos, scale, verts, uv);
+			GetMetatileVertices(metatile, drawPos, scale, verts, uv);
 			WriteMetatile(verts, uv);
 		}
 	}
@@ -510,7 +401,7 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 		ImVec2 metatileOffset = ImVec2(chrPos.x + metatileCoord.x * gridStepPixels, chrPos.y + metatileCoord.y * gridStepPixels);
 
 		const Metatile& metatile = pTileset->tiles[i].metatile;
-		GetMetatileVerticesAVX(metatile, metatileOffset, renderScale * TILESET_DIM, verts, uv);
+		GetMetatileVertices(metatile, metatileOffset, renderScale * TILESET_DIM, verts, uv);
 		WriteMetatile(verts, uv);
 	}
 	drawList->PopTextureID();
@@ -2714,7 +2605,7 @@ enum DungeonNodeType {
 };
 
 struct DungeonRoomData {
-	const RoomTemplateHandle templateId;
+	RoomTemplateHandle templateId;
 };
 
 struct DungeonExitData {
