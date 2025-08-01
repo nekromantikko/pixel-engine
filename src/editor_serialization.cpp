@@ -1388,3 +1388,97 @@ bool Editor::Assets::SaveAssetToFile(const std::filesystem::path& path, AssetTyp
 		return false;
 	}
 }
+
+std::filesystem::path Editor::Assets::GenerateAssetPath(AssetType type, const char* name) {
+	std::filesystem::path basePath = ASSETS_SRC_DIR;
+	
+	// Map asset types to their subdirectories and file extensions (matching editor_asset_watcher.cpp)
+	const char* subdir = nullptr;
+	const char* extension = nullptr;
+	
+	switch (type) {
+	case ASSET_TYPE_CHR_BANK:
+		subdir = "chr_sheets";
+		extension = ".bmp";
+		break;
+	case ASSET_TYPE_SOUND:
+		subdir = "sfx";
+		extension = ".nsf";
+		break;
+	case ASSET_TYPE_PALETTE:
+		subdir = "palettes";
+		extension = ".dat";
+		break;
+	case ASSET_TYPE_METASPRITE:
+		subdir = "sprites";
+		extension = ".sprite";
+		break;
+	case ASSET_TYPE_TILESET:
+		subdir = "tilesets";
+		extension = ".tset";
+		break;
+	case ASSET_TYPE_ANIMATION:
+		subdir = "animations";
+		extension = ".anim";
+		break;
+	case ASSET_TYPE_ACTOR_PROTOTYPE:
+		subdir = "actor_prototypes";
+		extension = ".actor";
+		break;
+	case ASSET_TYPE_ROOM_TEMPLATE:
+		subdir = "rooms";
+		extension = ".room";
+		break;
+	case ASSET_TYPE_OVERWORLD:
+		subdir = "overworlds";
+		extension = ".ow";
+		break;
+	case ASSET_TYPE_DUNGEON:
+		subdir = "dungeons";
+		extension = ".dung";
+		break;
+	default:
+		DEBUG_ERROR("Unsupported asset type for path generation: %s\n", ASSET_TYPE_NAMES[type]);
+		return std::filesystem::path();
+	}
+	
+	return basePath / subdir / (std::string(name) + extension);
+}
+
+bool Editor::Assets::SerializeAssetToFile(u64 assetId, AssetType type, const void* pData, const char* relativePath) {
+	AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(assetId);
+	if (!pAssetInfo) {
+		DEBUG_ERROR("Asset not found: %llu\n", assetId);
+		return false;
+	}
+	
+	std::filesystem::path filePath;
+	if (relativePath && strlen(relativePath) > 0) {
+		// Use existing relative path for edited assets
+		filePath = std::filesystem::path(ASSETS_SRC_DIR) / relativePath;
+	} else {
+		// Generate new path for newly created assets
+		filePath = GenerateAssetPath(type, pAssetInfo->name);
+		
+		// Store the relative path in the AssetEntry
+		std::filesystem::path relativePathObj = std::filesystem::relative(filePath, ASSETS_SRC_DIR);
+		strncpy(pAssetInfo->relativePath, relativePathObj.string().c_str(), MAX_ASSET_PATH_LENGTH - 1);
+		pAssetInfo->relativePath[MAX_ASSET_PATH_LENGTH - 1] = '\0';
+	}
+	
+	// Ensure directory exists
+	std::filesystem::create_directories(filePath.parent_path());
+	
+	// Save the asset data
+	bool success = SaveAssetToFile(filePath, type, pData);
+	
+	if (success) {
+		// Create and save metadata
+		nlohmann::json metadata;
+		InitializeMetadataJson(metadata, assetId);
+		SaveAssetMetadataToFile(filePath, metadata);
+	}
+	
+	return success;
+}
+}

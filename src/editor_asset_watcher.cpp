@@ -119,6 +119,15 @@ bool Editor::Assets::ListFilesInDirectory(const std::filesystem::path& directory
 				AssetManager::RemoveAsset(guid);
 				continue;
 			}
+			
+			// Set the relative path for the loaded asset
+			AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(guid);
+			if (pAssetInfo) {
+				std::filesystem::path relativePath = std::filesystem::relative(entry.path(), ASSETS_SRC_DIR);
+				strncpy(pAssetInfo->relativePath, relativePath.string().c_str(), MAX_ASSET_PATH_LENGTH - 1);
+				pAssetInfo->relativePath[MAX_ASSET_PATH_LENGTH - 1] = '\0';
+			}
+			
 			DEBUG_LOG("Asset %s loaded successfully with GUID: %llu\n", pathCStr, guid);
 		}
 	}

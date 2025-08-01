@@ -1003,6 +1003,9 @@ static bool SaveEditedAsset(EditedAsset& asset, ApplyAssetEditorDataFn applyFn) 
 
 	UpdateRenderBuffer(pAssetInfo->id, pAssetInfo->flags.type, pAssetInfo->size, data);
 
+	// Serialize the asset to file
+	Editor::Assets::SerializeAssetToFile(asset.id, pAssetInfo->flags.type, data, pAssetInfo->relativePath);
+
 	asset.dirty = false;
 	return true;
 }
@@ -1058,6 +1061,10 @@ static bool DuplicateAsset(u64 id) {
 	}
 	void* newData = AssetManager::GetAsset(newId, pAssetInfo->flags.type);
 	memcpy(newData, assetData, pAssetInfo->size);
+	
+	// Serialize the duplicated asset to file
+	Editor::Assets::SerializeAssetToFile(newId, pAssetInfo->flags.type, newData);
+	
 	return true;
 }
 
@@ -1210,6 +1217,10 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 				const u64 id = AssetManager::CreateAsset(type, newSize, newName);
 				void* data = AssetManager::GetAsset(id, type);
 				Editor::Assets::InitializeAsset(type, data);
+				
+				// Serialize the newly created asset to file
+				Editor::Assets::SerializeAssetToFile(id, type, data);
+				
 				state.editedAssets.try_emplace(id, CopyAssetForEditing(id, populateFn));
 			}
 			ImGui::Separator();

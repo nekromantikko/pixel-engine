@@ -14,4 +14,7 @@ namespace Editor::Assets {
 
 	bool LoadAssetFromFile(const std::filesystem::path& path, AssetType type, const nlohmann::json& metadata, u32& size, void* pOutData);
 	bool SaveAssetToFile(const std::filesystem::path& path, AssetType type, const void* pData);
+	
+	std::filesystem::path GenerateAssetPath(AssetType type, const char* name);
+	bool SerializeAssetToFile(u64 assetId, AssetType type, const void* pData, const char* relativePath = nullptr);
 }
