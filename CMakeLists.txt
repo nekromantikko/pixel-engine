@@ -123,6 +123,7 @@ set (GLSL_SHADERS
 	src/shaders/textured_raw.frag)
 
 set(SHADER_DEST ${CMAKE_CURRENT_BINARY_DIR}/shaders)
+file(MAKE_DIRECTORY ${SHADER_DEST})
 include(${CMAKE_CURRENT_SOURCE_DIR}/glsl_shader.cmake)
 set_source_files_properties(src/shaders/debug_blit_chr.comp PROPERTIES ShaderType "comp")
 set_source_files_properties(src/shaders/debug_blit_pal.comp PROPERTIES ShaderType "comp")
