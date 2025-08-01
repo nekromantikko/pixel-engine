@@ -61,6 +61,7 @@ set(HEADERS
 		src/actors.h)
 
 option(ENABLE_EDITOR "Enable editor functionality" ON)
+option(USE_AVX "Use AVX implementation where applicable" ON)
 
 IF(ENABLE_EDITOR)
 	set(EDITOR_INCLUDE_DIRS src/ext/imgui-filebrowser)
@@ -143,4 +144,8 @@ ENDIF()
 
 IF(ENABLE_EDITOR)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC EDITOR)
+ENDIF()
+
+IF(USE_AVX)
+	target_compile_definitions(${PROJECT_NAME} PUBLIC USE_AVX)
 ENDIF()
