@@ -2004,6 +2004,47 @@ static void DrawSpriteEditorVector(std::vector<Sprite>& sprites, ImVector<s32>& 
 		}
 		ImGui::EndChild();
 
+		ImGui::SeparatorText("Position");
+
+		s32 x = sprite.x;
+		if (ImGui::InputInt("X", &x)) {
+			sprite.x = x;
+			dirty = true;
+		}
+
+		s32 y = sprite.y;
+		if (ImGui::InputInt("Y", &y)) {
+			sprite.y = y;
+			dirty = true;
+		}
+
+		if (ImGui::Checkbox("Flip horizontal", &flipX)) {
+			sprite.flipHorizontal = flipX;
+			dirty = true;
+		}
+		ImGui::SameLine();
+		if (ImGui::Checkbox("Flip vertical", &flipY)) {
+			sprite.flipVertical = flipY;
+			dirty = true;
+		}
+	}
+}
+		}
+
+		ImGui::SameLine();
+		ImGui::BeginChild("sprite palette", ImVec2(0, chrSheetSize));
+		{
+			for (int i = 0; i < FG_PALETTE_COUNT; i++) {
+				ImGui::PushID(i);
+				if (DrawPaletteButton(i + BG_PALETTE_COUNT)) {
+					sprite.palette = i;
+					dirty = true;
+				}
+				ImGui::PopID();
+			}
+		}
+		ImGui::EndChild();
+
 		ImGui::Text("Position: (%d, %d)", sprite.x, sprite.y);
 
 		if (ImGui::Checkbox("Flip horizontal", &flipX)) {
@@ -2695,6 +2736,7 @@ static void DrawActorEditor(EditedAsset& asset) {
 		static s32 currentAnim = 0;
 
 		ActorPrototype* pPrototype = (ActorPrototype*)asset.data;
+		ActorPrototypeEditorData* pEditorData = (ActorPrototypeEditorData*)asset.userData;
 
 		ImGui::SeparatorText("Properties");
 
@@ -2765,8 +2807,10 @@ static void DrawActorEditor(EditedAsset& asset) {
 				ImGui::EndDisabled();*/
 
 				ImGui::BeginChild("Anim list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-				DrawGenericEditableList<AnimationHandle>(pPrototype->GetAnimations(), pPrototype->animCount, selectedAnims, "Animation");
-
+				if (pEditorData) {
+					DrawGenericEditableListVector<AnimationHandle>(pEditorData->animations, selectedAnims, "Animation");
+					asset.dirty = true; // Mark dirty when using the vector editor
+				}
 				ImGui::EndChild();
 
 				ImGui::SameLine();
@@ -2782,12 +2826,13 @@ static void DrawActorEditor(EditedAsset& asset) {
 					}
 					else {
 						currentAnim = selectedAnims[0];
-						AnimationHandle& animHandle = pPrototype->GetAnimations()[currentAnim];
+						if (pEditorData && currentAnim < (s32)pEditorData->animations.size()) {
+							AnimationHandle& animHandle = pEditorData->animations[currentAnim];
 
-						if (DrawAssetField("Animation", ASSET_TYPE_ANIMATION, animHandle.id)) {
-							asset.dirty = true;
+							if (DrawAssetField("Animation", ASSET_TYPE_ANIMATION, animHandle.id)) {
+								asset.dirty = true;
+							}
 						}
-
 					}
 				}
 				ImGui::EndChild();
@@ -3912,6 +3957,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Animation editor");
 
 	Animation* pAnimation = (Animation*)asset.data;
+	AnimationEditorData* pEditorData = (AnimationEditorData*)asset.userData;
 
 	ImGui::SeparatorText("Properties");
 	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
@@ -3919,8 +3965,13 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	}
 
 	static const s16 step = 1;
-	if (ImGui::InputScalar("Frame count", ImGuiDataType_U16, &pAnimation->frameCount, &step)) {
-		asset.dirty = true;
+	if (pEditorData) {
+		u16 frameCount = pEditorData->frames.size();
+		if (ImGui::InputScalar("Frame count", ImGuiDataType_U16, &frameCount, &step)) {
+			// Resize the vector to match the new frame count
+			pEditorData->frames.resize(frameCount);
+			asset.dirty = true;
+		}
 	}
 	// TODO: Resize asset if frame count changes
 	// pAnimation->frameCount = glm::clamp(pAnimation->frameCount, u16(0), u16(ANIMATION_MAX_FRAME_COUNT));
@@ -3928,7 +3979,9 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	if (ImGui::InputScalar("Loop point", ImGuiDataType_S16, &pAnimation->loopPoint, &step)) {
 		asset.dirty = true;
 	}
-	pAnimation->loopPoint = glm::clamp(pAnimation->loopPoint, s16(-1), s16(pAnimation->frameCount - 1));
+	if (pEditorData) {
+		pAnimation->loopPoint = glm::clamp(pAnimation->loopPoint, s16(-1), s16(pEditorData->frames.size() - 1));
+	}
 
 	if (ImGui::InputScalar("Frame length", ImGuiDataType_U8, &pAnimation->frameLength, &step)) {
 		asset.dirty = true;
@@ -3939,7 +3992,8 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	static s32 currentTick = 0;
 	static r32 accumulator = 0.0f;
 
-	const s32 totalTicks = pAnimation->frameCount * pAnimation->frameLength;
+	const s32 frameCount = pEditorData ? pEditorData->frames.size() : pAnimation->frameCount;
+	const s32 totalTicks = frameCount * pAnimation->frameLength;
 	constexpr r32 tickTime = 1.0f / 60.0f;
 
 	static r32 previousTime = pContext->secondsElapsed;
@@ -3961,7 +4015,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 			currentTick = 0;
 			break;
 		}
-		currentTick -= (pAnimation->frameCount - pAnimation->loopPoint) * pAnimation->frameLength;
+		currentTick -= (frameCount - pAnimation->loopPoint) * pAnimation->frameLength;
 	}
 
 	s32 currentFrame = pAnimation->frameLength == 0 ? 0 : currentTick / pAnimation->frameLength;
@@ -3993,8 +4047,8 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	const ImU32 color = ImGui::ColorConvertFloat4ToU32(style.Colors[ImGuiCol_Border]);
 	drawList->AddLine(ImVec2(topLeft.x, btmRight.y), ImVec2(btmRight.x, btmRight.y), color);
 
-	const r32 frameWidth = timelineSize.x / pAnimation->frameCount;
-	for (u32 i = 0; i < pAnimation->frameCount; i++) {
+	const r32 frameWidth = frameCount > 0 ? timelineSize.x / frameCount : timelineSize.x;
+	for (u32 i = 0; i < frameCount; i++) {
 		const r32 x = i * frameWidth + topLeft.x;
 
 		drawList->AddLine(ImVec2(x, topLeft.y), ImVec2(x, btmRight.y), color, 2.0f);
@@ -4022,10 +4076,19 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	const ImVec2 frameAreaSize(contentSize.x, contentSize.y - timelineHeight);
 	const r32 frameBoxSize = contentSize.y - timelineHeight;
 
-	for (u32 i = 0; i < pAnimation->frameCount; i++) {
+	for (u32 i = 0; i < frameCount; i++) {
 		const r32 x = i * frameWidth + topLeft.x;
 
-		AnimationFrame& frame = pAnimation->GetFrames()[i];
+		AnimationFrame* pFrame = nullptr;
+		if (pEditorData && i < pEditorData->frames.size()) {
+			pFrame = &pEditorData->frames[i];
+		} else if (i < pAnimation->frameCount) {
+			pFrame = &pAnimation->GetFrames()[i];
+		}
+
+		if (!pFrame) continue;
+
+		AnimationFrame& frame = *pFrame;
 
 		const ImVec2 frameMin(x, topLeft.y + timelineHeight + style.ItemSpacing.y);
 		const ImVec2 frameMax(frameMin.x + frameBoxSize, frameMin.y + frameBoxSize);
