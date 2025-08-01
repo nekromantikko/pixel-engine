@@ -6,6 +6,7 @@
 #include "animation.h"
 #include "actor_prototypes.h"
 #include "room.h"
+#include "overworld.h"
 
 static constexpr u64 ASSET_FILE_FORMAT_VERSION = 1;
 
@@ -146,6 +147,26 @@ inline void to_json(nlohmann::json& j, const RoomActor& actor) {
 	j["prototype_id"] = actor.prototypeHandle.id;
 	j["x"] = actor.position.x;
 	j["y"] = actor.position.y;
+}
+
+inline void from_json(const nlohmann::json& j, OverworldKeyArea& area) {
+	j.at("dungeon_id").get_to(area.dungeonId.id);
+	j.at("x").get_to(area.position.x);
+	j.at("y").get_to(area.position.y);
+	j.at("target_x").get_to(area.targetGridCell.x);
+	j.at("target_y").get_to(area.targetGridCell.y);
+	area.flags.flipDirection = j.value("flip_direction", 0);
+	area.flags.passthrough = j.value("passthrough", 0);
+}
+
+inline void to_json(nlohmann::json& j, const OverworldKeyArea& area) {
+	j["dungeon_id"] = area.dungeonId.id;
+	j["x"] = area.position.x;
+	j["y"] = area.position.y;
+	j["target_x"] = area.targetGridCell.x;
+	j["target_y"] = area.targetGridCell.y;
+	j["flip_direction"] = area.flags.flipDirection != 0;
+	j["passthrough"] = area.flags.passthrough != 0;
 }
 
 #pragma endregion
@@ -783,6 +804,98 @@ static bool SaveRoomTemplateToFile(const std::filesystem::path& path, const void
 	return false;
 }
 
+static bool LoadOverworldFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
+	if (!pOutData) {
+		size = sizeof(Overworld)
+			+ OVERWORLD_METATILE_COUNT
+			+ MAX_OVERWORLD_KEY_AREA_COUNT * sizeof(OverworldKeyArea);
+		return true; // Just return size if no output data is provided
+	}
+	
+	if (!std::filesystem::exists(path)) {
+		DEBUG_ERROR("File (%s) does not exist\n", path.string().c_str());
+		return false;
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "rb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file\n");
+		return false;
+	}
+
+	const nlohmann::json json = nlohmann::json::parse(pFile);
+	const nlohmann::json tilemapJson = json["tilemap"];
+	u32 tilemapWidth, tilemapHeight, tileCount;
+	if (!ValidateTilemapJson(tilemapJson, tilemapWidth, tilemapHeight, tileCount)) {
+		DEBUG_ERROR("Tilemap data is missing or invalid\n");
+		fclose(pFile);
+		return false;
+	}
+
+	const u32 expectedTilemapWidth = OVERWORLD_WIDTH_METATILES;
+	if (tilemapWidth != expectedTilemapWidth) {
+		DEBUG_ERROR("Tilemap width (%u) does not match expected width (%u)\n", tilemapWidth, expectedTilemapWidth);
+		fclose(pFile);
+		return false;
+	}
+
+	const u32 expectedTilemapHeight = OVERWORLD_HEIGHT_METATILES;
+	if (tilemapHeight != expectedTilemapHeight) {
+		DEBUG_ERROR("Tilemap height (%u) does not match expected height (%u)\n", tilemapHeight, expectedTilemapHeight);
+		fclose(pFile);
+		return false;
+	}
+
+	const u32 expectedTileCount = OVERWORLD_METATILE_COUNT;
+	if (tileCount != expectedTileCount) {
+		DEBUG_ERROR("Tilemap tile count (%u) does not match expected tile count (%u)\n", tileCount, expectedTileCount);
+		fclose(pFile);
+		return false;
+	}
+
+	Overworld* pOverworld = (Overworld*)pOutData;
+	constexpr u32 tilesOffset = sizeof(Overworld);
+
+	// Load the tilemap
+	pOverworld->tilemap.width = tilemapWidth;
+	pOverworld->tilemap.height = tilemapHeight;
+	pOverworld->tilemap.tilesetHandle.id = tilemapJson["tileset_id"].get<u64>();
+	pOverworld->tilemap.tilesOffset = tilesOffset - offsetof(Overworld, tilemap);
+
+	// Load the tiles
+	u8* pTiles = (u8*)pOverworld + tilesOffset;
+	const nlohmann::json& tilesJson = tilemapJson["tiles"];
+	for (u32 i = 0; i < tileCount && i < tilesJson.size(); i++) {
+		tilesJson[i].get_to(pTiles[i]);
+	}
+
+	// Load key areas
+	const nlohmann::json& keyAreasJson = json["key_areas"];
+	u32 keyAreaCount = keyAreasJson != nullptr && keyAreasJson.is_array() ? keyAreasJson.size() : 0;
+	if (keyAreaCount > MAX_OVERWORLD_KEY_AREA_COUNT) {
+		DEBUG_ERROR("Key area count (%u) exceeds maximum (%u)\n", keyAreaCount, MAX_OVERWORLD_KEY_AREA_COUNT);
+		fclose(pFile);
+		return false;
+	}
+
+	for (u32 i = 0; i < keyAreaCount; i++) {
+		if (i < keyAreasJson.size()) {
+			keyAreasJson[i].get_to(pOverworld->keyAreas[i]);
+		}
+		else {
+			pOverworld->keyAreas[i] = OverworldKeyArea{}; // Initialize remaining areas to default
+		}
+	}
+
+	fclose(pFile);
+	return true;
+}
+
+static bool SaveOverworldToFile(const std::filesystem::path& path, const void* pData) {
+	// TODO
+	return false;
+}
+
 #pragma endregion
 
 std::filesystem::path Editor::Assets::GetAssetMetadataPath(const std::filesystem::path& path) {
@@ -900,6 +1013,9 @@ bool Editor::Assets::LoadAssetFromFile(const std::filesystem::path& path, AssetT
 	case (ASSET_TYPE_ROOM_TEMPLATE): {
 		return LoadRoomTemplateFromFile(path, metadata, size, pOutData);
 	}
+	case (ASSET_TYPE_OVERWORLD): {
+		return LoadOverworldFromFile(path, metadata, size, pOutData);
+	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);
 		return false;
@@ -930,6 +1046,9 @@ bool Editor::Assets::SaveAssetToFile(const std::filesystem::path& path, AssetTyp
 	}
 	case (ASSET_TYPE_ROOM_TEMPLATE): {
 		return SaveRoomTemplateToFile(path, pData);
+	}
+	case (ASSET_TYPE_OVERWORLD): {
+
 	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);

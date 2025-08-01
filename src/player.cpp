@@ -662,9 +662,8 @@ static void UpdatePlayerOverworld(Actor* pPlayer, const ActorPrototype* pPrototy
 
         if (!Game::UpdateCounter(state.movementCounter)) {
             const Overworld* pOverworld = Game::GetOverworld();
-            const OverworldKeyArea* pKeyAreas = Assets::GetOverworldKeyAreas(pOverworld);
             for (u32 i = 0; i < MAX_OVERWORLD_KEY_AREA_COUNT; i++) {
-                const OverworldKeyArea& area = pKeyAreas[i];
+                const OverworldKeyArea& area = pOverworld->keyAreas[i];
 
                 if (area.position != glm::i8vec2(pPlayer->position)) {
                     continue;

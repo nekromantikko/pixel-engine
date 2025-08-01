@@ -3271,7 +3271,7 @@ static void DeleteOverworldEditorData(void* userData) {
 static void DrawOverworldEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Overworld editor");
 
-	Overworld* pHeader = (Overworld*)asset.data;
+	Overworld* pOverworld = (Overworld*)asset.data;
 	OverworldEditorData* pEditorData = (OverworldEditorData*)asset.userData;
 
 	const bool showToolsWindow = true;
@@ -3288,14 +3288,13 @@ static void DrawOverworldEditor(EditedAsset& asset) {
 	const ImVec2 btmRight(topLeft.x + contentWidth, topLeft.y + contentHeight);
 	const r32 tileDrawSize = METATILE_DIM_PIXELS * renderScale;
 
-	DrawTilemapEditor(&pHeader->tilemapHeader, topLeft, renderScale, pEditorData->viewportPos, pEditorData->clipboard, pEditorData->editMode == OW_EDIT_MODE_TILES);
+	DrawTilemapEditor(&pOverworld->tilemap, topLeft, renderScale, pEditorData->viewportPos, pEditorData->clipboard, pEditorData->editMode == OW_EDIT_MODE_TILES);
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	drawList->PushClipRect(topLeft, btmRight, true);
 
-	OverworldKeyArea* pKeyAreas = Assets::GetOverworldKeyAreas(pHeader);
 	for (u32 i = 0; i < MAX_OVERWORLD_KEY_AREA_COUNT; i++) {
-		OverworldKeyArea& area = pKeyAreas[i];
+		OverworldKeyArea& area = pOverworld->keyAreas[i];
 
 		char label[8];
 		snprintf(label, 8, "%#02x", i);
@@ -3314,7 +3313,7 @@ static void DrawOverworldEditor(EditedAsset& asset) {
 		if (ImGui::BeginTabBar("Overworld tool tabs")) {
 			if (ImGui::BeginTabItem("Tilemap")) {
 				pEditorData->editMode = OW_EDIT_MODE_TILES;
-				DrawTilemapTools(pEditorData->clipboard, pHeader->tilemapHeader.tilesetHandle);
+				DrawTilemapTools(pEditorData->clipboard, pOverworld->tilemap.tilesetHandle);
 
 				ImGui::EndTabItem();
 			}
@@ -3347,7 +3346,7 @@ static void DrawOverworldEditor(EditedAsset& asset) {
 
 				ImGui::SeparatorText("Area properties");
 
-				OverworldKeyArea& area = pKeyAreas[selectedArea];
+				OverworldKeyArea& area = pOverworld->keyAreas[selectedArea];
 
 				ImGui::InputScalarN("Position", ImGuiDataType_S8, &area.position, 2);
 
@@ -3384,7 +3383,7 @@ static void DrawOverworldEditor(EditedAsset& asset) {
 
 static void DrawOverworldWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Overworld editor", pContext->overworldWindowOpen, ASSET_TYPE_OVERWORLD, Assets::GetOverworldSize(), "New Overworld", DrawOverworldEditor, state, Assets::InitOverworld, PopulateOverworldEditorData, nullptr, DeleteOverworldEditorData);
+	DrawAssetEditor("Overworld editor", pContext->overworldWindowOpen, ASSET_TYPE_OVERWORLD, 0, "New Overworld", DrawOverworldEditor, state, nullptr, PopulateOverworldEditorData, nullptr, DeleteOverworldEditorData);
 }
 #pragma endregion
 
