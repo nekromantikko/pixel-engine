@@ -958,7 +958,7 @@ bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
     Rendering::SetViewportPos(glm::vec2(0.0f), false);
     ClearActors();
 
-    const OverworldKeyArea& area = Assets::GetOverworldKeyAreas(pOverworld)[keyAreaIndex];
+    const OverworldKeyArea& area = pOverworld->keyAreas[keyAreaIndex];
     const glm::ivec2 overworldDir = GetOverworldDir(area, direction);
     glm::ivec2 spawnPos = area.position;
     if (area.flags.passthrough) {
@@ -980,7 +980,7 @@ bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
 void Game::EnterOverworldArea(u8 keyAreaIndex, const glm::ivec2& direction) {
     currentOverworldArea = keyAreaIndex;
     const Overworld* pOverworld = AssetManager::GetAsset(overworldHandle);
-    const OverworldKeyArea& area = Assets::GetOverworldKeyAreas(pOverworld)[keyAreaIndex];
+    const OverworldKeyArea& area = pOverworld->keyAreas[keyAreaIndex];
 
     overworldAreaEnterDir = direction;
     Game::TriggerLevelTransition(area.dungeonId, area.targetGridCell, GetSidescrollingDir(direction, area.flags.flipDirection));
@@ -1100,7 +1100,7 @@ glm::ivec2 Game::GetCurrentPlayAreaSize() {
 			DEBUG_ERROR("Overworld asset not found: %ull", overworldHandle.id);
 			break;
 		}
-        return { pOverworld->tilemapHeader.width, pOverworld->tilemapHeader.height };
+        return { pOverworld->tilemap.width, pOverworld->tilemap.height };
     }
     default:
         break;
@@ -1121,7 +1121,7 @@ const Tilemap* Game::GetCurrentTilemap() {
     }
     case GAME_STATE_OVERWORLD: {
         const Overworld* pOverworld = AssetManager::GetAsset(overworldHandle);
-        return &pOverworld->tilemapHeader;
+        return &pOverworld->tilemap;
     }
     default:
         break;

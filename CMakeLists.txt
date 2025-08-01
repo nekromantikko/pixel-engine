@@ -42,7 +42,6 @@ set(SOURCES
 		src/spawner.cpp
 		src/debug.cpp
 		src/room.cpp
-		src/overworld.cpp
 		src/shader.cpp
 		src/asset_manager.cpp)
 
