@@ -905,9 +905,9 @@ struct AssetEditorState {
 
 typedef void (*AssetEditorFn)(EditedAsset&);
 typedef void (*InitAssetFn)(u64, void*);
-typedef void (*PopulateAssetEditorDataFn)(u64, void*, void**);
-typedef void (*ApplyAssetEditorDataFn)(void*, const void*);
-typedef void (*DeleteAssetEditorDataFn)(void*);
+typedef void (*PopulateAssetEditorDataFn)(EditedAsset&);
+typedef void (*ApplyAssetEditorDataFn)(EditedAsset&);
+typedef void (*DeleteAssetEditorDataFn)(EditedAsset&);
 
 static EditorRenderBuffer* CreateRenderBuffer(u64 id, u32 size, const void* data) {
 	EditorRenderBuffer* pBuffer = Rendering::CreateEditorBuffer(size, data);
@@ -955,7 +955,7 @@ static EditedAsset CopyAssetForEditing(u64 id, PopulateAssetEditorDataFn populat
 	result.dirty = false;
 
 	if (populateFn) {
-		populateFn(id, result.data, &result.userData);
+		populateFn(result);
 	}
 	else result.userData = nullptr;
 
@@ -978,7 +978,7 @@ static bool ResizeEditedAsset(EditedAsset& asset, u32 newSize) {
 
 static bool SaveEditedAsset(EditedAsset& asset, ApplyAssetEditorDataFn applyFn) {
 	if (applyFn) {
-		applyFn(asset.data, asset.userData);
+		applyFn(asset);
 	}
 	
 	AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
@@ -1014,7 +1014,7 @@ static bool RevertEditedAsset(EditedAsset& asset, PopulateAssetEditorDataFn popu
 	UpdateRenderBuffer(pAssetInfo->id, pAssetInfo->flags.type, pAssetInfo->size, data);
 
 	if (populateFn) {
-		populateFn(asset.id, asset.data, &asset.userData);
+		populateFn(asset);
 	}
 	else asset.userData = nullptr;
 	return true;
@@ -1025,7 +1025,7 @@ static void FreeEditedAsset(EditedAsset& asset, DeleteAssetEditorDataFn deleteFn
 	asset.data = nullptr;
 
 	if (deleteFn) {
-		deleteFn(asset.userData);
+		deleteFn(asset);
 	}
 	asset.userData = nullptr;
 }
@@ -1998,24 +1998,24 @@ struct RoomEditorData {
 	glm::vec2 viewportPos = glm::vec2(0.0f);
 };
 
-static void PopulateRoomEditorData(u64 id, void* assetData, void** pUserData) {
-	if (*pUserData) {
-		delete *pUserData;
+static void PopulateRoomEditorData(EditedAsset& editedAsset) {
+	if (editedAsset.userData) {
+		delete editedAsset.userData;
 	}
 
-	*pUserData = new RoomEditorData();
-	RoomEditorData* pEditorData = (RoomEditorData*)*pUserData;
+	editedAsset.userData = new RoomEditorData();
+	RoomEditorData* pEditorData = (RoomEditorData*)editedAsset.userData;
 
-	const RoomTemplateHeader* pHeader = (RoomTemplateHeader*)assetData;
+	const RoomTemplateHeader* pHeader = (RoomTemplateHeader*)editedAsset.data;
 	const RoomActor* pActors = Assets::GetRoomTemplateActors(pHeader);
 	for (u32 i = 0; i < pHeader->actorCount; i++) {
 		pEditorData->actors.Add(pActors[i]);
 	}
 }
 
-static void ApplyRoomEditorData(void* assetData, const void* userData) {
-	const RoomEditorData* pEditorData = (RoomEditorData*)userData;
-	RoomTemplateHeader* pHeader = (RoomTemplateHeader*)assetData;
+static void ApplyRoomEditorData(EditedAsset& editedAsset) {
+	const RoomEditorData* pEditorData = (RoomEditorData*)editedAsset.userData;
+	RoomTemplateHeader* pHeader = (RoomTemplateHeader*)editedAsset.data;
 	RoomActor* pActors = Assets::GetRoomTemplateActors(pHeader);
 
 	pHeader->actorCount = pEditorData->actors.Count();
@@ -2024,8 +2024,8 @@ static void ApplyRoomEditorData(void* assetData, const void* userData) {
 	}
 }
 
-static void DeleteRoomEditorData(void* userData) {
-	delete userData;
+static void DeleteRoomEditorData(EditedAsset& editedAsset) {
+	delete editedAsset.userData;
 }
 
 static void DrawScreenBorders(u32 index, ImVec2 pMin, ImVec2 pMax, r32 renderScale) {
@@ -2852,26 +2852,26 @@ static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon)
 	pOutDungeon->roomCount = roomIndex;
 }
 
-static void PopulateDungeonEditorData(u64 id, void* assetData, void** pUserData) {
-	if (*pUserData) {
-		delete *pUserData;
+static void PopulateDungeonEditorData(EditedAsset& editedAsset) {
+	if (editedAsset.userData) {
+		delete editedAsset.userData;
 	}
 
-	*pUserData = new DungeonEditorData();
-	DungeonEditorData* pEditorData = (DungeonEditorData*)*pUserData;
-	Dungeon* pDungeon = (Dungeon*)assetData;
+	editedAsset.userData = new DungeonEditorData();
+	DungeonEditorData* pEditorData = (DungeonEditorData*)editedAsset.userData;
+	Dungeon* pDungeon = (Dungeon*)editedAsset.data;
 	pEditorData->dungeon = ConvertFromDungeon(pDungeon);
 }
 
-static void ApplyDungeonEditorData(void* assetData, const void* userData) {
-	const DungeonEditorData* pEditorData = (DungeonEditorData*)userData;
-	Dungeon* pDungeon = (Dungeon*)assetData;
+static void ApplyDungeonEditorData(EditedAsset& editedAsset) {
+	const DungeonEditorData* pEditorData = (DungeonEditorData*)editedAsset.userData;
+	Dungeon* pDungeon = (Dungeon*)editedAsset.data;
 
 	ConvertToDungeon(pEditorData->dungeon, pDungeon);
 }
 
-static void DeleteDungeonEditorData(void* userData) {
-	delete userData;
+static void DeleteDungeonEditorData(EditedAsset& editedAsset) {
+	delete editedAsset.userData;
 }
 
 static u32 GetRoomCount(const EditorDungeon& dungeon) {
@@ -3262,16 +3262,16 @@ struct OverworldEditorData {
 	TilemapClipboard clipboard{};
 };
 
-static void PopulateOverworldEditorData(u64 id, void* assetData, void** pUserData) {
-	if (*pUserData) {
-		delete* pUserData;
+static void PopulateOverworldEditorData(EditedAsset& editedAsset) {
+	if (editedAsset.userData) {
+		delete editedAsset.userData;
 	}
 
-	*pUserData = new OverworldEditorData();
+	editedAsset.userData = new OverworldEditorData();
 }
 
-static void DeleteOverworldEditorData(void* userData) {
-	delete userData;
+static void DeleteOverworldEditorData(EditedAsset& editedAsset) {
+	delete editedAsset.userData;
 }
 
 static void DrawOverworldEditor(EditedAsset& asset) {
@@ -3853,29 +3853,29 @@ static EditorRenderBuffer* GetPaletteRenderBuffer(u64 id) {
 	return GetRenderBuffer(id, ASSET_TYPE_PALETTE, PALETTE_COLOR_COUNT);
 }
 
-static void PopulateChrEditorData(u64 id, void* assetData, void** pUserData) {
-	ChrEditorData*& pEditorData = (ChrEditorData*&)*pUserData;
+static void PopulateChrEditorData(EditedAsset& editedAsset) {
+	ChrEditorData*& pEditorData = (ChrEditorData*&)editedAsset.userData;
 	
 	if (!pEditorData) {
 		pEditorData = new ChrEditorData();
 
 		pEditorData->pRenderData = new EditedAssetRenderData();
-		pEditorData->pRenderData->pBuffer = Rendering::CreateEditorBuffer(CHR_SIZE_BYTES, assetData);
+		pEditorData->pRenderData->pBuffer = Rendering::CreateEditorBuffer(CHR_SIZE_BYTES, editedAsset.data);
 		pEditorData->pRenderData->pTexture = Rendering::CreateEditorTexture(CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, pEditorData->pRenderData->pBuffer);
 		pContext->tempRenderData.insert(pEditorData->pRenderData);
 	}
 
-	Rendering::UpdateEditorBuffer(pEditorData->pRenderData->pBuffer, assetData);
+	Rendering::UpdateEditorBuffer(pEditorData->pRenderData->pBuffer, editedAsset.data);
 }
 
-static void DeleteChrEditorData(void* pUserData) {
-	ChrEditorData* pEditorData = (ChrEditorData*)pUserData;
+static void DeleteChrEditorData(EditedAsset& editedAsset) {
+	ChrEditorData* pEditorData = (ChrEditorData*)editedAsset.userData;
 
 	pContext->tempEraseList.push_back(pEditorData->pRenderData);
 
 	// NOTE: This does not free the render data, so it's potentially leaky
 	// Render data should be freed later when iterating the erase list
-	delete pUserData;
+	delete editedAsset.userData;
 }
 
 static void DrawEditedChrSheet(r32 size, ImTextureID chrTexture, s8 bgColorIndex) {
@@ -3957,29 +3957,29 @@ struct PaletteEditorData {
 	ChrBankHandle selectedChrBank = ChrBankHandle::Null();
 };
 
-static void PopulatePaletteEditorData(u64 id, void* assetData, void** pUserData) {
-	PaletteEditorData*& pEditorData = (PaletteEditorData*&)*pUserData;
+static void PopulatePaletteEditorData(EditedAsset& editedAsset) {
+	PaletteEditorData*& pEditorData = (PaletteEditorData*&)editedAsset.userData;
 
 	if (!pEditorData) {
 		pEditorData = new PaletteEditorData();
 
 		pEditorData->pRenderData = new EditedAssetRenderData();
-		pEditorData->pRenderData->pBuffer = Rendering::CreateEditorBuffer(PALETTE_COLOR_COUNT, assetData);
+		pEditorData->pRenderData->pBuffer = Rendering::CreateEditorBuffer(PALETTE_COLOR_COUNT, editedAsset.data);
 		pEditorData->pRenderData->pTexture = Rendering::CreateEditorTexture(CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, nullptr, pEditorData->pRenderData->pBuffer);
 		pContext->tempRenderData.insert(pEditorData->pRenderData);
 	}
 
-	Rendering::UpdateEditorBuffer(pEditorData->pRenderData->pBuffer, assetData);
+	Rendering::UpdateEditorBuffer(pEditorData->pRenderData->pBuffer, editedAsset.data);
 }
 
-static void DeletePaletteEditorData(void* pUserData) {
-	PaletteEditorData* pEditorData = (PaletteEditorData*)pUserData;
+static void DeletePaletteEditorData(EditedAsset& editedAsset) {
+	PaletteEditorData* pEditorData = (PaletteEditorData*)editedAsset.userData;
 
 	pContext->tempEraseList.push_back(pEditorData->pRenderData);
 
 	// NOTE: This does not free the render data, so it's potentially leaky
 	// Render data should be freed later when iterating the erase list
-	delete pUserData;
+	delete editedAsset.userData;
 }
 
 static void DrawPaletteEditor(EditedAsset& asset) {
