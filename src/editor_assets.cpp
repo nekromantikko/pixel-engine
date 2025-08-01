@@ -10,7 +10,7 @@
 #pragma region Size calculation
 static u32 GetRoomTemplateSize(const RoomTemplate* pHeader) {
 	u32 result = sizeof(RoomTemplate);
-	constexpr u32 tilemapSize = ROOM_MAX_SCREEN_COUNT * ROOM_SCREEN_TILE_COUNT;
+	constexpr u32 tilemapSize = ROOM_MAX_SCREEN_COUNT * ROOM_SCREEN_TILE_COUNT * sizeof(BgTile);
 	result += tilemapSize;
 	result += ROOM_MAP_TILE_COUNT * sizeof(BgTile);
 	if (pHeader) {

@@ -8,6 +8,8 @@
 #include "room.h"
 #include "overworld.h"
 #include "dungeon.h"
+#include "editor_assets.h"
+#include "actor_types.h"
 
 static constexpr u64 ASSET_FILE_FORMAT_VERSION = 1;
 
@@ -305,8 +307,11 @@ static bool LoadChrSheetFromFile(const std::filesystem::path& path, const nlohma
 }
 
 static bool SaveChrSheetToFile(const std::filesystem::path& path, const void* pData) {
-	// TODO
-	return false;
+	// For CHR sheets, we only save metadata, not the binary data
+	// The binary CHR sheet file should remain as-is (BMP format)
+	// This function returns true as no metadata changes are needed for CHR sheets
+	DEBUG_LOG("CHR sheet binary data not saved - only metadata handling needed\n");
+	return true;
 }
 
 struct NSFHeader {
@@ -320,15 +325,6 @@ static void InitSound(u64 id, void* data) {
 	Sound newSound{};
 	newSound.dataOffset = sizeof(Sound);
 	memcpy(data, &newSound, sizeof(Sound));
-}
-
-static u32 GetSoundSize(const Sound* pSound) {
-	u32 result = sizeof(Sound);
-	if (pSound) {
-		result += pSound->length * sizeof(SoundOperation);
-	}
-
-	return result;
 }
 
 static bool LoadSoundFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
@@ -387,8 +383,23 @@ static bool LoadSoundFromFile(const std::filesystem::path& path, const nlohmann:
 }
 
 static bool SaveSoundToFile(const std::filesystem::path& path, const void* pData) {
-	// TODO
-	return false;
+	// For sounds, we only save metadata, not the binary data
+	// The binary sound file should remain as-is (NSF format)
+	// Metadata like sound_type and sfx_channel should be saved to .meta file
+	if (!pData) {
+		DEBUG_ERROR("pData is null\n");
+		return false;
+	}
+
+	const Sound* pSound = (const Sound*)pData;
+	
+	// Create metadata JSON
+	nlohmann::json metadata;
+	metadata["sound_type"] = (SoundType)pSound->type;
+	metadata["sfx_channel"] = (SoundChannelId)pSound->sfxChannel;
+
+	// Save metadata to .meta file
+	return Editor::Assets::SaveAssetMetadataToFile(path, metadata);
 }
 
 static bool LoadPaletteFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
@@ -415,8 +426,20 @@ static bool LoadPaletteFromFile(const std::filesystem::path& path, const nlohman
 }
 
 static bool SavePaletteToFile(const std::filesystem::path& path, const void* pData) {
-	// TODO
-	return false;
+	if (!pData) {
+		DEBUG_ERROR("pData is null\n");
+		return false;
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "wb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file for writing\n");
+		return false;
+	}
+
+	fwrite(pData, sizeof(Palette), 1, pFile);
+	fclose(pFile);
+	return true;
 }
 
 static bool LoadMetaspriteFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
@@ -453,8 +476,30 @@ static bool LoadMetaspriteFromFile(const std::filesystem::path& path, const nloh
 }
 
 static bool SaveMetaspriteToFile(const std::filesystem::path& path, const void* pData) {
-	// TODO
-	return false;
+	if (!pData) {
+		DEBUG_ERROR("pData is null\n");
+		return false;
+	}
+
+	const Metasprite* pMetasprite = (const Metasprite*)pData;
+	nlohmann::json json;
+	
+	json["sprites"] = nlohmann::json::array();
+	const Sprite* pSprites = pMetasprite->GetSprites();
+	for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
+		json["sprites"].push_back(pSprites[i]);
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "wb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file for writing\n");
+		return false;
+	}
+
+	std::string jsonStr = json.dump(4);
+	fwrite(jsonStr.c_str(), sizeof(char), jsonStr.size(), pFile);
+	fclose(pFile);
+	return true;
 }
 
 static bool LoadTilesetFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
@@ -482,8 +527,24 @@ static bool LoadTilesetFromFile(const std::filesystem::path& path, const nlohman
 }
 
 static bool SaveTilesetToFile(const std::filesystem::path& path, const void* pData) {
-	// TODO
-	return false;
+	if (!pData) {
+		DEBUG_ERROR("pData is null\n");
+		return false;
+	}
+
+	const Tileset* pTileset = (const Tileset*)pData;
+	nlohmann::json json = *pTileset;
+
+	FILE* pFile = fopen(path.string().c_str(), "wb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file for writing\n");
+		return false;
+	}
+
+	std::string jsonStr = json.dump(4);
+	fwrite(jsonStr.c_str(), sizeof(char), jsonStr.size(), pFile);
+	fclose(pFile);
+	return true;
 }
 
 static bool LoadAnimationFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
@@ -521,8 +582,33 @@ static bool LoadAnimationFromFile(const std::filesystem::path& path, const nlohm
 }
 
 static bool SaveAnimationToFile(const std::filesystem::path& path, const void* pData) {
-	// TODO
-	return false;
+	if (!pData) {
+		DEBUG_ERROR("pData is null\n");
+		return false;
+	}
+
+	const Animation* pAnim = (const Animation*)pData;
+	nlohmann::json json;
+	
+	json["frame_length"] = pAnim->frameLength;
+	json["loop_point"] = pAnim->loopPoint;
+	
+	json["frames"] = nlohmann::json::array();
+	const AnimationFrame* pFrames = pAnim->GetFrames();
+	for (u32 i = 0; i < pAnim->frameCount; i++) {
+		json["frames"].push_back(pFrames[i]);
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "wb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file for writing\n");
+		return false;
+	}
+
+	std::string jsonStr = json.dump(4);
+	fwrite(jsonStr.c_str(), sizeof(char), jsonStr.size(), pFile);
+	fclose(pFile);
+	return true;
 }
 
 static bool ParseActorSubtype(const std::string& subtypeStr, const ActorEditorData& editorData, TActorSubtype& outSubtype) {
@@ -643,6 +729,69 @@ static bool ParseActorPropertyValue(const nlohmann::json& jsonValue, const Actor
 	}
 }
 
+static nlohmann::json SerializeActorPropertyComponentValueScalar(const void* pData, const ActorEditorProperty& property) {
+	switch (property.dataType) {
+	case ImGuiDataType_S8: 
+		return *(const s8*)pData;
+	case ImGuiDataType_U8: 
+		return *(const u8*)pData;
+	case ImGuiDataType_S16: 
+		return *(const s16*)pData;
+	case ImGuiDataType_U16: 
+		return *(const u16*)pData;
+	case ImGuiDataType_S32: 
+		return *(const s32*)pData;
+	case ImGuiDataType_U32: 
+		return *(const u32*)pData;
+	case ImGuiDataType_S64: 
+		return *(const s64*)pData;
+	case ImGuiDataType_U64: 
+		return *(const u64*)pData;
+	case ImGuiDataType_Float: 
+		return *(const r32*)pData;
+	case ImGuiDataType_Double: 
+		return *(const r64*)pData;
+	case ImGuiDataType_Bool: 
+		return *(const bool*)pData;
+	default:
+		return nullptr;
+	}
+}
+
+static nlohmann::json SerializeActorPropertyValue(const void* pData, const ActorEditorProperty& property) {
+	switch (property.type) {
+	case ACTOR_EDITOR_PROPERTY_SCALAR: {
+		const ImGuiDataTypeInfo* pTypeInfo = ImGui::DataTypeGetInfo(property.dataType);
+		if (property.components == 1) {
+			return SerializeActorPropertyComponentValueScalar(pData, property);
+		}
+		else {
+			nlohmann::json arrayJson = nlohmann::json::array();
+			for (s32 i = 0; i < property.components; i++) {
+				const void* pComponentData = (const u8*)pData + i * pTypeInfo->Size;
+				arrayJson.push_back(SerializeActorPropertyComponentValueScalar(pComponentData, property));
+			}
+			return arrayJson;
+		}
+	}
+	case ACTOR_EDITOR_PROPERTY_ASSET: {
+		if (property.components == 1) {
+			return *(const u64*)pData;
+		}
+		else {
+			nlohmann::json arrayJson = nlohmann::json::array();
+			for (s32 i = 0; i < property.components; i++) {
+				arrayJson.push_back(((const u64*)pData)[i]);
+			}
+			return arrayJson;
+		}
+	}
+	default:
+		return nullptr;
+	}
+}
+}
+
 static bool LoadActorPrototypeFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
 	if (!std::filesystem::exists(path)) {
 		DEBUG_ERROR("File (%s) does not exist\n", path.string().c_str());
@@ -703,8 +852,52 @@ static bool LoadActorPrototypeFromFile(const std::filesystem::path& path, const 
 }
 
 static bool SaveActorPrototypeToFile(const std::filesystem::path& path, const void* pData) {
-	// TODO
-	return false;
+	if (!pData) {
+		DEBUG_ERROR("pData is null\n");
+		return false;
+	}
+
+	const ActorPrototype* pProto = (const ActorPrototype*)pData;
+	const ActorEditorData& editorData = Editor::actorEditorData[pProto->type];
+	
+	nlohmann::json json;
+	json["type"] = (ActorType)pProto->type;
+	
+	// Get subtype name
+	if (pProto->subtype < editorData.GetSubtypeCount()) {
+		json["subtype"] = editorData.GetSubtypeNames()[pProto->subtype];
+	} else {
+		DEBUG_ERROR("Invalid subtype: %d\n", pProto->subtype);
+		return false;
+	}
+	
+	json["hitbox"] = pProto->hitbox;
+	
+	// Serialize properties
+	json["properties"] = nlohmann::json::object();
+	for (u32 i = 0; i < editorData.GetPropertyCount(pProto->subtype); i++) {
+		const ActorEditorProperty& prop = editorData.GetProperty(pProto->subtype, i);
+		const void* pPropertyData = (const u8*)&pProto->data + prop.offset;
+		json["properties"][prop.name] = SerializeActorPropertyValue(pPropertyData, prop);
+	}
+	
+	// Serialize animation IDs
+	json["animation_ids"] = nlohmann::json::array();
+	const AnimationHandle* pAnims = pProto->GetAnimations();
+	for (u32 i = 0; i < pProto->animCount; i++) {
+		json["animation_ids"].push_back(pAnims[i].id);
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "wb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file for writing\n");
+		return false;
+	}
+
+	std::string jsonStr = json.dump(4);
+	fwrite(jsonStr.c_str(), sizeof(char), jsonStr.size(), pFile);
+	fclose(pFile);
+	return true;
 }
 
 static bool ValidateTilemapJson(const nlohmann::json& json, u32& outWidth, u32& outHeight, u32& outTileCount) {
@@ -842,8 +1035,54 @@ static bool LoadRoomTemplateFromFile(const std::filesystem::path& path, const nl
 }
 
 static bool SaveRoomTemplateToFile(const std::filesystem::path& path, const void* pData) {
-	// TODO
-	return false;
+	if (!pData) {
+		DEBUG_ERROR("pData is null\n");
+		return false;
+	}
+
+	const RoomTemplate* pRoom = (const RoomTemplate*)pData;
+	nlohmann::json json;
+	
+	json["width"] = pRoom->width;
+	json["height"] = pRoom->height;
+	
+	// Serialize map tiles
+	json["map_tiles"] = nlohmann::json::array();
+	const BgTile* pMapTiles = (const BgTile*)((const u8*)pRoom + pRoom->mapTileOffset);
+	for (u32 i = 0; i < ROOM_MAP_TILE_COUNT; i++) {
+		json["map_tiles"].push_back(pMapTiles[i]);
+	}
+	
+	// Serialize tilemap
+	json["tilemap"] = nlohmann::json::object();
+	json["tilemap"]["width"] = pRoom->tilemap.width;
+	json["tilemap"]["height"] = pRoom->tilemap.height;
+	json["tilemap"]["tileset_id"] = pRoom->tilemap.tilesetHandle.id;
+	
+	json["tilemap"]["tiles"] = nlohmann::json::array();
+	const u8* pTiles = (const u8*)&pRoom->tilemap + pRoom->tilemap.tilesOffset;
+	const u32 tileCount = pRoom->tilemap.width * pRoom->tilemap.height;
+	for (u32 i = 0; i < tileCount; i++) {
+		json["tilemap"]["tiles"].push_back(pTiles[i]);
+	}
+	
+	// Serialize actors
+	json["actors"] = nlohmann::json::array();
+	const RoomActor* pActors = (const RoomActor*)((const u8*)pRoom + pRoom->actorOffset);
+	for (u32 i = 0; i < pRoom->actorCount; i++) {
+		json["actors"].push_back(pActors[i]);
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "wb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file for writing\n");
+		return false;
+	}
+
+	std::string jsonStr = json.dump(4);
+	fwrite(jsonStr.c_str(), sizeof(char), jsonStr.size(), pFile);
+	fclose(pFile);
+	return true;
 }
 
 static bool LoadOverworldFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
@@ -934,8 +1173,45 @@ static bool LoadOverworldFromFile(const std::filesystem::path& path, const nlohm
 }
 
 static bool SaveOverworldToFile(const std::filesystem::path& path, const void* pData) {
-	// TODO
-	return false;
+	if (!pData) {
+		DEBUG_ERROR("pData is null\n");
+		return false;
+	}
+
+	const Overworld* pOverworld = (const Overworld*)pData;
+	nlohmann::json json;
+	
+	// Serialize tilemap
+	json["tilemap"] = nlohmann::json::object();
+	json["tilemap"]["width"] = pOverworld->tilemap.width;
+	json["tilemap"]["height"] = pOverworld->tilemap.height;
+	json["tilemap"]["tileset_id"] = pOverworld->tilemap.tilesetHandle.id;
+	
+	json["tilemap"]["tiles"] = nlohmann::json::array();
+	const u8* pTiles = (const u8*)&pOverworld->tilemap + pOverworld->tilemap.tilesOffset;
+	const u32 tileCount = pOverworld->tilemap.width * pOverworld->tilemap.height;
+	for (u32 i = 0; i < tileCount; i++) {
+		json["tilemap"]["tiles"].push_back(pTiles[i]);
+	}
+	
+	// Serialize key areas
+	json["key_areas"] = nlohmann::json::array();
+	for (u32 i = 0; i < MAX_OVERWORLD_KEY_AREA_COUNT; i++) {
+		if (pOverworld->keyAreas[i].position.x != -1 || pOverworld->keyAreas[i].position.y != -1) {
+			json["key_areas"].push_back(pOverworld->keyAreas[i]);
+		}
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "wb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file for writing\n");
+		return false;
+	}
+
+	std::string jsonStr = json.dump(4);
+	fwrite(jsonStr.c_str(), sizeof(char), jsonStr.size(), pFile);
+	fclose(pFile);
+	return true;
 }
 
 static bool LoadDungeonFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
@@ -963,8 +1239,24 @@ static bool LoadDungeonFromFile(const std::filesystem::path& path, const nlohman
 }
 
 static bool SaveDungeonToFile(const std::filesystem::path& path, const void* pData) {
-	// TODO
-	return false;
+	if (!pData) {
+		DEBUG_ERROR("pData is null\n");
+		return false;
+	}
+
+	const Dungeon* pDungeon = (const Dungeon*)pData;
+	nlohmann::json json = *pDungeon;
+
+	FILE* pFile = fopen(path.string().c_str(), "wb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file for writing\n");
+		return false;
+	}
+
+	std::string jsonStr = json.dump(4);
+	fwrite(jsonStr.c_str(), sizeof(char), jsonStr.size(), pFile);
+	fclose(pFile);
+	return true;
 }
 
 #pragma endregion
