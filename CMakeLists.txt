@@ -41,7 +41,6 @@ set(SOURCES
 		src/actor_types.cpp
 		src/spawner.cpp
 		src/debug.cpp
-		src/room.cpp
 		src/shader.cpp
 		src/asset_manager.cpp)
 
@@ -63,7 +62,7 @@ option(USE_AVX "Use AVX implementation where applicable" ON)
 IF(ENABLE_EDITOR)
 	set(EDITOR_INCLUDE_DIRS src/ext/imgui-filebrowser)
 	set(EDITOR_HEADERS src/editor.h)
-	set(EDITOR_SOURCES src/editor.cpp src/editor_serialization.cpp src/editor_asset_watcher.cpp)
+	set(EDITOR_SOURCES src/editor.cpp src/editor_assets.cpp src/editor_serialization.cpp src/editor_asset_watcher.cpp)
 
 	FetchContent_Declare(
         	imgui
