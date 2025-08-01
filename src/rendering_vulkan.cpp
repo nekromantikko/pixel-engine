@@ -655,6 +655,9 @@ static u32 GetDeviceMemoryTypeIndex(u32 typeFilter, VkMemoryPropertyFlags proper
 			return i;
 		}
 	}
+	
+	DEBUG_ERROR("Failed to find suitable memory type!\n");
+	return UINT32_MAX;
 }
 
 static void AllocateMemory(VkMemoryRequirements requirements, VkMemoryPropertyFlags properties, VkDeviceMemory& outMemory) {
