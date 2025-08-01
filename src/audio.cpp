@@ -24,8 +24,8 @@ static constexpr u8 LENGTH_TABLE[0x20] = {
     10, 254, 20, 2, 40, 4, 80, 6, 10, 8, 0, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30
 };
 
-static constexpr u16 NOISE_PERIOD_TABLE[0x10] = {
-    4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
+static constexpr u8 NOISE_PERIOD_TABLE[0x10] = {
+    4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 124, 252, 250, 248, 242, 228
 };
 
 enum SoundOpCode : uint8_t {
