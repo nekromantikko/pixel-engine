@@ -112,6 +112,7 @@ struct Metasprite {
 #ifdef EDITOR
 namespace Assets {
 	u32 GetMetaspriteSize(const Metasprite* pHeader = nullptr);
+	void InitMetasprite(u64 id, void* data);
 }
 #endif
 

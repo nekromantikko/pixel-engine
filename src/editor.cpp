@@ -2104,21 +2104,28 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Metasprite properties");
 	ImGui::Checkbox("Lock selection", &selectionLocked);
 
-	// TODO: Resize asset if sprite count is changed
-	// Better yet, use a dynamic array for sprites for the duration of the editing
-	/*ImGui::BeginDisabled(pMetasprite->spriteCount == METASPRITE_MAX_SPRITE_COUNT);
-	if (ImGui::Button("+")) {
-		PushElement<Sprite>(pMetasprite->GetSprites(), pMetasprite->spriteCount);
-		asset.dirty = true;
+	// Add/remove sprite buttons - now working with dynamic arrays
+	if (pEditorData) {
+		if (ImGui::Button("+")) {
+			pEditorData->sprites.push_back(Sprite{}); // Add default sprite
+			asset.dirty = true;
+		}
+		ImGui::SameLine();
+		ImGui::BeginDisabled(pEditorData->sprites.empty());
+		if (ImGui::Button("-")) {
+			if (!pEditorData->sprites.empty()) {
+				pEditorData->sprites.pop_back(); // Remove last sprite
+				asset.dirty = true;
+				// Clear selection if it's out of bounds
+				for (int i = spriteSelection.Size - 1; i >= 0; i--) {
+					if (spriteSelection[i] >= (s32)pEditorData->sprites.size()) {
+						spriteSelection.find_erase_unsorted(spriteSelection[i]);
+					}
+				}
+			}
+		}
+		ImGui::EndDisabled();
 	}
-	ImGui::EndDisabled();
-	ImGui::SameLine();
-	ImGui::BeginDisabled(pMetasprite->spriteCount == 0);
-	if (ImGui::Button("-")) {
-		PopElement<Sprite>(pMetasprite->GetSprites(), pMetasprite->spriteCount);
-		asset.dirty = true;
-	}
-	ImGui::EndDisabled();*/
 
 	ImGui::BeginChild("Sprite list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 
@@ -2142,7 +2149,7 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 
 static void DrawSpriteWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Metasprite editor", pContext->spriteWindowOpen, ASSET_TYPE_METASPRITE, Assets::GetMetaspriteSize(), "New Metasprite", DrawMetaspriteEditor, state, nullptr, PopulateMetaspriteEditorData, ApplyMetaspriteEditorData, DeleteMetaspriteEditorData);
+	DrawAssetEditor("Metasprite editor", pContext->spriteWindowOpen, ASSET_TYPE_METASPRITE, Assets::GetMetaspriteSize(), "New Metasprite", DrawMetaspriteEditor, state, Assets::InitMetasprite, PopulateMetaspriteEditorData, ApplyMetaspriteEditorData, DeleteMetaspriteEditorData);
 }
 #pragma endregion
 
@@ -2793,18 +2800,28 @@ static void DrawActorEditor(EditedAsset& asset) {
 			}
 
 			if (ImGui::BeginTabItem("Animations")) {
-				// TODO: Resize asset when animation count is changed
-				/*ImGui::BeginDisabled(pPrototype->animCount == ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT);
-				if (ImGui::Button("+")) {
-					PushElement<AnimationHandle>(pPrototype->animations, pPrototype->animCount);
+				// Add/remove animation buttons - now working with dynamic arrays
+				if (pEditorData) {
+					if (ImGui::Button("+")) {
+						pEditorData->animations.push_back(AnimationHandle::Null()); // Add default animation handle
+						asset.dirty = true;
+					}
+					ImGui::SameLine();
+					ImGui::BeginDisabled(pEditorData->animations.empty());
+					if (ImGui::Button("-")) {
+						if (!pEditorData->animations.empty()) {
+							pEditorData->animations.pop_back(); // Remove last animation
+							asset.dirty = true;
+							// Clear selection if it's out of bounds
+							for (int i = selectedAnims.Size - 1; i >= 0; i--) {
+								if (selectedAnims[i] >= (s32)pEditorData->animations.size()) {
+									selectedAnims.find_erase_unsorted(selectedAnims[i]);
+								}
+							}
+						}
+					}
+					ImGui::EndDisabled();
 				}
-				ImGui::EndDisabled();
-				ImGui::SameLine();
-				ImGui::BeginDisabled(pPrototype->animCount == 1);
-				if (ImGui::Button("-")) {
-					PopElement<AnimationHandle>(pPrototype->animations, pPrototype->animCount);
-				}
-				ImGui::EndDisabled();*/
 
 				ImGui::BeginChild("Anim list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 				if (pEditorData) {
@@ -2886,7 +2903,7 @@ static void DrawActorEditor(EditedAsset& asset) {
 
 static void DrawActorWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Actor editor", pContext->actorWindowOpen, ASSET_TYPE_ACTOR_PROTOTYPE, Assets::GetActorPrototypeSize(), "New actor prototype", DrawActorEditor, state, nullptr, PopulateActorPrototypeEditorData, ApplyActorPrototypeEditorData, DeleteActorPrototypeEditorData);
+	DrawAssetEditor("Actor editor", pContext->actorWindowOpen, ASSET_TYPE_ACTOR_PROTOTYPE, Assets::GetActorPrototypeSize(), "New actor prototype", DrawActorEditor, state, Assets::InitActorPrototype, PopulateActorPrototypeEditorData, ApplyActorPrototypeEditorData, DeleteActorPrototypeEditorData);
 }
 #pragma endregion
 
@@ -3972,6 +3989,21 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 			pEditorData->frames.resize(frameCount);
 			asset.dirty = true;
 		}
+		
+		// Add/remove frame buttons
+		if (ImGui::Button("+ Frame")) {
+			pEditorData->frames.push_back(AnimationFrame{}); // Add default frame
+			asset.dirty = true;
+		}
+		ImGui::SameLine();
+		ImGui::BeginDisabled(pEditorData->frames.empty());
+		if (ImGui::Button("- Frame")) {
+			if (!pEditorData->frames.empty()) {
+				pEditorData->frames.pop_back(); // Remove last frame
+				asset.dirty = true;
+			}
+		}
+		ImGui::EndDisabled();
 	}
 	// TODO: Resize asset if frame count changes
 	// pAnimation->frameCount = glm::clamp(pAnimation->frameCount, u16(0), u16(ANIMATION_MAX_FRAME_COUNT));
@@ -4142,7 +4174,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 
 static void DrawAnimationWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Animation editor", pContext->animationWindowOpen, ASSET_TYPE_ANIMATION, Assets::GetAnimationSize(), "New Animation", DrawAnimationEditor, state, nullptr, PopulateAnimationEditorData, ApplyAnimationEditorData, DeleteAnimationEditorData);
+	DrawAssetEditor("Animation editor", pContext->animationWindowOpen, ASSET_TYPE_ANIMATION, Assets::GetAnimationSize(), "New Animation", DrawAnimationEditor, state, Assets::InitAnimation, PopulateAnimationEditorData, ApplyAnimationEditorData, DeleteAnimationEditorData);
 }
 #pragma endregion
 

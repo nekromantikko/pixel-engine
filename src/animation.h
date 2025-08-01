@@ -19,5 +19,6 @@ struct Animation {
 #ifdef EDITOR
 namespace Assets {
 	u32 GetAnimationSize(const Animation* pHeader = nullptr);
+	void InitAnimation(u64 id, void* data);
 }
 #endif

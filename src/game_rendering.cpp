@@ -371,6 +371,17 @@ u32 Assets::GetMetaspriteSize(const Metasprite* pHeader) {
 	}
 	return result;
 }
+
+void Assets::InitMetasprite(u64 id, void* data) {
+	constexpr u32 spritesOffset = sizeof(Metasprite);
+	
+	Metasprite newHeader{
+		.spriteCount = 0,
+		.spritesOffset = spritesOffset
+	};
+	
+	memcpy(data, &newHeader, sizeof(Metasprite));
+}
 #endif
 
 #pragma endregion

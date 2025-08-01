@@ -562,12 +562,40 @@ u32 Assets::GetActorPrototypeSize(const ActorPrototype* pHeader) {
 	return result;
 }
 
+void Assets::InitActorPrototype(u64 id, void* data) {
+	constexpr u32 animOffset = sizeof(ActorPrototype);
+	
+	ActorPrototype newHeader{
+		.type = 0,
+		.subtype = 0,
+		.hitbox = {-0.5f, 0.5f, -0.5f, 0.5f},
+		.data = {},
+		.animCount = 0,
+		.animOffset = animOffset
+	};
+	
+	memcpy(data, &newHeader, sizeof(ActorPrototype));
+}
+
 u32 Assets::GetAnimationSize(const Animation* pHeader) {
 	u32 result = sizeof(Animation);
 	if (pHeader) {
 		result += pHeader->frameCount * sizeof(AnimationFrame);
 	}
 	return result;
+}
+
+void Assets::InitAnimation(u64 id, void* data) {
+	constexpr u32 framesOffset = sizeof(Animation);
+	
+	Animation newHeader{
+		.frameLength = 4,
+		.loopPoint = -1,
+		.frameCount = 0,
+		.framesOffset = framesOffset
+	};
+	
+	memcpy(data, &newHeader, sizeof(Animation));
 }
 #endif
 

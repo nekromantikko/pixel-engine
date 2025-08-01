@@ -23,6 +23,7 @@ struct ActorPrototype {
 #ifdef EDITOR
 namespace Assets {
 	u32 GetActorPrototypeSize(const ActorPrototype* pHeader = nullptr);
+	void InitActorPrototype(u64 id, void* data);
 }
 #endif
 
