@@ -1650,7 +1650,47 @@ static void DrawDebugWindow() {
 #pragma endregion
 
 #pragma region Sprites
-static void DrawMetaspritePreview(Metasprite* pMetasprite, ImVector<s32>& spriteSelection, bool selectionLocked, r32 size) {
+struct MetaspriteEditorData {
+	std::vector<Sprite> sprites;
+};
+
+static void PopulateMetaspriteEditorData(u64 id, void* assetData, void** pUserData) {
+	MetaspriteEditorData*& pEditorData = (MetaspriteEditorData*&)*pUserData;
+	
+	if (!pEditorData) {
+		pEditorData = new MetaspriteEditorData();
+	}
+	
+	Metasprite* pMetasprite = (Metasprite*)assetData;
+	pEditorData->sprites.clear();
+	pEditorData->sprites.reserve(pMetasprite->spriteCount);
+	
+	Sprite* pSprites = pMetasprite->GetSprites();
+	for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
+		pEditorData->sprites.push_back(pSprites[i]);
+	}
+}
+
+static void ApplyMetaspriteEditorData(void* assetData, const void* userData) {
+	const MetaspriteEditorData* pEditorData = (const MetaspriteEditorData*)userData;
+	Metasprite* pMetasprite = (Metasprite*)assetData;
+	
+	// Copy sprite data back to asset
+	Sprite* pSprites = pMetasprite->GetSprites();
+	for (u32 i = 0; i < pMetasprite->spriteCount && i < pEditorData->sprites.size(); i++) {
+		pSprites[i] = pEditorData->sprites[i];
+	}
+}
+
+static void DeleteMetaspriteEditorData(void* userData) {
+	delete (MetaspriteEditorData*)userData;
+}
+
+static u32 CalculateMetaspriteSize(u32 spriteCount) {
+	return sizeof(Metasprite) + spriteCount * sizeof(Sprite);
+}
+
+static bool DrawMetaspritePreview(MetaspriteEditorData* pEditorData, ImVector<s32>& spriteSelection, bool selectionLocked, r32 size) {
 	constexpr s32 gridSizeTiles = 8;
 
 	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
@@ -1659,6 +1699,7 @@ static void DrawMetaspritePreview(Metasprite* pMetasprite, ImVector<s32>& sprite
 	static bool gridFocused = false;
 	static bool dragging = false;
 	static ImVec2 dragDelta = ImVec2(0, 0);
+	bool modified = false;
 
 	ImVec2 gridPos = DrawTileGrid(ImVec2(size, size), gridStepPixels, nullptr, &gridFocused);
 	ImVec2 origin = ImVec2(gridPos.x + size / 2, gridPos.y + size / 2);
@@ -1678,8 +1719,8 @@ static void DrawMetaspritePreview(Metasprite* pMetasprite, ImVector<s32>& sprite
 	s32 trySelect = (gridFocused && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) ? -2 : -1; // -2 = deselect all (Clicked outside tiles)
 	ImGuiIO& io = ImGui::GetIO();
 
-	for (s32 i = pMetasprite->spriteCount - 1; i >= 0; i--) {
-		Sprite& sprite = pMetasprite->GetSprites()[i];
+	for (s32 i = (s32)pEditorData->sprites.size() - 1; i >= 0; i--) {
+		Sprite& sprite = pEditorData->sprites[i];
 
 		const u8 index = (u8)sprite.tileId;
 		const bool flipX = sprite.flipHorizontal;
@@ -1708,6 +1749,7 @@ static void DrawMetaspritePreview(Metasprite* pMetasprite, ImVector<s32>& sprite
 			ImVec2 deltaInTileCoord = ImVec2(dragDelta.x / renderScale, dragDelta.y / renderScale);
 			sprite.x += deltaInTileCoord.x;
 			sprite.y += deltaInTileCoord.y;
+			modified = true;
 		}
 
 		// Draw selection box
@@ -1739,10 +1781,13 @@ static void DrawMetaspritePreview(Metasprite* pMetasprite, ImVector<s32>& sprite
 		dragging = false;
 		dragDelta = ImVec2(0, 0);
 	}
+	
+	return modified;
 }
 
-static void DrawSpriteEditor(Metasprite* pMetasprite, ImVector<s32>& spriteSelection, bool& dirty) {
+static bool DrawSpriteEditor(MetaspriteEditorData* pEditorData, ImVector<s32>& spriteSelection) {
 	ImGui::SeparatorText("Sprite editor");
+	bool modified = false;
 	
 	if (spriteSelection.empty()) {
 		ImGui::TextUnformatted("No sprite selected");
@@ -1752,24 +1797,25 @@ static void DrawSpriteEditor(Metasprite* pMetasprite, ImVector<s32>& spriteSelec
 	}
 	else {
 		s32& spriteIndex = spriteSelection[0];
-		Sprite& sprite = pMetasprite->GetSprites()[spriteIndex];
-		s32 index = (s32)sprite.tileId;
+		if (spriteIndex >= 0 && spriteIndex < (s32)pEditorData->sprites.size()) {
+			Sprite& sprite = pEditorData->sprites[spriteIndex];
+			s32 index = (s32)sprite.tileId;
 
-		bool flipX = sprite.flipHorizontal;
-		bool flipY = sprite.flipVertical;
+			bool flipX = sprite.flipHorizontal;
+			bool flipY = sprite.flipVertical;
 
-		s32 newId = (s32)sprite.tileId;
-		r32 chrSheetSize = 256;
+			s32 newId = (s32)sprite.tileId;
+			r32 chrSheetSize = 256;
 
-		ImGuiStyle& style = ImGui::GetStyle();
-		ImGui::BeginChild("Tile selector", ImVec2(chrSheetSize, chrSheetSize + ImGui::GetItemRectSize().y + style.ItemSpacing.y));
-		DrawCHRPageSelector(chrSheetSize, 1, sprite.palette, &newId);
-		ImGui::EndChild();
+			ImGuiStyle& style = ImGui::GetStyle();
+			ImGui::BeginChild("Tile selector", ImVec2(chrSheetSize, chrSheetSize + ImGui::GetItemRectSize().y + style.ItemSpacing.y));
+			DrawCHRPageSelector(chrSheetSize, 1, sprite.palette, &newId);
+			ImGui::EndChild();
 
-		if (newId != sprite.tileId) {
-			sprite.tileId = (u16)newId;
-			dirty = true;
-		}
+			if (newId != sprite.tileId) {
+				sprite.tileId = (u16)newId;
+				modified = true;
+			}
 
 		ImGui::SameLine();
 		ImGui::BeginChild("sprite palette", ImVec2(0, chrSheetSize));
@@ -1778,7 +1824,7 @@ static void DrawSpriteEditor(Metasprite* pMetasprite, ImVector<s32>& spriteSelec
 				ImGui::PushID(i);
 				if (DrawPaletteButton(i + BG_PALETTE_COUNT)) {
 					sprite.palette = i;
-					dirty = true;
+					modified = true;
 				}
 				ImGui::PopID();
 			}
@@ -1789,14 +1835,17 @@ static void DrawSpriteEditor(Metasprite* pMetasprite, ImVector<s32>& spriteSelec
 
 		if (ImGui::Checkbox("Flip horizontal", &flipX)) {
 			sprite.flipHorizontal = flipX;
-			dirty = true;
+			modified = true;
 		}
 		ImGui::SameLine();
 		if (ImGui::Checkbox("Flip vertical", &flipY)) {
 			sprite.flipVertical = flipY;
-			dirty = true;
+			modified = true;
+		}
 		}
 	}
+	
+	return modified;
 }
 
 static void DrawSpriteListPreview(const Sprite& sprite) {
@@ -1820,6 +1869,7 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Metasprite editor");
 
 	Metasprite* pMetasprite = (Metasprite*)asset.data;
+	MetaspriteEditorData* pEditorData = (MetaspriteEditorData*)asset.userData;
 
 	static ImVector<s32> spriteSelection;
 	static bool selectionLocked = false;
@@ -1835,7 +1885,9 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 
 	constexpr r32 previewSize = 256;
 	ImGui::BeginChild("Metasprite preview", ImVec2(previewSize, previewSize));
-	DrawMetaspritePreview(pMetasprite, spriteSelection, selectionLocked, previewSize);
+	if (DrawMetaspritePreview(pEditorData, spriteSelection, selectionLocked, previewSize)) {
+		asset.dirty = true;
+	}
 	ImGui::EndChild();
 
 	ImGui::Separator();
@@ -1843,32 +1895,95 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Metasprite properties");
 	ImGui::Checkbox("Lock selection", &selectionLocked);
 
-	// TODO: Resize asset if sprite count is changed
-	// Better yet, use a dynamic array for sprites for the duration of the editing
-	/*ImGui::BeginDisabled(pMetasprite->spriteCount == METASPRITE_MAX_SPRITE_COUNT);
+	// Add/remove sprite buttons using dynamic array
 	if (ImGui::Button("+")) {
-		PushElement<Sprite>(pMetasprite->GetSprites(), pMetasprite->spriteCount);
-		asset.dirty = true;
+		pEditorData->sprites.emplace_back(); // Add empty sprite
+		
+		// Update sprite count and resize asset if needed
+		u32 newSpriteCount = (u32)pEditorData->sprites.size();
+		u32 newSize = CalculateMetaspriteSize(newSpriteCount);
+		if (newSize != asset.size) {
+			if (ResizeEditedAsset(asset, newSize)) {
+				// Update the metasprite structure with new sprite count and offset
+				pMetasprite = (Metasprite*)asset.data;
+				pMetasprite->spriteCount = newSpriteCount;
+				pMetasprite->spritesOffset = sizeof(Metasprite);
+				asset.dirty = true;
+			} else {
+				// Failed to resize, remove the sprite we just added
+				pEditorData->sprites.pop_back();
+			}
+		} else {
+			pMetasprite->spriteCount = newSpriteCount;
+			asset.dirty = true;
+		}
 	}
-	ImGui::EndDisabled();
 	ImGui::SameLine();
-	ImGui::BeginDisabled(pMetasprite->spriteCount == 0);
-	if (ImGui::Button("-")) {
-		PopElement<Sprite>(pMetasprite->GetSprites(), pMetasprite->spriteCount);
-		asset.dirty = true;
+	if (ImGui::Button("-") && !pEditorData->sprites.empty()) {
+		// Remove selected sprites or last sprite
+		if (!spriteSelection.empty()) {
+			// Sort selection in descending order to remove from back to front
+			std::sort(spriteSelection.begin(), spriteSelection.end(), std::greater<s32>());
+			for (s32 idx : spriteSelection) {
+				if (idx >= 0 && idx < (s32)pEditorData->sprites.size()) {
+					pEditorData->sprites.erase(pEditorData->sprites.begin() + idx);
+				}
+			}
+			spriteSelection.clear();
+		} else {
+			pEditorData->sprites.pop_back(); // Remove last sprite
+		}
+		
+		// Update sprite count and resize asset if needed
+		u32 newSpriteCount = (u32)pEditorData->sprites.size();
+		u32 newSize = CalculateMetaspriteSize(newSpriteCount);
+		if (newSize != asset.size) {
+			if (ResizeEditedAsset(asset, newSize)) {
+				// Update the metasprite structure with new sprite count and offset
+				pMetasprite = (Metasprite*)asset.data;
+				pMetasprite->spriteCount = newSpriteCount;
+				pMetasprite->spritesOffset = sizeof(Metasprite);
+				asset.dirty = true;
+			}
+		} else {
+			pMetasprite->spriteCount = newSpriteCount;
+			asset.dirty = true;
+		}
 	}
-	ImGui::EndDisabled();*/
 
 	ImGui::BeginChild("Sprite list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 
-	DrawGenericEditableList<Sprite>(pMetasprite->GetSprites(), pMetasprite->spriteCount, spriteSelection, "Sprite", selectionLocked, DrawSpriteListPreview);
+	// Use a wrapper to make the dynamic array work with the existing list drawing function
+	u32 spriteCount = (u32)pEditorData->sprites.size();
+	DrawGenericEditableList<Sprite>(pEditorData->sprites.data(), spriteCount, spriteSelection, "Sprite", selectionLocked, DrawSpriteListPreview);
+	
+	// If the list function changed the count (which it can through add/remove operations), update our vector
+	if (spriteCount != pEditorData->sprites.size()) {
+		pEditorData->sprites.resize(spriteCount);
+		
+		// Update asset size accordingly
+		u32 newSize = CalculateMetaspriteSize(spriteCount);
+		if (newSize != asset.size) {
+			if (ResizeEditedAsset(asset, newSize)) {
+				pMetasprite = (Metasprite*)asset.data;
+				pMetasprite->spriteCount = spriteCount;
+				pMetasprite->spritesOffset = sizeof(Metasprite);
+				asset.dirty = true;
+			}
+		} else {
+			pMetasprite->spriteCount = spriteCount;
+			asset.dirty = true;
+		}
+	}
 
 	ImGui::EndChild();
 
 	ImGui::SameLine();
 
 	ImGui::BeginChild("Sprite editor");
-	DrawSpriteEditor(pMetasprite, spriteSelection, asset.dirty);
+	if (DrawSpriteEditor(pEditorData, spriteSelection)) {
+		asset.dirty = true;
+	}
 	ImGui::EndChild();
 	ImGui::EndChild();
 	ImGui::EndChild();
@@ -1876,7 +1991,7 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 
 static void DrawSpriteWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Metasprite editor", pContext->spriteWindowOpen, ASSET_TYPE_METASPRITE, sizeof(Metasprite), "New Metasprite", DrawMetaspriteEditor, state);
+	DrawAssetEditor("Metasprite editor", pContext->spriteWindowOpen, ASSET_TYPE_METASPRITE, sizeof(Metasprite), "New Metasprite", DrawMetaspriteEditor, state, nullptr, PopulateMetaspriteEditorData, ApplyMetaspriteEditorData, DeleteMetaspriteEditorData);
 }
 #pragma endregion
 
@@ -3562,10 +3677,54 @@ static void DrawAssetBrowser() {
 #pragma endregion
 
 #pragma region Animation
-static void DrawAnimationPreview(const Animation* pAnimation, s32 frameIndex, r32 size) {
+struct AnimationEditorData {
+	std::vector<AnimationFrame> frames;
+};
+
+static void PopulateAnimationEditorData(u64 id, void* assetData, void** pUserData) {
+	AnimationEditorData*& pEditorData = (AnimationEditorData*&)*pUserData;
+	
+	if (!pEditorData) {
+		pEditorData = new AnimationEditorData();
+	}
+	
+	Animation* pAnimation = (Animation*)assetData;
+	pEditorData->frames.clear();
+	pEditorData->frames.reserve(pAnimation->frameCount);
+	
+	AnimationFrame* pFrames = pAnimation->GetFrames();
+	for (u32 i = 0; i < pAnimation->frameCount; i++) {
+		pEditorData->frames.push_back(pFrames[i]);
+	}
+}
+
+static void ApplyAnimationEditorData(void* assetData, const void* userData) {
+	const AnimationEditorData* pEditorData = (const AnimationEditorData*)userData;
+	Animation* pAnimation = (Animation*)assetData;
+	
+	// Copy frame data back to asset
+	AnimationFrame* pFrames = pAnimation->GetFrames();
+	for (u32 i = 0; i < pAnimation->frameCount && i < pEditorData->frames.size(); i++) {
+		pFrames[i] = pEditorData->frames[i];
+	}
+}
+
+static void DeleteAnimationEditorData(void* userData) {
+	delete (AnimationEditorData*)userData;
+}
+
+static u32 CalculateAnimationSize(u32 frameCount) {
+	return sizeof(Animation) + frameCount * sizeof(AnimationFrame);
+}
+
+static void DrawAnimationPreview(const AnimationEditorData* pEditorData, s32 frameIndex, r32 size) {
 	constexpr s32 gridSizeTiles = 8;
 
-	const AnimationFrame& frame = pAnimation->GetFrames()[frameIndex];
+	if (frameIndex < 0 || frameIndex >= (s32)pEditorData->frames.size()) {
+		return;
+	}
+
+	const AnimationFrame& frame = pEditorData->frames[frameIndex];
 
 	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
 	const r32 gridStepPixels = TILE_DIM_PIXELS * renderScale;
@@ -3588,6 +3747,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Animation editor");
 
 	Animation* pAnimation = (Animation*)asset.data;
+	AnimationEditorData* pEditorData = (AnimationEditorData*)asset.userData;
 
 	ImGui::SeparatorText("Properties");
 	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
@@ -3595,11 +3755,31 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	}
 
 	static const s16 step = 1;
-	if (ImGui::InputScalar("Frame count", ImGuiDataType_U16, &pAnimation->frameCount, &step)) {
-		asset.dirty = true;
+	u16 newFrameCount = pAnimation->frameCount;
+	if (ImGui::InputScalar("Frame count", ImGuiDataType_U16, &newFrameCount, &step)) {
+		// Resize the dynamic frame array when frame count changes
+		if (newFrameCount != pAnimation->frameCount) {
+			pEditorData->frames.resize(newFrameCount);
+			
+			// Calculate new asset size and resize if needed
+			u32 newSize = CalculateAnimationSize(newFrameCount);
+			if (newSize != asset.size) {
+				if (ResizeEditedAsset(asset, newSize)) {
+					// Update the animation structure with new frame count and offset
+					pAnimation = (Animation*)asset.data;
+					pAnimation->frameCount = newFrameCount;
+					pAnimation->framesOffset = sizeof(Animation);
+					asset.dirty = true;
+				} else {
+					// Failed to resize, revert frame count
+					pEditorData->frames.resize(pAnimation->frameCount);
+				}
+			} else {
+				pAnimation->frameCount = newFrameCount;
+				asset.dirty = true;
+			}
+		}
 	}
-	// TODO: Resize asset if frame count changes
-	// pAnimation->frameCount = glm::clamp(pAnimation->frameCount, u16(0), u16(ANIMATION_MAX_FRAME_COUNT));
 
 	if (ImGui::InputScalar("Loop point", ImGuiDataType_S16, &pAnimation->loopPoint, &step)) {
 		asset.dirty = true;
@@ -3646,7 +3826,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	constexpr r32 previewSize = 256;
 	ImGui::BeginChild("Animation preview", ImVec2(previewSize, previewSize));
 
-	DrawAnimationPreview(pAnimation, currentFrame, previewSize);
+	DrawAnimationPreview(pEditorData, currentFrame, previewSize);
 
 	ImGui::EndChild();
 
@@ -3698,10 +3878,10 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	const ImVec2 frameAreaSize(contentSize.x, contentSize.y - timelineHeight);
 	const r32 frameBoxSize = contentSize.y - timelineHeight;
 
-	for (u32 i = 0; i < pAnimation->frameCount; i++) {
+	for (u32 i = 0; i < pAnimation->frameCount && i < pEditorData->frames.size(); i++) {
 		const r32 x = i * frameWidth + topLeft.x;
 
-		AnimationFrame& frame = pAnimation->GetFrames()[i];
+		AnimationFrame& frame = pEditorData->frames[i];
 
 		const ImVec2 frameMin(x, topLeft.y + timelineHeight + style.ItemSpacing.y);
 		const ImVec2 frameMax(frameMin.x + frameBoxSize, frameMin.y + frameBoxSize);
@@ -3755,7 +3935,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 
 static void DrawAnimationWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Animation editor", pContext->animationWindowOpen, ASSET_TYPE_ANIMATION, sizeof(Animation), "New Animation", DrawAnimationEditor, state);
+	DrawAssetEditor("Animation editor", pContext->animationWindowOpen, ASSET_TYPE_ANIMATION, sizeof(Animation), "New Animation", DrawAnimationEditor, state, nullptr, PopulateAnimationEditorData, ApplyAnimationEditorData, DeleteAnimationEditorData);
 }
 #pragma endregion
 
