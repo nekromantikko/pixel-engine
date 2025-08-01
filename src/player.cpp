@@ -833,6 +833,6 @@ constexpr ActorDrawFn Game::playerDrawTable[PLAYER_TYPE_COUNT] = {
 };
 
 DEFINE_ACTOR_EDITOR_DATA(player,
-    { "Sidescroller", GET_SUBTYPE_PROPERTIES(PlayerData) },
-    { "Overworld", GET_SUBTYPE_PROPERTIES(PlayerOverworldData) }
+    { "sidescroller", GET_SUBTYPE_PROPERTIES(PlayerData) },
+    { "overworld", GET_SUBTYPE_PROPERTIES(PlayerOverworldData) }
 )

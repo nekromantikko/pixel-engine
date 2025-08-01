@@ -16,6 +16,6 @@
         "lootSpawner": null,
         "projectile": null
     },
-    "subtype": "Slime",
+    "subtype": "slime",
     "type": "enemy"
 }

@@ -12,6 +12,6 @@
         "deathEffect": 9147915073509735008,
         "lifetime": 600
     },
-    "subtype": "Fireball",
+    "subtype": "fireball",
     "type": "enemy"
 }

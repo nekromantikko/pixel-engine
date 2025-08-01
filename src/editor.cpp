@@ -556,7 +556,7 @@ static AABB GetActorBoundingBox(const RoomActor* pActor) {
 	}
 
 	// TODO: What if animation changes bounds?
-	const AnimationHandle& animHandle = pPrototype->animations[0];
+	const AnimationHandle& animHandle = pPrototype->GetAnimations()[0];
 	const Animation* pAnimation = AssetManager::GetAsset(animHandle);
 	if (!pAnimation) {
 		return result;
@@ -586,7 +586,7 @@ static AABB GetActorBoundingBox(const RoomActor* pActor) {
 }
 
 static void DrawActor(const ActorPrototype* pPrototype, const ImVec2& origin, r32 renderScale, s32 animIndex = 0, s32 frameIndex = 0, ImU32 color = IM_COL32(255, 255, 255, 255)) {
-	const AnimationHandle& animHandle = pPrototype->animations[animIndex];
+	const AnimationHandle& animHandle = pPrototype->GetAnimations()[animIndex];
 	const Animation* pAnimation = AssetManager::GetAsset(animHandle);
 	if (!pAnimation) {
 		return;
@@ -2448,8 +2448,8 @@ static void DrawActorEditor(EditedAsset& asset) {
 			}
 
 			if (ImGui::BeginTabItem("Animations")) {
-
-				ImGui::BeginDisabled(pPrototype->animCount == ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT);
+				// TODO: Resize asset when animation count is changed
+				/*ImGui::BeginDisabled(pPrototype->animCount == ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT);
 				if (ImGui::Button("+")) {
 					PushElement<AnimationHandle>(pPrototype->animations, pPrototype->animCount);
 				}
@@ -2459,10 +2459,10 @@ static void DrawActorEditor(EditedAsset& asset) {
 				if (ImGui::Button("-")) {
 					PopElement<AnimationHandle>(pPrototype->animations, pPrototype->animCount);
 				}
-				ImGui::EndDisabled();
+				ImGui::EndDisabled();*/
 
 				ImGui::BeginChild("Anim list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-				DrawGenericEditableList<AnimationHandle>(pPrototype->animations, pPrototype->animCount, selectedAnims, "Animation");
+				DrawGenericEditableList<AnimationHandle>(pPrototype->GetAnimations(), pPrototype->animCount, selectedAnims, "Animation");
 
 				ImGui::EndChild();
 
@@ -2479,7 +2479,7 @@ static void DrawActorEditor(EditedAsset& asset) {
 					}
 					else {
 						currentAnim = selectedAnims[0];
-						AnimationHandle& animHandle = pPrototype->animations[currentAnim];
+						AnimationHandle& animHandle = pPrototype->GetAnimations()[currentAnim];
 
 						if (DrawAssetField("Animation", ASSET_TYPE_ANIMATION, animHandle.id)) {
 							asset.dirty = true;

@@ -12,6 +12,6 @@
         "lifetime": 60,
         "sound": null
     },
-    "subtype": "Damage numbers",
+    "subtype": "damage_numbers",
     "type": "effect"
 }

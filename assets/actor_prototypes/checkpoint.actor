@@ -10,6 +10,6 @@
         "min_y": -1.0
     },
     "properties": {},
-    "subtype": "Checkpoint",
+    "subtype": "checkpoint",
     "type": "interactable"
 }

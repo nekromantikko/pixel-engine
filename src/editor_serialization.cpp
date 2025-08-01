@@ -4,6 +4,7 @@
 #include "audio.h"
 #include "tiles.h"
 #include "animation.h"
+#include "actor_prototypes.h"
 
 static constexpr u64 ASSET_FILE_FORMAT_VERSION = 1;
 
@@ -106,6 +107,30 @@ static void from_json(const nlohmann::json& j, AnimationFrame& frame) {
 
 static void to_json(nlohmann::json& j, const AnimationFrame& frame) {
 	j["metasprite_id"] = frame.metaspriteId.id;
+}
+
+NLOHMANN_JSON_SERIALIZE_ENUM(ActorType, {
+	{ ACTOR_TYPE_PLAYER, "player" },
+	{ ACTOR_TYPE_ENEMY, "enemy" },
+	{ ACTOR_TYPE_BULLET, "bullet" },
+	{ ACTOR_TYPE_PICKUP, "pickup" },
+	{ ACTOR_TYPE_EFFECT, "effect" },
+	{ ACTOR_TYPE_INTERACTABLE, "interactable" },
+	{ ACTOR_TYPE_SPAWNER, "spawner" }
+	})
+
+static void to_json(nlohmann::json& j, const AABB& aabb) {
+	j["min_x"] = aabb.min.x;
+	j["min_y"] = aabb.min.y;
+	j["max_x"] = aabb.max.x;
+	j["max_y"] = aabb.max.y;
+}
+
+static void from_json(const nlohmann::json& j, AABB& aabb) {
+	aabb.min.x = j.at("min_x").get<r32>();
+	aabb.min.y = j.at("min_y").get<r32>();
+	aabb.max.x = j.at("max_x").get<r32>();
+	aabb.max.y = j.at("max_y").get<r32>();
 }
 
 #pragma endregion
@@ -422,6 +447,188 @@ static bool SaveAnimationToFile(const std::filesystem::path& path, const void* p
 	return false;
 }
 
+static bool ParseActorSubtype(const std::string& subtypeStr, const ActorEditorData& editorData, TActorSubtype& outSubtype) {
+	for (u32 i = 0; i < editorData.GetSubtypeCount(); i++) {
+		const char* subtypeName = editorData.GetSubtypeNames()[i];
+		if (strcmp(subtypeStr.c_str(), subtypeName) == 0) {
+			outSubtype = (TActorSubtype)i;
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool ParseActorPropertyName(const std::string& propertyName, TActorSubtype subtype, const ActorEditorData& editorData, const ActorEditorProperty** ppOutProperty) {
+	for (u32 i = 0; i < editorData.GetPropertyCount(subtype); i++) {
+		const ActorEditorProperty& prop = editorData.GetProperty(subtype, i);
+		if (strcmp(prop.name, propertyName.c_str()) == 0) {
+			*ppOutProperty = &prop;
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool ParseActorPropertyComponentValueScalar(const nlohmann::json& jsonValue, const ActorEditorProperty& property, void* pOutData) {
+	switch (property.dataType) {
+	case ImGuiDataType_S8: {
+		jsonValue.get_to(*(s8*)pOutData);
+		break;
+	}
+	case ImGuiDataType_U8: {
+		jsonValue.get_to(*(u8*)pOutData);
+		break;
+	}
+	case ImGuiDataType_S16: {
+		jsonValue.get_to(*(s16*)pOutData);
+		break;
+	}
+	case ImGuiDataType_U16: {
+		jsonValue.get_to(*(u16*)pOutData);
+		break;
+	}
+	case ImGuiDataType_S32: {
+		jsonValue.get_to(*(s32*)pOutData);
+		break;
+	}
+	case ImGuiDataType_U32: {
+		jsonValue.get_to(*(u32*)pOutData);
+		break;
+	}
+	case ImGuiDataType_S64: {
+		jsonValue.get_to(*(s64*)pOutData);
+		break;
+	}
+	case ImGuiDataType_U64: {
+		jsonValue.get_to(*(u64*)pOutData);
+		break;
+	}
+	case ImGuiDataType_Float: {
+		jsonValue.get_to(*(r32*)pOutData);
+		break;
+	}
+	case ImGuiDataType_Double: {
+		jsonValue.get_to(*(r64*)pOutData);
+		break;
+	}
+	case ImGuiDataType_Bool: {
+		bool value = jsonValue.get<bool>();
+		*(bool*)pOutData = value;
+		break;
+	}
+	case ImGuiDataType_String: {
+		// Not supported
+		DEBUG_ERROR("String type is not supported for actor properties\n");
+		return false;
+	}
+	default: {
+		DEBUG_ERROR("Unsupported actor property data type: %d\n", property.dataType);
+		return false;
+	}
+	}
+	return true;
+}
+
+static bool ParseActorPropertyValue(const nlohmann::json& jsonValue, const ActorEditorProperty& property, void* pOutData) {
+	switch (property.type) {
+	case ACTOR_EDITOR_PROPERTY_SCALAR: {
+		const ImGuiDataTypeInfo* pTypeInfo = ImGui::DataTypeGetInfo(property.dataType);
+		if (property.components == 1) {
+			ParseActorPropertyComponentValueScalar(jsonValue, property, pOutData);
+		}
+		else {
+			const nlohmann::json& arrayJson = jsonValue;
+			for (s32 i = 0; i < property.components; i++) {
+				void* pComponentData = (u8*)pOutData + i * pTypeInfo->Size;
+				const nlohmann::json& componentValue = arrayJson[i];
+				ParseActorPropertyComponentValueScalar(componentValue, property, pComponentData);
+			}
+		}
+		return true;
+	}
+	case ACTOR_EDITOR_PROPERTY_ASSET: {
+		if (property.components == 1) {
+			*(u64*)pOutData = jsonValue != nullptr ? jsonValue.get<u64>() : 0;
+		}
+		else {
+			const nlohmann::json& arrayJson = jsonValue;
+			for (s32 i = 0; i < property.components; i++) {
+				const nlohmann::json& componentValue = arrayJson[i];
+				((u64*)pOutData)[i] = componentValue != nullptr ? componentValue.get<u64>() : 0;
+			}
+		}
+		return true;
+	}
+	default:
+		DEBUG_ERROR("Unsupported actor property type: %d\n", property.type);
+		return false;
+	}
+}
+
+static bool LoadActorPrototypeFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
+	if (!std::filesystem::exists(path)) {
+		DEBUG_ERROR("File (%s) does not exist\n", path.string().c_str());
+		return false;
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "rb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file\n");
+		return false;
+	}
+
+	const nlohmann::json json = nlohmann::json::parse(pFile);
+	const nlohmann::json animationsJson = json["animation_ids"];
+	const u32 animCount = animationsJson != nullptr && animationsJson.is_array() ? animationsJson.size() : 0;
+	size = sizeof(ActorPrototype) + animCount * sizeof(AnimationHandle);
+
+	if (pOutData) {
+		ActorPrototype* pProto = (ActorPrototype*)pOutData;
+		pProto->type = json["type"].get<ActorType>();
+
+		const ActorEditorData& editorData = Editor::actorEditorData[pProto->type];
+		std::string subtypeStr = json["subtype"].get<std::string>();
+		if (!ParseActorSubtype(subtypeStr, editorData, pProto->subtype)) {
+			DEBUG_ERROR("Failed to parse actor subtype: %s\n", subtypeStr.c_str());
+			fclose(pFile);
+			return false;
+		}
+
+		json["hitbox"].get_to(pProto->hitbox);
+
+		memset(&pProto->data, 0, sizeof(pProto->data));
+		const nlohmann::json& propertiesJson = json["properties"];
+		if (propertiesJson.is_object()) {
+			for (const auto& [propertyName, propertyValue] : propertiesJson.items()) {
+				const ActorEditorProperty* pProperty = nullptr;
+				if (!ParseActorPropertyName(propertyName, pProto->subtype, editorData, &pProperty)) {
+					DEBUG_ERROR("Failed to parse actor property: %s\n", propertyName.c_str());
+					continue;
+				}
+
+				void* pPropertyData = (u8*)&pProto->data + pProperty->offset;
+				ParseActorPropertyValue(propertyValue, *pProperty, pPropertyData);
+			}
+		}
+
+		pProto->animCount = animCount;
+		pProto->animOffset = sizeof(ActorPrototype);
+
+		AnimationHandle* pAnims = pProto->GetAnimations();
+		for (u32 i = 0; i < animCount; i++) {
+			pAnims[i].id = animationsJson[i].get<u64>();
+		}
+	}
+
+	fclose(pFile);
+	return true;
+}
+
+static bool SaveActorPrototypeToFile(const std::filesystem::path& path, const void* pData) {
+	// TODO
+	return false;
+}
+
 #pragma endregion
 
 std::filesystem::path Editor::Assets::GetAssetMetadataPath(const std::filesystem::path& path) {
@@ -533,6 +740,9 @@ bool Editor::Assets::LoadAssetFromFile(const std::filesystem::path& path, AssetT
 	case (ASSET_TYPE_ANIMATION): {
 		return LoadAnimationFromFile(path, metadata, size, pOutData);
 	}
+	case (ASSET_TYPE_ACTOR_PROTOTYPE): {
+		return LoadActorPrototypeFromFile(path, metadata, size, pOutData);
+	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);
 		return false;
@@ -557,6 +767,9 @@ bool Editor::Assets::SaveAssetToFile(const std::filesystem::path& path, AssetTyp
 	}
 	case (ASSET_TYPE_ANIMATION): {
 		return SaveAnimationToFile(path, pData);
+	}
+	case (ASSET_TYPE_ACTOR_PROTOTYPE): {
+		return SaveActorPrototypeToFile(path, pData);
 	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);

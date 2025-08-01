@@ -12,6 +12,6 @@
         "deathEffect": 9147915073509735008,
         "lifetime": 180
     },
-    "subtype": "Bullet",
+    "subtype": "bullet",
     "type": "bullet"
 }

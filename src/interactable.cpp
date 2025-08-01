@@ -41,6 +41,6 @@ constexpr ActorDrawFn Game::interactableDrawTable[INTERACTABLE_TYPE_COUNT] = {
 };
 
 DEFINE_ACTOR_EDITOR_DATA(interactable,
-	{ "Checkpoint", GET_SUBTYPE_PROPERTIES(CheckpointData) },
-	{ "NPC", GET_SUBTYPE_PROPERTIES(NPCData) }
+	{ "checkpoint", GET_SUBTYPE_PROPERTIES(CheckpointData) },
+	{ "npc", GET_SUBTYPE_PROPERTIES(NPCData) }
 );
