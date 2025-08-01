@@ -4168,7 +4168,11 @@ void Editor::ConsoleLog(const char* fmt, va_list args) {
 	}
 
 	char s[1024];
+#ifdef PLATFORM_WINDOWS
 	vsprintf_s(s, fmt, args);
+#else
+	vsprintf(s, fmt, args);
+#endif
 	pContext->consoleLog.push_back(strdup(s));
 }
 

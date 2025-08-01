@@ -3,6 +3,8 @@
 #include "actor_prototypes.h"
 #include "game_rendering.h"
 #include "audio.h"
+#include <cstdio>
+#include <cstring>
 
 // Calls itoa, but adds a plus sign if value is positive
 static u32 ItoaSigned(s16 value, char* str) {
@@ -11,7 +13,7 @@ static u32 ItoaSigned(s16 value, char* str) {
         str[i++] = '+';
     }
 
-    itoa(value, str + i, 10);
+    sprintf(str + i, "%d", value);
 
     return strlen(str);
 }
