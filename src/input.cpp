@@ -78,6 +78,8 @@ static bool FreeController(s32 index) {
         SDL_HapticClose(pHaptic);
         DEBUG_LOG("Haptic device closed.\n");
     }
+    
+    return true;
 }
 
 static void HandleJoystickButtonEvent(const SDL_JoyButtonEvent& event, u16& outState) {

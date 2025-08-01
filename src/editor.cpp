@@ -2747,6 +2747,9 @@ enum DungeonNodeType {
 
 struct DungeonRoomData {
 	const RoomTemplateHandle templateId;
+	
+	DungeonRoomData() : templateId(0) {}
+	DungeonRoomData(RoomTemplateHandle id) : templateId(id) {}
 };
 
 struct DungeonExitData {
@@ -2763,6 +2766,16 @@ struct DungeonNode {
 	};
 
 	glm::vec2 gridPos;
+	
+	DungeonNode() : id(0), type(0), roomData(), gridPos(0.0f, 0.0f) {}
+	
+	// Constructor for room nodes
+	DungeonNode(u32 nodeId, u32 nodeType, RoomTemplateHandle templateId, glm::vec2 pos) 
+		: id(nodeId), type(nodeType), roomData(templateId), gridPos(pos) {}
+	
+	// Constructor for exit nodes
+	DungeonNode(u32 nodeId, u32 nodeType, u8 direction, u8 keyArea, glm::vec2 pos) 
+		: id(nodeId), type(nodeType), exitData{direction, keyArea}, gridPos(pos) {}
 };
 
 struct EditorDungeon {
@@ -2784,28 +2797,13 @@ static EditorDungeon ConvertFromDungeon(const Dungeon* pDungeon) {
 		if (cell.roomIndex >= 0 && cell.screenIndex == 0) {
 			const RoomInstance& room = pDungeon->rooms[cell.roomIndex];
 
-			outDungeon.nodes.emplace(room.id, DungeonNode {
-				.id = room.id,
-				.type = DUNGEON_NODE_ROOM,
-				.roomData = {
-					.templateId = room.templateId,
-				},
-				.gridPos = pos
-				});
+			outDungeon.nodes.emplace(room.id, DungeonNode(room.id, DUNGEON_NODE_ROOM, room.templateId, pos));
 		}
 		else if (cell.roomIndex < -1) {
 			const u32 nodeId = Random::GenerateUUID32();
 
 			const u8 dir = ~(cell.roomIndex) - 1;
-			outDungeon.nodes.emplace(nodeId, DungeonNode{
-				.id = nodeId,
-				.type = DUNGEON_NODE_EXIT,
-				.exitData = {
-					.direction = dir,
-					.keyArea = cell.screenIndex,
-				},
-				.gridPos = pos,
-				});
+			outDungeon.nodes.emplace(nodeId, DungeonNode(nodeId, DUNGEON_NODE_EXIT, dir, cell.screenIndex, pos));
 		}
 	}
 
@@ -3093,14 +3091,7 @@ static void DrawDungeonCanvas(EditedAsset& asset) {
 				if (posFree && payload->IsDelivery()) {
 					const u32 nodeId = Random::GenerateUUID32();
 					if (GetRoomCount(dungeon) < MAX_DUNGEON_ROOM_COUNT) {
-						dungeon.nodes.emplace(nodeId, DungeonNode{
-							.id = nodeId,
-							.type = DUNGEON_NODE_ROOM,
-							.roomData = {
-								.templateId = RoomTemplateHandle(assetId),
-							},
-							.gridPos = roomTopLeft
-							});
+						dungeon.nodes.emplace(nodeId, DungeonNode(nodeId, DUNGEON_NODE_ROOM, RoomTemplateHandle(assetId), roomTopLeft));
 					}
 				}
 			}
@@ -3170,15 +3161,7 @@ static void DrawDungeonCanvas(EditedAsset& asset) {
 		ImGui::BeginDisabled(!posFree);
 		if (ImGui::MenuItem("Add exit")) {
 			const u32 nodeId = Random::GenerateUUID32();
-			dungeon.nodes.emplace(nodeId, DungeonNode{
-					.id = nodeId,
-					.type = DUNGEON_NODE_EXIT,
-					.exitData = {
-						.direction = 0,
-						.keyArea = 0,
-					},
-					.gridPos = hoveredCellPos
-				});
+			dungeon.nodes.emplace(nodeId, DungeonNode(nodeId, DUNGEON_NODE_EXIT, 0, 0, hoveredCellPos));
 		}
 		ImGui::EndDisabled();
 		ImGui::EndPopup();
