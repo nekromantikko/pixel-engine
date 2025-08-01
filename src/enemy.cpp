@@ -160,7 +160,7 @@ constexpr ActorDrawFn Game::enemyDrawTable[ENEMY_TYPE_COUNT] = {
 };
 
 DEFINE_ACTOR_EDITOR_DATA(enemy,
-	{ "Slime", GET_SUBTYPE_PROPERTIES(EnemyData) },
-	{ "Skull", GET_SUBTYPE_PROPERTIES(EnemyData) },
-	{ "Fireball", GET_SUBTYPE_PROPERTIES(FireballData) }
+	{ "slime", GET_SUBTYPE_PROPERTIES(EnemyData) },
+	{ "skull", GET_SUBTYPE_PROPERTIES(EnemyData) },
+	{ "fireball", GET_SUBTYPE_PROPERTIES(FireballData) }
 );

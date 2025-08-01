@@ -12,6 +12,6 @@
         "deathEffect": 9147915073509735008,
         "lifetime": 60
     },
-    "subtype": "Grenade",
+    "subtype": "grenade",
     "type": "bullet"
 }

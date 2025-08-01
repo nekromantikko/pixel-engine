@@ -15,6 +15,6 @@
         "gunSound": 171451846595516656,
         "jumpSound": 8533409191511070196
     },
-    "subtype": "Sidescroller",
+    "subtype": "sidescroller",
     "type": "player"
 }

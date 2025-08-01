@@ -35,16 +35,16 @@ public:
 		}
 	}
 
-	const u32 GetSubtypeCount() const {
+	inline const u32 GetSubtypeCount() const {
 		return subtypeNames.size();
 	}
-	const char* const* GetSubtypeNames() const {
+	inline const char* const* GetSubtypeNames() const {
 		return subtypeNames.data();
 	}
-	u32 GetPropertyCount(u32 subtype) const {
+	inline u32 GetPropertyCount(u32 subtype) const {
 		return subtypeProperties[subtype]->size();
 	}
-	const ActorEditorProperty& GetProperty(u32 subtype, u32 index) const {
+	inline const ActorEditorProperty& GetProperty(u32 subtype, u32 index) const {
 		return subtypeProperties[subtype]->at(index);
 	}
 };

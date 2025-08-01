@@ -12,6 +12,6 @@
         "pickupSound": null,
         "value": 0
     },
-    "subtype": "Exp remnant",
+    "subtype": "exp_remnant",
     "type": "pickup"
 }

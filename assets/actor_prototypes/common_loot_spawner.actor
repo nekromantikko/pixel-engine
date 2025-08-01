@@ -23,6 +23,6 @@
             4649032905708007949
         ]
     },
-    "subtype": " Loot spawner",
+    "subtype": "loot_spawner",
     "type": "spawner"
 }
