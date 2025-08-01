@@ -12,6 +12,6 @@
         "lifetime": 32,
         "sound": 6715427078472658536
     },
-    "subtype": "Explosion",
+    "subtype": "explosion",
     "type": "effect"
 }

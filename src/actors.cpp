@@ -99,7 +99,7 @@ const ActorPrototype* Game::GetActorPrototype(const Actor* pActor) {
 }
 
 const Animation* Game::GetActorCurrentAnim(const Actor* pActor, const ActorPrototype* pPrototype) {
-	const AnimationHandle& currentAnimId = pPrototype->animations[pActor->drawState.animIndex];
+	const AnimationHandle& currentAnimId = pPrototype->GetAnimations()[pActor->drawState.animIndex];
 	return AssetManager::GetAsset(currentAnimId);
 }
 

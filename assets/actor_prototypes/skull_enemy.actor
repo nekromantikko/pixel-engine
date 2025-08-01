@@ -16,6 +16,6 @@
         "lootSpawner": 4217208296074856327,
         "projectile": 18243256850283701523
     },
-    "subtype": "Skull",
+    "subtype": "skull",
     "type": "enemy"
 }

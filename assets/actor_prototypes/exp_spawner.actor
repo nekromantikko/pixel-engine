@@ -12,6 +12,6 @@
         "large": 4066434299938887950,
         "small": 4188887360013389311
     },
-    "subtype": " Exp spawner",
+    "subtype": "exp_spawner",
     "type": "spawner"
 }

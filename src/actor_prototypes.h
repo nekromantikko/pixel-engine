@@ -4,38 +4,26 @@
 #include "actor_types.h"
 #include "asset_types.h"
 
-static constexpr u32 ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT = 64;
-
 struct ActorPrototype {
 	TActorType type;
 	TActorSubtype subtype;
 
 	AABB hitbox;
 
-	u32 animCount;
-	AnimationHandle animations[ACTOR_PROTOTYPE_MAX_ANIMATION_COUNT];
-
 	ActorPrototypeData data;
+
+	u32 animCount;
+	u32 animOffset;
+
+	inline AnimationHandle* GetAnimations() const {
+		return (AnimationHandle*)((u8*)this + animOffset);
+	}
 };
 
 #ifdef EDITOR
 #include <nlohmann/json.hpp>
 #include <imgui_internal.h>
 #include <sstream>
-
-inline void to_json(nlohmann::json& j, const AABB& aabb) {
-	j["min_x"] = aabb.min.x;
-	j["min_y"] = aabb.min.y;
-	j["max_x"] = aabb.max.x;
-	j["max_y"] = aabb.max.y;
-}
-
-inline void from_json(const nlohmann::json& j, AABB& aabb) {
-	aabb.min.x = j.at("min_x").get<r32>();
-	aabb.min.y = j.at("min_y").get<r32>();
-	aabb.max.x = j.at("max_x").get<r32>();
-	aabb.max.y = j.at("max_y").get<r32>();
-}
 
 inline void SerializeScalarActorProperty(nlohmann::json& j_properties, const ActorEditorProperty& prop, void* pData) {
 	if (prop.components == 0) {
@@ -65,7 +53,7 @@ inline void SerializeScalarActorProperty(nlohmann::json& j_properties, const Act
 	}
 }
 
-inline void to_json(nlohmann::json& j, const ActorPrototype& prototype) {
+/*inline void to_json(nlohmann::json& j, const ActorPrototype& prototype) {
 	const ActorEditorData& editorData = Editor::actorEditorData[prototype.type];
 
 	j["type"] = (ActorType)prototype.type;
@@ -122,6 +110,6 @@ inline void to_json(nlohmann::json& j, const ActorPrototype& prototype) {
 
 inline void from_json(const nlohmann::json& j, ActorPrototype& prototype) {
 	// TODO
-}
+}*/
 
 #endif

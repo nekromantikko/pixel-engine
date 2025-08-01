@@ -12,6 +12,6 @@
         "pickupSound": null,
         "value": 10
     },
-    "subtype": "Healing",
+    "subtype": "healing",
     "type": "pickup"
 }
