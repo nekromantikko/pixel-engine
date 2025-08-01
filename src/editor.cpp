@@ -10,6 +10,10 @@
 #include <imgui_impl_sdl2.h>
 #include <imfilebrowser.h>
 
+#ifdef USE_AVX
+#include <immintrin.h>
+#endif
+
 #include "tiles.h"
 #include "rendering_util.h"
 #include "metasprite.h"
@@ -200,6 +204,7 @@ static ImVec2 DrawColorGrid(ImVec2 size, s32* selection = nullptr, bool* focused
 	return gridPos;
 }
 
+#ifdef USE_AVX
 // See GetMetatileVertices for human-readable version
 static void GetMetatileVerticesAVX(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
 	constexpr r32 TILE_SIZE = 1.0f / METATILE_DIM_TILES;
@@ -309,6 +314,7 @@ static void GetMetatileVerticesAVX(const Metatile& metatile, const ImVec2& pos, 
 	_mm256_store_ps((r32*)outUV + 16, _mm256_unpacklo_ps(u1, v1));
 	_mm256_store_ps((r32*)outUV + 24, _mm256_unpackhi_ps(u1, v1));
 }
+#endif
 
 static void GetMetatileVertices(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
 	constexpr r32 tileSize = 1.0f / METATILE_DIM_TILES;
@@ -333,13 +339,39 @@ static void GetMetatileVertices(const Metatile& metatile, const ImVec2& pos, r32
 		outVertices[i * 4 + 2] = p2;
 		outVertices[i * 4 + 3] = p3;
 
-		const glm::vec4 uvMinMax = ChrTileToTexCoord(metatile.tiles[i].tileId, 0, metatile.tiles[i].palette);
+		const u16 tileId = metatile.tiles[i].tileId;
+		const u8 index = (u8)tileId;
+		const u8 pageIndex = (tileId >> 8) & 3;
+		const glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex, metatile.tiles[i].palette);
 
-		outUV[i * 4] = ImVec2(uvMinMax.x, uvMinMax.y);
-		outUV[i * 4 + 1] = ImVec2(uvMinMax.z, uvMinMax.y);
-		outUV[i * 4 + 2] = ImVec2(uvMinMax.z, uvMinMax.w);
-		outUV[i * 4 + 3] = ImVec2(uvMinMax.x, uvMinMax.w);
+		// Handle flipping by modifying UV coordinate assignment
+		const bool flipH = metatile.tiles[i].flipHorizontal;
+		const bool flipV = metatile.tiles[i].flipVertical;
+
+		// Base UV coordinates: top-left, top-right, bottom-right, bottom-left
+		r32 u0 = flipH ? uvMinMax.z : uvMinMax.x; // top-left U
+		r32 v0 = flipV ? uvMinMax.w : uvMinMax.y; // top-left V
+		r32 u1 = flipH ? uvMinMax.x : uvMinMax.z; // top-right U
+		r32 v1 = flipV ? uvMinMax.w : uvMinMax.y; // top-right V
+		r32 u2 = flipH ? uvMinMax.x : uvMinMax.z; // bottom-right U
+		r32 v2 = flipV ? uvMinMax.y : uvMinMax.w; // bottom-right V
+		r32 u3 = flipH ? uvMinMax.z : uvMinMax.x; // bottom-left U
+		r32 v3 = flipV ? uvMinMax.y : uvMinMax.w; // bottom-left V
+
+		outUV[i * 4] = ImVec2(u0, v0);
+		outUV[i * 4 + 1] = ImVec2(u1, v1);
+		outUV[i * 4 + 2] = ImVec2(u2, v2);
+		outUV[i * 4 + 3] = ImVec2(u3, v3);
 	}
+}
+
+// Wrapper function to choose between AVX and non-AVX implementations based on build option
+static inline void GetMetatileVerticesImpl(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
+#ifdef USE_AVX
+	GetMetatileVerticesAVX(metatile, pos, scale, outVertices, outUV);
+#else
+	GetMetatileVertices(metatile, pos, scale, outVertices, outUV);
+#endif
 }
 
 static void WriteMetatile(const ImVec2* verts, const ImVec2* uv, ImU32 color = IM_COL32(255, 255, 255, 255)) {
@@ -370,7 +402,7 @@ static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, ImU32 c
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
 	ImVec2 uv[METATILE_TILE_COUNT * 4];
 
-	GetMetatileVerticesAVX(metatile, pos, size, verts, uv);
+	GetMetatileVerticesImpl(metatile, pos, size, verts, uv);
 	WriteMetatile(verts, uv, color);
 
 	drawList->PopTextureID();
@@ -479,7 +511,7 @@ static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, c
 			const Metatile& metatile = tilesetTile.metatile;
 
 			const ImVec2 drawPos = ImVec2(pos.x + (x - xOffsetRemainder) * scale, pos.y + (y - yOffsetRemainder) * scale);
-			GetMetatileVerticesAVX(metatile, drawPos, scale, verts, uv);
+			GetMetatileVerticesImpl(metatile, drawPos, scale, verts, uv);
 			WriteMetatile(verts, uv);
 		}
 	}
@@ -510,7 +542,7 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 		ImVec2 metatileOffset = ImVec2(chrPos.x + metatileCoord.x * gridStepPixels, chrPos.y + metatileCoord.y * gridStepPixels);
 
 		const Metatile& metatile = pTileset->tiles[i].metatile;
-		GetMetatileVerticesAVX(metatile, metatileOffset, renderScale * TILESET_DIM, verts, uv);
+		GetMetatileVerticesImpl(metatile, metatileOffset, renderScale * TILESET_DIM, verts, uv);
 		WriteMetatile(verts, uv);
 	}
 	drawList->PopTextureID();
