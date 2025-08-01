@@ -1,6 +1,7 @@
 #include "asset_manager.h"
 #include "fixed_hash_map.h"
 #include <cstdio>
+#include <cstring>
 
 struct ArchiveHeader {
 	char signature[4];
@@ -222,6 +223,7 @@ bool AssetManager::ResizeAsset(u64 id, u32 newSize) {
 	}
 
 	asset.size = newSize;
+	return true;
 }
 
 void* AssetManager::GetAsset(u64 id, AssetType type) {

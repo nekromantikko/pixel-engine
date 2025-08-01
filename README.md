@@ -7,10 +7,23 @@ I've written 2D pixel games in the past, and always struggled with rendering, as
 For the final image, I apply a CRT shader originally by Timothy Lottes (https://www.shadertoy.com/view/XsjSzR)
 
 # Building
-- Currently Win32 only
-- Use cmake
-- Use ENABLE_EDITOR option to disable/enable editor
+## Requirements
+- CMake 3.22.1 or higher
+- Vulkan 1.2 development libraries
+- SDL2 development libraries  
+- GLSL validator (glslangValidator)
+
+## Windows
 - Copy SDL2.dll and assets.npak to build directory
+
+## Linux
+- Install dependencies: `sudo apt install libvulkan-dev libsdl2-dev glslang-tools`
+- Copy assets.npak to build directory
+
+## Build Commands
+- Use cmake to configure and build
+- Use ENABLE_EDITOR option to disable/enable editor
+- Example: `cmake -DENABLE_EDITOR=ON ..` then `make`
 
 # Videos:
 

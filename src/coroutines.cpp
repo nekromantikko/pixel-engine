@@ -1,4 +1,5 @@
 #include "coroutines.h"
+#include <cstring>
 
 static constexpr u32 MAX_COROUTINE_COUNT = 256;
 
