@@ -10,14 +10,14 @@ union AABB {
     struct {
         r32 x1, y1, x2, y2;
     };
-    struct {
+    struct vec2_pair {
         glm::vec2 min;
         glm::vec2 max;
-    };
+    } vec2s;
 
-    AABB() : min{}, max{} {}
+    AABB() : x1(0), y1(0), x2(0), y2(0) {}
     AABB(r32 x1, r32 x2, r32 y1, r32 y2) : x1(x1), x2(x2), y1(y1), y2(y2) {}
-    AABB(glm::vec2 min, glm::vec2 max) : min(min), max(max) {}
+    AABB(glm::vec2 min, glm::vec2 max) : vec2s{min, max} {}
 };
 
 // Blatant plagiarism from unreal engine

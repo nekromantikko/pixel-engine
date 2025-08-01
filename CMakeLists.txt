@@ -88,16 +88,20 @@ IF(ENABLE_EDITOR)
 		${imgui_SOURCE_DIR}/imgui_tables.cpp
 		${imgui_SOURCE_DIR}/imgui_widgets.cpp
 		${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
-		${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
 		${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp)
+		
+	# Add platform-specific backends
+	IF(WIN32)
+		list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp)
+	ENDIF()
 ENDIF()
 
 
 IF(ENABLE_EDITOR)
-	add_executable(${PROJECT_NAME} WIN32 ${HEADERS} ${SOURCES} ${IMGUI_SOURCES} ${EDITOR_HEADERS} ${EDITOR_SOURCES})
+	add_executable(${PROJECT_NAME} ${HEADERS} ${SOURCES} ${IMGUI_SOURCES} ${EDITOR_HEADERS} ${EDITOR_SOURCES})
 	target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR} ${EDITOR_INCLUDE_DIRS})
 ELSE()
-	add_executable(${PROJECT_NAME} WIN32 ${HEADERS} ${SOURCES})
+	add_executable(${PROJECT_NAME} ${HEADERS} ${SOURCES})
 	target_include_directories(${PROJECT_NAME} PRIVATE ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
 ENDIF()
 target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2)
@@ -139,6 +143,10 @@ endforeach()
 
 IF(WIN32)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC PLATFORM_WINDOWS)
+ENDIF()
+
+IF(UNIX AND NOT APPLE)
+	target_compile_definitions(${PROJECT_NAME} PUBLIC PLATFORM_LINUX)
 ENDIF()
 
 IF(ENABLE_EDITOR)

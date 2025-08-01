@@ -24,7 +24,7 @@ namespace Collision {
 			return;
 		}
 
-		const AABB hitboxAbs(hitbox.min + pos, hitbox.max + pos);
+		const AABB hitboxAbs(hitbox.vec2s.min + pos, hitbox.vec2s.max + pos);
 		r32 xSide = dx < 0.0f ? hitboxAbs.x1 : hitboxAbs.x2;
 
 		s32 yTopTile = (s32)glm::floor(hitboxAbs.y1);
@@ -80,7 +80,7 @@ namespace Collision {
 			return;
 		}
 
-		const AABB hitboxAbs(hitbox.min + pos, hitbox.max + pos);
+		const AABB hitboxAbs(hitbox.vec2s.min + pos, hitbox.vec2s.max + pos);
 		r32 ySide = dy < 0.0f ? hitboxAbs.y1 : hitboxAbs.y2;
 
 		s32 xLeftTile = (s32)glm::floor(hitboxAbs.x1);
@@ -124,8 +124,8 @@ namespace Collision {
 	}
 
 	bool BoxesOverlap(const AABB& a, const glm::vec2& aPos, const AABB& b, const glm::vec2& bPos) {
-		const AABB aAbs = AABB(a.min + aPos, a.max + aPos);
-		const AABB bAbs = AABB(b.min + bPos, b.max + bPos);
+		const AABB aAbs = AABB(a.vec2s.min + aPos, a.vec2s.max + aPos);
+		const AABB bAbs = AABB(b.vec2s.min + bPos, b.vec2s.max + bPos);
 
 		return (aAbs.x1 < bAbs.x2 &&
 			aAbs.x2 > bAbs.x1 &&
@@ -134,7 +134,7 @@ namespace Collision {
 	}
 
 	bool PointInsideBox(const glm::vec2& point, const AABB& hitbox, const glm::vec2& boxPos) {
-		const AABB hitboxAbs = AABB(hitbox.min + boxPos, hitbox.max + boxPos);
+		const AABB hitboxAbs = AABB(hitbox.vec2s.min + boxPos, hitbox.vec2s.max + boxPos);
 
 		return (point.x >= hitboxAbs.x1 &&
 			point.x < hitboxAbs.x2 &&

@@ -2,6 +2,7 @@
 #include "typedef.h"
 #include <SDL.h>
 #include <limits>
+#include <climits>
 #include <cassert>
 
 constexpr u32 MAX_SPRITE_COUNT = 4096;

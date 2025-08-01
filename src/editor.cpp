@@ -2157,9 +2157,9 @@ static void DrawRoomView(EditedAsset& asset) {
 		}
 
 		if (pActor != nullptr) {
-			const AABB boundsAbs(actorBounds.min + pActor->position, actorBounds.max + pActor->position);
-			const ImVec2 pMin = ImVec2((boundsAbs.min.x - pEditorData->viewportPos.x) * tileDrawSize + topLeft.x, (boundsAbs.min.y - pEditorData->viewportPos.y) * tileDrawSize + topLeft.y);
-			const ImVec2 pMax = ImVec2((boundsAbs.max.x - pEditorData->viewportPos.x) * tileDrawSize + topLeft.x, (boundsAbs.max.y - pEditorData->viewportPos.y) * tileDrawSize + topLeft.y);
+			const AABB boundsAbs(actorBounds.vec2s.min + pActor->position, actorBounds.vec2s.max + pActor->position);
+			const ImVec2 pMin = ImVec2((boundsAbs.vec2s.min.x - pEditorData->viewportPos.x) * tileDrawSize + topLeft.x, (boundsAbs.vec2s.min.y - pEditorData->viewportPos.y) * tileDrawSize + topLeft.y);
+			const ImVec2 pMax = ImVec2((boundsAbs.vec2s.max.x - pEditorData->viewportPos.x) * tileDrawSize + topLeft.x, (boundsAbs.vec2s.max.y - pEditorData->viewportPos.y) * tileDrawSize + topLeft.y);
 
 			drawList->AddRect(pMin, pMax, IM_COL32(255, 255, 255, 255));
 		}
@@ -2490,8 +2490,8 @@ static void DrawActorEditor(EditedAsset& asset) {
 					ImGui::SeparatorText("Hitbox editor");
 
 					AABB& hitbox = pPrototype->hitbox;
-					glm::vec2 hitboxDim = (hitbox.max - hitbox.min);
-					const glm::vec2 hitboxCenter = hitbox.min + hitboxDim / 2.0f;
+					glm::vec2 hitboxDim = (hitbox.vec2s.max - hitbox.vec2s.min);
+					const glm::vec2 hitboxCenter = hitbox.vec2s.min + hitboxDim / 2.0f;
 					glm::vec2 newCenter = hitboxCenter;
 					if (ImGui::InputFloat2("Offset", (r32*)&newCenter)) {
 						hitboxDim.x = glm::max(0.0f, hitboxDim.x);
@@ -4136,7 +4136,11 @@ void Editor::ConsoleLog(const char* fmt, va_list args) {
 	}
 
 	char s[1024];
+#ifdef PLATFORM_WINDOWS
 	vsprintf_s(s, fmt, args);
+#else
+	vsprintf(s, fmt, args);
+#endif
 	pContext->consoleLog.push_back(strdup(s));
 }
 

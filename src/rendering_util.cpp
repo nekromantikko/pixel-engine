@@ -126,7 +126,7 @@ namespace Rendering
 			const u32 dataSize = COLOR_COUNT * sizeof(u32);
 
 			FILE* pFile;
-			fopen_s(&pFile, fname, "wb");
+			pFile = fopen(fname, "wb");
 
 			if (pFile == NULL) {
 				DEBUG_ERROR("Failed to write palette file\n");

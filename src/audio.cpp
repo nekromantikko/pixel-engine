@@ -24,7 +24,7 @@ static constexpr u8 LENGTH_TABLE[0x20] = {
     10, 254, 20, 2, 40, 4, 80, 6, 10, 8, 0, 10, 14, 12, 26, 14, 12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30
 };
 
-static constexpr u8 NOISE_PERIOD_TABLE[0x10] = {
+static constexpr u16 NOISE_PERIOD_TABLE[0x10] = {
     4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
 };
 
@@ -667,12 +667,12 @@ static void FillAudioBuffer(void* userdata, u8* stream, int len) {
 }
 
 namespace Audio {
-    void Audio::CreateContext() {
+    void CreateContext() {
         pContext = new AudioContext{};
         assert(pContext != nullptr);
     }
 
-    void Audio::Init() {
+    void Init() {
 #ifdef EDITOR
         memset(pContext->debugBuffer, 0, DEBUG_BUFFER_SIZE);
         pContext->debugWriteOffset = 0;
@@ -701,11 +701,11 @@ namespace Audio {
         SDL_PauseAudioDevice(pContext->audioDevice, 0);
     }
 
-    void Audio::Free() {
+    void Free() {
         SDL_CloseAudioDevice(pContext->audioDevice);
     }
 
-    void Audio::DestroyContext() {
+    void DestroyContext() {
         if (pContext == nullptr) {
             return;
         }
@@ -714,7 +714,7 @@ namespace Audio {
         pContext = nullptr;
     }
 
-    void Audio::WriteChannel(u32 channel, u8 address, u8 data) {
+    void WriteChannel(u32 channel, u8 address, u8 data) {
         switch (channel) {
         case CHAN_ID_PULSE0:
             WritePulse(bool(0), address, data);
@@ -733,7 +733,7 @@ namespace Audio {
         }
     }
 
-    void Audio::PlayMusic(SoundHandle musicHandle, bool loop) {
+    void PlayMusic(SoundHandle musicHandle, bool loop) {
         const Sound* pSound = (Sound*)AssetManager::GetAsset(musicHandle);
         if (!pSound || pSound->type != SOUND_TYPE_MUSIC || pSound->length == 0) {
             return;
@@ -744,12 +744,12 @@ namespace Audio {
         pContext->loopMusic = loop;
     }
 
-    void Audio::StopMusic() {
+    void StopMusic() {
         pContext->music = SoundHandle::Null();
         ClearRegisters();
     }
 
-    void Audio::PlaySFX(SoundHandle soundHandle) {
+    void PlaySFX(SoundHandle soundHandle) {
         const Sound* pSound = (Sound*)AssetManager::GetAsset(soundHandle);
         if (!pSound || pSound->type != SOUND_TYPE_SFX || pSound->length == 0) {
             return;
@@ -784,7 +784,7 @@ namespace Audio {
     }
 
 #ifdef EDITOR
-    void Audio::ReadChannel(u32 channel, void* outData) {
+    void ReadChannel(u32 channel, void* outData) {
         switch (channel) {
         case CHAN_ID_PULSE0: {
             PulseChannel& pulse = pContext->pulse[0];
@@ -811,7 +811,7 @@ namespace Audio {
         }
     }
 
-    void Audio::ReadDebugBuffer(u8* outSamples, u32 count) {
+    void ReadDebugBuffer(u8* outSamples, u32 count) {
         u32 remainingSamples = count;
         while (remainingSamples > 0) {
             u32 capacity = DEBUG_BUFFER_SIZE - pContext->debugReadOffset;

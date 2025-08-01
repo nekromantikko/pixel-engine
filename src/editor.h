@@ -1,5 +1,6 @@
 #pragma once
 #include "typedef.h"
+#include <cstdarg>
 
 struct SDL_Window;
 union SDL_Event;
