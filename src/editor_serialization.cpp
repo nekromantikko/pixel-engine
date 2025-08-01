@@ -1022,42 +1022,6 @@ void Editor::Assets::InitializeMetadataJson(nlohmann::json& json, u64 id) {
 	json["guid"] = id;
 }
 
-bool Editor::Assets::LoadSerializedAssetFromFile(const std::filesystem::path& path, nlohmann::json& outJson) {
-	if (!std::filesystem::exists(path)) {
-		DEBUG_ERROR("File (%s) does not exist\n", path.string().c_str());
-		return false;
-	}
-
-	FILE* pFile = fopen(path.string().c_str(), "rb");
-	if (!pFile) {
-		DEBUG_ERROR("Failed to open file\n");
-		return false;
-	}
-
-	outJson = nlohmann::json::parse(pFile);
-	fclose(pFile);
-
-	return true;
-}
-
-bool Editor::Assets::SaveSerializedAssetToFile(const std::filesystem::path& path, const nlohmann::json& json, const u64 id) {
-	if (!SaveAssetMetadataToFile(path, { ASSET_FILE_FORMAT_VERSION, id })) {
-		DEBUG_ERROR("Failed to save metadata for asset\n");
-		return false;
-	}
-
-	FILE* pFile = fopen(path.string().c_str(), "wb");
-	if (!pFile) {
-		DEBUG_ERROR("Failed to open file for writing\n");
-		return false;
-	}
-
-	fwrite(json.dump(4).c_str(), sizeof(char), json.dump(4).size(), pFile);
-	fclose(pFile);
-
-	return true;
-}
-
 bool Editor::Assets::LoadAssetFromFile(const std::filesystem::path& path, AssetType type, const nlohmann::json& metadata, u32& size, void* pOutData) {
 	switch (type) {
 	case (ASSET_TYPE_CHR_BANK): {
