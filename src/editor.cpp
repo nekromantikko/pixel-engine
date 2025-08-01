@@ -853,6 +853,125 @@ static void DrawGenericEditableList(T* elements, u32& count, ImVector<s32>& sele
 	}
 }
 
+// New safer version that works with std::vector to prevent heap corruption
+template <typename T>
+static void DrawGenericEditableListVector(std::vector<T>& elements, ImVector<s32>& selection, const char* labelPrefix, bool selectionLocked = false, void (*drawExtraStuff)(const T&) = nullptr) {
+	ImGuiSelectableFlags selectableFlags = ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap;
+	
+	for (u32 i = 0; i < elements.size(); i++) {
+		T& element = elements[i];
+		static char labelStr[64];
+		snprintf(labelStr, 64, "%s 0x%02x", labelPrefix, i);
+
+		bool selected = selection.contains(i);
+
+		ImGui::PushID(i);
+		ImGui::SetNextItemAllowOverlap();
+		if (ImGui::Selectable(labelStr, selected, selectableFlags, ImVec2(0, 0))) {
+			SelectElement(selection, selectionLocked, i);
+		}
+		if (ImGui::BeginPopupContextItem())
+		{
+			if (ImGui::Selectable("Remove")) {
+				if (selected) {
+					selection.find_erase_unsorted(i);
+				}
+				// Adjust selection indices that are greater than i
+				for (int& selIdx : selection) {
+					if (selIdx > (int)i) {
+						selIdx--;
+					}
+				}
+				elements.erase(elements.begin() + i);
+				ImGui::EndPopup();
+				ImGui::PopID();
+				break; // Exit loop since we modified the vector
+			}
+			if (ImGui::Selectable("Insert above")) {
+				elements.insert(elements.begin() + i, T{});
+				// Adjust selection indices that are greater than or equal to i
+				for (int& selIdx : selection) {
+					if (selIdx >= (int)i) {
+						selIdx++;
+					}
+				}
+				if (!selectionLocked) {
+					selection.clear();
+					selection.push_back(i);
+				}
+			}
+			if (ImGui::Selectable("Insert below")) {
+				elements.insert(elements.begin() + i + 1, T{});
+				// Adjust selection indices that are greater than i
+				for (int& selIdx : selection) {
+					if (selIdx > (int)i) {
+						selIdx++;
+					}
+				}
+				if (!selectionLocked) {
+					selection.clear();
+					selection.push_back(i + 1);
+				}
+			}
+			if (ImGui::Selectable("Duplicate")) { // And insert below
+				elements.insert(elements.begin() + i + 1, element);
+				// Adjust selection indices that are greater than i
+				for (int& selIdx : selection) {
+					if (selIdx > (int)i) {
+						selIdx++;
+					}
+				}
+				if (!selectionLocked) {
+					selection.clear();
+					selection.push_back(i + 1);
+				}
+			}
+			ImGui::EndPopup();
+		}
+
+		if (selected) {
+			ImGui::SetItemDefaultFocus();
+		}
+
+		if (drawExtraStuff) {
+			drawExtraStuff(element);
+		}
+
+		// Drag drop functionality (simplified for safety)
+		if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+		{
+			if (selected || SelectElement(selection, selectionLocked, i)) {
+				ImGui::SetDragDropPayload("swap_items", &i, sizeof(u32));
+				ImGui::Text("%s", labelStr);
+			}
+			ImGui::EndDragDropSource();
+		}
+
+		if (ImGui::BeginDragDropTarget())
+		{
+			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("swap_items"))
+			{
+				u32 payload_n = *(const u32*)payload->Data;
+				if (payload_n != i && payload_n < elements.size()) {
+					// Swap elements
+					std::swap(elements[payload_n], elements[i]);
+					// Update selection
+					for (int& selIdx : selection) {
+						if (selIdx == (int)payload_n) {
+							selIdx = i;
+						} else if (selIdx == (int)i) {
+							selIdx = payload_n;
+						}
+					}
+				}
+			}
+			ImGui::EndDragDropTarget();
+		}
+
+		ImGui::PopID();
+	}
+}
+
 template <typename T>
 static bool DrawTypeSelectionCombo(const char* label, const char* const* const typeNames, u32 typeCount, T& selection, bool allowNone = true) {
 	static_assert(std::is_integral<T>::value);
@@ -1794,6 +1913,74 @@ static void DrawSpriteEditor(Metasprite* pMetasprite, ImVector<s32>& spriteSelec
 		r32 chrSheetSize = 256;
 
 		ImGuiStyle& style = ImGui::GetStyle();
+
+		constexpr r32 chrGridStep = 8;
+		constexpr r32 chrScalePixels = chrSheetSize / 16;
+		ImVec2 chrGridPos = DrawChrGrid(ImVec2(chrSheetSize, chrSheetSize), chrGridStep, chrScalePixels);
+
+		ImGui::Text("Tile Id: %#05x", index);
+
+		if (ImGui::InputInt("Chr ID", &newId)) {
+			sprite.tileId = newId;
+			dirty = true;
+		}
+
+		s32 palette = sprite.palette;
+		if (ImGui::InputInt("Palette", &palette)) {
+			sprite.palette = glm::clamp(palette, 0, 3);
+			dirty = true;
+		}
+
+		s32 x = sprite.x;
+		if (ImGui::InputInt("X", &x)) {
+			sprite.x = x;
+			dirty = true;
+		}
+
+		s32 y = sprite.y;
+		if (ImGui::InputInt("Y", &y)) {
+			sprite.y = y;
+			dirty = true;
+		}
+
+		if (ImGui::Checkbox("Flip horizontal", &flipX)) {
+			sprite.flipHorizontal = flipX;
+			dirty = true;
+		}
+		ImGui::SameLine();
+		if (ImGui::Checkbox("Flip vertical", &flipY)) {
+			sprite.flipVertical = flipY;
+			dirty = true;
+		}
+	}
+}
+
+static void DrawSpriteEditorVector(std::vector<Sprite>& sprites, ImVector<s32>& spriteSelection, bool& dirty) {
+	ImGui::SeparatorText("Sprite editor");
+	
+	if (spriteSelection.empty()) {
+		ImGui::TextUnformatted("No sprite selected");
+	}
+	else if (spriteSelection.size() > 1) {
+		ImGui::TextUnformatted("Multiple sprites selected");
+	}
+	else {
+		s32& spriteIndex = spriteSelection[0];
+		if (spriteIndex < 0 || spriteIndex >= (s32)sprites.size()) {
+			ImGui::TextUnformatted("Invalid sprite selected");
+			return;
+		}
+		
+		Sprite& sprite = sprites[spriteIndex];
+		s32 index = (s32)sprite.tileId;
+
+		bool flipX = sprite.flipHorizontal;
+		bool flipY = sprite.flipVertical;
+
+		s32 newId = (s32)sprite.tileId;
+		r32 chrSheetSize = 256;
+
+		ImGuiStyle& style = ImGui::GetStyle();
 		ImGui::BeginChild("Tile selector", ImVec2(chrSheetSize, chrSheetSize + ImGui::GetItemRectSize().y + style.ItemSpacing.y));
 		DrawCHRPageSelector(chrSheetSize, 1, sprite.palette, &newId);
 		ImGui::EndChild();
@@ -1852,6 +2039,7 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Metasprite editor");
 
 	Metasprite* pMetasprite = (Metasprite*)asset.data;
+	MetaspriteEditorData* pEditorData = (MetaspriteEditorData*)asset.userData;
 
 	static ImVector<s32> spriteSelection;
 	static bool selectionLocked = false;
@@ -1893,14 +2081,19 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 
 	ImGui::BeginChild("Sprite list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 
-	DrawGenericEditableList<Sprite>(pMetasprite->GetSprites(), pMetasprite->spriteCount, spriteSelection, "Sprite", selectionLocked, DrawSpriteListPreview);
+	if (pEditorData) {
+		DrawGenericEditableListVector<Sprite>(pEditorData->sprites, spriteSelection, "Sprite", selectionLocked, DrawSpriteListPreview);
+		asset.dirty = true; // Mark dirty when using the vector editor
+	}
 
 	ImGui::EndChild();
 
 	ImGui::SameLine();
 
 	ImGui::BeginChild("Sprite editor");
-	DrawSpriteEditor(pMetasprite, spriteSelection, asset.dirty);
+	if (pEditorData && !spriteSelection.empty() && spriteSelection[0] < (s32)pEditorData->sprites.size()) {
+		DrawSpriteEditorVector(pEditorData->sprites, spriteSelection, asset.dirty);
+	}
 	ImGui::EndChild();
 	ImGui::EndChild();
 	ImGui::EndChild();
@@ -1908,7 +2101,7 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 
 static void DrawSpriteWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Metasprite editor", pContext->spriteWindowOpen, ASSET_TYPE_METASPRITE, sizeof(Metasprite), "New Metasprite", DrawMetaspriteEditor, state);
+	DrawAssetEditor("Metasprite editor", pContext->spriteWindowOpen, ASSET_TYPE_METASPRITE, Assets::GetMetaspriteSize(), "New Metasprite", DrawMetaspriteEditor, state, nullptr, PopulateMetaspriteEditorData, ApplyMetaspriteEditorData, DeleteMetaspriteEditorData);
 }
 #pragma endregion
 
@@ -1993,6 +2186,45 @@ static void DrawTilesetEditor(EditedAsset& asset) {
 static void DrawTilesetWindow() {
 	static AssetEditorState state{};
 	DrawAssetEditor("Tileset editor", pContext->tilesetWindowOpen, ASSET_TYPE_TILESET, sizeof(Tileset), "New Tileset", DrawTilesetEditor, state);
+}
+#pragma endregion
+
+#pragma region Metasprite editor
+struct MetaspriteEditorData {
+	std::vector<Sprite> sprites;
+};
+
+static void PopulateMetaspriteEditorData(EditedAsset& editedAsset) {
+	if (editedAsset.userData) {
+		delete editedAsset.userData;
+	}
+
+	editedAsset.userData = new MetaspriteEditorData();
+	MetaspriteEditorData* pEditorData = (MetaspriteEditorData*)editedAsset.userData;
+
+	const Metasprite* pMetasprite = (Metasprite*)editedAsset.data;
+	const Sprite* pSprites = pMetasprite->GetSprites();
+	for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
+		pEditorData->sprites.push_back(pSprites[i]);
+	}
+}
+
+static void ApplyMetaspriteEditorData(EditedAsset& editedAsset) {
+	const MetaspriteEditorData* pEditorData = (MetaspriteEditorData*)editedAsset.userData;
+	Metasprite* pMetasprite = (Metasprite*)editedAsset.data;
+	pMetasprite->spriteCount = pEditorData->sprites.size();
+	ResizeEditedAsset(editedAsset, Assets::GetMetaspriteSize(pMetasprite));
+
+	// Reassign in case the asset was resized
+	pMetasprite = (Metasprite*)editedAsset.data;
+	Sprite* pSprites = pMetasprite->GetSprites();
+	for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
+		pSprites[i] = pEditorData->sprites[i];
+	}
+}
+
+static void DeleteMetaspriteEditorData(EditedAsset& editedAsset) {
+	delete editedAsset.userData;
 }
 #pragma endregion
 
@@ -2377,6 +2609,44 @@ static void DrawRoomWindow() {
 #pragma endregion
 
 #pragma region Actor prototypes
+struct ActorPrototypeEditorData {
+	std::vector<AnimationHandle> animations;
+};
+
+static void PopulateActorPrototypeEditorData(EditedAsset& editedAsset) {
+	if (editedAsset.userData) {
+		delete editedAsset.userData;
+	}
+
+	editedAsset.userData = new ActorPrototypeEditorData();
+	ActorPrototypeEditorData* pEditorData = (ActorPrototypeEditorData*)editedAsset.userData;
+
+	const ActorPrototype* pPrototype = (ActorPrototype*)editedAsset.data;
+	const AnimationHandle* pAnimations = pPrototype->GetAnimations();
+	for (u32 i = 0; i < pPrototype->animCount; i++) {
+		pEditorData->animations.push_back(pAnimations[i]);
+	}
+}
+
+static void ApplyActorPrototypeEditorData(EditedAsset& editedAsset) {
+	const ActorPrototypeEditorData* pEditorData = (ActorPrototypeEditorData*)editedAsset.userData;
+	ActorPrototype* pPrototype = (ActorPrototype*)editedAsset.data;
+	pPrototype->animCount = pEditorData->animations.size();
+	ResizeEditedAsset(editedAsset, Assets::GetActorPrototypeSize(pPrototype));
+
+	// Reassign in case the asset was resized
+	pPrototype = (ActorPrototype*)editedAsset.data;
+	AnimationHandle* pAnimations = pPrototype->GetAnimations();
+	for (u32 i = 0; i < pPrototype->animCount; i++) {
+		pAnimations[i] = pEditorData->animations[i];
+	}
+}
+
+static void DeleteActorPrototypeEditorData(EditedAsset& editedAsset) {
+	delete editedAsset.userData;
+}
+
+#pragma region Actor prototypes
 static ImVec2 DrawActorPreview(const ActorPrototype* pPrototype, s32 animIndex, s32 frameIndex, r32 size) {
 	constexpr s32 gridSizeTiles = 8;
 
@@ -2571,7 +2841,7 @@ static void DrawActorEditor(EditedAsset& asset) {
 
 static void DrawActorWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Actor editor", pContext->actorWindowOpen, ASSET_TYPE_ACTOR_PROTOTYPE, sizeof(ActorPrototype), "New actor prototype", DrawActorEditor, state);
+	DrawAssetEditor("Actor editor", pContext->actorWindowOpen, ASSET_TYPE_ACTOR_PROTOTYPE, Assets::GetActorPrototypeSize(), "New actor prototype", DrawActorEditor, state, nullptr, PopulateActorPrototypeEditorData, ApplyActorPrototypeEditorData, DeleteActorPrototypeEditorData);
 }
 #pragma endregion
 
@@ -3578,6 +3848,44 @@ static void DrawAssetBrowser() {
 #pragma endregion
 
 #pragma region Animation
+struct AnimationEditorData {
+	std::vector<AnimationFrame> frames;
+};
+
+static void PopulateAnimationEditorData(EditedAsset& editedAsset) {
+	if (editedAsset.userData) {
+		delete editedAsset.userData;
+	}
+
+	editedAsset.userData = new AnimationEditorData();
+	AnimationEditorData* pEditorData = (AnimationEditorData*)editedAsset.userData;
+
+	const Animation* pAnimation = (Animation*)editedAsset.data;
+	const AnimationFrame* pFrames = pAnimation->GetFrames();
+	for (u32 i = 0; i < pAnimation->frameCount; i++) {
+		pEditorData->frames.push_back(pFrames[i]);
+	}
+}
+
+static void ApplyAnimationEditorData(EditedAsset& editedAsset) {
+	const AnimationEditorData* pEditorData = (AnimationEditorData*)editedAsset.userData;
+	Animation* pAnimation = (Animation*)editedAsset.data;
+	pAnimation->frameCount = pEditorData->frames.size();
+	ResizeEditedAsset(editedAsset, Assets::GetAnimationSize(pAnimation));
+
+	// Reassign in case the asset was resized
+	pAnimation = (Animation*)editedAsset.data;
+	AnimationFrame* pFrames = pAnimation->GetFrames();
+	for (u32 i = 0; i < pAnimation->frameCount; i++) {
+		pFrames[i] = pEditorData->frames[i];
+	}
+}
+
+static void DeleteAnimationEditorData(EditedAsset& editedAsset) {
+	delete editedAsset.userData;
+}
+
+#pragma region Animation
 static void DrawAnimationPreview(const Animation* pAnimation, s32 frameIndex, r32 size) {
 	constexpr s32 gridSizeTiles = 8;
 
@@ -3771,7 +4079,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 
 static void DrawAnimationWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Animation editor", pContext->animationWindowOpen, ASSET_TYPE_ANIMATION, sizeof(Animation), "New Animation", DrawAnimationEditor, state);
+	DrawAssetEditor("Animation editor", pContext->animationWindowOpen, ASSET_TYPE_ANIMATION, Assets::GetAnimationSize(), "New Animation", DrawAnimationEditor, state, nullptr, PopulateAnimationEditorData, ApplyAnimationEditorData, DeleteAnimationEditorData);
 }
 #pragma endregion
 

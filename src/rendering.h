@@ -109,6 +109,12 @@ struct Metasprite {
 	}
 };
 
+#ifdef EDITOR
+namespace Assets {
+	u32 GetMetaspriteSize(const Metasprite* pHeader = nullptr);
+}
+#endif
+
 struct RenderSettings {
 	bool useCRTFilter;
 };

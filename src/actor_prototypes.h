@@ -21,6 +21,12 @@ struct ActorPrototype {
 };
 
 #ifdef EDITOR
+namespace Assets {
+	u32 GetActorPrototypeSize(const ActorPrototype* pHeader = nullptr);
+}
+#endif
+
+#ifdef EDITOR
 #include <nlohmann/json.hpp>
 #include <imgui_internal.h>
 #include <sstream>

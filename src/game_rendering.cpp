@@ -362,4 +362,15 @@ void Game::Rendering::CopyPaletteColors(PaletteHandle paletteHandle, u8 paletteI
 
 	memcpy(::Rendering::GetPalettePtr(paletteIndex)->colors, pPalette->colors, PALETTE_COLOR_COUNT);
 }
+
+#ifdef EDITOR
+u32 Assets::GetMetaspriteSize(const Metasprite* pHeader) {
+	u32 result = sizeof(Metasprite);
+	if (pHeader) {
+		result += pHeader->spriteCount * sizeof(Sprite);
+	}
+	return result;
+}
+#endif
+
 #pragma endregion

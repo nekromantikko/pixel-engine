@@ -553,3 +553,21 @@ void Game::DrawActors() {
 	}
 }
 
+#ifdef EDITOR
+u32 Assets::GetActorPrototypeSize(const ActorPrototype* pHeader) {
+	u32 result = sizeof(ActorPrototype);
+	if (pHeader) {
+		result += pHeader->animCount * sizeof(AnimationHandle);
+	}
+	return result;
+}
+
+u32 Assets::GetAnimationSize(const Animation* pHeader) {
+	u32 result = sizeof(Animation);
+	if (pHeader) {
+		result += pHeader->frameCount * sizeof(AnimationFrame);
+	}
+	return result;
+}
+#endif
+

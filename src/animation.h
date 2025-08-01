@@ -15,3 +15,9 @@ struct Animation {
 		return (AnimationFrame*)((u8*)this + framesOffset);
 	}
 };
+
+#ifdef EDITOR
+namespace Assets {
+	u32 GetAnimationSize(const Animation* pHeader = nullptr);
+}
+#endif
