@@ -41,7 +41,8 @@ static glm::vec2 mapScrollDir(0);
 static GameData gameData;
 static GameState state;
 
-// TODO: Store bitfield instead
+// TODO: Store bitfield instead - could use std::bitset<DUNGEON_GRID_SIZE> or custom bitfield
+// to reduce memory usage from 64 bytes to 8 bytes
 static bool discoveredScreens[DUNGEON_GRID_SIZE]{};
 
 static DungeonHandle currentDungeonId;
@@ -60,7 +61,7 @@ static void ReviveDeadActor(u64 id, PersistedActorData& persistedData) {
 }
 #pragma endregion
 
-// TODO: Move somewhere else
+// TODO: Move to dungeon.h/dungeon.cpp when dungeon system is refactored
 #pragma region Dungeon utils
 static const DungeonCell* GetDungeonCell(const Dungeon* pDungeon, const glm::i8vec2 offset) {
     if (offset.x < 0 || offset.x >= DUNGEON_GRID_DIM || offset.y < 0 || offset.y >= DUNGEON_GRID_DIM) {
@@ -298,7 +299,7 @@ static void StepDungeonGameplayFrame() {
 #pragma endregion
 
 #pragma region Dungeon map
-// TODO: Move somewhere else?
+// TODO: Move to a utility/math header when hash utilities are consolidated
 static u32 Hash(u32 input) {
     // Multiply with fibonacci primes
     input = (input ^ (input >> 16)) * 0xb11924e1;
