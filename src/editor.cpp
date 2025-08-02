@@ -2,6 +2,7 @@
 #include "editor_actor.h"
 #include "editor_assets.h"
 #include "editor_serialization.h"
+#include "data_types.h"
 #include "debug.h"
 #include <cassert>
 #include <limits>
@@ -2571,7 +2572,27 @@ static bool DrawActorPrototypeProperty(const ActorEditorProperty& property, Acto
 
 	switch (property.type) {
 	case ACTOR_EDITOR_PROPERTY_SCALAR: {
-		result = ImGui::InputScalarN(property.name, property.dataType, propertyData, property.components);
+		if (property.dataType == DATA_TYPE_BOOL) {
+			// Handle boolean specially since ImGui treats bools differently
+			if (property.components == 1) {
+				result = ImGui::Checkbox(property.name, (bool*)propertyData);
+			} else {
+				// For multiple bool components, display as checkboxes in a group
+				for (s32 i = 0; i < property.components; i++) {
+					bool* pBool = (bool*)propertyData + i;
+					ImGui::PushID(i);
+					if (i > 0) ImGui::SameLine();
+					result |= ImGui::Checkbox("", pBool);
+					ImGui::PopID();
+				}
+			}
+		} else {
+			// Convert our DataType to ImGuiDataType for rendering
+			ImGuiDataType imguiType = DataTypeToImGui(property.dataType);
+			if (imguiType != ImGuiDataType_COUNT) {
+				result = ImGui::InputScalarN(property.name, imguiType, propertyData, property.components);
+			}
+		}
 		break;
 	}
 	case ACTOR_EDITOR_PROPERTY_ASSET: {
