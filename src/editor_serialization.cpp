@@ -10,6 +10,7 @@
 #include "room.h"
 #include "overworld.h"
 #include "dungeon.h"
+#include <imgui_internal.h>
 
 static constexpr u64 ASSET_FILE_FORMAT_VERSION = 1;
 
