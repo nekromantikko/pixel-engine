@@ -42,7 +42,8 @@ enum PlayerAimFrame : u8 {
 };
 
 // Input mapping
-// TODO: Define in settings
+// TODO: Define in settings - move to input configuration system or config file
+// These should be remappable by the player
 u16 jumpButton = BUTTON_A;
 u16 interactButton = BUTTON_X;
 u16 dodgeButton = BUTTON_B;
@@ -65,13 +66,15 @@ constexpr u16 standAnimIndex = 0;
 constexpr u16 sitAnimIndex = 1;
 constexpr u16 deathAnimIndex = 2;
 
-// TODO: These should be set in editor somehow
+// TODO: These should be set in editor somehow - asset references should be configurable
+// Currently hardcoded prototype handles
 constexpr ChrBankHandle playerBankId(17419163809364512109);
 constexpr ActorPrototypeHandle playerGrenadePrototypeId(5433896513301451046);
 constexpr ActorPrototypeHandle playerArrowPrototypeId(13929813062463858187);
 constexpr ActorPrototypeHandle featherPrototypeId(4150894991750855816);
 
-// TODO: Would it be possible to define these in the editor?
+// TODO: Would it be possible to define these in the editor? 
+// Animation frame offset data should be data-driven rather than hardcoded
 constexpr u8 playerWingFrameBankOffsets[4] = { 0x00, 0x08, 0x10, 0x18 };
 constexpr u8 playerHeadFrameBankOffsets[12] = { 0x20, 0x24, 0x28, 0x2C, 0x30, 0x34, 0x38, 0x3C, 0x40, 0x44, 0x48, 0x4C };
 constexpr u8 playerLegsFrameBankOffsets[4] = { 0x50, 0x54, 0x58, 0x5C };
@@ -121,7 +124,7 @@ static void SetWingFrame(Actor* pPlayer, u16 frame, u16 frameLength) {
 static void AnimateSitting(Actor* pPlayer, u16 frameIdx) {
     Game::Rendering::CopyBankTiles(playerBankId, playerSitBankOffsets[frameIdx], 4, playerHeadFrameChrOffset, 8);
 
-    // TODO: Custom wing graphics for sitting?
+    // TODO: Custom wing graphics for sitting? - could add different wing animation for sitting pose
     AnimateWingsToTargetPosition(pPlayer, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
 
     pPlayer->drawState.animIndex = sitAnimIndex;

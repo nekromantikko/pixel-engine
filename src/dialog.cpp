@@ -210,7 +210,8 @@ static void AdvanceDialogText() {
     dialogState.currentLine++;*/
 }
 
-// TODO: Allow multiple dialogs simultaneously?
+// TODO: Allow multiple dialogs simultaneously? 
+// Current design assumes single dialog state, would need dialog stack/queue system
 bool Game::OpenDialog(const glm::ivec2& offset, const glm::ivec2& size, const glm::ivec2& inSize) {
     if (state != DIALOG_CLOSED) {
         return false;

@@ -9,7 +9,7 @@
 #include "animation.h"
 #include <gtc/constants.hpp>
 
-// TODO: Define in editor in game settings or similar
+// TODO: Define in editor in game settings or similar - prototype handles should be configurable
 constexpr ActorPrototypeHandle dmgNumberPrototypeId(3893478668273870712);
 
 static Pool<Actor, MAX_DYNAMIC_ACTOR_COUNT> actors;
@@ -405,7 +405,7 @@ void Game::ApplyGravity(Actor* pActor, r32 gravity) {
 Damage Game::CalculateDamage(Actor* pActor, u16 baseDamage) {
 	const r32 damageMultiplier = Random::GenerateReal(0.95f, 1.05f); // 5% variation
 
-	// TODO: Take actor stats into account
+	// TODO: Take actor stats into account - implement defense, damage modifiers, resistances
 	Damage result{};
 
 	result.value = glm::roundEven(baseDamage * damageMultiplier);

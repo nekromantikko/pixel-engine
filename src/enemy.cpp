@@ -6,7 +6,8 @@
 #include "random.h"
 
 // TODO: Should be determined by enemy stats
-constexpr u16 baseDamage = 10;
+// Default damage value until enemy stat system is implemented
+constexpr u16 DEFAULT_ENEMY_DAMAGE = 10;
 
 static void UpdateSlimeEnemy(Actor* pActor, const ActorPrototype* pPrototype) {
     Game::UpdateCounter(pActor->state.enemyState.damageCounter);
@@ -43,7 +44,7 @@ static void UpdateSlimeEnemy(Actor* pActor, const ActorPrototype* pPrototype) {
     }
 
     Actor* pPlayer = Game::GetPlayer();
-    const Damage damage = Game::CalculateDamage(pPlayer, baseDamage);
+    const Damage damage = Game::CalculateDamage(pPlayer, DEFAULT_ENEMY_DAMAGE);
     if (pPlayer && !Game::PlayerInvulnerable(pPlayer) && Game::ActorsColliding(pActor, pPlayer)) {
         Game::PlayerTakeDamage(pPlayer, damage, pActor->position);
     }
@@ -76,7 +77,7 @@ static void UpdateSkullEnemy(Actor* pActor, const ActorPrototype* pPrototype) {
 
 
     Actor* pPlayer = Game::GetPlayer();
-    const Damage damage = Game::CalculateDamage(pPlayer, baseDamage);
+    const Damage damage = Game::CalculateDamage(pPlayer, DEFAULT_ENEMY_DAMAGE);
     if (pPlayer && !Game::PlayerInvulnerable(pPlayer) && Game::ActorsColliding(pActor, pPlayer)) {
         Game::PlayerTakeDamage(pPlayer, damage, pActor->position);
     }
@@ -106,7 +107,7 @@ static void UpdateFireball(Actor* pActor, const ActorPrototype* pPrototype) {
     }
 
     Actor* pPlayer = Game::GetPlayer();
-    const Damage damage = Game::CalculateDamage(pPlayer, baseDamage);
+    const Damage damage = Game::CalculateDamage(pPlayer, DEFAULT_ENEMY_DAMAGE);
     if (pPlayer && !Game::PlayerInvulnerable(pPlayer) && Game::ActorsColliding(pActor, pPlayer)) {
         Game::PlayerTakeDamage(pPlayer, damage, pActor->position);
         return FireballDie(pActor, pPrototype, pActor->position);

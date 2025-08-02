@@ -316,7 +316,8 @@ static void CreateDevice() {
 	}
 }
 
-// TODO: Absorb into other function
+// TODO: Absorb into Rendering::CreateContext() or InitializeRenderer()
+// This function is only called once during initialization
 static void CreateRenderPass() {
 	VkAttachmentDescription colorAttachment{};
 	colorAttachment.format = VK_FORMAT_B8G8R8A8_SRGB;
@@ -807,8 +808,25 @@ static VkImageMemoryBarrier GetImageBarrier(const Image* pImage, VkImageLayout o
 	barrier.subresourceRange.levelCount = 1;
 	barrier.subresourceRange.baseArrayLayer = 0;
 	barrier.subresourceRange.layerCount = 1;
-	barrier.srcAccessMask = 0; // TODO
-	barrier.dstAccessMask = 0; // TODO
+	
+	// Set access masks based on layout transitions
+	if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+		barrier.srcAccessMask = 0;
+		barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	} else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	} else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_GENERAL) {
+		barrier.srcAccessMask = 0;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	} else if (oldLayout == VK_IMAGE_LAYOUT_GENERAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+		barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	} else {
+		// Generic fallback for unsupported transitions
+		barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+	}
 
 	return barrier;
 }
@@ -1177,14 +1195,20 @@ static void EndDraw() {
 ////////////////////////////////////////////////////////////
 
 void Rendering::CreateContext() {
-	// TODO: Handle if context already exists
+	// Handle if context already exists
+	if (pContext != nullptr) {
+		DEBUG_LOG("Rendering context already exists, skipping creation\n");
+		return;
+	}
+	
 	pContext = new RenderContext{};
 	assert(pContext != nullptr);
 	
 	CreateVulkanInstance();
 }
 
-// TODO: Support other types of surfaces later?
+// TODO: Support other types of surfaces later? (e.g., Wayland, Win32, Metal)
+// Currently only supports SDL2 surface creation which handles cross-platform abstraction
 void Rendering::CreateSurface(SDL_Window* sdlWindow) {
 	pContext->surface = VK_NULL_HANDLE;
 	SDL_Vulkan_CreateSurface(sdlWindow, pContext->instance, &pContext->surface);
@@ -1789,7 +1813,7 @@ static void InitGlobalEditorData() {
 
 	vkCreateDescriptorSetLayout(pContext->device, &computeLayoutInfo, nullptr, &pContext->debugDescriptorSetLayout);
 
-	// TODO: Should these be destroyed?
+	// These pipelines are properly destroyed in FreeGlobalEditorData()
 	CreateChrPipeline();
 	CreatePalettePipeline();
 }
@@ -1891,9 +1915,15 @@ bool Rendering::UpdateEditorBuffer(const EditorRenderBuffer* pBuffer, const void
 	}
 
 	vkWaitForFences(pContext->device, COMMAND_BUFFER_COUNT, pContext->commandBufferFences, VK_TRUE, UINT64_MAX);
-	// TODO: Error check
+	
+	// Map memory and check for errors
 	void* mappedData;
-	vkMapMemory(pContext->device, pBuffer->buffer.memory, 0, pBuffer->buffer.size, 0, &mappedData);
+	VkResult result = vkMapMemory(pContext->device, pBuffer->buffer.memory, 0, pBuffer->buffer.size, 0, &mappedData);
+	if (result != VK_SUCCESS) {
+		DEBUG_ERROR("Failed to map buffer memory: %d\n", result);
+		return false;
+	}
+	
 	memcpy(mappedData, data, pBuffer->buffer.size);
 	vkUnmapMemory(pContext->device, pBuffer->buffer.memory);
 

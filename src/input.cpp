@@ -3,7 +3,8 @@
 #include "debug.h"
 #include <SDL.h>
 
-//TODO: multiple controller support
+//TODO: multiple controller support - Currently only supports one joystick/gamepad
+// Will need array of controllers and player assignment system
 static SDL_Joystick* pJoystick = nullptr;
 static SDL_Haptic* pHaptic = nullptr;
 

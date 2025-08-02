@@ -26,10 +26,20 @@ struct EffectState {
 	u16 lifetimeCounter;
 };
 
+enum DamageType : u8 {
+	DAMAGE_TYPE_PHYSICAL = 0,
+	DAMAGE_TYPE_FIRE = 1,
+	DAMAGE_TYPE_ICE = 2,
+	DAMAGE_TYPE_LIGHTNING = 3,
+	DAMAGE_TYPE_POISON = 4,
+	// 3 bits allows for 8 types total (0-7)
+	DAMAGE_TYPE_COUNT = 5
+};
+
 struct DamageFlags {
 	bool healing : 1;
 	bool crit : 1;
-	u8 type : 3; // TODO: Add damage types?
+	u8 type : 3; // DamageType enum
 };
 
 struct Damage {
