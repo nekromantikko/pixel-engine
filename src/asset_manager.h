@@ -6,6 +6,7 @@
 #include <unordered_map>
 
 constexpr u32 MAX_ASSET_NAME_LENGTH = 56;
+constexpr u32 MAX_ASSET_PATH_LENGTH = 256;
 
 struct AssetFlags {
 	AssetType type : 4;
@@ -16,6 +17,7 @@ struct AssetFlags {
 struct AssetEntry {
 	u64 id;
 	char name[MAX_ASSET_NAME_LENGTH];
+	char relativePath[MAX_ASSET_PATH_LENGTH];
 	u32 offset;
 	u32 size;
 	AssetFlags flags;

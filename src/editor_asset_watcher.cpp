@@ -108,8 +108,14 @@ bool Editor::Assets::ListFilesInDirectory(const std::filesystem::path& directory
 				DEBUG_ERROR("Failed to get size for asset %s\n", pathCStr);
 				continue;
 			}
-            std::string filenameWithoutExt = entry.path().filename().replace_extension("").string();
-            void* pData = AssetManager::AddAsset(guid, assetType, size, filenameWithoutExt.c_str(), nullptr);
+            const std::string filenameWithoutExt = entry.path().filename().replace_extension("").string();
+			std::string name = filenameWithoutExt;
+			if (metadata.contains("name") && !metadata["name"].is_null()) 
+			{
+				name = metadata["name"].get<std::string>();
+			}
+
+            void* pData = AssetManager::AddAsset(guid, assetType, size, name.c_str(), nullptr);
 			if (!pData) {
 				DEBUG_ERROR("Failed to add asset %s to manager\n", pathCStr);
 				continue;
