@@ -316,7 +316,8 @@ static void CreateDevice() {
 	}
 }
 
-// TODO: Absorb into other function
+// TODO: Absorb into Rendering::CreateContext() or InitializeRenderer()
+// This function is only called once during initialization
 static void CreateRenderPass() {
 	VkAttachmentDescription colorAttachment{};
 	colorAttachment.format = VK_FORMAT_B8G8R8A8_SRGB;
@@ -1206,7 +1207,8 @@ void Rendering::CreateContext() {
 	CreateVulkanInstance();
 }
 
-// TODO: Support other types of surfaces later?
+// TODO: Support other types of surfaces later? (e.g., Wayland, Win32, Metal)
+// Currently only supports SDL2 surface creation which handles cross-platform abstraction
 void Rendering::CreateSurface(SDL_Window* sdlWindow) {
 	pContext->surface = VK_NULL_HANDLE;
 	SDL_Vulkan_CreateSurface(sdlWindow, pContext->instance, &pContext->surface);
@@ -1811,7 +1813,7 @@ static void InitGlobalEditorData() {
 
 	vkCreateDescriptorSetLayout(pContext->device, &computeLayoutInfo, nullptr, &pContext->debugDescriptorSetLayout);
 
-	// TODO: Should these be destroyed?
+	// These pipelines are properly destroyed in FreeGlobalEditorData()
 	CreateChrPipeline();
 	CreatePalettePipeline();
 }

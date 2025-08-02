@@ -13,7 +13,7 @@
 #include "asset_manager.h"
 #include "debug.h"
 
-// TODO: Define in editor in game settings 
+// TODO: Define in editor in game settings - player prototype handles should be configurable 
 constexpr ActorPrototypeHandle playerPrototypeHandle(18154189127814674930);
 constexpr ActorPrototypeHandle playerOverworldPrototypeHandle(6197846074548071416);
 constexpr ActorPrototypeHandle xpRemnantPrototypeHandle(11197223615879147344);
@@ -775,7 +775,8 @@ static bool LevelTransitionCoroutine(void* userData) {
 #pragma region GameData
 // Initializes game data to new game state
 void Game::InitGameData() {
-    // TODO: Come up with actual values
+    // TODO: Come up with actual values - these should be balanced based on gameplay testing
+    // or loaded from game configuration/balance data
 	gameData.playerMaxHealth = 96;
     SetPlayerHealth(gameData.playerMaxHealth);
     gameData.playerMaxStamina = 64;
@@ -783,17 +784,21 @@ void Game::InitGameData() {
     SetPlayerExp(0);
     SetPlayerWeapon(PLAYER_WEAPON_LAUNCHER);
 
-	// TODO: Initialize first checkpoint
+	// TODO: Initialize first checkpoint to starting dungeon/room location
+	// gameData.checkpoint.dungeonId = STARTING_DUNGEON_ID;
+	// gameData.checkpoint.gridOffset = STARTING_ROOM_OFFSET;
 
 	gameData.expRemnant.dungeonId = DungeonHandle::Null();
 
 	gameData.persistedActorData.Clear();
 }
 void Game::LoadGameData(u32 saveSlot) {
-	// TODO: Load game data from save slot
+	// TODO: Load game data from save slot - implement save file loading from disk
+	// Should read gameData struct from saveSlot file and apply to current game state
 }
 void Game::SaveGameData(u32 saveSlot) {
-	// TODO: Save game data to save slot
+	// TODO: Save game data to save slot - implement save file writing to disk  
+	// Should serialize gameData struct to saveSlot file with proper error handling
 }
 #pragma endregion
 

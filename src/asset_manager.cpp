@@ -266,6 +266,7 @@ bool AssetManager::ResizeAsset(u64 id, u32 newSize) {
 
 	if (newSize > oldSize) {
 		// TODO: This could reserve more space than needed to avoid repeated resizes that fragment the memory
+	// Consider implementing growth strategy (e.g., reserve 1.5x or 2x current size) or memory pooling
 		if (!ReserveMemory(newSize)) {
 			return false;
 		}
