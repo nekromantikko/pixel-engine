@@ -42,11 +42,6 @@ struct AssetHandle {
 	}
 };
 
-template <AssetType T>
-constexpr AssetHandle<T> MakeAssetHandle(u64 id, AssetType type) {
-	return (AssetHandle<type>)(id);
-}
-
 template <typename T>
 struct AssetHandleTraits : std::false_type {};
 
