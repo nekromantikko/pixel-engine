@@ -13,6 +13,79 @@
 #include <vector>
 #include "shader.h"
 
+// Error handling utilities
+static const char* VkResultToString(VkResult result) {
+	switch (result) {
+		case VK_SUCCESS: return "VK_SUCCESS";
+		case VK_NOT_READY: return "VK_NOT_READY";
+		case VK_TIMEOUT: return "VK_TIMEOUT";
+		case VK_EVENT_SET: return "VK_EVENT_SET";
+		case VK_EVENT_RESET: return "VK_EVENT_RESET";
+		case VK_INCOMPLETE: return "VK_INCOMPLETE";
+		case VK_ERROR_OUT_OF_HOST_MEMORY: return "VK_ERROR_OUT_OF_HOST_MEMORY";
+		case VK_ERROR_OUT_OF_DEVICE_MEMORY: return "VK_ERROR_OUT_OF_DEVICE_MEMORY";
+		case VK_ERROR_INITIALIZATION_FAILED: return "VK_ERROR_INITIALIZATION_FAILED";
+		case VK_ERROR_DEVICE_LOST: return "VK_ERROR_DEVICE_LOST";
+		case VK_ERROR_MEMORY_MAP_FAILED: return "VK_ERROR_MEMORY_MAP_FAILED";
+		case VK_ERROR_LAYER_NOT_PRESENT: return "VK_ERROR_LAYER_NOT_PRESENT";
+		case VK_ERROR_EXTENSION_NOT_PRESENT: return "VK_ERROR_EXTENSION_NOT_PRESENT";
+		case VK_ERROR_FEATURE_NOT_PRESENT: return "VK_ERROR_FEATURE_NOT_PRESENT";
+		case VK_ERROR_INCOMPATIBLE_DRIVER: return "VK_ERROR_INCOMPATIBLE_DRIVER";
+		case VK_ERROR_TOO_MANY_OBJECTS: return "VK_ERROR_TOO_MANY_OBJECTS";
+		case VK_ERROR_FORMAT_NOT_SUPPORTED: return "VK_ERROR_FORMAT_NOT_SUPPORTED";
+		case VK_ERROR_FRAGMENTED_POOL: return "VK_ERROR_FRAGMENTED_POOL";
+		case VK_ERROR_UNKNOWN: return "VK_ERROR_UNKNOWN";
+		case VK_ERROR_OUT_OF_POOL_MEMORY: return "VK_ERROR_OUT_OF_POOL_MEMORY";
+		case VK_ERROR_INVALID_EXTERNAL_HANDLE: return "VK_ERROR_INVALID_EXTERNAL_HANDLE";
+		case VK_ERROR_FRAGMENTATION: return "VK_ERROR_FRAGMENTATION";
+		case VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS: return "VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS";
+		case VK_ERROR_SURFACE_LOST_KHR: return "VK_ERROR_SURFACE_LOST_KHR";
+		case VK_ERROR_NATIVE_WINDOW_IN_USE_KHR: return "VK_ERROR_NATIVE_WINDOW_IN_USE_KHR";
+		case VK_SUBOPTIMAL_KHR: return "VK_SUBOPTIMAL_KHR";
+		case VK_ERROR_OUT_OF_DATE_KHR: return "VK_ERROR_OUT_OF_DATE_KHR";
+		case VK_ERROR_INCOMPATIBLE_DISPLAY_KHR: return "VK_ERROR_INCOMPATIBLE_DISPLAY_KHR";
+		case VK_ERROR_VALIDATION_FAILED_EXT: return "VK_ERROR_VALIDATION_FAILED_EXT";
+		case VK_ERROR_INVALID_SHADER_NV: return "VK_ERROR_INVALID_SHADER_NV";
+		default: return "Unknown VkResult";
+	}
+}
+
+#define VK_CHECK(result, msg) \
+	do { \
+		VkResult _res = (result); \
+		if (_res != VK_SUCCESS) { \
+			DEBUG_ERROR("%s failed with %s\n", (msg), VkResultToString(_res)); \
+			return false; \
+		} \
+	} while(0)
+
+#define VK_CHECK_RETURN_NULL(result, msg) \
+	do { \
+		VkResult _res = (result); \
+		if (_res != VK_SUCCESS) { \
+			DEBUG_ERROR("%s failed with %s\n", (msg), VkResultToString(_res)); \
+			return nullptr; \
+		} \
+	} while(0)
+
+#define VK_CHECK_VOID(result, msg) \
+	do { \
+		VkResult _res = (result); \
+		if (_res != VK_SUCCESS) { \
+			DEBUG_ERROR("%s failed with %s\n", (msg), VkResultToString(_res)); \
+			return; \
+		} \
+	} while(0)
+
+// Error states for graceful degradation
+enum class RenderErrorState {
+	None,
+	SwapchainOutOfDate,
+	DeviceLost,
+	OutOfMemory,
+	InitializationFailed
+};
+
 static constexpr u32 COMMAND_BUFFER_COUNT = 2;
 static constexpr u32 SWAPCHAIN_IMAGE_COUNT = 3;
 
@@ -120,6 +193,11 @@ struct RenderContext {
 	// Settings
 	RenderSettings settings;
 
+	// Error state management
+	RenderErrorState errorState;
+	bool isInitialized;
+	bool swapchainNeedsRecreation;
+
 	// Editor stuff
 #ifdef EDITOR
 	VkDescriptorSetLayout debugDescriptorSetLayout;
@@ -136,7 +214,7 @@ struct RenderContext {
 
 static RenderContext* pContext = nullptr;
 
-static void CreateVulkanInstance() {
+static bool CreateVulkanInstance() {
 	VkApplicationInfo appInfo{};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	appInfo.pNext = nullptr;
@@ -165,10 +243,8 @@ static void CreateVulkanInstance() {
 	createInfo.enabledExtensionCount = extensionCount;
 	createInfo.ppEnabledExtensionNames = extensionNames;
 
-	VkResult err = vkCreateInstance(&createInfo, nullptr, &pContext->instance);
-	if (err != VK_SUCCESS) {
-		DEBUG_ERROR("Failed to create instance!\n");
-	}
+	VK_CHECK(vkCreateInstance(&createInfo, nullptr, &pContext->instance), "vkCreateInstance");
+	return true;
 }
 
 static bool IsPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, u32& outQueueFamilyIndex) {
@@ -256,14 +332,17 @@ static bool IsPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceK
 	return false;
 }
 
-static void GetSuitablePhysicalDevice() {
+static bool GetSuitablePhysicalDevice() {
 	u32 physicalDeviceCount = 0;
-	vkEnumeratePhysicalDevices(pContext->instance, &physicalDeviceCount, nullptr);
+	VK_CHECK(vkEnumeratePhysicalDevices(pContext->instance, &physicalDeviceCount, nullptr), "vkEnumeratePhysicalDevices");
+	
 	if (physicalDeviceCount == 0) {
-		DEBUG_ERROR("No devices found for some reason!\n");
+		DEBUG_ERROR("No physical devices found!\n");
+		return false;
 	}
+
 	std::vector<VkPhysicalDevice> availableDevices(physicalDeviceCount);
-	vkEnumeratePhysicalDevices(pContext->instance, &physicalDeviceCount, availableDevices.data());
+	VK_CHECK(vkEnumeratePhysicalDevices(pContext->instance, &physicalDeviceCount, availableDevices.data()), "vkEnumeratePhysicalDevices");
 
 	bool physicalDeviceFound = false;
 	VkPhysicalDevice foundDevice = VK_NULL_HANDLE;
@@ -275,17 +354,21 @@ static void GetSuitablePhysicalDevice() {
 			physicalDeviceFound = true;
 			foundDevice = physicalDevice;
 			foundQueueFamilyIndex = queueFamilyIndex;
+			break; // Take the first suitable device
 		}
 	}
 
 	if (!physicalDeviceFound) {
 		DEBUG_ERROR("No suitable physical device found!\n");
+		return false;
 	}
+	
 	pContext->primaryQueueFamilyIndex = foundQueueFamilyIndex;
 	pContext->physicalDevice = foundDevice;
+	return true;
 }
 
-static void CreateDevice() {
+static bool CreateDevice() {
 	float queuePriority = 1.0f;
 
 	VkDeviceQueueCreateInfo queueCreateInfo{};
@@ -310,14 +393,12 @@ static void CreateDevice() {
 	createInfo.enabledExtensionCount = 1;
 	createInfo.ppEnabledExtensionNames = &swapchainExtensionName;
 
-	VkResult err = vkCreateDevice(pContext->physicalDevice, &createInfo, nullptr, &pContext->device);
-	if (err != VK_SUCCESS) {
-		DEBUG_ERROR("Failed to create logical device!\n");
-	}
+	VK_CHECK(vkCreateDevice(pContext->physicalDevice, &createInfo, nullptr, &pContext->device), "vkCreateDevice");
+	return true;
 }
 
 // TODO: Absorb into other function
-static void CreateRenderPass() {
+static bool CreateRenderPass() {
 	VkAttachmentDescription colorAttachment{};
 	colorAttachment.format = VK_FORMAT_B8G8R8A8_SRGB;
 	colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -354,9 +435,8 @@ static void CreateRenderPass() {
 	renderImagePassInfo.dependencyCount = 1;
 	renderImagePassInfo.pDependencies = &dependency;
 
-	VkResult err = vkCreateRenderPass(pContext->device, &renderImagePassInfo, nullptr, &pContext->renderImagePass);
-	if (err != VK_SUCCESS) {
-		DEBUG_ERROR("failed to create render pass!");
+	VK_CHECK(vkCreateRenderPass(pContext->device, &renderImagePassInfo, nullptr, &pContext->renderImagePass), "vkCreateRenderPass");
+	return true;
 	}
 }
 
@@ -646,33 +726,35 @@ static void FreeGraphicsPipeline()
 	vkDestroyDescriptorSetLayout(pContext->device, pContext->graphicsDescriptorSetLayout, nullptr);
 }
 
-static u32 GetDeviceMemoryTypeIndex(u32 typeFilter, VkMemoryPropertyFlags propertyFlags) {
+static bool GetDeviceMemoryTypeIndex(u32 typeFilter, VkMemoryPropertyFlags propertyFlags, u32& outIndex) {
 	VkPhysicalDeviceMemoryProperties memProperties;
 	vkGetPhysicalDeviceMemoryProperties(pContext->physicalDevice, &memProperties);
 
 	for (u32 i = 0; i < memProperties.memoryTypeCount; i++) {
 		if (typeFilter & (1 << i) && (memProperties.memoryTypes[i].propertyFlags & propertyFlags) == propertyFlags) {
-			return i;
+			outIndex = i;
+			return true;
 		}
 	}
 	
 	DEBUG_ERROR("Failed to find suitable memory type!\n");
-	return UINT32_MAX;
+	return false;
 }
 
-static void AllocateMemory(VkMemoryRequirements requirements, VkMemoryPropertyFlags properties, VkDeviceMemory& outMemory) {
+static bool AllocateMemory(VkMemoryRequirements requirements, VkMemoryPropertyFlags properties, VkDeviceMemory& outMemory) {
 	VkMemoryAllocateInfo memAllocInfo{};
 	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	memAllocInfo.allocationSize = requirements.size;
-	memAllocInfo.memoryTypeIndex = GetDeviceMemoryTypeIndex(requirements.memoryTypeBits, properties);
-
-	VkResult err = vkAllocateMemory(pContext->device, &memAllocInfo, nullptr, &outMemory);
-	if (err != VK_SUCCESS) {
-		DEBUG_ERROR("Failed to allocate memory!\n");
+	
+	if (!GetDeviceMemoryTypeIndex(requirements.memoryTypeBits, properties, memAllocInfo.memoryTypeIndex)) {
+		return false;
 	}
+
+	VK_CHECK(vkAllocateMemory(pContext->device, &memAllocInfo, nullptr, &outMemory), "vkAllocateMemory");
+	return true;
 }
 
-static void AllocateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memProps, Buffer& outBuffer) {
+static bool AllocateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memProps, Buffer& outBuffer) {
 	VkBufferCreateInfo bufferInfo{};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferInfo.pNext = nullptr;
@@ -681,20 +763,21 @@ static void AllocateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemory
 	bufferInfo.usage = usage;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-	VkResult err = vkCreateBuffer(pContext->device, &bufferInfo, nullptr, &outBuffer.buffer);
-	if (err != VK_SUCCESS) {
-		DEBUG_ERROR("Failed to create buffer!\n");
-	}
+	VK_CHECK(vkCreateBuffer(pContext->device, &bufferInfo, nullptr, &outBuffer.buffer), "vkCreateBuffer");
 
 	VkMemoryRequirements memRequirements;
 	vkGetBufferMemoryRequirements(pContext->device, outBuffer.buffer, &memRequirements);
 	DEBUG_LOG("Buffer memory required: %d\n", memRequirements.size);
 
-	AllocateMemory(memRequirements, memProps, outBuffer.memory);
+	if (!AllocateMemory(memRequirements, memProps, outBuffer.memory)) {
+		vkDestroyBuffer(pContext->device, outBuffer.buffer, nullptr);
+		return false;
+	}
 
-	vkBindBufferMemory(pContext->device, outBuffer.buffer, outBuffer.memory, 0);
+	VK_CHECK(vkBindBufferMemory(pContext->device, outBuffer.buffer, outBuffer.memory, 0), "vkBindBufferMemory");
 
 	outBuffer.size = size;
+	return true;
 }
 
 static VkCommandBuffer GetTemporaryCommandBuffer() {
@@ -745,7 +828,7 @@ static void FreeBuffer(Buffer buffer) {
 	}
 }
 
-static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFlags usage, Image& outImage, bool srgb = false) {
+static bool CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFlags usage, Image& outImage, bool srgb = false) {
 	const VkFormat format = srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
 
 	VkImageCreateInfo imageInfo{};
@@ -763,13 +846,17 @@ static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFla
 	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 
-	vkCreateImage(pContext->device, &imageInfo, nullptr, &outImage.image);
+	VK_CHECK(vkCreateImage(pContext->device, &imageInfo, nullptr, &outImage.image), "vkCreateImage");
 
 	VkMemoryRequirements memRequirements;
 	vkGetImageMemoryRequirements(pContext->device, outImage.image, &memRequirements);
 
-	AllocateMemory(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, outImage.memory);
-	vkBindImageMemory(pContext->device, outImage.image, outImage.memory, 0);
+	if (!AllocateMemory(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, outImage.memory)) {
+		vkDestroyImage(pContext->device, outImage.image, nullptr);
+		return false;
+	}
+	
+	VK_CHECK(vkBindImageMemory(pContext->device, outImage.image, outImage.memory, 0), "vkBindImageMemory");
 
 	VkImageViewCreateInfo viewInfo{};
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -782,10 +869,11 @@ static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFla
 	viewInfo.subresourceRange.baseArrayLayer = 0;
 	viewInfo.subresourceRange.layerCount = 1;
 
-	vkCreateImageView(pContext->device, &viewInfo, nullptr, &outImage.view);
+	VK_CHECK(vkCreateImageView(pContext->device, &viewInfo, nullptr, &outImage.view), "vkCreateImageView");
 
 	outImage.width = width;
 	outImage.height = height;
+	return true;
 }
 
 static void FreeImage(Image image) {
@@ -1181,13 +1269,29 @@ void Rendering::CreateContext() {
 	pContext = new RenderContext{};
 	assert(pContext != nullptr);
 	
-	CreateVulkanInstance();
+	// Initialize error state
+	pContext->errorState = RenderErrorState::None;
+	pContext->isInitialized = false;
+	pContext->swapchainNeedsRecreation = false;
+	
+	if (!CreateVulkanInstance()) {
+		pContext->errorState = RenderErrorState::InitializationFailed;
+		DEBUG_ERROR("Failed to create Vulkan instance\n");
+	}
 }
 
 // TODO: Support other types of surfaces later?
 void Rendering::CreateSurface(SDL_Window* sdlWindow) {
+	if (pContext->errorState != RenderErrorState::None) {
+		DEBUG_ERROR("Cannot create surface - context in error state\n");
+		return;
+	}
+
 	pContext->surface = VK_NULL_HANDLE;
-	SDL_Vulkan_CreateSurface(sdlWindow, pContext->instance, &pContext->surface);
+	if (!SDL_Vulkan_CreateSurface(sdlWindow, pContext->instance, &pContext->surface)) {
+		DEBUG_ERROR("Failed to create Vulkan surface: %s\n", SDL_GetError());
+		pContext->errorState = RenderErrorState::InitializationFailed;
+	}
 }
 
 void Rendering::Init() {
