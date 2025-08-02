@@ -20,8 +20,9 @@ static void HandleBulletEnemyCollision(Actor* pBullet, const ActorPrototype* pPr
     BulletDie(pBullet, pPrototype, pBullet->position);
 
     // TODO: Use value from weapon data
-    constexpr u16 baseDamage = 1;
-	const Damage damage = Game::CalculateDamage(pEnemy, baseDamage);
+    // Default bullet damage until weapon data system is implemented
+    constexpr u16 DEFAULT_BULLET_DAMAGE = 1;
+	const Damage damage = Game::CalculateDamage(pEnemy, DEFAULT_BULLET_DAMAGE);
 
     const u16 newHealth = Game::ActorTakeDamage(pEnemy, damage, pEnemy->state.enemyState.health, pEnemy->state.enemyState.damageCounter);
     if (newHealth == 0) {

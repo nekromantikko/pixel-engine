@@ -308,7 +308,8 @@ static bool LoadChrSheetFromFile(const std::filesystem::path& path, const nlohma
 }
 
 static bool SaveChrSheetToFile(const std::filesystem::path& path, nlohmann::json& metadata, const void* pData) {
-	// TODO
+	// Not implemented - ChrSheets are typically imported from external tools like YY-CHR
+	// rather than being exported from the engine
 	return false;
 }
 

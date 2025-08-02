@@ -1177,7 +1177,12 @@ static void EndDraw() {
 ////////////////////////////////////////////////////////////
 
 void Rendering::CreateContext() {
-	// TODO: Handle if context already exists
+	// Handle if context already exists
+	if (pContext != nullptr) {
+		DEBUG_LOG("Rendering context already exists, skipping creation\n");
+		return;
+	}
+	
 	pContext = new RenderContext{};
 	assert(pContext != nullptr);
 	
