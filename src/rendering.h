@@ -141,6 +141,11 @@ namespace Rendering
 	void EndFrame();
 	void WaitForAllCommands();
 	void ResizeSurface(u32 width, u32 height);
+	
+	// Error state management
+	bool IsInitialized();
+	bool HasErrors();
+	const char* GetErrorString();
 
 	// Data access
 	RenderSettings* GetSettingsPtr();

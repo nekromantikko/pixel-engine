@@ -1975,10 +1975,49 @@ void Rendering::ResizeSurface(u32 width, u32 height) {
 
 //////////////////////////////////////////////////////
 
+bool Rendering::IsInitialized() {
+	return pContext && pContext->isInitialized && pContext->errorState == RenderErrorState::None;
+}
+
+bool Rendering::HasErrors() {
+	return pContext && pContext->errorState != RenderErrorState::None;
+}
+
+const char* Rendering::GetErrorString() {
+	if (!pContext) {
+		return "Context not created";
+	}
+	
+	switch (pContext->errorState) {
+		case RenderErrorState::None:
+			return "No error";
+		case RenderErrorState::SwapchainOutOfDate:
+			return "Swapchain out of date";
+		case RenderErrorState::DeviceLost:
+			return "Device lost";
+		case RenderErrorState::OutOfMemory:
+			return "Out of memory";
+		case RenderErrorState::InitializationFailed:
+			return "Initialization failed";
+		default:
+			return "Unknown error";
+	}
+}
+
+//////////////////////////////////////////////////////
+
 RenderSettings* Rendering::GetSettingsPtr() {
+	if (!pContext || pContext->errorState != RenderErrorState::None) {
+		return nullptr;
+	}
 	return &pContext->settings;
 }
+
 Palette* Rendering::GetPalettePtr(u32 paletteIndex) {
+	if (!pContext || pContext->errorState != RenderErrorState::None) {
+		return nullptr;
+	}
+	
 	if (paletteIndex >= PALETTE_COUNT) {
 		return nullptr;
 	}
@@ -1986,7 +2025,12 @@ Palette* Rendering::GetPalettePtr(u32 paletteIndex) {
 	Palette* pal = (Palette*)((u8*)pContext->renderData + pContext->paletteTableOffset);
 	return pal + paletteIndex;
 }
+
 Sprite* Rendering::GetSpritesPtr(u32 offset) {
+	if (!pContext || pContext->errorState != RenderErrorState::None) {
+		return nullptr;
+	}
+	
 	if (offset >= MAX_SPRITE_COUNT) {
 		return nullptr;
 	}
@@ -1994,7 +2038,12 @@ Sprite* Rendering::GetSpritesPtr(u32 offset) {
 	Sprite* spr = (Sprite*)((u8*)pContext->renderData + pContext->oamOffset);
 	return spr + offset;
 }
+
 ChrSheet* Rendering::GetChrPtr(u32 sheetIndex) {
+	if (!pContext || pContext->errorState != RenderErrorState::None) {
+		return nullptr;
+	}
+	
 	if (sheetIndex >= CHR_COUNT) {
 		return nullptr;
 	}
@@ -2002,7 +2051,12 @@ ChrSheet* Rendering::GetChrPtr(u32 sheetIndex) {
 	ChrSheet* sheet = (ChrSheet*)((u8*)pContext->renderData + pContext->chrOffset);
 	return sheet + sheetIndex;
 }
+
 Nametable* Rendering::GetNametablePtr(u32 index) {
+	if (!pContext || pContext->errorState != RenderErrorState::None) {
+		return nullptr;
+	}
+	
 	if (index >= NAMETABLE_COUNT) {
 		return nullptr;
 	}
@@ -2010,7 +2064,12 @@ Nametable* Rendering::GetNametablePtr(u32 index) {
 	Nametable* tbl = (Nametable*)((u8*)pContext->renderData + pContext->nametableOffset);
 	return tbl + index;
 }
+
 Scanline* Rendering::GetScanlinePtr(u32 offset) {
+	if (!pContext || pContext->errorState != RenderErrorState::None) {
+		return nullptr;
+	}
+	
 	if (offset >= SCANLINE_COUNT) {
 		return nullptr;
 	}
