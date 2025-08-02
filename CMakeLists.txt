@@ -114,6 +114,26 @@ if (MSVC)
     target_compile_options(${PROJECT_NAME} PUBLIC /Zc:preprocessor)
 endif()
 
+# Asset Packer Tool
+IF(ENABLE_EDITOR)
+    set(ASSET_PACKER_SOURCES
+        tools/asset_packer.cpp
+        src/asset_manager.cpp
+        src/random.cpp
+        src/editor_assets.cpp
+        src/editor_serialization.cpp)
+    
+    add_executable(asset_packer ${ASSET_PACKER_SOURCES})
+    target_include_directories(asset_packer PRIVATE ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR} ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${nlohmann_json_INCLUDE_DIRS})
+    target_link_libraries(asset_packer PRIVATE nlohmann_json)
+    target_compile_features(asset_packer PUBLIC cxx_std_20)
+    target_compile_definitions(asset_packer PRIVATE EDITOR ASSETS_SRC_DIR="${ASSETS_SRC_DIR}")
+    
+    if (MSVC)
+        target_compile_options(asset_packer PUBLIC /Zc:preprocessor)
+    endif()
+ENDIF()
+
 # Assets
 set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 
@@ -154,8 +174,28 @@ foreach(FILE ${GLSL_SHADERS})
     target_sources(${PROJECT_NAME} PRIVATE "${SHADER_DEST}/${FILE_WE}.spv")
 endforeach()
 
-# Copy assets to build directory
-set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+# Generate assets.npak from source assets
+IF(ENABLE_EDITOR)
+    # Custom target that generates assets.npak at build time
+    set(ASSETS_NPAK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
+    add_custom_target(generate_assets ALL
+        COMMAND asset_packer "${ASSETS_SRC_DIR}" "${ASSETS_NPAK_OUTPUT}"
+        DEPENDS asset_packer
+        COMMENT "Generating assets.npak from source assets"
+    )
+    add_dependencies(${PROJECT_NAME} generate_assets)
+ELSE()
+    # For non-editor builds, copy the existing assets.npak
+    set(ASSETS_NPAK_SRC "${CMAKE_CURRENT_SOURCE_DIR}/assets.npak")
+    set(ASSETS_NPAK_DST "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
+    add_custom_target(copy_assets_npak ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ASSETS_NPAK_SRC}" "${ASSETS_NPAK_DST}"
+        COMMENT "Copying assets.npak to build directory"
+    )
+    add_dependencies(${PROJECT_NAME} copy_assets_npak)
+ENDIF()
+
+# Copy assets to build directory (still needed for editor and development)
 set(ASSETS_DST_DIR "${CMAKE_CURRENT_BINARY_DIR}/assets")
 
 # Ensure the assets directory exists in the build folder
