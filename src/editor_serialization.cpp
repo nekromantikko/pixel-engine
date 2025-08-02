@@ -10,7 +10,10 @@
 #include "room.h"
 #include "overworld.h"
 #include "dungeon.h"
+#include "data_types.h"
+#ifdef EDITOR
 #include <imgui_internal.h>
+#endif
 
 static constexpr u64 ASSET_FILE_FORMAT_VERSION = 1;
 
@@ -624,52 +627,52 @@ static bool ParseActorPropertyName(const std::string& propertyName, TActorSubtyp
 
 static bool ParseActorPropertyComponentValueScalar(const nlohmann::json& jsonValue, const ActorEditorProperty& property, void* pOutData) {
 	switch (property.dataType) {
-	case ImGuiDataType_S8: {
+	case DATA_TYPE_S8: {
 		jsonValue.get_to(*(s8*)pOutData);
 		break;
 	}
-	case ImGuiDataType_U8: {
+	case DATA_TYPE_U8: {
 		jsonValue.get_to(*(u8*)pOutData);
 		break;
 	}
-	case ImGuiDataType_S16: {
+	case DATA_TYPE_S16: {
 		jsonValue.get_to(*(s16*)pOutData);
 		break;
 	}
-	case ImGuiDataType_U16: {
+	case DATA_TYPE_U16: {
 		jsonValue.get_to(*(u16*)pOutData);
 		break;
 	}
-	case ImGuiDataType_S32: {
+	case DATA_TYPE_S32: {
 		jsonValue.get_to(*(s32*)pOutData);
 		break;
 	}
-	case ImGuiDataType_U32: {
+	case DATA_TYPE_U32: {
 		jsonValue.get_to(*(u32*)pOutData);
 		break;
 	}
-	case ImGuiDataType_S64: {
+	case DATA_TYPE_S64: {
 		jsonValue.get_to(*(s64*)pOutData);
 		break;
 	}
-	case ImGuiDataType_U64: {
+	case DATA_TYPE_U64: {
 		jsonValue.get_to(*(u64*)pOutData);
 		break;
 	}
-	case ImGuiDataType_Float: {
+	case DATA_TYPE_FLOAT: {
 		jsonValue.get_to(*(r32*)pOutData);
 		break;
 	}
-	case ImGuiDataType_Double: {
+	case DATA_TYPE_DOUBLE: {
 		jsonValue.get_to(*(r64*)pOutData);
 		break;
 	}
-	case ImGuiDataType_Bool: {
+	case DATA_TYPE_BOOL: {
 		bool value = jsonValue.get<bool>();
 		*(bool*)pOutData = value;
 		break;
 	}
-	case ImGuiDataType_String: {
+	case DATA_TYPE_STRING: {
 		// Not supported
 		DEBUG_ERROR("String type is not supported for actor properties\n");
 		return false;
@@ -685,14 +688,14 @@ static bool ParseActorPropertyComponentValueScalar(const nlohmann::json& jsonVal
 static bool ParseActorPropertyValue(const nlohmann::json& jsonValue, const ActorEditorProperty& property, void* pOutData) {
 	switch (property.type) {
 	case ACTOR_EDITOR_PROPERTY_SCALAR: {
-		const ImGuiDataTypeInfo* pTypeInfo = ImGui::DataTypeGetInfo(property.dataType);
+		const DataTypeInfo* pTypeInfo = GetDataTypeInfo(property.dataType);
 		if (property.components == 1) {
 			ParseActorPropertyComponentValueScalar(jsonValue, property, pOutData);
 		}
 		else {
 			const nlohmann::json& arrayJson = jsonValue;
 			for (s32 i = 0; i < property.components; i++) {
-				void* pComponentData = (u8*)pOutData + i * pTypeInfo->Size;
+				void* pComponentData = (u8*)pOutData + i * pTypeInfo->size;
 				const nlohmann::json& componentValue = arrayJson[i];
 				ParseActorPropertyComponentValueScalar(componentValue, property, pComponentData);
 			}
@@ -720,27 +723,27 @@ static bool ParseActorPropertyValue(const nlohmann::json& jsonValue, const Actor
 
 static nlohmann::json SerializeActorPropertyComponentValueScalar(const void* pData, const ActorEditorProperty& property) {
 	switch (property.dataType) {
-	case ImGuiDataType_S8:
+	case DATA_TYPE_S8:
 		return *(const s8*)pData;
-	case ImGuiDataType_U8:
+	case DATA_TYPE_U8:
 		return *(const u8*)pData;
-	case ImGuiDataType_S16:
+	case DATA_TYPE_S16:
 		return *(const s16*)pData;
-	case ImGuiDataType_U16:
+	case DATA_TYPE_U16:
 		return *(const u16*)pData;
-	case ImGuiDataType_S32:
+	case DATA_TYPE_S32:
 		return *(const s32*)pData;
-	case ImGuiDataType_U32:
+	case DATA_TYPE_U32:
 		return *(const u32*)pData;
-	case ImGuiDataType_S64:
+	case DATA_TYPE_S64:
 		return *(const s64*)pData;
-	case ImGuiDataType_U64:
+	case DATA_TYPE_U64:
 		return *(const u64*)pData;
-	case ImGuiDataType_Float:
+	case DATA_TYPE_FLOAT:
 		return *(const r32*)pData;
-	case ImGuiDataType_Double:
+	case DATA_TYPE_DOUBLE:
 		return *(const r64*)pData;
-	case ImGuiDataType_Bool:
+	case DATA_TYPE_BOOL:
 		return *(const bool*)pData;
 	default:
 		return nullptr;
@@ -750,14 +753,14 @@ static nlohmann::json SerializeActorPropertyComponentValueScalar(const void* pDa
 static nlohmann::json SerializeActorPropertyValue(const void* pData, const ActorEditorProperty& property) {
 	switch (property.type) {
 	case ACTOR_EDITOR_PROPERTY_SCALAR: {
-		const ImGuiDataTypeInfo* pTypeInfo = ImGui::DataTypeGetInfo(property.dataType);
+		const DataTypeInfo* pTypeInfo = GetDataTypeInfo(property.dataType);
 		if (property.components == 1) {
 			return SerializeActorPropertyComponentValueScalar(pData, property);
 		}
 		else {
 			nlohmann::json arrayJson = nlohmann::json::array();
 			for (s32 i = 0; i < property.components; i++) {
-				const void* pComponentData = (const u8*)pData + i * pTypeInfo->Size;
+				const void* pComponentData = (const u8*)pData + i * pTypeInfo->size;
 				arrayJson.push_back(SerializeActorPropertyComponentValueScalar(pComponentData, property));
 			}
 			return arrayJson;

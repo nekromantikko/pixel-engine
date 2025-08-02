@@ -3,7 +3,7 @@
 #ifdef EDITOR
 #include "editor_actor.h"
 #define ACTOR_SUBTYPE_PROPERTY_SCALAR(STRUCT_TYPE, FIELD, TYPE, COMPONENTS) \
-	{ .name = #FIELD, .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = ImGuiDataType_##TYPE, .components = COMPONENTS, .offset = offsetof(STRUCT_TYPE, FIELD) }
+	{ .name = #FIELD, .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = DATA_TYPE_##TYPE, .components = COMPONENTS, .offset = offsetof(STRUCT_TYPE, FIELD) }
 
 #define ACTOR_SUBTYPE_PROPERTY_ASSET(STRUCT_TYPE, FIELD, ASSET_TYPE, COMPONENTS) \
 	{ .name = #FIELD, .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE, .components = COMPONENTS, .offset = offsetof(STRUCT_TYPE, FIELD) }
