@@ -440,16 +440,17 @@ static bool CreateRenderPass() {
 	}
 }
 
-static void CreateSwapchain() {
+static bool CreateSwapchain() {
 	if (SWAPCHAIN_IMAGE_COUNT > pContext->surfaceCapabilities.maxImageCount || SWAPCHAIN_IMAGE_COUNT < pContext->surfaceCapabilities.minImageCount) {
-		DEBUG_ERROR("Image count not supported!\n");
+		DEBUG_ERROR("Swapchain image count (%u) not supported (min: %u, max: %u)!\n", 
+			SWAPCHAIN_IMAGE_COUNT, pContext->surfaceCapabilities.minImageCount, pContext->surfaceCapabilities.maxImageCount);
+		return false;
 	}
 
 	if (pContext->renderImagePass == VK_NULL_HANDLE) {
-		DEBUG_ERROR("Invalid render pass!\n");
+		DEBUG_ERROR("Invalid render pass - cannot create swapchain!\n");
+		return false;
 	}
-
-	VkResult err;
 
 	VkSwapchainCreateInfoKHR swapchainCreateInfo{};
 	swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -467,17 +468,18 @@ static void CreateSwapchain() {
 	swapchainCreateInfo.clipped = VK_TRUE;
 	swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
 
-	err = vkCreateSwapchainKHR(pContext->device, &swapchainCreateInfo, nullptr, &pContext->swapchain);
-	if (err != VK_SUCCESS) {
-		DEBUG_ERROR("Failed to create swapchain!\n");
-	}
+	VK_CHECK(vkCreateSwapchainKHR(pContext->device, &swapchainCreateInfo, nullptr, &pContext->swapchain), "vkCreateSwapchainKHR");
 
 	u32 imageCount = 0;
-	vkGetSwapchainImagesKHR(pContext->device, pContext->swapchain, &imageCount, nullptr);
+	VK_CHECK(vkGetSwapchainImagesKHR(pContext->device, pContext->swapchain, &imageCount, nullptr), "vkGetSwapchainImagesKHR");
+	
 	if (imageCount != SWAPCHAIN_IMAGE_COUNT) {
-		DEBUG_ERROR("Something very weird happened\n");
+		DEBUG_ERROR("Unexpected swapchain image count: got %u, expected %u\n", imageCount, SWAPCHAIN_IMAGE_COUNT);
+		vkDestroySwapchainKHR(pContext->device, pContext->swapchain, nullptr);
+		return false;
 	}
-	vkGetSwapchainImagesKHR(pContext->device, pContext->swapchain, &imageCount, pContext->swapchainImages);
+	
+	VK_CHECK(vkGetSwapchainImagesKHR(pContext->device, pContext->swapchain, &imageCount, pContext->swapchainImages), "vkGetSwapchainImagesKHR");
 
 	// Create image views and framebuffers
 	for (u32 i = 0; i < SWAPCHAIN_IMAGE_COUNT; i++) {
@@ -496,9 +498,15 @@ static void CreateSwapchain() {
 		imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
 		imageViewCreateInfo.subresourceRange.layerCount = 1;
 
-		err = vkCreateImageView(pContext->device, &imageViewCreateInfo, nullptr, &pContext->swapchainImageViews[i]);
+		VkResult err = vkCreateImageView(pContext->device, &imageViewCreateInfo, nullptr, &pContext->swapchainImageViews[i]);
 		if (err != VK_SUCCESS) {
-			DEBUG_ERROR("Failed to create image view!\n");
+			DEBUG_ERROR("Failed to create image view %u: %s\n", i, VkResultToString(err));
+			// Cleanup already created image views
+			for (u32 j = 0; j < i; j++) {
+				vkDestroyImageView(pContext->device, pContext->swapchainImageViews[j], nullptr);
+			}
+			vkDestroySwapchainKHR(pContext->device, pContext->swapchain, nullptr);
+			return false;
 		}
 
 		VkImageView attachments[] = {
@@ -516,9 +524,19 @@ static void CreateSwapchain() {
 
 		err = vkCreateFramebuffer(pContext->device, &framebufferInfo, nullptr, &pContext->swapchainFramebuffers[i]);
 		if (err != VK_SUCCESS) {
-			DEBUG_ERROR("Failed to create framebuffer!\n");
+			DEBUG_ERROR("Failed to create framebuffer %u: %s\n", i, VkResultToString(err));
+			// Cleanup already created resources
+			vkDestroyImageView(pContext->device, pContext->swapchainImageViews[i], nullptr);
+			for (u32 j = 0; j < i; j++) {
+				vkDestroyFramebuffer(pContext->device, pContext->swapchainFramebuffers[j], nullptr);
+				vkDestroyImageView(pContext->device, pContext->swapchainImageViews[j], nullptr);
+			}
+			vkDestroySwapchainKHR(pContext->device, pContext->swapchain, nullptr);
+			return false;
 		}
 	}
+	
+	return true;
 }
 
 static void FreeSwapchain() {
@@ -1053,28 +1071,72 @@ static void CopyRenderData() {
 	vkUnmapMemory(pContext->device, pContext->computeStagingBuffers[pContext->currentCbIndex].memory);
 }
 
-static void BeginDraw() {
+static bool RecreateSwapchain() {
+	// Wait for device to be idle
+	vkDeviceWaitIdle(pContext->device);
+	
+	// Update surface capabilities
+	VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pContext->physicalDevice, pContext->surface, &pContext->surfaceCapabilities), "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+	
+	// Free old swapchain
+	FreeSwapchain();
+	
+	// Create new swapchain
+	if (!CreateSwapchain()) {
+		pContext->errorState = RenderErrorState::SwapchainOutOfDate;
+		return false;
+	}
+	
+	pContext->swapchainNeedsRecreation = false;
+	DEBUG_LOG("Swapchain recreated successfully\n");
+	return true;
+}
+
+static bool BeginDraw() {
+	// Check for error states
+	if (pContext->errorState != RenderErrorState::None) {
+		if (pContext->errorState == RenderErrorState::SwapchainOutOfDate && !pContext->swapchainNeedsRecreation) {
+			pContext->swapchainNeedsRecreation = true;
+		}
+		if (pContext->swapchainNeedsRecreation) {
+			if (!RecreateSwapchain()) {
+				return false;
+			}
+			pContext->errorState = RenderErrorState::None;
+		} else {
+			return false; // Other error states
+		}
+	}
+
 	// Wait for drawing to finish if it hasn't
-	vkWaitForFences(pContext->device, 1, &pContext->commandBufferFences[pContext->currentCbIndex], VK_TRUE, UINT64_MAX);
+	VkResult fenceResult = vkWaitForFences(pContext->device, 1, &pContext->commandBufferFences[pContext->currentCbIndex], VK_TRUE, UINT64_MAX);
+	if (fenceResult != VK_SUCCESS) {
+		DEBUG_ERROR("vkWaitForFences failed: %s\n", VkResultToString(fenceResult));
+		return false;
+	}
 
 	// Get next swapchain image index
 	VkResult err = vkAcquireNextImageKHR(pContext->device, pContext->swapchain, UINT64_MAX, pContext->imageAcquiredSemaphores[pContext->currentCbIndex], VK_NULL_HANDLE, &pContext->currentSwaphainIndex);
-	if (err != VK_SUCCESS) {
+	if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
+		pContext->errorState = RenderErrorState::SwapchainOutOfDate;
+		pContext->swapchainNeedsRecreation = true;
+		return false; // Will be handled on next frame
+	} else if (err != VK_SUCCESS) {
+		DEBUG_ERROR("vkAcquireNextImageKHR failed: %s\n", VkResultToString(err));
+		return false;
 	}
 
-	vkResetFences(pContext->device, 1, &pContext->commandBufferFences[pContext->currentCbIndex]);
-	vkResetCommandBuffer(pContext->primaryCommandBuffers[pContext->currentCbIndex], 0);
+	VK_CHECK(vkResetFences(pContext->device, 1, &pContext->commandBufferFences[pContext->currentCbIndex]), "vkResetFences");
+	VK_CHECK(vkResetCommandBuffer(pContext->primaryCommandBuffers[pContext->currentCbIndex], 0), "vkResetCommandBuffer");
 
 	VkCommandBufferBeginInfo beginInfo{};
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	beginInfo.flags = 0; // Optional
 	beginInfo.pInheritanceInfo = nullptr; // Optional
 
-	if (vkBeginCommandBuffer(pContext->primaryCommandBuffers[pContext->currentCbIndex], &beginInfo) != VK_SUCCESS) {
-		DEBUG_ERROR("failed to begin recording command buffer!");
-	}
-
-	// Should be ready to draw now!
+	VK_CHECK(vkBeginCommandBuffer(pContext->primaryCommandBuffers[pContext->currentCbIndex], &beginInfo), "vkBeginCommandBuffer");
+	
+	return true;
 }
 
 static void TransferComputeBufferData() {
@@ -1220,12 +1282,10 @@ static void EndRenderPass() {
 	vkCmdEndRenderPass(commandBuffer);
 }
 
-static void EndDraw() {
+static bool EndDraw() {
 	VkCommandBuffer commandBuffer = pContext->primaryCommandBuffers[pContext->currentCbIndex];
 
-	if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-		DEBUG_ERROR("failed to record command buffer!");
-	}
+	VK_CHECK(vkEndCommandBuffer(commandBuffer), "vkEndCommandBuffer");
 
 	// Submit the above commands
 	VkSubmitInfo submitInfo{};
@@ -1241,7 +1301,7 @@ static void EndDraw() {
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = signalSemaphores;
 
-	VkResult err = vkQueueSubmit(pContext->primaryQueue, 1, &submitInfo, pContext->commandBufferFences[pContext->currentCbIndex]);
+	VK_CHECK(vkQueueSubmit(pContext->primaryQueue, 1, &submitInfo, pContext->commandBufferFences[pContext->currentCbIndex]), "vkQueueSubmit");
 
 	// Present to swapchain
 	VkPresentInfoKHR presentInfo{};
@@ -1254,12 +1314,22 @@ static void EndDraw() {
 	presentInfo.pImageIndices = &pContext->currentSwaphainIndex;
 	presentInfo.pResults = nullptr; // Optional
 
-	vkQueuePresentKHR(pContext->primaryQueue, &presentInfo);
+	VkResult err = vkQueuePresentKHR(pContext->primaryQueue, &presentInfo);
+	if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
+		pContext->errorState = RenderErrorState::SwapchainOutOfDate;
+		pContext->swapchainNeedsRecreation = true;
+		// Don't return false here - this is expected and will be handled next frame
+	} else if (err != VK_SUCCESS) {
+		DEBUG_ERROR("vkQueuePresentKHR failed: %s\n", VkResultToString(err));
+		return false;
+	}
 
 	// Advance cb index
 	pContext->currentCbIndex = (pContext->currentCbIndex + 1) % COMMAND_BUFFER_COUNT;
 	// Advance swapchain index
 	pContext->currentSwaphainIndex = (pContext->currentSwaphainIndex + 1) % SWAPCHAIN_IMAGE_COUNT;
+	
+	return true;
 }
 
 ////////////////////////////////////////////////////////////
@@ -1295,12 +1365,40 @@ void Rendering::CreateSurface(SDL_Window* sdlWindow) {
 }
 
 void Rendering::Init() {
-	GetSuitablePhysicalDevice();
-	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pContext->physicalDevice, pContext->surface, &pContext->surfaceCapabilities);
-	CreateDevice();
+	if (pContext->errorState != RenderErrorState::None) {
+		DEBUG_ERROR("Cannot initialize - context in error state\n");
+		return;
+	}
+
+	// Initialize each component and check for errors
+	if (!GetSuitablePhysicalDevice()) {
+		pContext->errorState = RenderErrorState::InitializationFailed;
+		return;
+	}
+
+	VkResult capResult = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pContext->physicalDevice, pContext->surface, &pContext->surfaceCapabilities);
+	if (capResult != VK_SUCCESS) {
+		DEBUG_ERROR("vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed: %s\n", VkResultToString(capResult));
+		pContext->errorState = RenderErrorState::InitializationFailed;
+		return;
+	}
+
+	if (!CreateDevice()) {
+		pContext->errorState = RenderErrorState::InitializationFailed;
+		return;
+	}
+
 	vkGetDeviceQueue(pContext->device, pContext->primaryQueueFamilyIndex, 0, &pContext->primaryQueue);
-	CreateRenderPass();
-	CreateSwapchain();
+
+	if (!CreateRenderPass()) {
+		pContext->errorState = RenderErrorState::InitializationFailed;
+		return;
+	}
+
+	if (!CreateSwapchain()) {
+		pContext->errorState = RenderErrorState::InitializationFailed;
+		return;
+	}
 
 	VkDescriptorPoolSize poolSizes[3]{};
 	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -1316,7 +1414,12 @@ void Rendering::Init() {
 	descriptorPoolInfo.pPoolSizes = poolSizes;
 	descriptorPoolInfo.maxSets = 100;
 
-	vkCreateDescriptorPool(pContext->device, &descriptorPoolInfo, nullptr, &pContext->descriptorPool);
+	VkResult result = vkCreateDescriptorPool(pContext->device, &descriptorPoolInfo, nullptr, &pContext->descriptorPool);
+	if (result != VK_SUCCESS) {
+		DEBUG_ERROR("vkCreateDescriptorPool failed: %s\n", VkResultToString(result));
+		pContext->errorState = RenderErrorState::InitializationFailed;
+		return;
+	}
 
 	VkDescriptorSetLayoutBinding samplerLayoutBinding{};
 	samplerLayoutBinding.binding = 0;
@@ -1330,7 +1433,12 @@ void Rendering::Init() {
 	layoutInfo.bindingCount = 1;
 	layoutInfo.pBindings = &samplerLayoutBinding;
 
-	vkCreateDescriptorSetLayout(pContext->device, &layoutInfo, nullptr, &pContext->graphicsDescriptorSetLayout);
+	result = vkCreateDescriptorSetLayout(pContext->device, &layoutInfo, nullptr, &pContext->graphicsDescriptorSetLayout);
+	if (result != VK_SUCCESS) {
+		DEBUG_ERROR("vkCreateDescriptorSetLayout failed: %s\n", VkResultToString(result));
+		pContext->errorState = RenderErrorState::InitializationFailed;
+		return;
+	}
 
 	for (int i = 0; i < COMMAND_BUFFER_COUNT; i++) {
 		VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
@@ -1339,7 +1447,12 @@ void Rendering::Init() {
 		descriptorSetAllocInfo.descriptorSetCount = 1;
 		descriptorSetAllocInfo.pSetLayouts = &pContext->graphicsDescriptorSetLayout;
 
-		vkAllocateDescriptorSets(pContext->device, &descriptorSetAllocInfo, &pContext->graphicsDescriptorSets[i]);
+		result = vkAllocateDescriptorSets(pContext->device, &descriptorSetAllocInfo, &pContext->graphicsDescriptorSets[i]);
+		if (result != VK_SUCCESS) {
+			DEBUG_ERROR("vkAllocateDescriptorSets failed for index %d: %s\n", i, VkResultToString(result));
+			pContext->errorState = RenderErrorState::InitializationFailed;
+			return;
+		}
 	}
 
 	VkCommandPoolCreateInfo poolInfo{};
@@ -1347,8 +1460,11 @@ void Rendering::Init() {
 	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 	poolInfo.queueFamilyIndex = pContext->primaryQueueFamilyIndex;
 
-	if (vkCreateCommandPool(pContext->device, &poolInfo, nullptr, &pContext->primaryCommandPool) != VK_SUCCESS) {
-		DEBUG_ERROR("failed to create command pool!");
+	result = vkCreateCommandPool(pContext->device, &poolInfo, nullptr, &pContext->primaryCommandPool);
+	if (result != VK_SUCCESS) {
+		DEBUG_ERROR("vkCreateCommandPool failed: %s\n", VkResultToString(result));
+		pContext->errorState = RenderErrorState::InitializationFailed;
+		return;
 	}
 
 	VkCommandBufferAllocateInfo allocInfo{};
@@ -1724,20 +1840,37 @@ void Rendering::DestroyContext() {
 //////////////////////////////////////////////////////
 
 void Rendering::BeginFrame() {
-	BeginDraw();
+	if (pContext->errorState != RenderErrorState::None) {
+		DEBUG_LOG("Skipping frame due to error state\n");
+		return;
+	}
+
+	if (!BeginDraw()) {
+		// Error or swapchain recreation needed - will be handled on next frame
+		return;
+	}
+	
 	CopyRenderData();
 	TransferComputeBufferData();
 	RunSoftwareRenderer();
 }
 
 void Rendering::BeginRenderPass() {
+	if (pContext->errorState != RenderErrorState::None) {
+		return;
+	}
+	
 	::BeginRenderPass();
 	BlitSoftwareResults(DEFAULT_QUAD);
 }
 
 void Rendering::EndFrame() {
+	if (pContext->errorState != RenderErrorState::None) {
+		return;
+	}
+	
 	EndRenderPass();
-	EndDraw();
+	EndDraw(); // Handles swapchain recreation errors
 }
 
 void Rendering::WaitForAllCommands() {
@@ -1746,11 +1879,27 @@ void Rendering::WaitForAllCommands() {
 
 void Rendering::ResizeSurface(u32 width, u32 height) {
 	// Wait for all commands to execute first
-	vkWaitForFences(pContext->device, COMMAND_BUFFER_COUNT, pContext->commandBufferFences, VK_TRUE, UINT64_MAX);
+	VkResult fenceResult = vkWaitForFences(pContext->device, COMMAND_BUFFER_COUNT, pContext->commandBufferFences, VK_TRUE, UINT64_MAX);
+	if (fenceResult != VK_SUCCESS) {
+		DEBUG_ERROR("vkWaitForFences failed during resize: %s\n", VkResultToString(fenceResult));
+		pContext->errorState = RenderErrorState::DeviceLost;
+		return;
+	}
 
-	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pContext->physicalDevice, pContext->surface, &pContext->surfaceCapabilities);
+	VkResult capResult = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pContext->physicalDevice, pContext->surface, &pContext->surfaceCapabilities);
+	if (capResult != VK_SUCCESS) {
+		DEBUG_ERROR("vkGetPhysicalDeviceSurfaceCapabilitiesKHR failed during resize: %s\n", VkResultToString(capResult));
+		pContext->errorState = RenderErrorState::SwapchainOutOfDate;
+		return;
+	}
+	
 	FreeSwapchain();
-	CreateSwapchain();
+	
+	if (!CreateSwapchain()) {
+		DEBUG_ERROR("Failed to recreate swapchain during resize\n");
+		pContext->errorState = RenderErrorState::SwapchainOutOfDate;
+		pContext->swapchainNeedsRecreation = true;
+	}
 }
 
 //////////////////////////////////////////////////////
