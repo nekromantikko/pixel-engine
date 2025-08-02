@@ -557,7 +557,8 @@ static VkShaderModule CreateShaderModule(VkDevice device, const char* code, cons
 	VkShaderModule module;
 	VkResult err = vkCreateShaderModule(device, &createInfo, nullptr, &module);
 	if (err != VK_SUCCESS) {
-		DEBUG_ERROR("Failed to create shader module!\n");
+		DEBUG_ERROR("vkCreateShaderModule failed: %s\n", VkResultToString(err));
+		return VK_NULL_HANDLE;
 	}
 	return module;
 }
@@ -570,25 +571,46 @@ static VkShaderModule CreateShaderModule(const char* fname) {
 		DEBUG_ERROR("Failed to load shader from file (%s)\n", path.string().c_str());
 		return VK_NULL_HANDLE;
 	}
+	
 	char* data = (char*)malloc(size);
 	if (!data) {
 		DEBUG_ERROR("Failed to allocate memory for shader (%s)\n", path.string().c_str());
 		return VK_NULL_HANDLE;
-
 	}
+	
 	if (!Assets::LoadShaderFromFile(path, size, data)) {
 		DEBUG_ERROR("Failed to load shader from file (%s)\n", path.string().c_str());
 		free(data);
 		return VK_NULL_HANDLE;
 	}
-	return CreateShaderModule(pContext->device, data, size);
+	
+	VkShaderModule module = CreateShaderModule(pContext->device, data, size);
+	free(data); // Free the data after creating the shader module
+	return module;
 }
 
-static void CreateGraphicsPipeline()
+static bool CreateGraphicsPipeline()
 {
 	pContext->blitVertexShaderModule = CreateShaderModule("shaders/quad.spv");
+	if (pContext->blitVertexShaderModule == VK_NULL_HANDLE) {
+		DEBUG_ERROR("Failed to create vertex shader module\n");
+		return false;
+	}
+	
 	pContext->blitRawFragmentShaderModule = CreateShaderModule("shaders/textured_raw.spv");
+	if (pContext->blitRawFragmentShaderModule == VK_NULL_HANDLE) {
+		DEBUG_ERROR("Failed to create raw fragment shader module\n");
+		vkDestroyShaderModule(pContext->device, pContext->blitVertexShaderModule, nullptr);
+		return false;
+	}
+	
 	pContext->blitCRTFragmentShaderModule = CreateShaderModule("shaders/textured_crt.spv");
+	if (pContext->blitCRTFragmentShaderModule == VK_NULL_HANDLE) {
+		DEBUG_ERROR("Failed to create CRT fragment shader module\n");
+		vkDestroyShaderModule(pContext->device, pContext->blitVertexShaderModule, nullptr);
+		vkDestroyShaderModule(pContext->device, pContext->blitRawFragmentShaderModule, nullptr);
+		return false;
+	}
 
 	VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
 	vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -683,8 +705,13 @@ static void CreateGraphicsPipeline()
 	blitPipelineLayoutInfo.pushConstantRangeCount = 1;
 	blitPipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
-	if (vkCreatePipelineLayout(pContext->device, &blitPipelineLayoutInfo, nullptr, &pContext->blitPipelineLayout) != VK_SUCCESS) {
-		DEBUG_ERROR("failed to create pipeline layout!");
+	VkResult result = vkCreatePipelineLayout(pContext->device, &blitPipelineLayoutInfo, nullptr, &pContext->blitPipelineLayout);
+	if (result != VK_SUCCESS) {
+		DEBUG_ERROR("vkCreatePipelineLayout failed: %s\n", VkResultToString(result));
+		vkDestroyShaderModule(pContext->device, pContext->blitVertexShaderModule, nullptr);
+		vkDestroyShaderModule(pContext->device, pContext->blitRawFragmentShaderModule, nullptr);
+		vkDestroyShaderModule(pContext->device, pContext->blitCRTFragmentShaderModule, nullptr);
+		return false;
 	}
 
 	// Dynamic viewport and scissor, as the window size might change
@@ -723,13 +750,19 @@ static void CreateGraphicsPipeline()
 	VkGraphicsPipelineCreateInfo createInfos[] = { rawPipelineInfo, CRTPipelineInfo };
 	VkPipeline pipelinesToCreate[] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
 
-	VkResult err = vkCreateGraphicsPipelines(pContext->device, VK_NULL_HANDLE, 2, createInfos, nullptr, pipelinesToCreate);
-	if (err != VK_SUCCESS) {
-		DEBUG_ERROR("failed to create graphics pipelines!");
+	result = vkCreateGraphicsPipelines(pContext->device, VK_NULL_HANDLE, 2, createInfos, nullptr, pipelinesToCreate);
+	if (result != VK_SUCCESS) {
+		DEBUG_ERROR("vkCreateGraphicsPipelines failed: %s\n", VkResultToString(result));
+		vkDestroyPipelineLayout(pContext->device, pContext->blitPipelineLayout, nullptr);
+		vkDestroyShaderModule(pContext->device, pContext->blitVertexShaderModule, nullptr);
+		vkDestroyShaderModule(pContext->device, pContext->blitRawFragmentShaderModule, nullptr);
+		vkDestroyShaderModule(pContext->device, pContext->blitCRTFragmentShaderModule, nullptr);
+		return false;
 	}
 
 	pContext->blitRawPipeline = pipelinesToCreate[0];
 	pContext->blitCRTPipeline = pipelinesToCreate[1];
+	return true;
 }
 
 static void FreeGraphicsPipeline()
@@ -1473,8 +1506,11 @@ void Rendering::Init() {
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = COMMAND_BUFFER_COUNT;
 
-	if (vkAllocateCommandBuffers(pContext->device, &allocInfo, pContext->primaryCommandBuffers) != VK_SUCCESS) {
-		DEBUG_ERROR("failed to allocate command buffers!");
+	result = vkAllocateCommandBuffers(pContext->device, &allocInfo, pContext->primaryCommandBuffers);
+	if (result != VK_SUCCESS) {
+		DEBUG_ERROR("vkAllocateCommandBuffers failed: %s\n", VkResultToString(result));
+		pContext->errorState = RenderErrorState::InitializationFailed;
+		return;
 	}
 
 	pContext->currentCbIndex = 0;
@@ -1487,12 +1523,36 @@ void Rendering::Init() {
 	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
 	for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
-		vkCreateSemaphore(pContext->device, &semaphoreInfo, nullptr, &pContext->imageAcquiredSemaphores[i]);
-		vkCreateSemaphore(pContext->device, &semaphoreInfo, nullptr, &pContext->drawCompleteSemaphores[i]);
-		vkCreateFence(pContext->device, &fenceInfo, nullptr, &pContext->commandBufferFences[i]);
+		result = vkCreateSemaphore(pContext->device, &semaphoreInfo, nullptr, &pContext->imageAcquiredSemaphores[i]);
+		if (result != VK_SUCCESS) {
+			DEBUG_ERROR("vkCreateSemaphore (imageAcquired %u) failed: %s\n", i, VkResultToString(result));
+			pContext->errorState = RenderErrorState::InitializationFailed;
+			return;
+		}
+		
+		result = vkCreateSemaphore(pContext->device, &semaphoreInfo, nullptr, &pContext->drawCompleteSemaphores[i]);
+		if (result != VK_SUCCESS) {
+			DEBUG_ERROR("vkCreateSemaphore (drawComplete %u) failed: %s\n", i, VkResultToString(result));
+			pContext->errorState = RenderErrorState::InitializationFailed;
+			return;
+		}
+		
+		result = vkCreateFence(pContext->device, &fenceInfo, nullptr, &pContext->commandBufferFences[i]);
+		if (result != VK_SUCCESS) {
+			DEBUG_ERROR("vkCreateFence (%u) failed: %s\n", i, VkResultToString(result));
+			pContext->errorState = RenderErrorState::InitializationFailed;
+			return;
+		}
 	}
 
-	CreateGraphicsPipeline();
+	// CreateGraphicsPipeline needs to be updated to return bool
+	// CreatePalette needs to be updated to return bool
+	// CreateComputeBuffers needs to be updated to return bool
+
+	if (!CreateGraphicsPipeline()) {
+		pContext->errorState = RenderErrorState::InitializationFailed;
+		return;
+	}
 
 	VkSamplerCreateInfo samplerInfo{};
 	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -1512,7 +1572,18 @@ void Rendering::Init() {
 	samplerInfo.minLod = 0.0f;
 	samplerInfo.maxLod = 0.0f;
 
-	vkCreateSampler(pContext->device, &samplerInfo, nullptr, &pContext->defaultSampler);
+	result = vkCreateSampler(pContext->device, &samplerInfo, nullptr, &pContext->defaultSampler);
+	if (result != VK_SUCCESS) {
+		DEBUG_ERROR("vkCreateSampler failed: %s\n", VkResultToString(result));
+		pContext->errorState = RenderErrorState::InitializationFailed;
+		return;
+	}
+
+	// Mark initialization as successful
+	pContext->isInitialized = true;
+	pContext->settings = DEFAULT_RENDER_SETTINGS;
+	
+	DEBUG_LOG("Vulkan rendering initialization completed successfully\n");
 
 	// Compute resources
 	CreatePalette();
