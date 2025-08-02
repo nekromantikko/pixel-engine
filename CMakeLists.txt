@@ -114,6 +114,16 @@ if (MSVC)
     target_compile_options(${PROJECT_NAME} PUBLIC /Zc:preprocessor)
 endif()
 
+# Asset Packer Tool
+set(SIMPLE_ASSET_PACKER_SOURCES tools/simple_asset_packer.cpp)
+
+add_executable(simple_asset_packer ${SIMPLE_ASSET_PACKER_SOURCES})
+target_compile_features(simple_asset_packer PUBLIC cxx_std_20)
+
+if (MSVC)
+    target_compile_options(simple_asset_packer PUBLIC /Zc:preprocessor)
+endif()
+
 # Assets
 set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 
@@ -154,8 +164,17 @@ foreach(FILE ${GLSL_SHADERS})
     target_sources(${PROJECT_NAME} PRIVATE "${SHADER_DEST}/${FILE_WE}.spv")
 endforeach()
 
-# Copy assets to build directory
-set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+# Generate assets.npak from source assets
+# Custom target that generates assets.npak at build time
+set(ASSETS_NPAK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
+add_custom_target(generate_assets ALL
+    COMMAND simple_asset_packer "${ASSETS_SRC_DIR}" "${ASSETS_NPAK_OUTPUT}"
+    DEPENDS simple_asset_packer
+    COMMENT "Generating assets.npak from source assets"
+)
+add_dependencies(${PROJECT_NAME} generate_assets)
+
+# Copy assets to build directory (still needed for editor and development)
 set(ASSETS_DST_DIR "${CMAKE_CURRENT_BINARY_DIR}/assets")
 
 # Ensure the assets directory exists in the build folder
