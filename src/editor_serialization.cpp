@@ -11,9 +11,6 @@
 #include "overworld.h"
 #include "dungeon.h"
 #include "data_types.h"
-#ifdef EDITOR
-#include <imgui_internal.h>
-#endif
 
 static constexpr u64 ASSET_FILE_FORMAT_VERSION = 1;
 
