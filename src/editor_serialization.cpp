@@ -1,5 +1,6 @@
 #include "editor_serialization.h"
 #include "editor_assets.h"
+#include "random.h"
 #include <cstdlib>
 #include "rendering.h"
 #include "audio.h"
@@ -1248,11 +1249,6 @@ static bool SaveDungeonToFile(const std::filesystem::path& path, nlohmann::json&
 
 #pragma endregion
 
-std::filesystem::path Editor::Assets::GetAssetMetadataPath(const std::filesystem::path& path) {
-	// Append ".meta" to the original path to get the metadata file path
-	return path.string() + ".meta";
-}
-
 bool Editor::Assets::LoadAssetMetadataFromFile(const std::filesystem::path& origPath, nlohmann::json& outJson) {
 	std::filesystem::path path = GetAssetMetadataPath(origPath);
 
@@ -1301,6 +1297,49 @@ void Editor::Assets::InitializeMetadataJson(nlohmann::json& json, u64 id) {
 	json["guid"] = id;
 }
 
+bool Editor::Assets::CreateAssetMetadataFile(const std::filesystem::path& path, nlohmann::json& outMetadata) {
+	u64 guid = Random::GenerateUUID();
+	Editor::Assets::InitializeMetadataJson(outMetadata, guid);
+
+	if (!Editor::Assets::SaveAssetMetadataToFile(path, outMetadata)) {
+		DEBUG_ERROR("Failed to create metadata for %s\n", path.string().c_str());
+		return false;
+	}
+
+	DEBUG_LOG("Created metadata for %s with GUID: %llu\n", path.string().c_str(), guid);
+	return true;
+}
+
+bool Editor::Assets::TryGetAssetMetadata(const std::filesystem::path& path, nlohmann::json& outMetadata) {
+	const std::string pathStr = path.string();
+	const char* pathCStr = pathStr.c_str();
+
+	if (HasMetadata(path)) {
+		DEBUG_LOG("[META FILE FOUND]\n");
+		if (LoadAssetMetadataFromFile(path, outMetadata)) {
+			const u64 guid = outMetadata["guid"];
+			DEBUG_LOG("Metadata loaded with GUID: %llu\n", guid);
+			return true;
+		}
+		else {
+			DEBUG_ERROR("Failed to load metadata for %s\n", pathCStr);
+			return false;
+		}
+	}
+	else {
+		DEBUG_ERROR("[!! META FILE MISSING !!]\n");
+		if (CreateAssetMetadataFile(path, outMetadata)) {
+			const u64 guid = outMetadata["guid"];
+			DEBUG_LOG("Metadata created with GUID: %llu\n", guid);
+			return true;
+		}
+		else {
+			DEBUG_ERROR("Failed to create metadata for %s\n", pathCStr);
+			return false;
+		}
+	}
+}
+
 bool Editor::Assets::LoadAssetFromFile(const std::filesystem::path& path, AssetType type, const nlohmann::json& metadata, u32& size, void* pOutData) {
 	switch (type) {
 	case (ASSET_TYPE_CHR_BANK): {
@@ -1338,40 +1377,85 @@ bool Editor::Assets::LoadAssetFromFile(const std::filesystem::path& path, AssetT
 		return false;
 	}
 }
-bool Editor::Assets::SaveAssetToFile(const std::filesystem::path& path, AssetType type, nlohmann::json& metadata, const void* pData) {
+
+bool Editor::Assets::LoadAssetFromFile(AssetType type, const std::filesystem::path& relativePath, u32& size, void* pOutData) {
+	const std::filesystem::path path = GetAssetFullPath(relativePath);
+
+	nlohmann::json metadata;
+	if (!TryGetAssetMetadata(path, metadata)) {
+		DEBUG_ERROR("Failed to get metadata for %s\n", path.string().c_str());
+		return false;
+	}
+
+	return LoadAssetFromFile(path, type, metadata, size, pOutData);
+}
+
+bool Editor::Assets::SaveAssetToFile(const std::filesystem::path& path, const char* name, AssetType type, nlohmann::json& metadata, const void* pData) {
+	metadata["name"] = name;
+
+	bool saveResult = false;
 	switch (type) {
 	case (ASSET_TYPE_CHR_BANK): {
-		return SaveChrSheetToFile(path, metadata, pData);
+		saveResult = SaveChrSheetToFile(path, metadata, pData);
+		break;
 	}
 	case (ASSET_TYPE_SOUND): {
-		return SaveSoundToFile(path, metadata, pData);
+		saveResult = SaveSoundToFile(path, metadata, pData);
+		break;
 	}
 	case (ASSET_TYPE_PALETTE): {
-		return SavePaletteToFile(path, metadata, pData);
+		saveResult = SavePaletteToFile(path, metadata, pData);
+		break;
 	}
 	case (ASSET_TYPE_METASPRITE): {
-		return SaveMetaspriteToFile(path, metadata, pData);
+		saveResult = SaveMetaspriteToFile(path, metadata, pData);
+		break;
 	}
 	case (ASSET_TYPE_TILESET): {
-		return SaveTilesetToFile(path, metadata, pData);
+		saveResult = SaveTilesetToFile(path, metadata, pData);
+		break;
 	}
 	case (ASSET_TYPE_ANIMATION): {
-		return SaveAnimationToFile(path, metadata, pData);
+		saveResult = SaveAnimationToFile(path, metadata, pData);
+		break;
 	}
 	case (ASSET_TYPE_ACTOR_PROTOTYPE): {
-		return SaveActorPrototypeToFile(path, metadata, pData);
+		saveResult = SaveActorPrototypeToFile(path, metadata, pData);
+		break;
 	}
 	case (ASSET_TYPE_ROOM_TEMPLATE): {
-		return SaveRoomTemplateToFile(path, metadata, pData);
+		saveResult = SaveRoomTemplateToFile(path, metadata, pData);
+		break;
 	}
 	case (ASSET_TYPE_OVERWORLD): {
-		return SaveOverworldToFile(path, metadata, pData);
+		saveResult = SaveOverworldToFile(path, metadata, pData);
+		break;
 	}
 	case (ASSET_TYPE_DUNGEON): {
-		return SaveDungeonToFile(path, metadata, pData);
+		saveResult = SaveDungeonToFile(path, metadata, pData);
+		break;
 	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for saving: %s\n", ASSET_TYPE_NAMES[type]);
 		return false;
 	}
+
+	if (!saveResult) {
+		DEBUG_ERROR("Failed to save asset to %s\n", path.string().c_str());
+		return false;
+	}
+
+	return SaveAssetMetadataToFile(path, metadata);
+}
+
+bool Editor::Assets::SaveAssetToFile(AssetType type, const std::filesystem::path& relativePath, const char* name, const void* pData) {
+	const std::filesystem::path path = GetAssetFullPath(relativePath);
+
+	nlohmann::json metadata;
+	if (!TryGetAssetMetadata(path, metadata)) {
+		DEBUG_ERROR("Failed to get metadata for %s\n", path.string().c_str());
+		return false;
+	}
+
+	return SaveAssetToFile(path, name, type, metadata, pData);
 }

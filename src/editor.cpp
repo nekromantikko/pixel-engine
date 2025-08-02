@@ -900,6 +900,7 @@ struct EditedAsset {
 	u64 id;
 	AssetType type;
 	char name[MAX_ASSET_NAME_LENGTH];
+	char relativePath[MAX_ASSET_PATH_LENGTH];
 	u32 size;
 	void* data;
 
@@ -958,6 +959,7 @@ static EditedAsset CopyAssetForEditing(u64 id, PopulateAssetEditorDataFn populat
 	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(id);
 	result.type = pAssetInfo->flags.type;
 	strcpy(result.name, pAssetInfo->name);
+	strcpy(result.relativePath, pAssetInfo->relativePath);
 	result.size = pAssetInfo->size;
 	result.data = malloc(pAssetInfo->size);
 	memcpy(result.data, AssetManager::GetAsset(id, pAssetInfo->flags.type), pAssetInfo->size);
@@ -990,6 +992,10 @@ static bool SaveEditedAsset(EditedAsset& asset, ApplyAssetEditorDataFn applyFn) 
 		applyFn(asset);
 	}
 	
+	if (!Editor::Assets::SaveAssetToFile(asset.type, asset.relativePath, asset.name, asset.data)) {
+		return false;
+	}
+
 	AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
 	if (pAssetInfo->size != asset.size) {
 		if (!AssetManager::ResizeAsset(asset.id, asset.size)) {
@@ -1039,7 +1045,7 @@ static void FreeEditedAsset(EditedAsset& asset, DeleteAssetEditorDataFn deleteFn
 	asset.userData = nullptr;
 }
 
-static bool DuplicateAsset(u64 id) {
+static bool DuplicateAsset(u64 id, const std::filesystem::path& path) {
 	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(id);
 	if (!pAssetInfo) {
 		return false;
@@ -1052,12 +1058,20 @@ static bool DuplicateAsset(u64 id) {
 
 	char newName[MAX_ASSET_NAME_LENGTH];
 	snprintf(newName, MAX_ASSET_NAME_LENGTH, "%s (Copy)", pAssetInfo->name);
-	const u64 newId = AssetManager::CreateAsset(pAssetInfo->flags.type, pAssetInfo->size, newName);
+	const std::filesystem::path relativePath = std::filesystem::relative(path, ASSETS_SRC_DIR);
+
+	const u64 newId = AssetManager::CreateAsset(pAssetInfo->flags.type, pAssetInfo->size, relativePath.string().c_str(), newName);
 	if (newId == UUID_NULL) {
 		return false;
 	}
 	void* newData = AssetManager::GetAsset(newId, pAssetInfo->flags.type);
 	memcpy(newData, assetData, pAssetInfo->size);
+
+	if (!Editor::Assets::SaveAssetToFile(pAssetInfo->flags.type, relativePath, newName, assetData)) {
+		AssetManager::RemoveAsset(newId);
+		return false;
+	}
+
 	return true;
 }
 
@@ -1164,6 +1178,42 @@ static u64 DrawAssetList(AssetType type) {
 			result = asset.id;
 		}
 
+		if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+		{
+			ImGui::SetDragDropPayload("dd_asset", &kvp.first, sizeof(u64));
+			ImGui::Text("%s", asset.name);
+
+			ImGui::EndDragDropSource();
+		}
+
+		ImGui::PopID();
+	}
+
+	ImGui::EndChild();
+	return result;
+}
+
+// TODO: Figure out how to deal with copypasta
+static u64 DrawAssetListWithFunctionality(AssetType type, ImGui::FileBrowser& fileBrowser, u64& duplicateAssetId) {
+	u64 result = UUID_NULL;
+	ImGui::BeginChild("Asset list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
+
+	AssetIndex& assetIndex = AssetManager::GetIndex();
+	for (auto& kvp : assetIndex) {
+		AssetEntry& asset = kvp.second;
+
+		if (asset.flags.type != type || asset.flags.deleted) {
+			continue;
+		}
+
+		ImGui::PushID(asset.id);
+
+		ImGui::Selectable(asset.name);
+
+		if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+			result = asset.id;
+		}
+
 		if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
 			ImGui::OpenPopup("AssetPopup");
 		}
@@ -1175,7 +1225,11 @@ static u64 DrawAssetList(AssetType type) {
 				}
 			}
 			if (ImGui::MenuItem("Duplicate")) {
-				DuplicateAsset(asset.id);
+				duplicateAssetId = asset.id;
+				fileBrowser.SetDirectory(ASSETS_SRC_DIR);
+				fileBrowser.SetTitle("Create new asset");
+				fileBrowser.SetTypeFilters({ ASSET_TYPE_FILE_EXTENSIONS[type] });
+				fileBrowser.Open();
 			}
 			ImGui::EndPopup();
 		}
@@ -1201,16 +1255,44 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 	DeleteAssetEditorDataFn deleteFn = nullptr) {
 	ImGui::Begin(title, &open, ImGuiWindowFlags_MenuBar);
 
+	static ImGui::FileBrowser fileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
+	static u64 duplicateAssetId = UUID_NULL;
+
+	fileBrowser.Display();
+	if (fileBrowser.HasSelected()) {
+		if (duplicateAssetId != UUID_NULL) {
+			DuplicateAsset(duplicateAssetId, fileBrowser.GetSelected());
+		}
+		else {
+			const std::filesystem::path relativePath = std::filesystem::relative(fileBrowser.GetSelected(), ASSETS_SRC_DIR);
+			const u32 newSize = Editor::Assets::GetAssetSize(type, nullptr);
+			const u64 id = AssetManager::CreateAsset(type, newSize, relativePath.string().c_str(), newName);
+			void* data = AssetManager::GetAsset(id, type);
+			Editor::Assets::InitializeAsset(type, data);
+
+			if (!Editor::Assets::SaveAssetToFile(type, relativePath, newName, data)) {
+				// Failed to save asset, remove it
+				AssetManager::RemoveAsset(id);
+			}
+			else {
+				state.editedAssets.try_emplace(id, CopyAssetForEditing(id, populateFn));
+			}
+		}
+		
+		fileBrowser.ClearSelected();
+		duplicateAssetId = UUID_NULL;
+	}
+
 	if (ImGui::BeginMenuBar())
 	{
 		if (ImGui::BeginMenu("Asset"))
 		{
 			if (ImGui::MenuItem("New")) {
-				const u32 newSize = Editor::Assets::GetAssetSize(type, nullptr);
-				const u64 id = AssetManager::CreateAsset(type, newSize, newName);
-				void* data = AssetManager::GetAsset(id, type);
-				Editor::Assets::InitializeAsset(type, data);
-				state.editedAssets.try_emplace(id, CopyAssetForEditing(id, populateFn));
+				duplicateAssetId = UUID_NULL;
+				fileBrowser.SetDirectory(ASSETS_SRC_DIR);
+				fileBrowser.SetTitle("Create new asset");
+				fileBrowser.SetTypeFilters({ ASSET_TYPE_FILE_EXTENSIONS[type] });
+				fileBrowser.Open();
 			}
 			ImGui::Separator();
 			ImGui::BeginDisabled(!state.editedAssets.contains(state.currentAsset));
@@ -1240,7 +1322,7 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 		ImGui::EndMenuBar();
 	}
 
-	const u64 openedAsset = DrawAssetList(type);
+	const u64 openedAsset = DrawAssetListWithFunctionality(type, fileBrowser, duplicateAssetId);
 	if (openedAsset != UUID_NULL && !state.editedAssets.contains(openedAsset)) {
 		state.editedAssets.emplace(openedAsset, CopyAssetForEditing(openedAsset, populateFn));
 	}

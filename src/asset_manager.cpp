@@ -177,7 +177,7 @@ bool AssetManager::RepackArchive() {
 	return true;
 }
 
-u64 AssetManager::CreateAsset(AssetType type, u32 size, const char* name) {
+u64 AssetManager::CreateAsset(AssetType type, u32 size, const char* path, const char* name) {
 	DEBUG_LOG("Creating new asset of size %d with name %s\n", size, name);
 
 	if (!ReserveMemory(size)) {
@@ -189,6 +189,7 @@ u64 AssetManager::CreateAsset(AssetType type, u32 size, const char* name) {
 	AssetEntry newEntry{};
 	newEntry.id = id;
 	strcpy(newEntry.name, name);
+	strcpy(newEntry.relativePath, path);
 	newEntry.offset = archiveSize;
 	newEntry.size = size;
 	newEntry.flags.type = type;
@@ -201,7 +202,7 @@ u64 AssetManager::CreateAsset(AssetType type, u32 size, const char* name) {
 	return id;
 }
 
-void* AssetManager::AddAsset(u64 id, AssetType type, u32 size, const char* name, void* data) {
+void* AssetManager::AddAsset(u64 id, AssetType type, u32 size, const char* path, const char* name, void* data) {
 	const auto it = assetIndex.find(id);
 	if (it != assetIndex.end()) {
 		DEBUG_ERROR("Asset with ID %llu already exists\n", id);
@@ -215,6 +216,7 @@ void* AssetManager::AddAsset(u64 id, AssetType type, u32 size, const char* name,
 	AssetEntry newEntry{};
 	newEntry.id = id;
 	strcpy(newEntry.name, name);
+	strcpy(newEntry.relativePath, path);
 	newEntry.offset = archiveSize;
 	newEntry.size = size;
 	newEntry.flags.type = type;
