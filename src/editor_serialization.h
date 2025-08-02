@@ -13,5 +13,5 @@ namespace Editor::Assets {
 	void InitializeMetadataJson(nlohmann::json& json, u64 id);
 
 	bool LoadAssetFromFile(const std::filesystem::path& path, AssetType type, const nlohmann::json& metadata, u32& size, void* pOutData);
-	bool SaveAssetToFile(const std::filesystem::path& path, AssetType type, const void* pData);
+	bool SaveAssetToFile(const std::filesystem::path& path, AssetType type, nlohmann::json& metadata, const void* pData);
 }
