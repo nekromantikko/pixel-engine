@@ -5,10 +5,10 @@
 #include "game_input.h"
 #include "game_state.h"
 #include "dialog.h"
-#include "room_types.h"
-#include "dungeon_types.h"
-#include "overworld_types.h"
-#include "anim_types.h"
+#include "world_types.h"
+
+
+#include "system_types.h"
 #include "audio.h"
 #include "asset_manager.h"
 #include "tilemap.h"

@@ -1,6 +1,6 @@
 #pragma once
 #include "typedef.h"
-#include "collision_types.h"
+#include "system_types.h"
 #include "actor_data.h"
 #include "asset_types.h"
 

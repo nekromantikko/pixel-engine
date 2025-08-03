@@ -1,10 +1,5 @@
 #pragma once
-#include "bullet_data.h"
-#include "effect_data.h"
-#include "pickup_data.h"
-#include "spawner_data.h"
-#include "interactable_data.h"
-#include "enemy_data.h"
+#include "actor_data.h"
 
 struct Actor;
 struct ActorPrototype;

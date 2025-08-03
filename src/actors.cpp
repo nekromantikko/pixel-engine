@@ -2,11 +2,11 @@
 #include "actor_prototype_types.h"
 #include "game_rendering.h"
 #include "game_state.h"
-#include "room_types.h"
-#include "dungeon_types.h"
+#include "world_types.h"
+
 #include "random.h"
 #include "asset_manager.h"
-#include "anim_types.h"
+#include "system_types.h"
 #include "collision.h"
 #include <gtc/constants.hpp>
 

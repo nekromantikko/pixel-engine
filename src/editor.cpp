@@ -19,7 +19,7 @@
 #include "tilemap.h"
 #include "rendering_util.h"
 #include "game.h"
-#include "room_types.h"
+#include "world_types.h"
 #include "game_rendering.h"
 #include "game_state.h"
 #include "actors.h"
@@ -27,9 +27,9 @@
 #include "audio.h"
 #include "collision.h"
 #include "random.h"
-#include "dungeon_types.h"
-#include "overworld_types.h"
-#include "anim_types.h"
+
+
+#include "system_types.h"
 #include "asset_manager.h"
 #include "asset_serialization.h"
 #define GLM_ENABLE_EXPERIMENTAL

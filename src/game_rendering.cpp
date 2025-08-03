@@ -1,8 +1,8 @@
 #include "game_rendering.h"
 #include "rendering.h"
 #include "game_state.h"
-#include "room_types.h"
-#include "dungeon_types.h"
+#include "world_types.h"
+
 #include "tilemap.h"
 #include "rendering_util.h"
 #include "game.h"

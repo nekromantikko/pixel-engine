@@ -4,7 +4,7 @@
 #include "game_state.h"
 #include "game_rendering.h"
 #include "game_input.h"
-#include "room_types.h"
+#include "world_types.h"
 #include "asset_manager.h"
 #include "rendering.h"
 

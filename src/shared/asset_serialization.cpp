@@ -3,13 +3,13 @@
 #include "random.h"
 #include <cstdlib>
 #include "rendering_types.h"
-#include "audio_types.h"
-#include "tilemap_types.h"
-#include "anim_types.h"
+#include "system_types.h"
+#include "world_types.h"
+
 #include "actor_prototype_types.h"
-#include "room_types.h"
-#include "overworld_types.h"
-#include "dungeon_types.h"
+
+
+
 #include "data_types.h"
 #include "actor_data.h"
 #include "editor_actor.h"

@@ -1,5 +1,5 @@
 #pragma once
-#include "collision_types.h"
+#include "system_types.h"
 
 struct Tilemap;
 
