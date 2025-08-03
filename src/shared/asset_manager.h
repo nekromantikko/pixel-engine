@@ -42,7 +42,7 @@ namespace AssetManager {
 	template <IsAssetHandle HandleType>
 	HandleType CreateAsset(u32 size, const char* path, const char* name) {
 		constexpr AssetType assetType = AssetHandleTraits<HandleType>::asset_type::value;
-		const u64 id = CreateAsset(assetType, size, name);
+		const u64 id = CreateAsset(assetType, size, path, name);
 		return HandleType{ id };
 	}
 
