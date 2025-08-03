@@ -1,6 +1,7 @@
 #pragma once
 #include "typedef.h"
-#include "actor_types.h"
+#include "actor_data.h"
+#include "actor_behaviour.h"
 #define GLM_FORCE_RADIANS
 #include <glm.hpp>
 #include "memory_pool.h"

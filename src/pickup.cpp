@@ -127,9 +127,3 @@ constexpr ActorDrawFn Game::pickupDrawTable[PICKUP_TYPE_COUNT] = {
     Game::DrawActorDefault,
     Game::DrawActorDefault,
 };
-
-DEFINE_ACTOR_EDITOR_DATA(pickup,
-	{ "exp", GET_SUBTYPE_PROPERTIES(PickupData) },
-	{ "exp_remnant", GET_SUBTYPE_PROPERTIES(PickupData) },
-	{ "healing", GET_SUBTYPE_PROPERTIES(PickupData) }
-)

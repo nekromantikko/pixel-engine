@@ -9,7 +9,7 @@
 	{ .name = #FIELD, .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE, .components = COMPONENTS, .offset = offsetof(STRUCT_TYPE, FIELD) }
 
 #define ACTOR_SUBTYPE_PROPERTIES(STRUCT_TYPE, ...) \
-	inline const std::vector<ActorEditorProperty>& Get##STRUCT_TYPE##EditorProperties() { \
+	inline static const std::vector<ActorEditorProperty>& Get##STRUCT_TYPE##EditorProperties() { \
 		static const std::vector<ActorEditorProperty> properties = { __VA_ARGS__ }; \
 		return properties; \
 	} \
@@ -17,14 +17,10 @@
 #define GET_SUBTYPE_PROPERTIES(STRUCT_TYPE) \
 		Get##STRUCT_TYPE##EditorProperties()
 
-#define DECLARE_ACTOR_EDITOR_DATA(ACTOR_TYPE) \
-	namespace Editor { \
-		extern const ActorEditorData ACTOR_TYPE##EditorData; \
-	} \
-
-#define DEFINE_ACTOR_EDITOR_DATA(ACTOR_TYPE, ...) \
-	namespace Editor { \
-		const ActorEditorData ACTOR_TYPE##EditorData = ActorEditorData({ __VA_ARGS__ }); \
+#define ACTOR_EDITOR_DATA(ACTOR_TYPE, ...) \
+	inline static const ActorEditorData Get##ACTOR_TYPE##EditorData() { \
+		static const ActorEditorData editorData = ActorEditorData({ __VA_ARGS__ }); \
+		return editorData; \
 	} \
 
 #else
@@ -33,6 +29,5 @@
 #define ACTOR_SUBTYPE_PROPERTIES(STRUCT_TYPE, ...)
 #define GET_SUBTYPE_PROPERTIES(STRUCT_TYPE) \
 		{}
-#define DECLARE_ACTOR_EDITOR_DATA(ACTOR_TYPE)
-#define DEFINE_ACTOR_EDITOR_DATA(ACTOR_TYPE, ...)
+#define ACTOR_EDITOR_DATA(ACTOR_TYPE, ...)
 #endif

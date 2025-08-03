@@ -80,9 +80,3 @@ constexpr ActorDrawFn Game::spawnerDrawTable[SPAWNER_TYPE_COUNT] = {
     DrawNoOp,
     DrawNoOp,
 };
-
-DEFINE_ACTOR_EDITOR_DATA(spawner,
-    { "exp_spawner", GET_SUBTYPE_PROPERTIES(ExpSpawnerData) },
-    { "enemy_spawner", GET_SUBTYPE_PROPERTIES(EnemySpawnerData) },
-    { "loot_spawner", GET_SUBTYPE_PROPERTIES(LootSpawnerData) }
-)

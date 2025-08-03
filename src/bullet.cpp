@@ -104,8 +104,3 @@ constexpr ActorDrawFn Game::bulletDrawTable[BULLET_TYPE_COUNT] = {
     Game::DrawActorDefault,
     Game::DrawActorDefault,
 };
-
-DEFINE_ACTOR_EDITOR_DATA(bullet,
-	{ "bullet", GET_SUBTYPE_PROPERTIES(BulletData) },
-	{ "grenade", GET_SUBTYPE_PROPERTIES(BulletData) }
-);

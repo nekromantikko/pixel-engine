@@ -133,9 +133,3 @@ constexpr ActorDrawFn Game::effectDrawTable[EFFECT_TYPE_COUNT] = {
     Game::DrawActorDefault,
     Game::DrawActorDefault,
 };
-
-DEFINE_ACTOR_EDITOR_DATA(effect,
-    { "damage_numbers", GET_SUBTYPE_PROPERTIES(EffectData) },
-    { "explosion", GET_SUBTYPE_PROPERTIES(EffectData) },
-    { "feather", GET_SUBTYPE_PROPERTIES(EffectData) }
-)

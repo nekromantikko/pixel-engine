@@ -1,12 +1,12 @@
 #pragma once
 #include "typedef.h"
-#include "player.h"
-#include "enemy.h"
-#include "bullet.h"
-#include "pickup.h"
-#include "effect.h"
-#include "interactable.h"
-#include "spawner.h"
+#include "player_data.h"
+#include "enemy_data.h"
+#include "bullet_data.h"
+#include "pickup_data.h"
+#include "effect_data.h"
+#include "interactable_data.h"
+#include "spawner_data.h"
 
 enum ActorType : TActorType {
 	ACTOR_TYPE_PLAYER,
@@ -45,38 +45,6 @@ union ActorState {
 	ExpSpawnerState expSpawner;
 };
 
-namespace Game {
-	constexpr ActorInitFn const* actorInitTable[ACTOR_TYPE_COUNT] = {
-		playerInitTable,
-		enemyInitTable,
-		bulletInitTable,
-		pickupInitTable,
-		effectInitTable,
-		interactableInitTable,
-		spawnerInitTable,
-	};
-
-	constexpr ActorUpdateFn const* actorUpdateTable[ACTOR_TYPE_COUNT] = {
-		playerUpdateTable,
-		enemyUpdateTable,
-		bulletUpdateTable,
-		pickupUpdateTable,
-		effectUpdateTable,
-		interactableUpdateTable,
-		spawnerUpdateTable,
-	};
-
-	constexpr ActorDrawFn const* actorDrawTable[ACTOR_TYPE_COUNT] = {
-		playerDrawTable,
-		enemyDrawTable,
-		bulletDrawTable,
-		pickupDrawTable,
-		effectDrawTable,
-		interactableDrawTable,
-		spawnerDrawTable,
-	};
-}
-
 #ifdef EDITOR
 #include "editor_actor.h"
 
@@ -84,13 +52,13 @@ namespace Editor {
 	constexpr const char* actorTypeNames[ACTOR_TYPE_COUNT] = { "Player", "Enemy", "Bullet", "Pickup", "Effect", "Interactable", "Spawner" };
 
 	inline static const ActorEditorData actorEditorData[ACTOR_TYPE_COUNT] = {
-		playerEditorData,
-		enemyEditorData,
-		bulletEditorData,
-		pickupEditorData,
-		effectEditorData,
-		interactableEditorData,
-		spawnerEditorData,
+		GetPlayerEditorData(),
+		GetEnemyEditorData(),
+		GetBulletEditorData(),
+		GetPickupEditorData(),
+		GetEffectEditorData(),
+		GetInteractableEditorData(),
+		GetSpawnerEditorData(),
 	};
 }
 
