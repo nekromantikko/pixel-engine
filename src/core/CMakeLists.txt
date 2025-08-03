@@ -1,13 +1,14 @@
-# Core module - Basic engine systems
-set(CORE_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/input.cpp
+# Core module library
+add_library(core STATIC
+    input.cpp
 )
 
-set(CORE_HEADERS
-    ${CMAKE_CURRENT_SOURCE_DIR}/input.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/fixed_hash_map.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/nes_timing.h
+target_include_directories(core PUBLIC 
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# For now, we'll include these in the main target
-# In the future, this could be its own library
+target_link_libraries(core PUBLIC
+    SDL2::SDL2
+)
+
+target_compile_features(core PUBLIC cxx_std_20)

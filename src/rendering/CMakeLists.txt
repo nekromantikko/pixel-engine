@@ -1,15 +1,17 @@
-# Rendering module - Vulkan rendering system
-set(RENDERING_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/rendering_util.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/rendering_vulkan.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/shader.cpp
+# Rendering module library
+add_library(rendering STATIC
+    rendering_util.cpp
+    rendering_vulkan.cpp
+    shader.cpp
 )
 
-set(RENDERING_HEADERS
-    ${CMAKE_CURRENT_SOURCE_DIR}/rendering.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/rendering_util.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/shader.h
+target_include_directories(rendering PUBLIC 
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# For now, we'll include these in the main target
-# In the future, this could be its own library
+target_link_libraries(rendering PUBLIC
+    ${Vulkan_LIBRARY}
+    SDL2::SDL2
+)
+
+target_compile_features(rendering PUBLIC cxx_std_20)

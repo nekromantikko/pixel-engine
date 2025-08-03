@@ -1,5 +1,33 @@
+# Build directories
 /out
 bin/
 build/
+
+# Visual Studio
 /.vs
+/.vscode
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+*.npak
+
+# Compiled shaders
 assets/shaders/
+*.spv
+
+# CMake artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Temporary files
+.DS_Store
+*.tmp
+*.log
+
+# Asset build artifacts
+assets.npak
