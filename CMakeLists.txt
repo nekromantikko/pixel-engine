@@ -114,7 +114,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_NPAK_OUTPUT="${ASSETS_
 
 IF(ENABLE_EDITOR)
 	target_sources(${PROJECT_NAME} PRIVATE ${IMGUI_SOURCES} ${EDITOR_SOURCES})
-	target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${nlohmann_json_INCLUDE_DIRS} ${EDITOR_INCLUDE_DIRS})
+	target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${EDITOR_INCLUDE_DIRS})
 	target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_SRC_DIR="${ASSETS_SRC_DIR}")
 ENDIF()
