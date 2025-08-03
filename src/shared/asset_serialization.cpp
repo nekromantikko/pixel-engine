@@ -2,17 +2,9 @@
 #include "asset_serialization.h"
 #include "random.h"
 #include <cstdlib>
-#include "rendering_types.h"
-#include "audio_types.h"
-#include "tilemap_types.h"
-#include "anim_types.h"
-#include "actor_prototype_types.h"
-#include "room_types.h"
-#include "overworld_types.h"
-#include "dungeon_types.h"
+#include "core_types.h"
 #include "data_types.h"
 #include "actor_data.h"
-#include "editor_actor.h"
 
 static constexpr u64 ASSET_FILE_FORMAT_VERSION = 1;
 

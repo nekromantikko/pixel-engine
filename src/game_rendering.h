@@ -1,9 +1,5 @@
 #pragma once
-#include "typedef.h"
-#include "rendering_types.h"
-#include "asset_types.h"
-#define GLM_FORCE_RADIANS
-#include <glm.hpp>
+#include "core_types.h"
 
 enum SpriteLayerType : u8 {
 	SPRITE_LAYER_UI,

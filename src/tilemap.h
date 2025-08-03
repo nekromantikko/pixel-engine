@@ -1,7 +1,5 @@
 #pragma once
-#define GLM_FORCE_RADIANS
-#include <glm.hpp>
-#include "tilemap_types.h"
+#include "core_types.h"
 
 namespace Tiles {
 	bool PointInBounds(const Tilemap* pTilemap, const glm::vec2& pos);

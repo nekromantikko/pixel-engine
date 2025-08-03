@@ -1,7 +1,5 @@
 #pragma once
-#include "typedef.h"
-#include "asset_types.h"
-#include "audio_types.h"
+#include "core_types.h"
 
 namespace Audio {
 	void CreateContext();

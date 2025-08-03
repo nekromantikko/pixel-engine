@@ -1,4 +1,3 @@
-#include "interactable.h"
 #include "actors.h"
 #include "game_state.h"
 #include "game_rendering.h"
