@@ -4,6 +4,130 @@
 #include <cstdlib>
 #include <algorithm>
 
+// AssetIndex implementation - simple sorted array (Doom WAD style)
+AssetIndex::AssetIndex() : m_entries(nullptr), m_count(0), m_capacity(0) {
+}
+
+AssetIndex::~AssetIndex() {
+	clear();
+}
+
+s32 AssetIndex::FindIndex(u64 id) const {
+	if (m_count == 0) {
+		return -1;
+	}
+
+	// Binary search for the asset ID
+	s32 left = 0;
+	s32 right = static_cast<s32>(m_count) - 1;
+	
+	while (left <= right) {
+		s32 mid = left + (right - left) / 2;
+		u64 midId = m_entries[mid].id;
+		
+		if (midId == id) {
+			return mid;
+		} else if (midId < id) {
+			left = mid + 1;
+		} else {
+			right = mid - 1;
+		}
+	}
+	
+	return -1; // Not found
+}
+
+bool AssetIndex::ResizeIfNeeded() {
+	if (m_count >= m_capacity) {
+		u32 newCapacity = m_capacity == 0 ? 8 : m_capacity * 2;
+		AssetEntry* newEntries = (AssetEntry*)realloc(m_entries, newCapacity * sizeof(AssetEntry));
+		if (!newEntries) {
+			return false;
+		}
+		m_entries = newEntries;
+		m_capacity = newCapacity;
+	}
+	return true;
+}
+
+AssetEntry* AssetIndex::find(u64 id) {
+	s32 index = FindIndex(id);
+	return index >= 0 ? &m_entries[index] : nullptr;
+}
+
+const AssetEntry* AssetIndex::find(u64 id) const {
+	s32 index = FindIndex(id);
+	return index >= 0 ? &m_entries[index] : nullptr;
+}
+
+bool AssetIndex::emplace(u64 id, const AssetEntry& entry) {
+	// Check if asset already exists
+	if (find(id) != nullptr) {
+		return false;
+	}
+
+	if (!ResizeIfNeeded()) {
+		return false;
+	}
+
+	// Find insertion point to maintain sorted order
+	u32 insertPos = 0;
+	for (u32 i = 0; i < m_count; i++) {
+		if (m_entries[i].id > id) {
+			insertPos = i;
+			break;
+		}
+		insertPos = i + 1;
+	}
+
+	// Shift elements to the right to make space
+	if (insertPos < m_count) {
+		memmove(&m_entries[insertPos + 1], &m_entries[insertPos], 
+		        (m_count - insertPos) * sizeof(AssetEntry));
+	}
+
+	// Insert the new entry
+	m_entries[insertPos] = entry;
+	m_count++;
+	
+	return true;
+}
+
+bool AssetIndex::erase(u64 id) {
+	s32 index = FindIndex(id);
+	if (index < 0) {
+		return false;
+	}
+
+	// Shift elements to the left to fill the gap
+	if (static_cast<u32>(index) < m_count - 1) {
+		memmove(&m_entries[index], &m_entries[index + 1], 
+		        (m_count - static_cast<u32>(index) - 1) * sizeof(AssetEntry));
+	}
+	
+	m_count--;
+	return true;
+}
+
+void AssetIndex::clear() {
+	if (m_entries) {
+		free(m_entries);
+		m_entries = nullptr;
+	}
+	m_count = 0;
+	m_capacity = 0;
+}
+
+void AssetIndex::reserve(u32 capacity) {
+	if (capacity > m_capacity) {
+		AssetEntry* newEntries = (AssetEntry*)realloc(m_entries, capacity * sizeof(AssetEntry));
+		if (newEntries) {
+			m_entries = newEntries;
+			m_capacity = capacity;
+		}
+	}
+}
+
 AssetArchive::AssetArchive() 
 	: m_capacity(0), m_size(0), m_data(nullptr) {
 }
@@ -106,7 +230,7 @@ bool AssetArchive::SaveToFile(const std::filesystem::path& path) {
 	ArchiveHeader header{
 		.signature = { 'N','P','A','K' },
 		.assetCount = static_cast<u32>(m_index.size()),
-		.directoryOffset = sizeof(ArchiveHeader) + m_size,
+		.directoryOffset = static_cast<u32>(sizeof(ArchiveHeader) + m_size),
 	};
 	fwrite(&header, sizeof(ArchiveHeader), 1, pFile);
 
@@ -122,8 +246,8 @@ bool AssetArchive::SaveToFile(const std::filesystem::path& path) {
 }
 
 void* AssetArchive::AddAsset(u64 id, AssetType type, u32 size, const char* path, const char* name, const void* data) {
-	const auto it = m_index.find(id);
-	if (it != m_index.end()) {
+	const AssetEntry* existing = m_index.find(id);
+	if (existing != nullptr) {
 		return nullptr; // Asset already exists
 	}
 
@@ -156,28 +280,26 @@ void* AssetArchive::AddAsset(u64 id, AssetType type, u32 size, const char* path,
 }
 
 bool AssetArchive::RemoveAsset(u64 id) {
-	const auto it = m_index.find(id);
-	if (it == m_index.end()) {
+	AssetEntry* asset = m_index.find(id);
+	if (asset == nullptr) {
 		return false;
 	}
 
-	AssetEntry& asset = it->second;
-	if (asset.flags.deleted) {
+	if (asset->flags.deleted) {
 		return false;
 	}
 
-	asset.flags.deleted = true;
+	asset->flags.deleted = true;
 	return true;
 }
 
 bool AssetArchive::ResizeAsset(u64 id, u32 newSize) {
-	const auto it = m_index.find(id);
-	if (it == m_index.end()) {
+	AssetEntry* asset = m_index.find(id);
+	if (asset == nullptr) {
 		return false;
 	}
-	AssetEntry& asset = it->second;
 
-	const u32 oldSize = asset.size;
+	const u32 oldSize = asset->size;
 
 	if (newSize > oldSize) {
 		// TODO: This could reserve more space than needed to avoid repeated resizes that fragment the memory
@@ -185,40 +307,35 @@ bool AssetArchive::ResizeAsset(u64 id, u32 newSize) {
 			return false;
 		}
 
-		memcpy(m_data + m_size, m_data + asset.offset, oldSize);
-		asset.offset = m_size;
+		memcpy(m_data + m_size, m_data + asset->offset, oldSize);
+		asset->offset = m_size;
 		m_size += newSize;
 	}
 
-	asset.size = newSize;
+	asset->size = newSize;
 	return true;
 }
 
 void* AssetArchive::GetAssetData(u64 id, AssetType type) {
-	const auto it = m_index.find(id);
-	if (it == m_index.end()) {
+	const AssetEntry* asset = m_index.find(id);
+	if (asset == nullptr) {
 		return nullptr;
 	}
-	const AssetEntry& asset = it->second;
-	if (asset.flags.type != type || asset.flags.deleted) {
+	if (asset->flags.type != type || asset->flags.deleted) {
 		return nullptr;
 	}
 
-	return m_data + asset.offset;
+	return m_data + asset->offset;
 }
 
 AssetEntry* AssetArchive::GetAssetEntry(u64 id) {
-	const auto it = m_index.find(id);
-	if (it == m_index.end()) {
-		return nullptr;
-	}
-	return &it->second;
+	return m_index.find(id);
 }
 
 void AssetArchive::Repack() {
 	u32 newSize = 0;
-	for (auto& kvp : m_index) {
-		auto& [id, asset] = kvp;
+	for (const auto& kvp : m_index) {
+		const AssetEntry& asset = kvp.second;
 		if (asset.flags.deleted) {
 			continue;
 		}
@@ -230,21 +347,41 @@ void AssetArchive::Repack() {
 		return;
 	}
 
-	// Remove deleted assets from index
-	const u32 removedCount = std::erase_if(m_index, [](const auto& item) {
-		const auto& [id, asset] = item;
-		return asset.flags.deleted;
-	});
-
-	u32 offset = 0;
-	for (auto& kvp : m_index) {
-		auto& [id, asset] = kvp;
-		memcpy(newData + offset, m_data + asset.offset, asset.size);
-		asset.offset = offset;
-		offset += asset.size;
+	// Create a temporary list of non-deleted assets with updated offsets
+	AssetEntry* tempAssets = (AssetEntry*)malloc(m_index.size() * sizeof(AssetEntry));
+	if (!tempAssets) {
+		free(newData);
+		return;
 	}
 
+	u32 tempCount = 0;
+	u32 offset = 0;
+	for (const auto& kvp : m_index) {
+		const AssetEntry& asset = kvp.second;
+		if (asset.flags.deleted) {
+			continue;
+		}
+		// Copy asset data to new buffer
+		memcpy(newData + offset, m_data + asset.offset, asset.size);
+		
+		// Create updated asset entry
+		tempAssets[tempCount] = asset;
+		tempAssets[tempCount].offset = offset;
+		
+		offset += asset.size;
+		tempCount++;
+	}
+
+	// Clear old index and rebuild with non-deleted assets
+	m_index.clear();
+	m_index.reserve(tempCount);
+	for (u32 i = 0; i < tempCount; i++) {
+		m_index.emplace(tempAssets[i].id, tempAssets[i]);
+	}
+
+	// Replace old data
 	free(m_data);
+	free(tempAssets);
 	m_data = newData;
 	m_size = newSize;
 	m_capacity = newSize;
