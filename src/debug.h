@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdarg>
 
 #define DEBUG_LOG(fmt, ...) Debug::Log("%s: " fmt, \
     __func__ __VA_OPT__(,) __VA_ARGS__)
@@ -7,6 +8,9 @@
 	__func__ __VA_OPT__(,) __VA_ARGS__)
 
 namespace Debug {
+#ifdef EDITOR
+	void HookEditorDebugLog(void (*callback)(const char* fmt, va_list args));
+#endif
 	void Log(const char* fmt, ...);
 }
 
