@@ -279,10 +279,12 @@ namespace SoftwareRenderer
 	// Generate palette colors lookup table (simplified)
 	static void GeneratePaletteColors() {
 		// This is a simplified palette - in a real implementation you'd want the actual NES palette
+		// This creates a basic gradient for testing
 		for (u32 i = 0; i < COLOR_COUNT; i++) {
-			u8 r = (i * 255) / COLOR_COUNT;
-			u8 g = ((i * 3) * 255) / COLOR_COUNT;
-			u8 b = ((i * 7) * 255) / COLOR_COUNT;
+			// Create a basic color palette similar to NES palette structure
+			u8 r = (u8)((i & 0x30) << 2) | ((i & 0x0C) << 2) | (i & 0x03);
+			u8 g = (u8)((i & 0x30) << 1) | ((i & 0x0C) << 1) | (i & 0x03);
+			u8 b = (u8)((i & 0x30) << 0) | ((i & 0x0C) << 0) | (i & 0x03);
 			paletteColors[i] = (r << 16) | (g << 8) | b;
 		}
 	}

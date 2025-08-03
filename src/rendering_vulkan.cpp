@@ -13,6 +13,10 @@
 #include <vector>
 #include "shader.h"
 
+#ifdef USE_SOFTWARE_FALLBACK
+#include "rendering_software.h"
+#endif
+
 static constexpr u32 COMMAND_BUFFER_COUNT = 2;
 static constexpr u32 SWAPCHAIN_IMAGE_COUNT = 3;
 
@@ -1029,72 +1033,168 @@ static void TransferComputeBufferData() {
 }
 
 static void RunSoftwareRenderer() {
-	VkCommandBuffer commandBuffer = pContext->primaryCommandBuffers[pContext->currentCbIndex];
+	if (pContext->computeSupported) {
+		// Use compute shaders
+		VkCommandBuffer commandBuffer = pContext->primaryCommandBuffers[pContext->currentCbIndex];
 
-	// Transfer images to compute writeable layout
-	// Compute won't happen before this is all done
+		// Transfer images to compute writeable layout
+		// Compute won't happen before this is all done
 
-	VkImageMemoryBarrier barrier = GetImageBarrier(&pContext->colorImages[pContext->currentCbIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-	vkCmdPipelineBarrier(
-		commandBuffer,
-		VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
+		VkImageMemoryBarrier barrier = GetImageBarrier(&pContext->colorImages[pContext->currentCbIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+		vkCmdPipelineBarrier(
+			commandBuffer,
+			VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+
+		// Clear old scanline data
+		vkCmdFillBuffer(
+			commandBuffer,
+			pContext->scanlineBuffers[pContext->currentCbIndex].buffer,
+			0,
+			sizeof(ScanlineData) * SCANLINE_COUNT,
+			0
+		);
+
+		// Do all the asynchronous compute stuff
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->evaluatePipelineLayout, 0, 1, &pContext->computeDescriptorSets[pContext->currentCbIndex], 0, nullptr);
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->evaluatePipeline);
+		vkCmdDispatch(commandBuffer, MAX_SPRITE_COUNT / MAX_SPRITES_PER_SCANLINE, SCANLINE_COUNT, 1);
+
+		// Wait for scanline buffer to be written before running software renderer for the final image
+		VkBufferMemoryBarrier scanlineBarrier{};
+		scanlineBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+		scanlineBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+		scanlineBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		scanlineBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		scanlineBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		scanlineBarrier.buffer = pContext->scanlineBuffers[pContext->currentCbIndex].buffer;
+		scanlineBarrier.offset = 0;
+		scanlineBarrier.size = sizeof(ScanlineData) * SCANLINE_COUNT;
+
+		vkCmdPipelineBarrier(
+			commandBuffer,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			0,
+			0, nullptr,
+			0, &scanlineBarrier,
+			0, nullptr
+		);
+
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->softwarePipelineLayout, 0, 1, &pContext->computeDescriptorSets[pContext->currentCbIndex], 0, nullptr);
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->softwarePipeline);
+		vkCmdDispatch(commandBuffer, VIEWPORT_WIDTH_TILES * TILE_DIM_PIXELS / 32, VIEWPORT_HEIGHT_TILES * TILE_DIM_PIXELS / 32, 1);
+
+		// Transfer images to shader readable layout
+		barrier = GetImageBarrier(&pContext->colorImages[pContext->currentCbIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		vkCmdPipelineBarrier(
+			commandBuffer,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+	} else {
+		// Use software fallback
+		#ifdef USE_SOFTWARE_FALLBACK
+		RunSoftwareRendererFallback();
+		#endif
+	}
+}
+
+#ifdef USE_SOFTWARE_FALLBACK
+static void RunSoftwareRendererFallback() {
+	// Get pointers to all the render data
+	Palette* palettes = Rendering::GetPalettePtr(0);
+	ChrSheet* chrSheets = Rendering::GetChrPtr(0);
+	Nametable* nametables = Rendering::GetNametablePtr(0);
+	Sprite* sprites = Rendering::GetSpritesPtr(0);
+	Scanline* scanlines = Rendering::GetScanlinePtr(0);
+
+	// Render using CPU
+	u8* renderedImage = SoftwareRenderer::RenderFrame(
+		palettes,
+		chrSheets,
+		nametables,
+		sprites,
+		scanlines,
+		MAX_SPRITE_COUNT
 	);
 
-	// Clear old scanline data
-	vkCmdFillBuffer(
-		commandBuffer,
-		pContext->scanlineBuffers[pContext->currentCbIndex].buffer,
-		0,
-		sizeof(ScanlineData) * SCANLINE_COUNT,
-		0
-	);
+	if (renderedImage) {
+		// Copy the CPU-rendered image to the GPU image for display
+		// We need to upload the rendered image to the color image
+		VkCommandBuffer commandBuffer = pContext->primaryCommandBuffers[pContext->currentCbIndex];
 
-	// Do all the asynchronous compute stuff
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->evaluatePipelineLayout, 0, 1, &pContext->computeDescriptorSets[pContext->currentCbIndex], 0, nullptr);
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->evaluatePipeline);
-	vkCmdDispatch(commandBuffer, MAX_SPRITE_COUNT / MAX_SPRITES_PER_SCANLINE, SCANLINE_COUNT, 1);
+		// Transfer the image to transfer destination layout
+		VkImageMemoryBarrier barrier = GetImageBarrier(&pContext->colorImages[pContext->currentCbIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		vkCmdPipelineBarrier(
+			commandBuffer,
+			VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
 
-	// Wait for scanline buffer to be written before running software renderer for the final image
-	VkBufferMemoryBarrier scanlineBarrier{};
-	scanlineBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-	scanlineBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-	scanlineBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	scanlineBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	scanlineBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	scanlineBarrier.buffer = pContext->scanlineBuffers[pContext->currentCbIndex].buffer;
-	scanlineBarrier.offset = 0;
-	scanlineBarrier.size = sizeof(ScanlineData) * SCANLINE_COUNT;
+		// Create a staging buffer for the image data
+		VkDeviceSize imageSize = VIEWPORT_WIDTH_PIXELS * VIEWPORT_HEIGHT_PIXELS * 4; // RGBA format
+		Buffer stagingBuffer;
+		AllocateBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer);
 
-	vkCmdPipelineBarrier(
-		commandBuffer,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		0,
-		0, nullptr,
-		0, &scanlineBarrier,
-		0, nullptr
-	);
+		// Map and copy the data
+		void* data;
+		vkMapMemory(pContext->device, stagingBuffer.memory, 0, imageSize, 0, &data);
+		
+		// Convert RGB to RGBA
+		u8* rgbaData = (u8*)data;
+		for (u32 i = 0; i < VIEWPORT_WIDTH_PIXELS * VIEWPORT_HEIGHT_PIXELS; i++) {
+			rgbaData[i * 4 + 0] = renderedImage[i * 3 + 0]; // R
+			rgbaData[i * 4 + 1] = renderedImage[i * 3 + 1]; // G
+			rgbaData[i * 4 + 2] = renderedImage[i * 3 + 2]; // B
+			rgbaData[i * 4 + 3] = 255; // A
+		}
+		
+		vkUnmapMemory(pContext->device, stagingBuffer.memory);
 
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->softwarePipelineLayout, 0, 1, &pContext->computeDescriptorSets[pContext->currentCbIndex], 0, nullptr);
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pContext->softwarePipeline);
-	vkCmdDispatch(commandBuffer, VIEWPORT_WIDTH_TILES * TILE_DIM_PIXELS / 32, VIEWPORT_HEIGHT_TILES * TILE_DIM_PIXELS / 32, 1);
+		// Copy from staging buffer to image
+		VkBufferImageCopy region{};
+		region.bufferOffset = 0;
+		region.bufferRowLength = 0;
+		region.bufferImageHeight = 0;
+		region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		region.imageSubresource.mipLevel = 0;
+		region.imageSubresource.baseArrayLayer = 0;
+		region.imageSubresource.layerCount = 1;
+		region.imageOffset = {0, 0, 0};
+		region.imageExtent = {VIEWPORT_WIDTH_PIXELS, VIEWPORT_HEIGHT_PIXELS, 1};
 
-	// Transfer images to shader readable layout
-	barrier = GetImageBarrier(&pContext->colorImages[pContext->currentCbIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	vkCmdPipelineBarrier(
-		commandBuffer,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
+		vkCmdCopyBufferToImage(commandBuffer, stagingBuffer.buffer, pContext->colorImages[pContext->currentCbIndex].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+		// Transfer to shader readable layout
+		barrier = GetImageBarrier(&pContext->colorImages[pContext->currentCbIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		vkCmdPipelineBarrier(
+			commandBuffer,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+
+		// Free staging buffer (should probably be cached for performance)
+		vkDestroyBuffer(pContext->device, stagingBuffer.buffer, nullptr);
+		vkFreeMemory(pContext->device, stagingBuffer.memory, nullptr);
+	}
 }
 
 static void BeginRenderPass() {
@@ -1411,55 +1511,63 @@ void Rendering::Init() {
 		vkAllocateDescriptorSets(pContext->device, &computeDescriptorSetAllocInfo, &pContext->computeDescriptorSets[i]);
 	}
 
-	// Compute evaluate
-	VkPipelineLayoutCreateInfo evaluatePipelineLayoutInfo{};
-	evaluatePipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	evaluatePipelineLayoutInfo.setLayoutCount = 1;
-	evaluatePipelineLayoutInfo.pSetLayouts = &pContext->computeDescriptorSetLayout;
+	// Only create compute pipelines if compute shaders are supported
+	if (pContext->computeSupported) {
+		// Compute evaluate
+		VkPipelineLayoutCreateInfo evaluatePipelineLayoutInfo{};
+		evaluatePipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		evaluatePipelineLayoutInfo.setLayoutCount = 1;
+		evaluatePipelineLayoutInfo.pSetLayouts = &pContext->computeDescriptorSetLayout;
 
-	vkCreatePipelineLayout(pContext->device, &evaluatePipelineLayoutInfo, nullptr, &pContext->evaluatePipelineLayout);
+		vkCreatePipelineLayout(pContext->device, &evaluatePipelineLayoutInfo, nullptr, &pContext->evaluatePipelineLayout);
 
-	pContext->evaluateShaderModule = CreateShaderModule("shaders/scanline_evaluate.spv");
+		pContext->evaluateShaderModule = CreateShaderModule("shaders/scanline_evaluate.spv");
 
-	VkPipelineShaderStageCreateInfo evaluateShaderStageInfo{};
-	evaluateShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	evaluateShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	evaluateShaderStageInfo.module = pContext->evaluateShaderModule;
-	evaluateShaderStageInfo.pName = "main";
+		VkPipelineShaderStageCreateInfo evaluateShaderStageInfo{};
+		evaluateShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		evaluateShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+		evaluateShaderStageInfo.module = pContext->evaluateShaderModule;
+		evaluateShaderStageInfo.pName = "main";
 
-	VkComputePipelineCreateInfo evaluateCreateInfo{};
-	evaluateCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-	evaluateCreateInfo.flags = 0;
-	evaluateCreateInfo.stage = evaluateShaderStageInfo;
-	evaluateCreateInfo.layout = pContext->evaluatePipelineLayout;
+		VkComputePipelineCreateInfo evaluateCreateInfo{};
+		evaluateCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+		evaluateCreateInfo.flags = 0;
+		evaluateCreateInfo.stage = evaluateShaderStageInfo;
+		evaluateCreateInfo.layout = pContext->evaluatePipelineLayout;
 
-	vkCreateComputePipelines(pContext->device, VK_NULL_HANDLE, 1, &evaluateCreateInfo, nullptr, &pContext->evaluatePipeline);
+		vkCreateComputePipelines(pContext->device, VK_NULL_HANDLE, 1, &evaluateCreateInfo, nullptr, &pContext->evaluatePipeline);
 
-	// Compute rendering
-	VkPipelineLayoutCreateInfo softwarePipelineLayoutInfo{};
-	softwarePipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	softwarePipelineLayoutInfo.setLayoutCount = 1;
-	softwarePipelineLayoutInfo.pSetLayouts = &pContext->computeDescriptorSetLayout;
-	softwarePipelineLayoutInfo.pPushConstantRanges = nullptr;
-	softwarePipelineLayoutInfo.pushConstantRangeCount = 0;
+		// Compute rendering
+		VkPipelineLayoutCreateInfo softwarePipelineLayoutInfo{};
+		softwarePipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		softwarePipelineLayoutInfo.setLayoutCount = 1;
+		softwarePipelineLayoutInfo.pSetLayouts = &pContext->computeDescriptorSetLayout;
+		softwarePipelineLayoutInfo.pPushConstantRanges = nullptr;
+		softwarePipelineLayoutInfo.pushConstantRangeCount = 0;
 
-	vkCreatePipelineLayout(pContext->device, &softwarePipelineLayoutInfo, nullptr, &pContext->softwarePipelineLayout);
+		vkCreatePipelineLayout(pContext->device, &softwarePipelineLayoutInfo, nullptr, &pContext->softwarePipelineLayout);
 
-	pContext->softwareShaderModule = CreateShaderModule("shaders/software.spv");
+		pContext->softwareShaderModule = CreateShaderModule("shaders/software.spv");
 
-	VkPipelineShaderStageCreateInfo compShaderStageInfo{};
-	compShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	compShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	compShaderStageInfo.module = pContext->softwareShaderModule;
-	compShaderStageInfo.pName = "main";
+		VkPipelineShaderStageCreateInfo compShaderStageInfo{};
+		compShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		compShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+		compShaderStageInfo.module = pContext->softwareShaderModule;
+		compShaderStageInfo.pName = "main";
 
-	VkComputePipelineCreateInfo computeCreateInfo{};
-	computeCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-	computeCreateInfo.flags = 0;
-	computeCreateInfo.stage = compShaderStageInfo;
-	computeCreateInfo.layout = pContext->softwarePipelineLayout;
+		VkComputePipelineCreateInfo computeCreateInfo{};
+		computeCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+		computeCreateInfo.flags = 0;
+		computeCreateInfo.stage = compShaderStageInfo;
+		computeCreateInfo.layout = pContext->softwarePipelineLayout;
 
-	vkCreateComputePipelines(pContext->device, VK_NULL_HANDLE, 1, &computeCreateInfo, nullptr, &pContext->softwarePipeline);
+		vkCreateComputePipelines(pContext->device, VK_NULL_HANDLE, 1, &computeCreateInfo, nullptr, &pContext->softwarePipeline);
+	} else {
+		// Initialize software fallback if compute is not supported
+		#ifdef USE_SOFTWARE_FALLBACK
+		SoftwareRenderer::Init(VIEWPORT_WIDTH_PIXELS, VIEWPORT_HEIGHT_PIXELS);
+		#endif
+	}
 
 	for (int i = 0; i < COMMAND_BUFFER_COUNT; i++) {
 		VkDescriptorImageInfo outBufferInfo{};
@@ -1599,13 +1707,19 @@ void Rendering::Free() {
 	vkDestroySampler(pContext->device, pContext->defaultSampler, nullptr);
 	vkDestroyDescriptorSetLayout(pContext->device, pContext->computeDescriptorSetLayout, nullptr);
 
-	vkDestroyPipeline(pContext->device, pContext->softwarePipeline, nullptr);
-	vkDestroyPipelineLayout(pContext->device, pContext->softwarePipelineLayout, nullptr);
-	vkDestroyShaderModule(pContext->device, pContext->softwareShaderModule, nullptr);
+	if (pContext->computeSupported) {
+		vkDestroyPipeline(pContext->device, pContext->softwarePipeline, nullptr);
+		vkDestroyPipelineLayout(pContext->device, pContext->softwarePipelineLayout, nullptr);
+		vkDestroyShaderModule(pContext->device, pContext->softwareShaderModule, nullptr);
 
-	vkDestroyPipeline(pContext->device, pContext->evaluatePipeline, nullptr);
-	vkDestroyPipelineLayout(pContext->device, pContext->evaluatePipelineLayout, nullptr);
-	vkDestroyShaderModule(pContext->device, pContext->evaluateShaderModule, nullptr);
+		vkDestroyPipeline(pContext->device, pContext->evaluatePipeline, nullptr);
+		vkDestroyPipelineLayout(pContext->device, pContext->evaluatePipelineLayout, nullptr);
+		vkDestroyShaderModule(pContext->device, pContext->evaluateShaderModule, nullptr);
+	} else {
+		#ifdef USE_SOFTWARE_FALLBACK
+		SoftwareRenderer::Free();
+		#endif
+	}
 	FreeImage(pContext->paletteImage);
 	vkDestroySampler(pContext->device, pContext->paletteSampler, nullptr);
 
@@ -2182,3 +2296,14 @@ void Rendering::RenderEditor() {
 	}
 }
 #endif
+
+// Fallback support functions
+bool Rendering::SupportsComputeShaders() {
+	return pContext->computeSupported;
+}
+
+void Rendering::EnableSoftwareFallback(bool enable) {
+	// This could be used to force software rendering even when compute is supported
+	// For now, just log the request
+	DEBUG_LOG("Software fallback %s requested\n", enable ? "enabled" : "disabled");
+}
