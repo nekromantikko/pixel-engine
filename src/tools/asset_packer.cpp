@@ -1,7 +1,7 @@
 #include <iostream>
 #include <filesystem>
-#include "asset_archive.h"
-#include "asset_serialization.h"
+#include "../asset_archive.h"
+#include "../asset_serialization.h"
 
 namespace fs = std::filesystem;
 
