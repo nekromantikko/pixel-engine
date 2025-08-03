@@ -174,6 +174,43 @@ void Game::UI::SetPlayerDisplayExp(s16 exp) {
     playerExpCounterState.targetValue = exp;
 }
 
+void Game::UI::DrawText(const char* text, glm::i16vec2 pos, u8 palette, u8 layer) {
+    if (!text) return;
+
+    u16 x = pos.x;
+    u16 y = pos.y;
+    
+    for (const char* c = text; *c != '\0'; c++) {
+        Sprite sprite{};
+        sprite.palette = palette;
+        sprite.x = x;
+        sprite.y = y;
+        
+        // Handle different character ranges
+        if (*c >= '0' && *c <= '9') {
+            // Numbers: use the same tile IDs as the exp counter
+            sprite.tileId = 0xc6 + (*c - '0');
+        } else if (*c >= 'A' && *c <= 'Z') {
+            // Uppercase letters (assuming they start at tile 0xd0)
+            sprite.tileId = 0xa0 + (*c - 'A');
+        } else if (*c >= 'a' && *c <= 'z') {
+            // Lowercase letters (assuming they start at tile 0xf0)  
+            sprite.tileId = 0xa0 + (*c - 'a');
+        } else if (*c == ' ') {
+            // Space - don't draw anything, just advance position
+            x += 8;
+            continue;
+        } else {
+            // Unknown character, skip
+            x += 8;
+            continue;
+        }
+        
+        Game::Rendering::DrawSprite(layer, sprite);
+        x += 8;
+    }
+}
+
 void Game::UI::Update() {
     UpdateBar(playerHealthBarState);
     UpdateBar(playerStaminaBarState);

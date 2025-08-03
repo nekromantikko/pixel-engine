@@ -5,9 +5,6 @@
 #include "asset_manager.h"
 #include "nes_timing.h"
 
-// TEMP
-constexpr DungeonHandle testDungeon(4648186456448694858);
-
 namespace Game {
     r64 secondsElapsed = 0.0f;
     u32 clockCounter = 0;
@@ -36,9 +33,10 @@ namespace Game {
         Rendering::Init();
 
 		InitGameData();
-        InitGameState(GAME_STATE_DUNGEON);
+        InitGameState(GAME_STATE_MAIN_MENU);
 
-        LoadRoom(testDungeon, { 14, 14 });
+        // Don't load the room immediately, let the menu handle it
+        // LoadRoom(testDungeon, { 14, 14 });
     }
 
     void Free() {}

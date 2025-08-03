@@ -18,6 +18,9 @@ constexpr ActorPrototypeHandle xpRemnantPrototypeHandle(11197223615879147344);
 
 constexpr OverworldHandle overworldHandle(17959228201269526891);
 
+// TEMP
+constexpr DungeonHandle testDungeon(4648186456448694858);
+
 // Map drawing
 static constexpr glm::ivec2 mapViewportOffset = { 7, 4 };
 static constexpr glm::ivec2 mapDialogViewportOffset = mapViewportOffset - 1;
@@ -51,6 +54,30 @@ static glm::ivec2 overworldAreaEnterDir;
 // 16ms Frames elapsed while not paused
 static u32 gameplayFramesElapsed = 0;
 static bool freezeGameplay = false;
+
+// Menu system
+enum MenuOption {
+    MAIN_MENU_PLAY,
+    MAIN_MENU_SETTINGS,
+    MAIN_MENU_EXIT,
+    MAIN_MENU_COUNT,
+    
+    SETTINGS_VOLUME,
+    SETTINGS_GRAPHICS,
+    SETTINGS_CONTROLS,
+    SETTINGS_BACK,
+    SETTINGS_COUNT
+};
+
+struct MenuState {
+    s32 selectedOption = 0;
+    s32 maxOptions = 0;
+    bool menuInputCooldown = false;
+    u8 inputCooldownCounter = 0;
+};
+
+static MenuState mainMenuState;
+static MenuState settingsMenuState;
 
 #pragma region Callbacks
 static void ReviveDeadActor(u64 id, PersistedActorData& persistedData) {
@@ -1133,8 +1160,152 @@ u32 Game::GetFramesElapsed() {
 }
 #pragma endregion
 
+#pragma endregion
+
+#pragma region Menu System
+static void UpdateMenuInput(MenuState& menuState) {
+    if (menuState.menuInputCooldown) {
+        menuState.inputCooldownCounter--;
+        if (menuState.inputCooldownCounter == 0) {
+            menuState.menuInputCooldown = false;
+        }
+        return;
+    }
+
+    bool inputPressed = false;
+    
+    if (Game::Input::ButtonPressed(BUTTON_DPAD_UP)) {
+        menuState.selectedOption--;
+        if (menuState.selectedOption < 0) {
+            menuState.selectedOption = menuState.maxOptions - 1;
+        }
+        inputPressed = true;
+    } else if (Game::Input::ButtonPressed(BUTTON_DPAD_DOWN)) {
+        menuState.selectedOption++;
+        if (menuState.selectedOption >= menuState.maxOptions) {
+            menuState.selectedOption = 0;
+        }
+        inputPressed = true;
+    }
+    
+    if (inputPressed) {
+        menuState.menuInputCooldown = true;
+        menuState.inputCooldownCounter = 10; // 10 frame cooldown
+    }
+}
+
+static void DrawMainMenu() {
+    Game::Rendering::ClearSpriteLayers();
+    
+    // Draw title
+    Game::UI::DrawText("PIXEL ENGINE", { 200, 100 }, 0x1, SPRITE_LAYER_UI);
+    
+    // Draw menu options
+    const char* menuOptions[MAIN_MENU_COUNT] = {
+        "PLAY",
+        "SETTINGS", 
+        "EXIT"
+    };
+    
+    for (s32 i = 0; i < MAIN_MENU_COUNT; i++) {
+        u8 palette = (i == mainMenuState.selectedOption) ? 0x2 : 0x1;
+        s32 yPos = 180 + (i * 30);
+        
+        // Draw cursor for selected option
+        if (i == mainMenuState.selectedOption) {
+            Game::UI::DrawText(">", { 180, yPos }, palette, SPRITE_LAYER_UI);
+        }
+        
+        Game::UI::DrawText(menuOptions[i], { 200, yPos }, palette, SPRITE_LAYER_UI);
+    }
+}
+
+static void DrawSettingsMenu() {
+    Game::Rendering::ClearSpriteLayers();
+    
+    // Draw title
+    Game::UI::DrawText("SETTINGS", { 200, 100 }, 0x1, SPRITE_LAYER_UI);
+    
+    // Draw settings options  
+    const char* settingsOptions[SETTINGS_COUNT] = {
+        "VOLUME",
+        "GRAPHICS",
+        "CONTROLS",
+        "BACK"
+    };
+    
+    for (s32 i = 0; i < SETTINGS_COUNT; i++) {
+        u8 palette = (i == settingsMenuState.selectedOption) ? 0x2 : 0x1;
+        s32 yPos = 160 + (i * 30);
+        
+        // Draw cursor for selected option
+        if (i == settingsMenuState.selectedOption) {
+            Game::UI::DrawText(">", { 180, yPos }, palette, SPRITE_LAYER_UI);
+        }
+        
+        Game::UI::DrawText(settingsOptions[i], { 200, yPos }, palette, SPRITE_LAYER_UI);
+    }
+}
+
+static void StepMainMenu() {
+    mainMenuState.maxOptions = MAIN_MENU_COUNT;
+    UpdateMenuInput(mainMenuState);
+    
+    if (Game::Input::ButtonPressed(BUTTON_A)) {
+        switch (mainMenuState.selectedOption) {
+        case MAIN_MENU_PLAY:
+            // Start the game
+            LoadRoom(testDungeon, { 14, 14 });
+            state = GAME_STATE_DUNGEON;
+            break;
+        case MAIN_MENU_SETTINGS:
+            // Go to settings menu
+            settingsMenuState.selectedOption = 0;
+            state = GAME_STATE_SETTINGS_MENU;
+            break;
+        case MAIN_MENU_EXIT:
+            state = GAME_STATE_EXIT;
+            break;
+        }
+    }
+    
+    DrawMainMenu();
+}
+
+static void StepSettingsMenu() {
+    settingsMenuState.maxOptions = SETTINGS_COUNT;
+    UpdateMenuInput(settingsMenuState);
+    
+    if (Game::Input::ButtonPressed(BUTTON_A) || Game::Input::ButtonPressed(BUTTON_B)) {
+        switch (settingsMenuState.selectedOption) {
+        case SETTINGS_VOLUME:
+            // TODO: Implement volume settings
+            break;
+        case SETTINGS_GRAPHICS:
+            // TODO: Implement graphics settings
+            break;
+        case SETTINGS_CONTROLS:
+            // TODO: Implement control settings
+            break;
+        case SETTINGS_BACK:
+            state = GAME_STATE_MAIN_MENU;
+            break;
+        }
+        
+        if (Game::Input::ButtonPressed(BUTTON_B)) {
+            state = GAME_STATE_MAIN_MENU;
+        }
+    }
+    
+    DrawSettingsMenu();
+}
+
 void Game::InitGameState(GameState initialState) {
     state = initialState;
+    
+    // Initialize menu states
+    mainMenuState = MenuState{};
+    settingsMenuState = MenuState{};
 }
 
 void Game::StepFrame() {
@@ -1143,6 +1314,14 @@ void Game::StepFrame() {
 
 	switch (state) {
 	case GAME_STATE_TITLE:
+		// Could be a splash screen or intro animation, for now go to main menu
+		state = GAME_STATE_MAIN_MENU;
+		break;
+	case GAME_STATE_MAIN_MENU:
+		StepMainMenu();
+		break;
+	case GAME_STATE_SETTINGS_MENU:
+		StepSettingsMenu();
 		break;
     case GAME_STATE_OVERWORLD:
         StepOverworldGameplayFrame();
