@@ -1,33 +1,9 @@
 #pragma once
 #include "typedef.h"
 #include "asset_types.h"
+#include "asset_archive.h"
 #include "debug.h"
 #include <filesystem>
-#include <unordered_map>
-
-constexpr u32 MAX_ASSET_NAME_LENGTH = 56;
-constexpr u32 MAX_ASSET_PATH_LENGTH = 256;
-
-struct AssetFlags {
-	AssetType type : 4;
-	bool deleted : 1;
-	bool compressed : 1; // NOTE: For the future maybe?
-};
-
-struct AssetEntry {
-	u64 id;
-	char name[MAX_ASSET_NAME_LENGTH];
-	char relativePath[MAX_ASSET_PATH_LENGTH];
-	u32 offset;
-	u32 size;
-	AssetFlags flags;
-};
-
-#ifdef NDEBUG
-typedef std::unordered_map<u64, AssetEntry> AssetIndex;
-#else
-typedef std::unordered_map < u64, AssetEntry, std::hash<u64>, std::equal_to<u64>, DebugAllocator<std::pair<const u64, AssetEntry>>> AssetIndex;
-#endif
 
 namespace AssetManager {
 	bool LoadAssets();
@@ -63,5 +39,5 @@ namespace AssetManager {
 	const char* GetAssetName(u64 id);
 
 	u32 GetAssetCount();
-	AssetIndex& GetIndex();
+	const AssetIndex& GetIndex();
 }

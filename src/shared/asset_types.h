@@ -17,6 +17,19 @@ enum AssetType : u8 {
 	ASSET_TYPE_COUNT,
 };
 
+static const char* ASSET_TYPE_FILE_EXTENSIONS[ASSET_TYPE_COUNT] = {
+	".bmp", // CHR_BANK
+	".nsf", // SOUND
+	".tset", // TILESET
+	".sprite", // METASPRITE
+	".actor", // ACTOR_PROTOTYPE
+	".room", // ROOM_TEMPLATE
+	".dung", // DUNGEON
+	".ow", // OVERWORLD
+	".anim", // ANIMATION
+	".dat", // PALETTE
+};
+
 template <AssetType T>
 struct AssetDataType {
 	using Type = void;

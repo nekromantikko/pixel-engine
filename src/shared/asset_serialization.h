@@ -3,38 +3,35 @@
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <string>
-#include "debug.h"
 #include "typedef.h"
 #include "asset_types.h"
 
-static const char* ASSET_TYPE_FILE_EXTENSIONS[ASSET_TYPE_COUNT] = {
-	".bmp", // CHR_BANK
-	".nsf", // SOUND
-	".tset", // TILESET
-	".sprite", // METASPRITE
-	".actor", // ACTOR_PROTOTYPE
-	".room", // ROOM_TEMPLATE
-	".dung", // DUNGEON
-	".ow", // OVERWORLD
-	".anim", // ANIMATION
-	".dat", // PALETTE
+enum SerializationResult {
+	SERIALIZATION_SUCCESS = 0,
+	SERIALIZATION_FILE_NOT_FOUND,
+	SERIALIZATION_FAILED_TO_OPEN_FILE,
+	SERIALIZATION_INVALID_ASSET_TYPE,
+	SERIALIZATION_NULL_POINTER,
+	SERIALIZATION_INVALID_METADATA,
+	SERIALIZATION_INVALID_ASSET_DATA,
+	SERIALIZATION_NOT_IMPLEMENTED,
+	SERIALIZATION_UNKNOWN_ERROR,
+
+	SERIALIZATION_RESULT_COUNT
 };
 
-namespace AssetManager::Serialization {
-	bool TryGetAssetTypeFromPath(const std::filesystem::path& path, AssetType& outType);
+namespace AssetSerialization {
+	SerializationResult TryGetAssetTypeFromPath(const std::filesystem::path& path, AssetType& outType);
 	bool HasMetadata(const std::filesystem::path& path);
 	std::filesystem::path GetAssetMetadataPath(const std::filesystem::path& path);
 	std::filesystem::path GetAssetFullPath(const std::filesystem::path& relativePath);
 
-	bool LoadAssetMetadataFromFile(const std::filesystem::path& origPath, nlohmann::json& outJson);
-	bool SaveAssetMetadataToFile(const std::filesystem::path& origPath, const nlohmann::json& json);
+	SerializationResult LoadAssetMetadataFromFile(const std::filesystem::path& origPath, nlohmann::json& outJson);
+	SerializationResult SaveAssetMetadataToFile(const std::filesystem::path& origPath, const nlohmann::json& json);
 	void InitializeMetadataJson(nlohmann::json& json, u64 id);
-	bool CreateAssetMetadataFile(const std::filesystem::path& path, nlohmann::json& outMetadata);
-	bool TryGetAssetMetadata(const std::filesystem::path& path, nlohmann::json& outMetadata);
+	SerializationResult CreateAssetMetadataFile(const std::filesystem::path& path, u64 guid, nlohmann::json& outMetadata);
 
-	bool LoadAssetFromFile(const std::filesystem::path& path, AssetType type, const nlohmann::json& metadata, u32& size, void* pOutData);
-	bool LoadAssetFromFile(AssetType type, const std::filesystem::path& relativePath, u32& size, void* pOutData);
-	bool SaveAssetToFile(const std::filesystem::path& path, const char* name, AssetType type, nlohmann::json& metadata, const void* pData);
-	bool SaveAssetToFile(AssetType type, const std::filesystem::path& relativePath, const char* name, const void* pData);
+	SerializationResult LoadAssetFromFile(const std::filesystem::path& path, AssetType type, const nlohmann::json& metadata, u32& size, void* pOutData);
+	SerializationResult SaveAssetToFile(const std::filesystem::path& path, const char* name, AssetType type, nlohmann::json& metadata, const void* pData);
 }
 #endif

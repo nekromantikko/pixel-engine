@@ -983,12 +983,48 @@ static bool ResizeEditedAsset(EditedAsset& asset, u32 newSize) {
 	return true;
 }
 
+static bool SaveAssetToFile(AssetType type, const std::filesystem::path& relativePath, const char* name, const void* pData, u64 id = UUID_NULL) {
+	std::filesystem::path fullPath = AssetSerialization::GetAssetFullPath(relativePath);
+
+	nlohmann::json metadata;
+	if (!AssetSerialization::HasMetadata(fullPath)) {
+		DEBUG_LOG("Creating metadata file for asset: %s", fullPath);
+		if (id == UUID_NULL) {
+			id = Random::GenerateUUID();
+		}
+
+		if (AssetSerialization::CreateAssetMetadataFile(fullPath, id, metadata) != SERIALIZATION_SUCCESS) {
+			DEBUG_ERROR("Failed to create metadata file for asset: %s", fullPath);
+			return false;
+		}
+	}
+	else {
+		DEBUG_LOG("Updating metadata file for asset: %s", fullPath);
+		if (AssetSerialization::LoadAssetMetadataFromFile(fullPath, metadata) != SERIALIZATION_SUCCESS) {
+			DEBUG_ERROR("Failed to load metadata file for asset: %s", fullPath);
+			return false;
+		}
+	}
+
+	if (AssetSerialization::SaveAssetToFile(fullPath, name, type, metadata, pData) != SERIALIZATION_SUCCESS) {
+		DEBUG_ERROR("Failed to save asset to file: %s", fullPath);
+		return false;
+	}
+
+	if (AssetSerialization::SaveAssetMetadataToFile(fullPath, metadata) != SERIALIZATION_SUCCESS) {
+		DEBUG_ERROR("Failed to save asset metadata to file: %s", fullPath);
+		return false;
+	}
+
+	return true;
+}
+
 static bool SaveEditedAsset(EditedAsset& asset, ApplyAssetEditorDataFn applyFn) {
 	if (applyFn) {
 		applyFn(asset);
 	}
 	
-	if (!AssetManager::Serialization::SaveAssetToFile(asset.type, asset.relativePath, asset.name, asset.data)) {
+	if (!SaveAssetToFile(asset.type, asset.relativePath, asset.name, asset.data, asset.id)) {
 		return false;
 	}
 
@@ -1063,7 +1099,7 @@ static bool DuplicateAsset(u64 id, const std::filesystem::path& path) {
 	void* newData = AssetManager::GetAsset(newId, pAssetInfo->flags.type);
 	memcpy(newData, assetData, pAssetInfo->size);
 
-	if (!AssetManager::Serialization::SaveAssetToFile(pAssetInfo->flags.type, relativePath, newName, assetData)) {
+	if (!SaveAssetToFile(pAssetInfo->flags.type, relativePath, newName, assetData, newId)) {
 		AssetManager::RemoveAsset(newId);
 		return false;
 	}
@@ -1078,7 +1114,7 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 	std::vector<const char*> assetNames;
 	s32 selectedIndex = -1;
 
-	AssetIndex& assetIndex = AssetManager::GetIndex();
+	const AssetIndex& assetIndex = AssetManager::GetIndex();
 	for (auto& kvp : assetIndex) {
 		const auto& [id, asset] = kvp;
 
@@ -1158,9 +1194,9 @@ static u64 DrawAssetList(AssetType type) {
 	u64 result = UUID_NULL;
 	ImGui::BeginChild("Asset list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 
-	AssetIndex& assetIndex = AssetManager::GetIndex();
+	const AssetIndex& assetIndex = AssetManager::GetIndex();
 	for (auto& kvp : assetIndex) {
-		AssetEntry& asset = kvp.second;
+		const AssetEntry& asset = kvp.second;
 
 		if (asset.flags.type != type || asset.flags.deleted) {
 			continue;
@@ -1194,9 +1230,9 @@ static u64 DrawAssetListWithFunctionality(AssetType type, ImGui::FileBrowser& fi
 	u64 result = UUID_NULL;
 	ImGui::BeginChild("Asset list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 
-	AssetIndex& assetIndex = AssetManager::GetIndex();
+	const AssetIndex& assetIndex = AssetManager::GetIndex();
 	for (auto& kvp : assetIndex) {
-		AssetEntry& asset = kvp.second;
+		const AssetEntry& asset = kvp.second;
 
 		if (asset.flags.type != type || asset.flags.deleted) {
 			continue;
@@ -1215,7 +1251,7 @@ static u64 DrawAssetListWithFunctionality(AssetType type, ImGui::FileBrowser& fi
 		}
 		if (ImGui::BeginPopup("AssetPopup")) {
 			if (ImGui::MenuItem("Delete")) {
-				asset.flags.deleted = true;
+				AssetManager::RemoveAsset(asset.id);
 				if (pContext->assetRenderBuffers.contains(asset.id)) {
 					pContext->bufferEraseList.push_back(asset.id);
 				}
@@ -1266,7 +1302,7 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 			void* data = AssetManager::GetAsset(id, type);
 			Editor::Assets::InitializeAsset(type, data);
 
-			if (!AssetManager::Serialization::SaveAssetToFile(type, relativePath, newName, data)) {
+			if (!SaveAssetToFile(type, relativePath, newName, data, id)) {
 				// Failed to save asset, remove it
 				AssetManager::RemoveAsset(id);
 			}
