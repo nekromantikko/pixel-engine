@@ -1,8 +1,11 @@
 #include "asset_manager.h"
-#include "asset_serialization.h"
 #include "random.h"
 #include <cstdio>
 #include <cstring>
+
+#ifdef EDITOR
+#include "asset_serialization.h"
+#endif
 
 static AssetArchive g_archive;
 

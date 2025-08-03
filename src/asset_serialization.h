@@ -1,5 +1,4 @@
 #pragma once
-#ifdef EDITOR
 #include <nlohmann/json.hpp>
 #include <filesystem>
 #include <string>
@@ -34,4 +33,3 @@ namespace AssetSerialization {
 	SerializationResult LoadAssetFromFile(const std::filesystem::path& path, AssetType type, const nlohmann::json& metadata, u32& size, void* pOutData);
 	SerializationResult SaveAssetToFile(const std::filesystem::path& path, const char* name, AssetType type, nlohmann::json& metadata, const void* pData);
 }
-#endif

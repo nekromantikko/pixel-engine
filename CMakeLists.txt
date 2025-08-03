@@ -22,14 +22,6 @@ FetchContent_MakeAvailable(nlohmann_json)
 find_package(Vulkan REQUIRED)
 find_package(SDL2 REQUIRED)
 
-set(SHARED_INCLUDE_DIR src/shared)
-set(SHARED_SOURCES 
-	src/shared/debug.cpp
-	src/shared/random.cpp
-	src/shared/asset_serialization.cpp
-	src/shared/asset_manager.cpp
-	src/shared/asset_archive.cpp)
-
 set(SOURCES 
 		src/main.cpp
 		src/collision.cpp
@@ -53,7 +45,11 @@ set(SOURCES
 		src/effect.cpp
 		src/interactable.cpp
 		src/spawner.cpp
-		src/shader.cpp)
+		src/shader.cpp
+		src/random.cpp
+		src/debug.cpp
+		src/asset_archive.cpp
+		src/asset_manager.cpp)
 
 option(ENABLE_EDITOR "Enable editor functionality" ON)
 option(USE_AVX "Use AVX implementation where applicable" ON)
@@ -62,10 +58,13 @@ set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set(ASSETS_NPAK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
 
 # Asset Packer Tool
-set (ASSET_PACKER_SOURCES src/tools/asset_packer.cpp)
+set (ASSET_PACKER_SOURCES 
+	src/tools/asset_packer.cpp 
+	src/asset_archive.cpp 
+	src/asset_serialization.cpp)
 
-add_executable(asset_packer ${SHARED_SOURCES} ${ASSET_PACKER_SOURCES})
-target_include_directories(asset_packer PRIVATE ${SHARED_INCLUDE_DIR} ${glm_SOURCE_DIR})
+add_executable(asset_packer ${ASSET_PACKER_SOURCES})
+target_include_directories(asset_packer PRIVATE ${glm_SOURCE_DIR})
 target_compile_features(asset_packer PUBLIC cxx_std_20)
 target_compile_definitions(asset_packer PRIVATE EDITOR ASSETS_SRC_DIR="${ASSETS_SRC_DIR}")
 target_link_libraries(asset_packer PRIVATE nlohmann_json)
@@ -77,7 +76,10 @@ endif()
 
 IF(ENABLE_EDITOR)
 	set(EDITOR_INCLUDE_DIRS src/ext/imgui-filebrowser)
-	set(EDITOR_SOURCES src/editor.cpp src/editor_assets.cpp)
+	set(EDITOR_SOURCES 
+		src/editor.cpp 
+		src/editor_assets.cpp
+		src/asset_serialization.cpp)
 
 	FetchContent_Declare(
         	imgui
