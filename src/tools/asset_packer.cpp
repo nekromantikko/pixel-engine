@@ -1,8 +1,67 @@
 #include <iostream>
 #include <filesystem>
-#include "asset_manager.h"
+#include "asset_archive.h"
+#include "asset_serialization.h"
 
 namespace fs = std::filesystem;
+
+bool PackAssetsFromDirectory(AssetArchive& archive, const fs::path& directory) {
+	if (!std::filesystem::exists(directory)) {
+		std::cerr << "Directory (" << directory.string() << ") does not exist" << std::endl;
+		return false;
+	}
+
+	if (!std::filesystem::is_directory(directory)) {
+		std::cerr << "Path (" << directory.string() << ") is not a directory" << std::endl;
+		return false;
+	}
+
+	std::cout << "Packing assets from directory: " << directory.string() << std::endl;
+
+	for (const auto& entry : std::filesystem::recursive_directory_iterator(directory)) {
+		AssetType assetType;
+		if (entry.is_regular_file() && AssetManager::Serialization::TryGetAssetTypeFromPath(entry.path(), assetType)) {
+			const std::string pathStr = entry.path().string();
+			const char* pathCStr = pathStr.c_str();
+			std::cout << "Found " << ASSET_TYPE_NAMES[assetType] << ": " << pathCStr << std::endl;
+
+			nlohmann::json metadata;
+			if (!AssetManager::Serialization::TryGetAssetMetadata(entry.path(), metadata)) {
+				std::cerr << "Failed to load metadata for asset " << pathCStr << std::endl;
+				continue;
+			}
+
+			const u64 guid = metadata["guid"];
+
+			u32 size;
+			if (!AssetManager::Serialization::LoadAssetFromFile(entry.path(), assetType, metadata, size, nullptr)) {
+				std::cerr << "Failed to get size for asset " << pathCStr << std::endl;
+				continue;
+			}
+			const std::string filenameWithoutExt = entry.path().filename().replace_extension("").string();
+			std::string name = filenameWithoutExt;
+			if (metadata.contains("name") && !metadata["name"].is_null())
+			{
+				name = metadata["name"].get<std::string>();
+			}
+
+			const std::filesystem::path relativePath = std::filesystem::relative(entry.path(), directory);
+			void* pData = archive.AddAsset(guid, assetType, size, relativePath.string().c_str(), name.c_str(), nullptr);
+			if (!pData) {
+				std::cerr << "Failed to add asset " << pathCStr << " to archive" << std::endl;
+				continue;
+			}
+			if (!AssetManager::Serialization::LoadAssetFromFile(entry.path(), assetType, metadata, size, pData)) {
+				std::cerr << "Failed to load asset data from " << pathCStr << std::endl;
+				archive.RemoveAsset(guid);
+				continue;
+			}
+			std::cout << "Asset " << pathCStr << " packed successfully with GUID: " << guid << std::endl;
+		}
+	}
+
+	return true;
+}
 
 int main(int argc, char* argv[]) {
 	if (argc != 3) {
@@ -15,8 +74,13 @@ int main(int argc, char* argv[]) {
 
 	std::cout << "Asset Packer - Generating " << outputFile << " from " << assetsDir << std::endl;
 
-	AssetManager::LoadAssetsFromDirectory(assetsDir);
-	if (!AssetManager::SaveArchive(outputFile)) {
+	AssetArchive archive;
+	if (!PackAssetsFromDirectory(archive, assetsDir)) {
+		std::cerr << "Failed to pack assets from " << assetsDir << std::endl;
+		return 1;
+	}
+	
+	if (!archive.SaveToFile(outputFile)) {
 		std::cerr << "Failed to save assets to " << outputFile << std::endl;
 		return 1;
 	}
