@@ -21,6 +21,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 find_package(Vulkan REQUIRED)
 find_package(SDL2 REQUIRED)
+find_package(OpenGL REQUIRED)
 
 set(SOURCES 
 		src/main.cpp
@@ -28,7 +29,6 @@ set(SOURCES
 		src/game.cpp
 		src/input.cpp
 		src/rendering_util.cpp
-		src/rendering_vulkan.cpp
 		src/game_rendering.cpp
 		src/tilemap.cpp
 		src/actors.cpp
@@ -51,8 +51,16 @@ set(SOURCES
 		src/asset_archive.cpp
 		src/asset_manager.cpp)
 
+# Add backend-specific rendering implementation
+IF(USE_OPENGL)
+	set(SOURCES ${SOURCES} src/rendering_opengl.cpp)
+ELSE()
+	set(SOURCES ${SOURCES} src/rendering_vulkan.cpp)
+ENDIF()
+
 option(ENABLE_EDITOR "Enable editor functionality" ON)
 option(USE_AVX "Use AVX implementation where applicable" ON)
+option(USE_OPENGL "Use OpenGL backend instead of Vulkan" OFF)
 
 set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set(ASSETS_NPAK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
@@ -100,8 +108,14 @@ IF(ENABLE_EDITOR)
 		${imgui_SOURCE_DIR}/imstb_truetype.h
 		${imgui_SOURCE_DIR}/imgui_tables.cpp
 		${imgui_SOURCE_DIR}/imgui_widgets.cpp
-		${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
-		${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp)
+		${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp)
+		
+	# Add backend-specific ImGui implementation
+	IF(USE_OPENGL)
+		list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp)
+	ELSE()
+		list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp)
+	ENDIF()
 		
 	# Add platform-specific backends
 	IF(WIN32)
@@ -110,8 +124,16 @@ IF(ENABLE_EDITOR)
 ENDIF()
 
 add_executable(${PROJECT_NAME} WIN32 ${SHARED_SOURCES} ${SOURCES})
-target_include_directories(${PROJECT_NAME} PRIVATE ${SHARED_INCLUDE_DIR} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
-target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2 SDL2::SDL2main)
+
+IF(USE_OPENGL)
+	target_include_directories(${PROJECT_NAME} PRIVATE ${SHARED_INCLUDE_DIR} ${OPENGL_INCLUDE_DIRS} ${glm_SOURCE_DIR})
+	target_link_libraries(${PROJECT_NAME} PRIVATE ${OPENGL_LIBRARIES} SDL2::SDL2 SDL2::SDL2main)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE USE_OPENGL)
+ELSE()
+	target_include_directories(${PROJECT_NAME} PRIVATE ${SHARED_INCLUDE_DIR} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
+	target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2 SDL2::SDL2main)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE USE_VULKAN)
+ENDIF()
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_NPAK_OUTPUT="${ASSETS_NPAK_OUTPUT}")
 
