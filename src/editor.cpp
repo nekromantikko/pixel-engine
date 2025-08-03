@@ -4337,6 +4337,7 @@ static void DrawMainMenu() {
 #pragma region Public API
 void Editor::CreateContext() {
 	pContext = new EditorContext{};
+	Debug::HookEditorDebugLog(ConsoleLog);
 	assert(pContext != nullptr);
 }
 
