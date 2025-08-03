@@ -33,6 +33,8 @@ namespace SoftwareRenderer
 		imageWidth = width;
 		imageHeight = height;
 		
+		DEBUG_LOG("Initializing software renderer fallback (%ux%u)\n", width, height);
+		
 		// Allocate RGB image buffer
 		imageData = (u8*)calloc(width * height * 3, sizeof(u8));
 		if (!imageData) {
@@ -61,9 +63,11 @@ namespace SoftwareRenderer
 		}
 
 		initialized = true;
+		DEBUG_LOG("Software renderer fallback initialized successfully\n");
 	}
 
 	void Free() {
+		DEBUG_LOG("Freeing software renderer fallback\n");
 		if (imageData) {
 			free(imageData);
 			imageData = nullptr;

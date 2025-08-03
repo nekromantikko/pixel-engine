@@ -1035,6 +1035,7 @@ static void TransferComputeBufferData() {
 static void RunSoftwareRenderer() {
 	if (pContext->computeSupported) {
 		// Use compute shaders
+		DEBUG_LOG("Using compute shader rendering path\n");
 		VkCommandBuffer commandBuffer = pContext->primaryCommandBuffers[pContext->currentCbIndex];
 
 		// Transfer images to compute writeable layout
@@ -1104,7 +1105,10 @@ static void RunSoftwareRenderer() {
 	} else {
 		// Use software fallback
 		#ifdef USE_SOFTWARE_FALLBACK
+		DEBUG_LOG("Using software renderer fallback\n");
 		RunSoftwareRendererFallback();
+		#else
+		DEBUG_ERROR("Compute shaders not supported and software fallback is disabled!\n");
 		#endif
 	}
 }
@@ -1565,7 +1569,10 @@ void Rendering::Init() {
 	} else {
 		// Initialize software fallback if compute is not supported
 		#ifdef USE_SOFTWARE_FALLBACK
+		DEBUG_LOG("Compute shaders not supported, initializing software renderer fallback\n");
 		SoftwareRenderer::Init(VIEWPORT_WIDTH_PIXELS, VIEWPORT_HEIGHT_PIXELS);
+		#else
+		DEBUG_ERROR("Compute shaders not supported and software fallback is disabled!\n");
 		#endif
 	}
 
