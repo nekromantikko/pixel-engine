@@ -1903,7 +1903,7 @@ static void DrawMetaspritePreview(MetaspriteEditorData* pEditorData, ImVector<s3
 	}
 }
 
-static void DrawSpriteEditor(Metasprite* pMetasprite, ImVector<s32>& spriteSelection, bool& dirty) {
+static void DrawSpriteEditor(MetaspriteEditorData* pEditorData, ImVector<s32>& spriteSelection, bool& dirty) {
 	ImGui::SeparatorText("Sprite editor");
 	
 	if (spriteSelection.empty()) {
@@ -1914,7 +1914,7 @@ static void DrawSpriteEditor(Metasprite* pMetasprite, ImVector<s32>& spriteSelec
 	}
 	else {
 		s32& spriteIndex = spriteSelection[0];
-		Sprite& sprite = pMetasprite->GetSprites()[spriteIndex];
+		Sprite& sprite = pEditorData->sprites[spriteIndex];
 		s32 index = (s32)sprite.tileId;
 
 		bool flipX = sprite.flipHorizontal;
@@ -2027,7 +2027,7 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 	ImGui::SameLine();
 
 	ImGui::BeginChild("Sprite editor");
-	DrawSpriteEditor(pMetasprite, spriteSelection, asset.dirty);
+	DrawSpriteEditor(pEditorData, spriteSelection, asset.dirty);
 	ImGui::EndChild();
 	ImGui::EndChild();
 	ImGui::EndChild();
