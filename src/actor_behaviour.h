@@ -1,12 +1,7 @@
 #pragma once
 #include "typedef.h"
 #include "player.h"
-#include "enemy.h"
-#include "bullet.h"
-#include "pickup.h"
-#include "effect.h"
-#include "interactable.h"
-#include "spawner.h"
+#include "actor_tables.h"
 
 namespace Game {
 	constexpr ActorInitFn const* actorInitTable[ACTOR_TYPE_COUNT] = {

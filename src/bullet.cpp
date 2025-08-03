@@ -1,4 +1,4 @@
-#include "bullet.h"
+#include "actor_tables.h"
 #include "actors.h"
 #include "actor_prototype_types.h"
 #include "game_rendering.h"

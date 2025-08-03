@@ -1,4 +1,4 @@
-#include "interactable.h"
+#include "actor_tables.h"
 #include "actors.h"
 #include "game_state.h"
 #include "game_rendering.h"

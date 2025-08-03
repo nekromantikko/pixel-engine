@@ -1,5 +1,6 @@
 #include "editor_assets.h"
 #include "debug.h"
+#include <cstring>
 #include "room_types.h"
 #include "actor_prototype_types.h"
 #include "anim_types.h"

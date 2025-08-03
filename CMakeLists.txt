@@ -51,8 +51,7 @@ set(SOURCES
 		src/pickup.cpp
 		src/effect.cpp
 		src/interactable.cpp
-		src/spawner.cpp
-		src/shader.cpp)
+		src/spawner.cpp)
 
 option(ENABLE_EDITOR "Enable editor functionality" ON)
 option(USE_AVX "Use AVX implementation where applicable" ON)
