@@ -30,6 +30,10 @@ typedef std::unordered_map < u64, AssetEntry, std::hash<u64>, std::equal_to<u64>
 #endif
 
 namespace AssetManager {
+	bool LoadAssets();
+
+	bool LoadAssetsFromDirectory(const std::filesystem::path& directory);
+
 	bool LoadArchive(const std::filesystem::path& path);
 	bool SaveArchive(const std::filesystem::path& path);
 	bool RepackArchive();
@@ -60,5 +64,4 @@ namespace AssetManager {
 
 	u32 GetAssetCount();
 	AssetIndex& GetIndex();
-
 }

@@ -1,12 +1,11 @@
 #include "editor_assets.h"
-#include "editor_serialization.h"
 #include "debug.h"
-#include "room.h"
-#include "actor_prototypes.h"
-#include "animation.h"
-#include "audio.h"
-#include "dungeon.h"
-#include "overworld.h"
+#include "room_types.h"
+#include "actor_prototype_types.h"
+#include "anim_types.h"
+#include "audio_types.h"
+#include "dungeon_types.h"
+#include "overworld_types.h"
 
 #pragma region Size calculation
 static u32 GetRoomTemplateSize(const RoomTemplate* pHeader) {
@@ -167,30 +166,6 @@ static void InitOverworld(void* data) {
 	}
 }
 #pragma endregion
-
-bool Editor::Assets::TryGetAssetTypeFromPath(const std::filesystem::path& path, AssetType& outType) {
-	auto ext = path.extension().string();
-	if (fileExtensionToAssetType.find(ext) != fileExtensionToAssetType.end()) {
-		outType = fileExtensionToAssetType.at(ext);
-		return true;
-	}
-	return false; // Invalid type
-}
-
-bool Editor::Assets::HasMetadata(const std::filesystem::path& path) {
-	// Check if the file has a metadata file (e.g., .meta)
-	return std::filesystem::exists(Editor::Assets::GetAssetMetadataPath(path));
-}
-
-std::filesystem::path Editor::Assets::GetAssetMetadataPath(const std::filesystem::path& path) {
-	// Append ".meta" to the original path to get the metadata file path
-	return path.string() + ".meta";
-}
-
-std::filesystem::path Editor::Assets::GetAssetFullPath(const std::filesystem::path& relativePath) {
-	const std::filesystem::path sourceDirPath = ASSETS_SRC_DIR;
-	return sourceDirPath / relativePath;
-}
 
 void Editor::Assets::InitializeAsset(AssetType type, void* pData) {
 	switch (type) {

@@ -32,10 +32,7 @@ namespace Game {
 
 #pragma region Public API
     void Initialize() {
-#ifndef EDITOR
-        AssetManager::LoadArchive("assets.npak");
-#endif
-
+        AssetManager::LoadAssets();
         Rendering::Init();
 
 		InitGameData();

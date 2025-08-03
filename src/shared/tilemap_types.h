@@ -1,11 +1,7 @@
 #pragma once
-#define GLM_FORCE_RADIANS
-#include <glm.hpp>
-#include <cassert>
-#include "typedef.h"
-#include "rendering.h"
+#include "rendering_types.h"
 #include "asset_types.h"
-#include <vector>
+#include <cassert>
 
 constexpr u32 TILESET_DIM = 16;
 constexpr u32 TILESET_DIM_LOG2 = 4;
@@ -43,10 +39,4 @@ struct Tilemap {
 	inline u8* GetTileData() const {
 		return (u8*)this + tilesOffset;
 	}
-
-	bool PointInBounds(const glm::vec2& pos) const;
-	s32 GetTileIndex(const glm::ivec2& pos) const;
-	s32 GetTilesetTileIndex(const glm::ivec2& pos) const;
-	bool SetTilesetTile(s32 tileIndex, const s32& tilesetTileIndex) const;
-	bool SetTilesetTile(const glm::ivec2& pos, const s32& tilesetTileIndex) const;
 };

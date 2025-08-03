@@ -1,6 +1,6 @@
 #pragma once
 #include "typedef.h"
-#include "tiles.h"
+#include "tilemap_types.h"
 #include "asset_types.h"
 
 constexpr u32 OVERWORLD_WIDTH_METATILES = 128;

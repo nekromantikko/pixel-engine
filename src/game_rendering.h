@@ -1,6 +1,6 @@
 #pragma once
 #include "typedef.h"
-#include "rendering.h"
+#include "rendering_types.h"
 #include "asset_types.h"
 #define GLM_FORCE_RADIANS
 #include <glm.hpp>

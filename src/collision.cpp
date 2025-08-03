@@ -1,7 +1,7 @@
 #include "collision.h"
 #include "rendering.h"
-#include "tiles.h"
 #include "asset_manager.h"
+#include "tilemap.h"
 #include <stdio.h>
 #include <gtc/epsilon.hpp>
 
@@ -46,7 +46,7 @@ namespace Collision {
 		while (!outHit.blockingHit && dist < glm::abs(dx)) {
 			for (s32 i = 0; i <= yTileDelta; i++) {
 				const glm::ivec2 metatileCoord = glm::ivec2{ xTile, yTopTile + i };
-				const s32 tileIndex = pTilemap->GetTilesetTileIndex(metatileCoord);
+				const s32 tileIndex = Tiles::GetTilesetTileIndex(pTilemap, metatileCoord);
 				
 				if (tileIndex < 0) {
 					continue;
@@ -110,7 +110,7 @@ namespace Collision {
 			for (s32 i = 0; i <= xTileDelta; i++) {
 				const glm::ivec2 metatileCoord = glm::ivec2{ xLeftTile + i, yTile };
 
-				const s32 tileIndex = pTilemap->GetTilesetTileIndex(metatileCoord);
+				const s32 tileIndex = Tiles::GetTilesetTileIndex(pTilemap, metatileCoord);
 				if (tileIndex < 0) {
 					continue;
 				}

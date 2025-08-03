@@ -5,13 +5,15 @@
 #include "game_ui.h"
 #include "coroutines.h"
 #include "dialog.h"
-#include "room.h"
+#include "room_types.h"
 #include "collision.h"
-#include "actor_prototypes.h"
-#include "dungeon.h"
-#include "overworld.h"
+#include "actor_prototype_types.h"
+#include "dungeon_types.h"
+#include "overworld_types.h"
 #include "asset_manager.h"
 #include "debug.h"
+#include "actors.h"
+#include "rendering.h"
 
 // TODO: Define in editor in game settings 
 constexpr ActorPrototypeHandle playerPrototypeHandle(18154189127814674930);

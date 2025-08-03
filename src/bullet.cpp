@@ -1,6 +1,6 @@
 #include "bullet.h"
 #include "actors.h"
-#include "actor_prototypes.h"
+#include "actor_prototype_types.h"
 #include "game_rendering.h"
 #include "game_state.h"
 #include "random.h"
