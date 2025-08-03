@@ -106,6 +106,7 @@ namespace Game {
 
     void InitGameState(GameState initialState);
     void StepFrame();
+    GameState GetCurrentGameState();
 
     void TriggerScreenShake(s16 magnitude, u16 duration, bool freezeGameplay);
     void TriggerLevelTransition(DungeonHandle targetDungeon, glm::i8vec2 targetGridCell, u8 enterDirection, void (*callback)() = nullptr);

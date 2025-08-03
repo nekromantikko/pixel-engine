@@ -54,5 +54,9 @@ namespace Game {
             }
         }
     }
+
+    bool ShouldExit() {
+        return GetCurrentGameState() == GAME_STATE_EXIT;
+    }
 #pragma endregion
 }

@@ -186,24 +186,27 @@ void Game::UI::DrawText(const char* text, glm::i16vec2 pos, u8 palette, u8 layer
         sprite.x = x;
         sprite.y = y;
         
-        // Handle different character ranges
+        // Handle different character ranges based on existing code patterns
         if (*c >= '0' && *c <= '9') {
-            // Numbers: use the same tile IDs as the exp counter
+            // Numbers: use the same tile IDs as the exp counter (confirmed working)
             sprite.tileId = 0xc6 + (*c - '0');
         } else if (*c >= 'A' && *c <= 'Z') {
-            // Uppercase letters (assuming they start at tile 0xd0)
-            sprite.tileId = 0xa0 + (*c - 'A');
+            // Uppercase letters: use a similar pattern to effect.cpp
+            // Try ASCII-based mapping starting from a reasonable base
+            sprite.tileId = 0xe0 + (*c - 0x2A); // Following effect.cpp pattern
         } else if (*c >= 'a' && *c <= 'z') {
-            // Lowercase letters (assuming they start at tile 0xf0)  
-            sprite.tileId = 0xa0 + (*c - 'a');
+            // Lowercase letters: convert to uppercase 
+            sprite.tileId = 0xe0 + ((*c - 'a' + 'A') - 0x2A);
         } else if (*c == ' ') {
             // Space - don't draw anything, just advance position
             x += 8;
             continue;
+        } else if (*c == '>') {
+            // Cursor symbol - use a simple arrow-like tile
+            sprite.tileId = 0xf8; // Based on game_state.cpp usage
         } else {
-            // Unknown character, skip
-            x += 8;
-            continue;
+            // Unknown character, try ASCII-based mapping
+            sprite.tileId = 0xe0 + (*c - 0x2A);
         }
         
         Game::Rendering::DrawSprite(layer, sprite);

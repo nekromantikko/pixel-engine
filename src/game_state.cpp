@@ -76,8 +76,15 @@ struct MenuState {
     u8 inputCooldownCounter = 0;
 };
 
+struct GameSettings {
+    s32 volumeLevel = 50; // 0-100
+    bool crtFilter = true;
+    s32 graphicsQuality = 2; // 0=Low, 1=Medium, 2=High
+};
+
 static MenuState mainMenuState;
 static MenuState settingsMenuState;
+static GameSettings gameSettings;
 
 #pragma region Callbacks
 static void ReviveDeadActor(u64 id, PersistedActorData& persistedData) {
@@ -1194,11 +1201,63 @@ static void UpdateMenuInput(MenuState& menuState) {
     }
 }
 
+static void UpdateSettingsInput(MenuState& menuState) {
+    if (menuState.menuInputCooldown) {
+        menuState.inputCooldownCounter--;
+        if (menuState.inputCooldownCounter == 0) {
+            menuState.menuInputCooldown = false;
+        }
+        return;
+    }
+
+    bool inputPressed = false;
+    
+    if (Game::Input::ButtonPressed(BUTTON_DPAD_UP)) {
+        menuState.selectedOption--;
+        if (menuState.selectedOption < 0) {
+            menuState.selectedOption = menuState.maxOptions - 1;
+        }
+        inputPressed = true;
+    } else if (Game::Input::ButtonPressed(BUTTON_DPAD_DOWN)) {
+        menuState.selectedOption++;
+        if (menuState.selectedOption >= menuState.maxOptions) {
+            menuState.selectedOption = 0;
+        }
+        inputPressed = true;
+    } else if (Game::Input::ButtonPressed(BUTTON_DPAD_LEFT) || Game::Input::ButtonPressed(BUTTON_DPAD_RIGHT)) {
+        // Handle setting value changes
+        s32 delta = Game::Input::ButtonPressed(BUTTON_DPAD_RIGHT) ? 1 : -1;
+        
+        switch (menuState.selectedOption) {
+        case SETTINGS_VOLUME:
+            gameSettings.volumeLevel += delta * 10;
+            gameSettings.volumeLevel = glm::clamp(gameSettings.volumeLevel, 0, 100);
+            inputPressed = true;
+            break;
+        case SETTINGS_GRAPHICS:
+            gameSettings.graphicsQuality += delta;
+            gameSettings.graphicsQuality = glm::clamp(gameSettings.graphicsQuality, 0, 2);
+            inputPressed = true;
+            break;
+        }
+    }
+    
+    if (inputPressed) {
+        menuState.menuInputCooldown = true;
+        menuState.inputCooldownCounter = 10; // 10 frame cooldown
+    }
+}
+
 static void DrawMainMenu() {
     Game::Rendering::ClearSpriteLayers();
     
-    // Draw title
-    Game::UI::DrawText("PIXEL ENGINE", { 200, 100 }, 0x1, SPRITE_LAYER_UI);
+    // Center the menu on screen (viewport is 512x288 pixels)
+    const s32 centerX = VIEWPORT_WIDTH_PIXELS / 2;
+    const s32 titleY = 80;
+    const s32 menuStartY = 140;
+    
+    // Draw title (centered)
+    Game::UI::DrawText("PIXEL ENGINE", { centerX - 60, titleY }, 0x1, SPRITE_LAYER_UI);
     
     // Draw menu options
     const char* menuOptions[MAIN_MENU_COUNT] = {
@@ -1209,22 +1268,31 @@ static void DrawMainMenu() {
     
     for (s32 i = 0; i < MAIN_MENU_COUNT; i++) {
         u8 palette = (i == mainMenuState.selectedOption) ? 0x2 : 0x1;
-        s32 yPos = 180 + (i * 30);
+        s32 yPos = menuStartY + (i * 32);
         
         // Draw cursor for selected option
         if (i == mainMenuState.selectedOption) {
-            Game::UI::DrawText(">", { 180, yPos }, palette, SPRITE_LAYER_UI);
+            Game::UI::DrawText(">", { centerX - 60, yPos }, palette, SPRITE_LAYER_UI);
         }
         
-        Game::UI::DrawText(menuOptions[i], { 200, yPos }, palette, SPRITE_LAYER_UI);
+        Game::UI::DrawText(menuOptions[i], { centerX - 40, yPos }, palette, SPRITE_LAYER_UI);
     }
+    
+    // Draw instructions
+    Game::UI::DrawText("USE DPAD TO NAVIGATE", { centerX - 88, menuStartY + 140 }, 0x1, SPRITE_LAYER_UI);
+    Game::UI::DrawText("PRESS A TO SELECT", { centerX - 80, menuStartY + 160 }, 0x1, SPRITE_LAYER_UI);
 }
 
 static void DrawSettingsMenu() {
     Game::Rendering::ClearSpriteLayers();
     
-    // Draw title
-    Game::UI::DrawText("SETTINGS", { 200, 100 }, 0x1, SPRITE_LAYER_UI);
+    // Center the menu on screen
+    const s32 centerX = VIEWPORT_WIDTH_PIXELS / 2;
+    const s32 titleY = 60;
+    const s32 menuStartY = 120;
+    
+    // Draw title (centered)
+    Game::UI::DrawText("SETTINGS", { centerX - 40, titleY }, 0x1, SPRITE_LAYER_UI);
     
     // Draw settings options  
     const char* settingsOptions[SETTINGS_COUNT] = {
@@ -1236,15 +1304,43 @@ static void DrawSettingsMenu() {
     
     for (s32 i = 0; i < SETTINGS_COUNT; i++) {
         u8 palette = (i == settingsMenuState.selectedOption) ? 0x2 : 0x1;
-        s32 yPos = 160 + (i * 30);
+        s32 yPos = menuStartY + (i * 32);
         
         // Draw cursor for selected option
         if (i == settingsMenuState.selectedOption) {
-            Game::UI::DrawText(">", { 180, yPos }, palette, SPRITE_LAYER_UI);
+            Game::UI::DrawText(">", { centerX - 60, yPos }, palette, SPRITE_LAYER_UI);
         }
         
-        Game::UI::DrawText(settingsOptions[i], { 200, yPos }, palette, SPRITE_LAYER_UI);
+        Game::UI::DrawText(settingsOptions[i], { centerX - 40, yPos }, palette, SPRITE_LAYER_UI);
+        
+        // Show current values for settings
+        static char valueBuffer[16];
+        if (i == SETTINGS_VOLUME) {
+            snprintf(valueBuffer, sizeof(valueBuffer), "%d%%", gameSettings.volumeLevel);
+            Game::UI::DrawText(valueBuffer, { centerX + 40, yPos }, palette, SPRITE_LAYER_UI);
+            
+            // Show left/right arrows for selected setting
+            if (i == settingsMenuState.selectedOption) {
+                Game::UI::DrawText("<", { centerX + 20, yPos }, palette, SPRITE_LAYER_UI);
+                Game::UI::DrawText(">", { centerX + 80, yPos }, palette, SPRITE_LAYER_UI);
+            }
+        } else if (i == SETTINGS_GRAPHICS) {
+            const char* qualityNames[] = { "LOW", "MED", "HIGH" };
+            Game::UI::DrawText(qualityNames[gameSettings.graphicsQuality], { centerX + 40, yPos }, palette, SPRITE_LAYER_UI);
+            
+            // Show left/right arrows for selected setting
+            if (i == settingsMenuState.selectedOption) {
+                Game::UI::DrawText("<", { centerX + 20, yPos }, palette, SPRITE_LAYER_UI);
+                Game::UI::DrawText(">", { centerX + 80, yPos }, palette, SPRITE_LAYER_UI);
+            }
+        } else if (i == SETTINGS_CONTROLS) {
+            Game::UI::DrawText("OK", { centerX + 40, yPos }, palette, SPRITE_LAYER_UI);
+        }
     }
+    
+    // Draw instructions
+    Game::UI::DrawText("LEFT RIGHT TO CHANGE", { centerX - 88, menuStartY + 140 }, 0x1, SPRITE_LAYER_UI);
+    Game::UI::DrawText("B TO GO BACK", { centerX - 56, menuStartY + 160 }, 0x1, SPRITE_LAYER_UI);
 }
 
 static void StepMainMenu() {
@@ -1274,15 +1370,15 @@ static void StepMainMenu() {
 
 static void StepSettingsMenu() {
     settingsMenuState.maxOptions = SETTINGS_COUNT;
-    UpdateMenuInput(settingsMenuState);
+    UpdateSettingsInput(settingsMenuState);
     
     if (Game::Input::ButtonPressed(BUTTON_A) || Game::Input::ButtonPressed(BUTTON_B)) {
         switch (settingsMenuState.selectedOption) {
         case SETTINGS_VOLUME:
-            // TODO: Implement volume settings
+            // Volume is adjusted with left/right arrows
             break;
         case SETTINGS_GRAPHICS:
-            // TODO: Implement graphics settings
+            // Graphics is adjusted with left/right arrows
             break;
         case SETTINGS_CONTROLS:
             // TODO: Implement control settings
@@ -1306,6 +1402,9 @@ void Game::InitGameState(GameState initialState) {
     // Initialize menu states
     mainMenuState = MenuState{};
     settingsMenuState = MenuState{};
+    
+    // Initialize game settings with defaults
+    gameSettings = GameSettings{};
 }
 
 void Game::StepFrame() {
@@ -1341,6 +1440,10 @@ void Game::StepFrame() {
     default:
         break;
 	}
+}
+
+GameState Game::GetCurrentGameState() {
+    return state;
 }
 
 void Game::TriggerScreenShake(s16 magnitude, u16 duration, bool freeze) {
