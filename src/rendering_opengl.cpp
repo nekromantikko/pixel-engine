@@ -9,6 +9,7 @@
 #include "rendering.h"
 #include "rendering_util.h"
 #include "debug.h"
+#include "core_types.h"
 #include <cassert>
 #include <vector>
 
@@ -93,6 +94,14 @@ struct RenderContext {
 };
 
 static RenderContext* pContext = nullptr;
+
+// Forward declarations
+static void LoadShaders();
+
+// Helper function to pad buffer size for alignment  
+static constexpr u32 PadBufferSize(u32 originalSize, const u32 minAlignment) {
+	return (originalSize + minAlignment - 1) & ~(minAlignment - 1);
+}
 
 // Helper function to compile shaders
 static GLuint CompileShader(GLenum type, const char* source) {
@@ -187,9 +196,122 @@ void Rendering::CreateSurface(SDL_Window* sdlWindow) {
 }
 
 void Rendering::Init() {
-	// TODO: Implement shader loading and buffer creation
-	// This is a complex function that needs careful implementation
+	// Calculate buffer layout - same as Vulkan implementation
+	const u32 minOffsetAlignment = 256; // OpenGL standard buffer alignment
+	
+	pContext->paletteTableOffset = 0;
+	pContext->paletteTableSize = PadBufferSize(PALETTE_COUNT * sizeof(Palette), minOffsetAlignment);
+	pContext->chrOffset = pContext->paletteTableOffset + pContext->paletteTableSize;
+	pContext->chrSize = PadBufferSize(CHR_MEMORY_SIZE, minOffsetAlignment);
+	pContext->nametableOffset = pContext->chrOffset + pContext->chrSize;
+	pContext->nametableSize = PadBufferSize(sizeof(Nametable) * NAMETABLE_COUNT, minOffsetAlignment);
+	pContext->oamOffset = pContext->nametableOffset + pContext->nametableSize;
+	pContext->oamSize = PadBufferSize(MAX_SPRITE_COUNT * sizeof(Sprite), minOffsetAlignment);
+	pContext->renderStateOffset = pContext->oamOffset + pContext->oamSize;
+	pContext->renderStateSize = PadBufferSize(sizeof(Scanline) * SCANLINE_COUNT, minOffsetAlignment);
+	pContext->computeBufferSize = pContext->paletteTableSize + pContext->chrSize + pContext->nametableSize + pContext->oamSize + pContext->renderStateSize;
+
+	pContext->renderData = calloc(1, pContext->computeBufferSize);
+
+	// Create OpenGL buffers
+	for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
+		glGenBuffers(1, &pContext->computeBuffer[i].buffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, pContext->computeBuffer[i].buffer);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, pContext->computeBufferSize, nullptr, GL_DYNAMIC_DRAW);
+		pContext->computeBuffer[i].size = pContext->computeBufferSize;
+
+		glGenBuffers(1, &pContext->scanlineBuffers[i].buffer);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, pContext->scanlineBuffers[i].buffer);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ScanlineData) * SCANLINE_COUNT, nullptr, GL_DYNAMIC_DRAW);
+		pContext->scanlineBuffers[i].size = sizeof(ScanlineData) * SCANLINE_COUNT;
+	}
+
+	// Create color images
+	for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
+		glGenTextures(1, &pContext->colorImages[i].texture);
+		glBindTexture(GL_TEXTURE_2D, pContext->colorImages[i].texture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 512, 288, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		pContext->colorImages[i].width = 512;
+		pContext->colorImages[i].height = 288;
+	}
+
+	// Create palette texture
+	glGenTextures(1, &pContext->paletteTexture);
+	glBindTexture(GL_TEXTURE_1D, pContext->paletteTexture);
+	glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB8, 256, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+
+	// Load and compile shaders
+	LoadShaders();
+
+	// Create VAO for fullscreen quad
+	glGenVertexArrays(1, &pContext->quadVAO);
+
+	pContext->currentFrameIndex = 0;
+	pContext->settings = DEFAULT_RENDER_SETTINGS;
+
 	DEBUG_LOG("OpenGL rendering backend initialized\n");
+}
+
+static void LoadShaders() {
+	// Load and compile compute shader
+	char* softwareSource = LoadShaderSource("src/shaders/opengl/software.comp");
+	if (softwareSource) {
+		GLuint computeShader = CompileShader(GL_COMPUTE_SHADER, softwareSource);
+		if (computeShader) {
+			pContext->softwareComputeProgram = glCreateProgram();
+			glAttachShader(pContext->softwareComputeProgram, computeShader);
+			glLinkProgram(pContext->softwareComputeProgram);
+
+			GLint linked;
+			glGetProgramiv(pContext->softwareComputeProgram, GL_LINK_STATUS, &linked);
+			if (!linked) {
+				GLint logLength;
+				glGetProgramiv(pContext->softwareComputeProgram, GL_INFO_LOG_LENGTH, &logLength);
+				char* log = (char*)malloc(logLength);
+				glGetProgramInfoLog(pContext->softwareComputeProgram, logLength, nullptr, log);
+				DEBUG_ERROR("Compute program linking failed: %s\n", log);
+				free(log);
+			}
+			glDeleteShader(computeShader);
+		}
+		free(softwareSource);
+	}
+
+	// Load vertex and fragment shaders
+	char* vertexSource = LoadShaderSource("src/shaders/opengl/quad.vert");
+	char* rawFragmentSource = LoadShaderSource("src/shaders/opengl/textured_raw.frag");
+	char* crtFragmentSource = LoadShaderSource("src/shaders/opengl/textured_crt.frag");
+
+	if (vertexSource && rawFragmentSource) {
+		pContext->quadVertexShader = CompileShader(GL_VERTEX_SHADER, vertexSource);
+		pContext->rawFragmentShader = CompileShader(GL_FRAGMENT_SHADER, rawFragmentSource);
+		
+		if (pContext->quadVertexShader && pContext->rawFragmentShader) {
+			pContext->rawProgram = LinkProgram(pContext->quadVertexShader, pContext->rawFragmentShader);
+		}
+	}
+
+	if (vertexSource && crtFragmentSource) {
+		if (!pContext->quadVertexShader) {
+			pContext->quadVertexShader = CompileShader(GL_VERTEX_SHADER, vertexSource);
+		}
+		pContext->crtFragmentShader = CompileShader(GL_FRAGMENT_SHADER, crtFragmentSource);
+		
+		if (pContext->quadVertexShader && pContext->crtFragmentShader) {
+			pContext->crtProgram = LinkProgram(pContext->quadVertexShader, pContext->crtFragmentShader);
+		}
+	}
+
+	if (vertexSource) free(vertexSource);
+	if (rawFragmentSource) free(rawFragmentSource);
+	if (crtFragmentSource) free(crtFragmentSource);
 }
 
 void Rendering::Free() {
@@ -215,7 +337,52 @@ void Rendering::BeginRenderPass() {
 }
 
 void Rendering::EndFrame() {
-	// TODO: Present the frame
+	u32 currentFrame = pContext->currentFrameIndex;
+	
+	// Update compute buffer with render data
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, pContext->computeBuffer[currentFrame].buffer);
+	glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, pContext->computeBufferSize, pContext->renderData);
+
+	// Bind compute shader and buffers
+	glUseProgram(pContext->softwareComputeProgram);
+	
+	// Bind output image
+	glBindImageTexture(0, pContext->colorImages[currentFrame].texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
+	
+	// Bind palette texture
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_1D, pContext->paletteTexture);
+	glUniform1i(glGetUniformLocation(pContext->softwareComputeProgram, "palette"), 1);
+	
+	// Bind shader storage buffers
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, pContext->computeBuffer[currentFrame].buffer);
+	glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 3, pContext->computeBuffer[currentFrame].buffer, 
+					  pContext->paletteTableOffset, pContext->paletteTableSize);
+	glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 4, pContext->computeBuffer[currentFrame].buffer,
+					  pContext->nametableOffset, pContext->nametableSize);
+	glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 5, pContext->computeBuffer[currentFrame].buffer,
+					  pContext->oamOffset, pContext->oamSize);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, pContext->scanlineBuffers[currentFrame].buffer);
+
+	// Dispatch compute shader
+	glDispatchCompute(16, 9, 1); // 512/32 = 16, 288/32 = 9
+	
+	// Wait for compute to finish
+	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+	// Render fullscreen quad
+	GLuint program = pContext->settings.useCRTFilter ? pContext->crtProgram : pContext->rawProgram;
+	glUseProgram(program);
+	
+	glBindVertexArray(pContext->quadVAO);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, pContext->colorImages[currentFrame].texture);
+	glUniform1i(glGetUniformLocation(program, "colorSampler"), 0);
+	
+	// Set quad uniform (fullscreen)
+	glUniform4f(glGetUniformLocation(program, "quad"), 0.0f, 0.0f, 2.0f, 2.0f);
+	
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
 void Rendering::WaitForAllCommands() {
