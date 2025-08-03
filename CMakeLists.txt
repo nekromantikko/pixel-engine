@@ -38,7 +38,6 @@ set(SOURCES
 		src/pickup.cpp
 		src/effect.cpp
 		src/interactable.cpp
-		src/actor_types.cpp
 		src/spawner.cpp
 		src/debug.cpp
 		src/shader.cpp
