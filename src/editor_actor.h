@@ -1,5 +1,5 @@
 #pragma once
-#include "imgui.h"
+#include "data_types.h"
 #include "asset_types.h"
 #include <vector>
 
@@ -12,7 +12,7 @@ struct ActorEditorProperty {
 	const char* name;
 	ActorEditorPropertyType type;
 	union {
-		ImGuiDataType_ dataType;
+		DataType dataType;
 		AssetType assetType;
 	};
 	s32 components;

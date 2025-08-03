@@ -2565,13 +2565,48 @@ static ImVec2 DrawActorPreview(const ActorPrototypeEditorData* pEditorData, s32 
 	return gridPos;
 }
 
+static ImGuiDataType DataTypeToImGui(DataType dataType) {
+	switch (dataType) {
+	case DATA_TYPE_S8:     return ImGuiDataType_S8;
+	case DATA_TYPE_U8:     return ImGuiDataType_U8;
+	case DATA_TYPE_S16:    return ImGuiDataType_S16;
+	case DATA_TYPE_U16:    return ImGuiDataType_U16;
+	case DATA_TYPE_S32:    return ImGuiDataType_S32;
+	case DATA_TYPE_U32:    return ImGuiDataType_U32;
+	case DATA_TYPE_S64:    return ImGuiDataType_S64;
+	case DATA_TYPE_U64:    return ImGuiDataType_U64;
+	case DATA_TYPE_R32:    return ImGuiDataType_Float;
+	case DATA_TYPE_R64:    return ImGuiDataType_Double;
+	case DATA_TYPE_BOOL:   return ImGuiDataType_Bool;
+	default:               return ImGuiDataType_COUNT; // Invalid type
+	}
+}
+
+static DataType ImGuiToDataType(ImGuiDataType imguiType) {
+	switch (imguiType) {
+	case ImGuiDataType_S8:     return DATA_TYPE_S8;
+	case ImGuiDataType_U8:     return DATA_TYPE_U8;
+	case ImGuiDataType_S16:    return DATA_TYPE_S16;
+	case ImGuiDataType_U16:    return DATA_TYPE_U16;
+	case ImGuiDataType_S32:    return DATA_TYPE_S32;
+	case ImGuiDataType_U32:    return DATA_TYPE_U32;
+	case ImGuiDataType_S64:    return DATA_TYPE_S64;
+	case ImGuiDataType_U64:    return DATA_TYPE_U64;
+	case ImGuiDataType_Float:  return DATA_TYPE_R32;
+	case ImGuiDataType_Double: return DATA_TYPE_R64;
+	case ImGuiDataType_Bool:   return DATA_TYPE_BOOL;
+	default:                   return DATA_TYPE_COUNT; // Invalid type
+	}
+}
+
 static bool DrawActorPrototypeProperty(const ActorEditorProperty& property, ActorPrototypeData& data) {
 	void* propertyData = (u8*)&data + property.offset;
+	const ImGuiDataType imguiDataType = DataTypeToImGui(property.dataType);
 	bool result = false;
 
 	switch (property.type) {
 	case ACTOR_EDITOR_PROPERTY_SCALAR: {
-		result = ImGui::InputScalarN(property.name, property.dataType, propertyData, property.components);
+		result = ImGui::InputScalarN(property.name, imguiDataType, propertyData, property.components);
 		break;
 	}
 	case ACTOR_EDITOR_PROPERTY_ASSET: {
