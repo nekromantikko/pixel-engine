@@ -119,6 +119,8 @@ struct RenderContext {
 
 	// Settings
 	RenderSettings settings;
+	bool computeSupported;
+	RenderSettings settings;
 
 	// Editor stuff
 #ifdef EDITOR
@@ -171,7 +173,7 @@ static void CreateVulkanInstance() {
 	}
 }
 
-static bool IsPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, u32& outQueueFamilyIndex) {
+static bool IsPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, u32& outQueueFamilyIndex, bool& outComputeSupported) {
 	VkPhysicalDeviceProperties deviceProperties;
 	vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
 
@@ -224,6 +226,7 @@ static bool IsPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceK
 
 	bool queueFamilyFound = false;
 	u32 foundIndex = 0;
+	outComputeSupported = false;
 
 	for (u32 i = 0; i < queueFamilyCount; i++) {
 		VkQueueFamilyProperties queueFamily = queueFamilies[i];
@@ -239,11 +242,21 @@ static bool IsPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceK
 			continue;
 		}
 
-		// For now, to keep things simple I want to use one queue for everything, so the family needs to support all of these:
-		if ((queueFamilies[i].queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT))) {
+		// Check for graphics and transfer support (required)
+		bool hasGraphicsAndTransfer = (queueFamilies[i].queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT)) == (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT);
+		
+		// Check for compute support (optional for fallback)
+		bool hasCompute = (queueFamilies[i].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0;
+		
+		if (hasGraphicsAndTransfer) {
 			queueFamilyFound = true;
 			foundIndex = i;
-			break;
+			outComputeSupported = hasCompute;
+			
+			// Prefer a queue that has compute support, but don't require it
+			if (hasCompute) {
+				break; // Found the best option
+			}
 		}
 	}
 
@@ -271,10 +284,12 @@ static void GetSuitablePhysicalDevice() {
 
 	for (auto& physicalDevice : availableDevices) {
 		u32 queueFamilyIndex;
-		if (IsPhysicalDeviceSuitable(physicalDevice, pContext->surface, queueFamilyIndex)) {
+		bool computeSupported;
+		if (IsPhysicalDeviceSuitable(physicalDevice, pContext->surface, queueFamilyIndex, computeSupported)) {
 			physicalDeviceFound = true;
 			foundDevice = physicalDevice;
 			foundQueueFamilyIndex = queueFamilyIndex;
+			pContext->computeSupported = computeSupported;
 		}
 	}
 

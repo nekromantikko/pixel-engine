@@ -29,6 +29,7 @@ set(SOURCES
 		src/input.cpp
 		src/rendering_util.cpp
 		src/rendering_vulkan.cpp
+		src/rendering_software.cpp
 		src/game_rendering.cpp
 		src/tilemap.cpp
 		src/actors.cpp
@@ -53,6 +54,7 @@ set(SOURCES
 
 option(ENABLE_EDITOR "Enable editor functionality" ON)
 option(USE_AVX "Use AVX implementation where applicable" ON)
+option(USE_SOFTWARE_FALLBACK "Enable software renderer fallback for systems without compute shader support" ON)
 
 set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set(ASSETS_NPAK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
@@ -185,4 +187,8 @@ ENDIF()
 
 IF(USE_AVX)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC USE_AVX)
+ENDIF()
+
+IF(USE_SOFTWARE_FALLBACK)
+	target_compile_definitions(${PROJECT_NAME} PUBLIC USE_SOFTWARE_FALLBACK)
 ENDIF()

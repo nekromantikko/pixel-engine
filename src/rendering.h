@@ -49,6 +49,10 @@ namespace Rendering
 	Nametable* GetNametablePtr(u32 index);
 	Scanline* GetScanlinePtr(u32 offset);
 
+	// Fallback support
+	bool SupportsComputeShaders();
+	void EnableSoftwareFallback(bool enable);
+
 	// Editor stuff
 #ifdef EDITOR
 	void InitEditor(SDL_Window* sdlWindow);
