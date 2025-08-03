@@ -379,12 +379,7 @@ static SerializationResult LoadMetaspriteFromFile(FILE* pFile, const nlohmann::j
 		}
 	}
 
-<<<<<<< HEAD
-=======
-	fclose(pFile);
->>>>>>> aefa30a (Include serialization in builds conditionally)
 	return SERIALIZATION_SUCCESS;
-
 }
 
 static SerializationResult SaveMetaspriteToFile(FILE* pFile, nlohmann::json& metadata, const void* pData) {
@@ -461,11 +456,7 @@ static SerializationResult SaveAnimationToFile(FILE* pFile, nlohmann::json& meta
 
 	std::string jsonStr = json.dump(4);
 	fwrite(jsonStr.c_str(), sizeof(char), jsonStr.size(), pFile);
-<<<<<<< HEAD
 
-=======
-	fclose(pFile);
->>>>>>> aefa30a (Include serialization in builds conditionally)
 	return SERIALIZATION_SUCCESS;
 }
 
