@@ -1,5 +1,6 @@
 #pragma once
 #include "typedef.h"
+#include "asset_types.h"
 #include <filesystem>
 
 namespace Assets {

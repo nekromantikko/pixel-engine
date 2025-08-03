@@ -105,3 +105,11 @@ struct Metasprite {
 		return (Sprite*)((u8*)this + spritesOffset);
 	}
 };
+
+struct Shader {
+	u32 dataSize;
+	// Variable-length data follows
+	inline u8* GetData() const {
+		return (u8*)this + sizeof(Shader);
+	}
+};

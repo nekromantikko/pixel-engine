@@ -125,24 +125,24 @@ endif()
 
 # Compile shaders
 set (GLSL_SHADERS
-    src/shaders/debug_blit_chr.comp
-    src/shaders/debug_blit_pal.comp
-	src/shaders/scanline_evaluate.comp
-	src/shaders/software.comp
-	src/shaders/quad.vert
-	src/shaders/textured_crt.frag
-	src/shaders/textured_raw.frag)
+    assets/shaders/debug_blit_chr.comp
+    assets/shaders/debug_blit_pal.comp
+	assets/shaders/scanline_evaluate.comp
+	assets/shaders/software.comp
+	assets/shaders/quad.vert
+	assets/shaders/textured_crt.frag
+	assets/shaders/textured_raw.frag)
 
 set(SHADER_DEST ${CMAKE_CURRENT_BINARY_DIR}/shaders)
 file(MAKE_DIRECTORY ${SHADER_DEST})
 include(${CMAKE_CURRENT_SOURCE_DIR}/glsl_shader.cmake)
-set_source_files_properties(src/shaders/debug_blit_chr.comp PROPERTIES ShaderType "comp")
-set_source_files_properties(src/shaders/debug_blit_pal.comp PROPERTIES ShaderType "comp")
-set_source_files_properties(src/shaders/scanline_evaluate.comp PROPERTIES ShaderType "comp")
-set_source_files_properties(src/shaders/software.comp PROPERTIES ShaderType "comp")
-set_source_files_properties(src/shaders/quad.vert PROPERTIES ShaderType "vert")
-set_source_files_properties(src/shaders/textured_crt.frag PROPERTIES ShaderType "frag")
-set_source_files_properties(src/shaders/textured_raw.frag PROPERTIES ShaderType "frag")
+set_source_files_properties(assets/shaders/debug_blit_chr.comp PROPERTIES ShaderType "comp")
+set_source_files_properties(assets/shaders/debug_blit_pal.comp PROPERTIES ShaderType "comp")
+set_source_files_properties(assets/shaders/scanline_evaluate.comp PROPERTIES ShaderType "comp")
+set_source_files_properties(assets/shaders/software.comp PROPERTIES ShaderType "comp")
+set_source_files_properties(assets/shaders/quad.vert PROPERTIES ShaderType "vert")
+set_source_files_properties(assets/shaders/textured_crt.frag PROPERTIES ShaderType "frag")
+set_source_files_properties(assets/shaders/textured_raw.frag PROPERTIES ShaderType "frag")
 
 foreach(FILE ${GLSL_SHADERS})
     get_filename_component(FILE_WE ${FILE} NAME_WE)
@@ -154,14 +154,29 @@ foreach(FILE ${GLSL_SHADERS})
             ENTRY_POINT main
             TARGET_ENV vulkan1.0
     )
+    # Copy compiled shader back to assets for packaging
+    add_custom_command(
+        OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/${FILE_WE}.spv"
+        COMMAND ${CMAKE_COMMAND} -E copy "${SHADER_DEST}/${FILE_WE}.spv" "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/${FILE_WE}.spv"
+        DEPENDS "${SHADER_DEST}/${FILE_WE}.spv"
+        COMMENT "Copying ${FILE_WE}.spv to assets"
+    )
     # Make our project depend on these files
     target_sources(${PROJECT_NAME} PRIVATE "${SHADER_DEST}/${FILE_WE}.spv")
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/${FILE_WE}.spv")
+endforeach()
+
+# Create a list of all compiled shader files for dependencies
+set(COMPILED_SHADER_FILES)
+foreach(FILE ${GLSL_SHADERS})
+    get_filename_component(FILE_WE ${FILE} NAME_WE)
+    list(APPEND COMPILED_SHADER_FILES "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/${FILE_WE}.spv")
 endforeach()
 
 # Generate assets.npak from source assets
 add_custom_target(generate_assets ALL
 	COMMAND asset_packer "${ASSETS_SRC_DIR}" "${ASSETS_NPAK_OUTPUT}"
-	DEPENDS asset_packer
+	DEPENDS asset_packer ${COMPILED_SHADER_FILES}
 	COMMENT "Generating assets.npak from source assets"
 )
 add_dependencies(${PROJECT_NAME} generate_assets)

@@ -433,6 +433,62 @@ static bool SavePaletteToFile(const std::filesystem::path& path, nlohmann::json&
 	return true;
 }
 
+static bool LoadShaderFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
+	if (!std::filesystem::exists(path)) {
+		DEBUG_ERROR("File (%s) does not exist\n", path.string().c_str());
+		return false;
+	}
+
+	FILE* pFile = fopen(path.string().c_str(), "rb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file\n");
+		return false;
+	}
+
+	// Get file size
+	fseek(pFile, 0, SEEK_END);
+	const u32 fileSize = ftell(pFile);
+	fseek(pFile, 0, SEEK_SET);
+
+	const u32 totalSize = sizeof(Shader) + fileSize;
+	
+	if (!pOutData) {
+		size = totalSize;
+		fclose(pFile);
+		return true; // Just return size if no output data is provided
+	}
+
+	Shader* pShader = (Shader*)pOutData;
+	pShader->dataSize = fileSize;
+
+	// Read shader binary data after the header
+	fread(pShader->GetData(), fileSize, 1, pFile);
+
+	fclose(pFile);
+	return true;
+}
+
+static bool SaveShaderToFile(const std::filesystem::path& path, nlohmann::json& metadata, const void* pData) {
+	if (!pData) {
+		DEBUG_ERROR("pData is null\n");
+		return false;
+	}
+
+	const Shader* pShader = (const Shader*)pData;
+	
+	FILE* pFile = fopen(path.string().c_str(), "wb");
+	if (!pFile) {
+		DEBUG_ERROR("Failed to open file for writing\n");
+		return false;
+	}
+
+	// Write the shader binary data (skip the header when writing to file)
+	fwrite(pShader->GetData(), pShader->dataSize, 1, pFile);
+	
+	fclose(pFile);
+	return true;
+}
+
 static bool LoadMetaspriteFromFile(const std::filesystem::path& path, const nlohmann::json& metadata, u32& size, void* pOutData) {
 	if (!std::filesystem::exists(path)) {
 		DEBUG_ERROR("File (%s) does not exist\n", path.string().c_str());
@@ -1395,6 +1451,9 @@ bool AssetManager::Serialization::LoadAssetFromFile(const std::filesystem::path&
 	case (ASSET_TYPE_DUNGEON): {
 		return LoadDungeonFromFile(path, metadata, size, pOutData);
 	}
+	case (ASSET_TYPE_SHADER): {
+		return LoadShaderFromFile(path, metadata, size, pOutData);
+	}
 	default:
 		DEBUG_ERROR("Unsupported asset type for loading: %s\n", ASSET_TYPE_NAMES[type]);
 		return false;
@@ -1456,6 +1515,10 @@ bool AssetManager::Serialization::SaveAssetToFile(const std::filesystem::path& p
 	}
 	case (ASSET_TYPE_DUNGEON): {
 		saveResult = SaveDungeonToFile(path, metadata, pData);
+		break;
+	}
+	case (ASSET_TYPE_SHADER): {
+		saveResult = SaveShaderToFile(path, metadata, pData);
 		break;
 	}
 	default:

@@ -18,6 +18,7 @@ static const char* ASSET_TYPE_FILE_EXTENSIONS[ASSET_TYPE_COUNT] = {
 	".ow", // OVERWORLD
 	".anim", // ANIMATION
 	".dat", // PALETTE
+	".spv", // SHADER
 };
 
 namespace AssetManager::Serialization {
