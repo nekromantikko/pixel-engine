@@ -1,6 +1,8 @@
 #include "shader.h"
 #include "debug.h"
 #include "asset_manager.h"
+#include "rendering_types.h"
+#include <cstring>
 
 bool Assets::LoadShaderFromFile(const std::filesystem::path& path, u32& dataSize, void* data) {
     // Extract shader name from path for asset lookup
