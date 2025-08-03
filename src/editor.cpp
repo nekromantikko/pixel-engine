@@ -1,7 +1,7 @@
 #include "editor.h"
 #include "editor_actor.h"
 #include "editor_assets.h"
-#include "editor_serialization.h"
+#include "rendering.h"
 #include "debug.h"
 #include <cassert>
 #include <limits>
@@ -16,20 +16,22 @@
 #include <immintrin.h>
 #endif
 
-#include "tiles.h"
+#include "tilemap.h"
 #include "rendering_util.h"
 #include "game.h"
-#include "room.h"
+#include "room_types.h"
 #include "game_rendering.h"
 #include "game_state.h"
 #include "actors.h"
-#include "actor_prototypes.h"
+#include "actor_prototype_types.h"
 #include "audio.h"
+#include "collision.h"
 #include "random.h"
-#include "dungeon.h"
-#include "overworld.h"
-#include "animation.h"
+#include "dungeon_types.h"
+#include "overworld_types.h"
+#include "anim_types.h"
 #include "asset_manager.h"
+#include "asset_serialization.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <gtx/matrix_transform_2d.hpp>
 #include <vector>
@@ -992,7 +994,7 @@ static bool SaveEditedAsset(EditedAsset& asset, ApplyAssetEditorDataFn applyFn) 
 		applyFn(asset);
 	}
 	
-	if (!Editor::Assets::SaveAssetToFile(asset.type, asset.relativePath, asset.name, asset.data)) {
+	if (!AssetManager::Serialization::SaveAssetToFile(asset.type, asset.relativePath, asset.name, asset.data)) {
 		return false;
 	}
 
@@ -1067,7 +1069,7 @@ static bool DuplicateAsset(u64 id, const std::filesystem::path& path) {
 	void* newData = AssetManager::GetAsset(newId, pAssetInfo->flags.type);
 	memcpy(newData, assetData, pAssetInfo->size);
 
-	if (!Editor::Assets::SaveAssetToFile(pAssetInfo->flags.type, relativePath, newName, assetData)) {
+	if (!AssetManager::Serialization::SaveAssetToFile(pAssetInfo->flags.type, relativePath, newName, assetData)) {
 		AssetManager::RemoveAsset(newId);
 		return false;
 	}
@@ -1270,7 +1272,7 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 			void* data = AssetManager::GetAsset(id, type);
 			Editor::Assets::InitializeAsset(type, data);
 
-			if (!Editor::Assets::SaveAssetToFile(type, relativePath, newName, data)) {
+			if (!AssetManager::Serialization::SaveAssetToFile(type, relativePath, newName, data)) {
 				// Failed to save asset, remove it
 				AssetManager::RemoveAsset(id);
 			}
@@ -1500,7 +1502,7 @@ static bool DrawTilemapEditor(Tilemap* pTilemap, ImVec2 topLeft, r32 renderScale
 						u32 clipboardIndex = y * selectionWidth + x;
 
 						const glm::ivec2 metatileWorldPos = { selectionTopLeft.x + x, selectionTopLeft.y + y };
-						const s32 tilesetIndex = pTilemap->GetTilesetTileIndex(metatileWorldPos);
+						const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, metatileWorldPos);
 						clipboard.clipboard[clipboardIndex] = tilesetIndex;
 					}
 				}
@@ -1527,7 +1529,7 @@ static bool DrawTilemapEditor(Tilemap* pTilemap, ImVec2 topLeft, r32 renderScale
 
 						// Paint metatiles
 						if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
-							pTilemap->SetTilesetTile(metatileWorldPos, metatileIndex);
+							Tiles::SetTilesetTile(pTilemap, metatileWorldPos, metatileIndex);
 						}
 					}
 				}
@@ -3691,10 +3693,10 @@ static void DrawAssetBrowser() {
 	{
 		if (ImGui::BeginMenu("File")) {
 			if (ImGui::MenuItem("Save archive")) {
-				AssetManager::SaveArchive("assets.npak");
+				AssetManager::SaveArchive(ASSETS_NPAK_OUTPUT);
 			}
 			if (ImGui::MenuItem("Reload archive")) {
-				AssetManager::LoadArchive("assets.npak");
+				AssetManager::LoadArchive(ASSETS_NPAK_OUTPUT);
 			}
 			if (ImGui::MenuItem("Repack archive")) {
 				AssetManager::RepackArchive();

@@ -1,4 +1,5 @@
 #include "audio.h"
+#include "audio_types.h"
 #include <cstdlib>
 #include <SDL.h>
 #include <vector>

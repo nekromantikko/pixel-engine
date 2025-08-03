@@ -1,9 +1,9 @@
 #include "pickup.h"
 #include "actors.h"
-#include "actor_prototypes.h"
+#include "actor_prototype_types.h"
 #include "game_rendering.h"
 #include "game_state.h"
-#include "animation.h"
+#include "anim_types.h"
 #include "audio.h"
 
 static void OnPickup(Actor* pActor, const PickupData& data) {

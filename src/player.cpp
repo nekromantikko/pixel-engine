@@ -1,16 +1,17 @@
 #include "player.h"
 #include "actors.h"
-#include "actor_prototypes.h"
+#include "actor_prototype_types.h"
 #include "game_rendering.h"
 #include "game_input.h"
 #include "game_state.h"
 #include "dialog.h"
-#include "room.h"
-#include "dungeon.h"
-#include "overworld.h"
-#include "animation.h"
+#include "room_types.h"
+#include "dungeon_types.h"
+#include "overworld_types.h"
+#include "anim_types.h"
 #include "audio.h"
 #include "asset_manager.h"
+#include "tilemap.h"
 
 enum PlayerHeadFrame : u8 {
     PLAYER_HEAD_IDLE,
@@ -689,7 +690,7 @@ static void UpdatePlayerOverworld(Actor* pPlayer, const ActorPrototype* pPrototy
 				return;
 			}
 
-			const s32 targetTileIndex = pTilemap->GetTilesetTileIndex(targetPos);
+			const s32 targetTileIndex = Tiles::GetTilesetTileIndex(pTilemap, targetPos);
 			const TilesetTile* pNextTile = targetTileIndex >= 0 ? &pTileset->tiles[targetTileIndex] : nullptr;
 
             if (!pNextTile || pNextTile->type != TILE_SOLID) {

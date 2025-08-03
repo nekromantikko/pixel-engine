@@ -1,15 +1,18 @@
-#include "editor_serialization.h"
-#include "editor_assets.h"
+#ifdef EDITOR
+#include "asset_serialization.h"
 #include "random.h"
 #include <cstdlib>
-#include "rendering.h"
-#include "audio.h"
-#include "tiles.h"
-#include "animation.h"
-#include "actor_prototypes.h"
-#include "room.h"
-#include "overworld.h"
-#include "dungeon.h"
+#include "rendering_types.h"
+#include "audio_types.h"
+#include "tilemap_types.h"
+#include "anim_types.h"
+#include "actor_prototype_types.h"
+#include "room_types.h"
+#include "overworld_types.h"
+#include "dungeon_types.h"
+#include "data_types.h"
+#include "actor_data.h"
+#include "editor_actor.h"
 
 static constexpr u64 ASSET_FILE_FORMAT_VERSION = 1;
 
@@ -1244,7 +1247,32 @@ static bool SaveDungeonToFile(const std::filesystem::path& path, nlohmann::json&
 
 #pragma endregion
 
-bool Editor::Assets::LoadAssetMetadataFromFile(const std::filesystem::path& origPath, nlohmann::json& outJson) {
+bool AssetManager::Serialization::TryGetAssetTypeFromPath(const std::filesystem::path& path, AssetType& outType) {
+	for (u32 i = 0; i < ASSET_TYPE_COUNT; i++) {
+		if (path.extension() == ASSET_TYPE_FILE_EXTENSIONS[i]) {
+			outType = (AssetType)i;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool AssetManager::Serialization::HasMetadata(const std::filesystem::path& path) {
+	// Check if the file has a metadata file (e.g., .meta)
+	return std::filesystem::exists(GetAssetMetadataPath(path));
+}
+
+std::filesystem::path AssetManager::Serialization::GetAssetMetadataPath(const std::filesystem::path& path) {
+	// Append ".meta" to the original path to get the metadata file path
+	return path.string() + ".meta";
+}
+
+std::filesystem::path AssetManager::Serialization::GetAssetFullPath(const std::filesystem::path& relativePath) {
+	const std::filesystem::path sourceDirPath = ASSETS_SRC_DIR;
+	return sourceDirPath / relativePath;
+}
+
+bool AssetManager::Serialization::LoadAssetMetadataFromFile(const std::filesystem::path& origPath, nlohmann::json& outJson) {
 	std::filesystem::path path = GetAssetMetadataPath(origPath);
 
 	if (!std::filesystem::exists(path)) {
@@ -1271,7 +1299,7 @@ bool Editor::Assets::LoadAssetMetadataFromFile(const std::filesystem::path& orig
 	return true;
 }
 
-bool Editor::Assets::SaveAssetMetadataToFile(const std::filesystem::path& origPath, const nlohmann::json& json) {
+bool AssetManager::Serialization::SaveAssetMetadataToFile(const std::filesystem::path& origPath, const nlohmann::json& json) {
 	std::filesystem::path path = origPath;
 	path += ".meta";
 
@@ -1287,16 +1315,16 @@ bool Editor::Assets::SaveAssetMetadataToFile(const std::filesystem::path& origPa
 	return true;
 }
 
-void Editor::Assets::InitializeMetadataJson(nlohmann::json& json, u64 id) {
+void AssetManager::Serialization::InitializeMetadataJson(nlohmann::json& json, u64 id) {
 	json["file_format_version"] = ASSET_FILE_FORMAT_VERSION;
 	json["guid"] = id;
 }
 
-bool Editor::Assets::CreateAssetMetadataFile(const std::filesystem::path& path, nlohmann::json& outMetadata) {
+bool AssetManager::Serialization::CreateAssetMetadataFile(const std::filesystem::path& path, nlohmann::json& outMetadata) {
 	u64 guid = Random::GenerateUUID();
-	Editor::Assets::InitializeMetadataJson(outMetadata, guid);
+	InitializeMetadataJson(outMetadata, guid);
 
-	if (!Editor::Assets::SaveAssetMetadataToFile(path, outMetadata)) {
+	if (!SaveAssetMetadataToFile(path, outMetadata)) {
 		DEBUG_ERROR("Failed to create metadata for %s\n", path.string().c_str());
 		return false;
 	}
@@ -1305,7 +1333,7 @@ bool Editor::Assets::CreateAssetMetadataFile(const std::filesystem::path& path, 
 	return true;
 }
 
-bool Editor::Assets::TryGetAssetMetadata(const std::filesystem::path& path, nlohmann::json& outMetadata) {
+bool AssetManager::Serialization::TryGetAssetMetadata(const std::filesystem::path& path, nlohmann::json& outMetadata) {
 	const std::string pathStr = path.string();
 	const char* pathCStr = pathStr.c_str();
 
@@ -1335,7 +1363,7 @@ bool Editor::Assets::TryGetAssetMetadata(const std::filesystem::path& path, nloh
 	}
 }
 
-bool Editor::Assets::LoadAssetFromFile(const std::filesystem::path& path, AssetType type, const nlohmann::json& metadata, u32& size, void* pOutData) {
+bool AssetManager::Serialization::LoadAssetFromFile(const std::filesystem::path& path, AssetType type, const nlohmann::json& metadata, u32& size, void* pOutData) {
 	switch (type) {
 	case (ASSET_TYPE_CHR_BANK): {
 		return LoadChrSheetFromFile(path, metadata, size, pOutData);
@@ -1373,7 +1401,7 @@ bool Editor::Assets::LoadAssetFromFile(const std::filesystem::path& path, AssetT
 	}
 }
 
-bool Editor::Assets::LoadAssetFromFile(AssetType type, const std::filesystem::path& relativePath, u32& size, void* pOutData) {
+bool AssetManager::Serialization::LoadAssetFromFile(AssetType type, const std::filesystem::path& relativePath, u32& size, void* pOutData) {
 	const std::filesystem::path path = GetAssetFullPath(relativePath);
 
 	nlohmann::json metadata;
@@ -1385,7 +1413,7 @@ bool Editor::Assets::LoadAssetFromFile(AssetType type, const std::filesystem::pa
 	return LoadAssetFromFile(path, type, metadata, size, pOutData);
 }
 
-bool Editor::Assets::SaveAssetToFile(const std::filesystem::path& path, const char* name, AssetType type, nlohmann::json& metadata, const void* pData) {
+bool AssetManager::Serialization::SaveAssetToFile(const std::filesystem::path& path, const char* name, AssetType type, nlohmann::json& metadata, const void* pData) {
 	metadata["name"] = name;
 
 	bool saveResult = false;
@@ -1443,7 +1471,7 @@ bool Editor::Assets::SaveAssetToFile(const std::filesystem::path& path, const ch
 	return SaveAssetMetadataToFile(path, metadata);
 }
 
-bool Editor::Assets::SaveAssetToFile(AssetType type, const std::filesystem::path& relativePath, const char* name, const void* pData) {
+bool AssetManager::Serialization::SaveAssetToFile(AssetType type, const std::filesystem::path& relativePath, const char* name, const void* pData) {
 	const std::filesystem::path path = GetAssetFullPath(relativePath);
 
 	nlohmann::json metadata;
@@ -1454,3 +1482,4 @@ bool Editor::Assets::SaveAssetToFile(AssetType type, const std::filesystem::path
 
 	return SaveAssetToFile(path, name, type, metadata, pData);
 }
+#endif

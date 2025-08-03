@@ -1,12 +1,13 @@
 #include "actors.h"
-#include "actor_prototypes.h"
+#include "actor_prototype_types.h"
 #include "game_rendering.h"
 #include "game_state.h"
-#include "room.h"
-#include "dungeon.h"
+#include "room_types.h"
+#include "dungeon_types.h"
 #include "random.h"
 #include "asset_manager.h"
-#include "animation.h"
+#include "anim_types.h"
+#include "collision.h"
 #include <gtc/constants.hpp>
 
 // TODO: Define in editor in game settings or similar

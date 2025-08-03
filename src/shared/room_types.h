@@ -1,7 +1,7 @@
 #pragma once
-#include "rendering.h"
-#include "tiles.h"
-#include "actors.h"
+#include "rendering_types.h"
+#include "tilemap_types.h"
+#include "actor_types.h"
 #include "memory_pool.h"
 #include "asset_types.h"
 

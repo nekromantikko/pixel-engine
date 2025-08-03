@@ -1,8 +1,9 @@
 #include "game_rendering.h"
+#include "rendering.h"
 #include "game_state.h"
-#include "room.h"
-#include "dungeon.h"
-#include "tiles.h"
+#include "room_types.h"
+#include "dungeon_types.h"
+#include "tilemap.h"
 #include "rendering_util.h"
 #include "game.h"
 #include "asset_manager.h"
@@ -89,7 +90,7 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
                 continue;
             }
 
-            const s32 tilesetIndex = pTilemap->GetTilesetTileIndex({ x, y });
+            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, { x, y });
             
 
             if (tilesetIndex < 0) {
@@ -212,7 +213,7 @@ void Game::Rendering::RefreshViewport() {
 
     for (s32 x = xStart; x < xEnd; x++) {
         for (s32 y = yStart; y < yEnd; y++) {
-            const s32 tilesetIndex = pTilemap->GetTilesetTileIndex({ x, y });
+            const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, { x, y });
 
             if (tilesetIndex < 0) {
                 continue;

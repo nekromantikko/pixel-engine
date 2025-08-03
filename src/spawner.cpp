@@ -1,6 +1,6 @@
 #include "spawner.h"
 #include "actors.h"
-#include "actor_prototypes.h"
+#include "actor_prototype_types.h"
 #include "random.h"
 #include "asset_manager.h"
 
