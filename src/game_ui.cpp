@@ -1,5 +1,7 @@
 #include "game_ui.h"
 #include "game_rendering.h"
+#include <cstdio>
+#include <cstring>
 
 constexpr u16 animDuration = 20;
 constexpr u16 barAnimDelay = 16;
