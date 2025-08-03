@@ -59,7 +59,16 @@ namespace AssetManager {
 		return (T*)GetAsset(handle.id, assetType);
 	}
 
+	void* GetAssetByPath(const char* path, AssetType type);
+	template <IsAssetHandle HandleType>
+	typename AssetHandleTraits<HandleType>::data_type* GetAssetByPath(const char* path) {
+		constexpr AssetType assetType = AssetHandleTraits<HandleType>::asset_type::value;
+		using T = typename AssetHandleTraits<HandleType>::data_type;
+		return (T*)GetAssetByPath(path, assetType);
+	}
+
 	AssetEntry* GetAssetInfo(u64 id);
+	AssetEntry* GetAssetInfoByPath(const char* path);
 	const char* GetAssetName(u64 id);
 
 	u32 GetAssetCount();

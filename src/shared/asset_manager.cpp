@@ -361,12 +361,42 @@ void* AssetManager::GetAsset(u64 id, AssetType type) {
 	return archiveData + asset.offset;
 }
 
+void* AssetManager::GetAssetByPath(const char* path, AssetType type) {
+	if (!path) {
+		return nullptr;
+	}
+
+	for (const auto& kvp : assetIndex) {
+		const AssetEntry& asset = kvp.second;
+		if (asset.flags.type == type && asset.flags.deleted == false && strcmp(asset.relativePath, path) == 0) {
+			return archiveData + asset.offset;
+		}
+	}
+
+	return nullptr;
+}
+
 AssetEntry* AssetManager::GetAssetInfo(u64 id) {
 	const auto it = assetIndex.find(id);
 	if (it == assetIndex.end()) {
 		return nullptr;
 	}
 	return &it->second;
+}
+
+AssetEntry* AssetManager::GetAssetInfoByPath(const char* path) {
+	if (!path) {
+		return nullptr;
+	}
+
+	for (auto& kvp : assetIndex) {
+		AssetEntry& asset = kvp.second;
+		if (asset.flags.deleted == false && strcmp(asset.relativePath, path) == 0) {
+			return &asset;
+		}
+	}
+
+	return nullptr;
 }
 
 const char* AssetManager::GetAssetName(u64 id) {
