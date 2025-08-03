@@ -1,11 +1,6 @@
 #include "editor_assets.h"
 #include "debug.h"
-#include "room_types.h"
-#include "actor_prototype_types.h"
-#include "anim_types.h"
-#include "audio_types.h"
-#include "dungeon_types.h"
-#include "overworld_types.h"
+#include "actor_data.h"
 
 #pragma region Size calculation
 static u32 GetRoomTemplateSize(const RoomTemplate* pHeader) {

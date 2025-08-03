@@ -1,14 +1,85 @@
 #pragma once
+#define GLM_FORCE_RADIANS
+#include <glm.hpp>
 #include "typedef.h"
+#include "memory_pool.h"
 #include "actor_data.h"
-#include "actor_behaviour.h"
-#include "actor_types.h"
-#include "asset_types.h"
 
-struct ActorPrototype;
-struct HitResult;
+enum ActorFacingDir : s8 {
+	ACTOR_FACING_LEFT = -1, // 0b11
+	ACTOR_FACING_RIGHT = 1 // 0b01
+};
+
+struct ActorFlags {
+	s8 facingDir : 2;
+	bool inAir : 1;
+	bool active : 1;
+	bool pendingRemoval : 1;
+};
+
+struct ActorDrawState {
+	u16 animIndex = 0;
+	u16 frameIndex = 0;
+	u16 animCounter = 0;
+
+	glm::i16vec2 pixelOffset = { 0, 0 };
+
+	u8 layer : 2 = 0;
+	u8 palette : 2 = 0;
+	bool hFlip : 1 = false;
+	bool vFlip : 1 = false;
+	bool visible : 1 = true;
+	bool useCustomPalette : 1 = false;
+};
+
+struct Actor {
+	u64 persistId;
+
+	ActorFlags flags;
+
+	glm::vec2 initialPosition;
+	glm::vec2 position;
+	glm::vec2 initialVelocity;
+	glm::vec2 velocity;
+
+	ActorDrawState drawState;
+
+	ActorState state;
+
+	ActorPrototypeHandle prototypeHandle;
+};
+
+struct PersistedActorData;
 struct RoomActor;
-struct Animation;
+struct HitResult;
+
+typedef PoolHandle<Actor> ActorHandle;
+static constexpr u32 MAX_DYNAMIC_ACTOR_COUNT = 512;
+typedef Pool<Actor, MAX_DYNAMIC_ACTOR_COUNT> DynamicActorPool;
+
+typedef void (*ActorCallbackFn)(Actor*);
+typedef void (*ActorCollisionCallbackFn)(Actor*, Actor*);
+typedef bool (*ActorFilterFn)(const Actor*);
+
+typedef void (*ActorInitFn)(Actor*, const ActorPrototype*, const PersistedActorData*);
+typedef void (*ActorUpdateFn)(Actor*, const ActorPrototype*);
+typedef bool (*ActorDrawFn)(const Actor*, const ActorPrototype*);
+
+enum PlayerWeaponType : u8 {
+	PLAYER_WEAPON_BOW,
+	PLAYER_WEAPON_LAUNCHER
+};
+
+enum PlayerModeBits : u8 {
+	PLAYER_MODE_NORMAL,
+	PLAYER_MODE_STAND_TO_SIT,
+	PLAYER_MODE_SITTING,
+	PLAYER_MODE_SIT_TO_STAND,
+	PLAYER_MODE_DYING,
+	PLAYER_MODE_DAMAGED,
+	PLAYER_MODE_ENTERING,
+	PLAYER_MODE_DODGE,
+};
 
 namespace Game {
 	Actor* SpawnActor(const RoomActor* pTemplate, u32 roomId);
@@ -29,6 +100,10 @@ namespace Game {
 	Actor* GetFirstActor(ActorFilterFn filter);
 
 	Actor* GetPlayer();
+	bool PlayerInvulnerable(Actor* pPlayer);
+	void PlayerTakeDamage(Actor* pPlayer, const Damage& damage, const glm::vec2& enemyPos);
+
+	void EnemyDie(Actor* pActor, const ActorPrototype* pPrototype);
 
 	bool UpdateCounter(u16& counter);
 	void SetDamagePaletteOverride(Actor* pActor, u16 damageCounter);
@@ -49,4 +124,62 @@ namespace Game {
 	void UpdateActors();
 	bool DrawActorDefault(const Actor* pActor, const ActorPrototype* pPrototype);
 	void DrawActors();
+
+	extern const ActorInitFn playerInitTable[PLAYER_TYPE_COUNT];
+	extern const ActorUpdateFn playerUpdateTable[PLAYER_TYPE_COUNT];
+	extern const ActorDrawFn playerDrawTable[PLAYER_TYPE_COUNT];
+
+	extern const ActorInitFn enemyInitTable[ENEMY_TYPE_COUNT];
+	extern const ActorUpdateFn enemyUpdateTable[ENEMY_TYPE_COUNT];
+	extern const ActorDrawFn enemyDrawTable[ENEMY_TYPE_COUNT];
+
+	extern const ActorInitFn bulletInitTable[BULLET_TYPE_COUNT];
+	extern const ActorUpdateFn bulletUpdateTable[BULLET_TYPE_COUNT];
+	extern const ActorDrawFn bulletDrawTable[BULLET_TYPE_COUNT];
+
+	extern const ActorInitFn pickupInitTable[PICKUP_TYPE_COUNT];
+	extern const ActorUpdateFn pickupUpdateTable[PICKUP_TYPE_COUNT];
+	extern const ActorDrawFn pickupDrawTable[PICKUP_TYPE_COUNT];
+
+	extern const ActorInitFn effectInitTable[EFFECT_TYPE_COUNT];
+	extern const ActorUpdateFn effectUpdateTable[EFFECT_TYPE_COUNT];
+	extern const ActorDrawFn effectDrawTable[EFFECT_TYPE_COUNT];
+
+	extern const ActorInitFn interactableInitTable[INTERACTABLE_TYPE_COUNT];
+	extern const ActorUpdateFn interactableUpdateTable[INTERACTABLE_TYPE_COUNT];
+	extern const ActorDrawFn interactableDrawTable[INTERACTABLE_TYPE_COUNT];
+
+	extern const ActorInitFn spawnerInitTable[SPAWNER_TYPE_COUNT];
+	extern const ActorUpdateFn spawnerUpdateTable[SPAWNER_TYPE_COUNT];
+	extern const ActorDrawFn spawnerDrawTable[SPAWNER_TYPE_COUNT];
+
+	constexpr ActorInitFn const* actorInitTable[ACTOR_TYPE_COUNT] = {
+		playerInitTable,
+		enemyInitTable,
+		bulletInitTable,
+		pickupInitTable,
+		effectInitTable,
+		interactableInitTable,
+		spawnerInitTable,
+	};
+
+	constexpr ActorUpdateFn const* actorUpdateTable[ACTOR_TYPE_COUNT] = {
+		playerUpdateTable,
+		enemyUpdateTable,
+		bulletUpdateTable,
+		pickupUpdateTable,
+		effectUpdateTable,
+		interactableUpdateTable,
+		spawnerUpdateTable,
+	};
+
+	constexpr ActorDrawFn const* actorDrawTable[ACTOR_TYPE_COUNT] = {
+		playerDrawTable,
+		enemyDrawTable,
+		bulletDrawTable,
+		pickupDrawTable,
+		effectDrawTable,
+		interactableDrawTable,
+		spawnerDrawTable,
+	};
 }

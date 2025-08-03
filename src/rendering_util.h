@@ -1,7 +1,5 @@
 #pragma once
-#define GLM_FORCE_RADIANS
-#include <glm.hpp>
-#include "rendering_types.h"
+#include "core_types.h"
 
 namespace Rendering
 {

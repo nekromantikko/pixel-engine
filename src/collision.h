@@ -1,7 +1,5 @@
 #pragma once
-#include "collision_types.h"
-
-struct Tilemap;
+#include "core_types.h"
 
 namespace Collision {
     void SweepBoxHorizontal(const Tilemap* pTilemap, const AABB& box, const glm::vec2& pos, r32 dx, HitResult& outHit);
