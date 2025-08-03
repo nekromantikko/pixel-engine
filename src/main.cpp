@@ -110,6 +110,11 @@ int main(int argc, char** argv) {
         
         Game::Update(deltaTimeSeconds);
 
+        // Check if game wants to exit
+        if (Game::ShouldExit()) {
+            running = false;
+        }
+
         if (!minimized) {
             r64 averageFramerate = GetAverageFramerate(deltaTimeSeconds);
             UpdateWindowTitle(pWindow, averageFramerate, deltaTimeSeconds);

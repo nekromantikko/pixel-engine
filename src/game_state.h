@@ -40,6 +40,8 @@ struct GameData {
 enum GameState {
     GAME_STATE_NONE,
     GAME_STATE_TITLE,
+    GAME_STATE_MAIN_MENU,
+    GAME_STATE_SETTINGS_MENU,
     GAME_STATE_OVERWORLD,
 	GAME_STATE_DUNGEON,
 	GAME_STATE_DUNGEON_MAP,
@@ -104,6 +106,7 @@ namespace Game {
 
     void InitGameState(GameState initialState);
     void StepFrame();
+    GameState GetCurrentGameState();
 
     void TriggerScreenShake(s16 magnitude, u16 duration, bool freezeGameplay);
     void TriggerLevelTransition(DungeonHandle targetDungeon, glm::i8vec2 targetGridCell, u8 enterDirection, void (*callback)() = nullptr);

@@ -11,6 +11,9 @@ namespace Game {
 		void SetPlayerDisplayStamina(s16 stamina);
 		void SetPlayerDisplayExp(s16 exp);
 
+		// Text rendering
+		void DrawText(const char* text, glm::i16vec2 pos, u8 palette = 0x1, u8 layer = 0);
+
 		void Update();
 	}
 }

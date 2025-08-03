@@ -3,3 +3,4 @@ bin/
 build/
 /.vs
 assets/shaders/
+MENU_PREVIEW.md
