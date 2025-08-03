@@ -1,0 +1,51 @@
+name: Build Validation
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install system dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y \
+          libvulkan-dev \
+          libsdl2-dev \
+          glslang-tools \
+          build-essential
+
+    - name: Verify dependencies
+      run: |
+        echo "Verifying required dependencies..."
+        pkg-config --exists vulkan && echo "✓ Vulkan SDK available"
+        pkg-config --exists sdl2 && echo "✓ SDL2 development libraries available"
+        which glslangValidator && echo "✓ GLSL validator available"
+        echo "✓ CMake version: $(cmake --version | head -1)"
+        echo "✓ GCC version: $(gcc --version | head -1)"
+
+    - name: Configure project
+      run: |
+        mkdir build
+        cd build
+        cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_EDITOR=ON ..
+
+    - name: Build project
+      run: |
+        cd build
+        make -j$(nproc)
+
+    - name: Verify executables
+      run: |
+        cd build
+        echo "Checking build outputs..."
+        ls -la pixelengine asset_packer
+        echo "✓ Build completed successfully"

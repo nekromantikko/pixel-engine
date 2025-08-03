@@ -13,6 +13,9 @@ For the final image, I apply a CRT shader originally by Timothy Lottes (https://
 - SDL2 development libraries  
 - GLSL validator (glslangValidator)
 
+## Continuous Integration
+This project includes GitHub Actions for automated build validation. All pull requests must pass the build validation workflow before merging.
+
 ## Windows
 - Copy SDL2.dll and assets.npak to build directory
 
