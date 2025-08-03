@@ -15,4 +15,12 @@ target_link_libraries(assets PUBLIC
     nlohmann_json
 )
 
+target_include_directories(assets PUBLIC
+    ${glm_SOURCE_DIR}
+)
+
 target_compile_features(assets PUBLIC cxx_std_20)
+
+target_compile_definitions(assets PUBLIC 
+    ASSETS_NPAK_OUTPUT="${ASSETS_NPAK_OUTPUT}"
+)

@@ -8,6 +8,7 @@ target_include_directories(core PUBLIC
 )
 
 target_link_libraries(core PUBLIC
+    assets  # For shared type definitions
     SDL2::SDL2
 )
 

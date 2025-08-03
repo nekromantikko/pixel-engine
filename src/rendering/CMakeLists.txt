@@ -10,6 +10,7 @@ target_include_directories(rendering PUBLIC
 )
 
 target_link_libraries(rendering PUBLIC
+    assets  # For shared rendering types
     ${Vulkan_LIBRARY}
     SDL2::SDL2
 )
