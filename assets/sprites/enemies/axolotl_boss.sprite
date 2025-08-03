@@ -1,0 +1,8 @@
+# This is a placeholder sprite file for the axolotl boss
+# In a real implementation, this would contain the actual sprite data
+# For now, we'll reference this in the actor prototype
+
+width: 32
+height: 32
+frames: 4
+# Placeholder data - in real implementation this would be the actual sprite pixels

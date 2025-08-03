@@ -1,0 +1,21 @@
+{
+    "animation_ids": [
+        131735319442288619
+    ],
+    "hitbox": {
+        "max_x": 0.75,
+        "max_y": 0.75,
+        "min_x": -0.75,
+        "min_y": -0.75
+    },
+    "properties": {
+        "deathEffect": 8648874738303603352,
+        "expSpawner": 3830411244440486257,
+        "expValue": 5000,
+        "health": 250,
+        "lootSpawner": 4217208296074856327,
+        "projectile": 18243256850283701523
+    },
+    "subtype": "axolotl_boss",
+    "type": "enemy"
+}

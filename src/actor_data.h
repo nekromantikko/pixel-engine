@@ -157,6 +157,7 @@ enum EnemyType : TActorSubtype {
 	ENEMY_TYPE_SLIME,
 	ENEMY_TYPE_SKULL,
 	ENEMY_TYPE_FIREBALL,
+	ENEMY_TYPE_AXOLOTL_BOSS,
 
 	ENEMY_TYPE_COUNT
 };
@@ -202,7 +203,8 @@ struct FireballState {
 ACTOR_EDITOR_DATA(Enemy,
 	{ "slime", GET_SUBTYPE_PROPERTIES(EnemyData) },
 	{ "skull", GET_SUBTYPE_PROPERTIES(EnemyData) },
-	{ "fireball", GET_SUBTYPE_PROPERTIES(FireballData) }
+	{ "fireball", GET_SUBTYPE_PROPERTIES(FireballData) },
+	{ "axolotl_boss", GET_SUBTYPE_PROPERTIES(EnemyData) }
 )
 #pragma endregion
 
