@@ -6,6 +6,7 @@
 #include "audio_types.h"
 #include "dungeon_types.h"
 #include "overworld_types.h"
+#include <cstring>
 
 #pragma region Size calculation
 static u32 GetRoomTemplateSize(const RoomTemplate* pHeader) {

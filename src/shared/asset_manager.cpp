@@ -193,8 +193,8 @@ bool AssetManager::SaveArchive(const std::filesystem::path& path) {
 
 	ArchiveHeader header{
 		.signature = { 'N','P','A','K' },
-		.assetCount = u32(assetIndex.size()),
-		.directoryOffset = sizeof(ArchiveHeader) + archiveSize,
+		.assetCount = static_cast<u32>(assetIndex.size()),
+		.directoryOffset = static_cast<u32>(sizeof(ArchiveHeader) + archiveSize),
 	};
 	fwrite(&header, sizeof(ArchiveHeader), 1, pFile);
 
