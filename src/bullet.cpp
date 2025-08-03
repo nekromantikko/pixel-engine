@@ -52,6 +52,9 @@ static void HandleBulletTreasureChestCollision(Actor* pBullet, const ActorProtot
         // Chest is opened! Spawn loot
         pChest->state.treasureChestState.opened = true;
         
+        // Mark as opened in persistent data so it stays opened when player revisits
+        Game::SetPersistedActorData(pChest->persistId, { .activated = true });
+        
         // Spawn loot using the loot spawner
         if (pChestPrototype->data.treasureChestData.lootSpawner != ActorPrototypeHandle::Null()) {
             Game::SpawnActor(pChestPrototype->data.treasureChestData.lootSpawner, pChest->position);
