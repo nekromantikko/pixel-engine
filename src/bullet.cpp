@@ -28,6 +28,39 @@ static void HandleBulletEnemyCollision(Actor* pBullet, const ActorPrototype* pPr
     pEnemy->state.enemyState.health = newHealth;
 }
 
+static void HandleBulletTreasureChestCollision(Actor* pBullet, const ActorPrototype* pBulletPrototype, Actor* pChest) {
+    const ActorPrototype* pChestPrototype = Game::GetActorPrototype(pChest);
+    
+    if (pChest == nullptr || pChestPrototype->subtype != INTERACTABLE_TYPE_TREASURE_CHEST) {
+        return;
+    }
+    
+    // Don't damage already opened chests
+    if (pChest->state.treasureChestState.opened) {
+        return;
+    }
+
+    BulletDie(pBullet, pBulletPrototype, pBullet->position);
+
+    // TODO: Use value from weapon data
+    constexpr u16 baseDamage = 1;
+    const Damage damage = Game::CalculateDamage(pChest, baseDamage);
+
+    const u16 newHealth = Game::ActorTakeDamage(pChest, damage, pChest->state.treasureChestState.health, pChest->state.treasureChestState.damageCounter);
+    
+    if (newHealth == 0 && !pChest->state.treasureChestState.opened) {
+        // Chest is opened! Spawn loot
+        pChest->state.treasureChestState.opened = true;
+        
+        // Spawn loot using the loot spawner
+        if (pChestPrototype->data.treasureChestData.lootSpawner != ActorPrototypeHandle::Null()) {
+            Game::SpawnActor(pChestPrototype->data.treasureChestData.lootSpawner, pChest->position);
+        }
+    }
+    
+    pChest->state.treasureChestState.health = newHealth;
+}
+
 static void UpdateDefaultBullet(Actor* pActor, const ActorPrototype* pPrototype) {
     if (!Game::UpdateCounter(pActor->state.bulletState.lifetimeCounter)) {
         BulletDie(pActor, pPrototype, pActor->position);
@@ -48,6 +81,17 @@ static void UpdateDefaultBullet(Actor* pActor, const ActorPrototype* pPrototype)
     Actor* pEnemy = Game::GetFirstActorCollision(pActor, ACTOR_TYPE_ENEMY);
     if (pEnemy) {
         HandleBulletEnemyCollision(pActor, pPrototype, pEnemy);
+        return; // Exit early if we hit an enemy
+    }
+
+    // Check for treasure chest collision
+    Actor* pInteractable = Game::GetFirstActorCollision(pActor, ACTOR_TYPE_INTERACTABLE);
+    if (pInteractable) {
+        const ActorPrototype* pInteractablePrototype = Game::GetActorPrototype(pInteractable);
+        if (pInteractablePrototype && pInteractablePrototype->subtype == INTERACTABLE_TYPE_TREASURE_CHEST) {
+            HandleBulletTreasureChestCollision(pActor, pPrototype, pInteractable);
+            return; // Exit early if we hit a treasure chest
+        }
     }
 
     Game::GetAnimFrameFromDirection(pActor, pPrototype);
@@ -78,6 +122,17 @@ static void UpdateGrenade(Actor* pActor, const ActorPrototype* pPrototype) {
     Actor* pEnemy = Game::GetFirstActorCollision(pActor, ACTOR_TYPE_ENEMY);
     if (pEnemy) {
         HandleBulletEnemyCollision(pActor, pPrototype, pEnemy);
+        return; // Exit early if we hit an enemy
+    }
+
+    // Check for treasure chest collision
+    Actor* pInteractable = Game::GetFirstActorCollision(pActor, ACTOR_TYPE_INTERACTABLE);
+    if (pInteractable) {
+        const ActorPrototype* pInteractablePrototype = Game::GetActorPrototype(pInteractable);
+        if (pInteractablePrototype && pInteractablePrototype->subtype == INTERACTABLE_TYPE_TREASURE_CHEST) {
+            HandleBulletTreasureChestCollision(pActor, pPrototype, pInteractable);
+            return; // Exit early if we hit a treasure chest
+        }
     }
 
     Game::GetAnimFrameFromDirection(pActor, pPrototype);

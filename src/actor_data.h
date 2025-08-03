@@ -317,6 +317,7 @@ ACTOR_EDITOR_DATA(Effect,
 enum InteractableType : TActorSubtype {
 	INTERACTABLE_TYPE_CHECKPOINT,
 	INTERACTABLE_TYPE_NPC,
+	INTERACTABLE_TYPE_TREASURE_CHEST,
 
 	INTERACTABLE_TYPE_COUNT
 };
@@ -331,15 +332,32 @@ struct CheckpointState {
 	bool activated;
 };
 
+struct TreasureChestState {
+	u16 health;
+	u16 damageCounter;
+	bool opened;
+};
+
 struct NPCData {
 
 };
 
 ACTOR_SUBTYPE_PROPERTIES(NPCData)
 
+struct TreasureChestData {
+	u16 health;
+	ActorPrototypeHandle lootSpawner;
+};
+
+ACTOR_SUBTYPE_PROPERTIES(TreasureChestData,
+	ACTOR_SUBTYPE_PROPERTY_SCALAR(TreasureChestData, health, U16, 1),
+	ACTOR_SUBTYPE_PROPERTY_ASSET(TreasureChestData, lootSpawner, ASSET_TYPE_ACTOR_PROTOTYPE, 1)
+)
+
 ACTOR_EDITOR_DATA(Interactable,
 	{ "checkpoint", GET_SUBTYPE_PROPERTIES(CheckpointData) },
-	{ "npc", GET_SUBTYPE_PROPERTIES(NPCData) }
+	{ "npc", GET_SUBTYPE_PROPERTIES(NPCData) },
+	{ "treasure_chest", GET_SUBTYPE_PROPERTIES(TreasureChestData) }
 )
 #pragma endregion
 
@@ -398,6 +416,7 @@ union ActorPrototypeData {
 	PickupData pickupData;
 	EffectData effectData;
 	CheckpointData checkpointData;
+	TreasureChestData treasureChestData;
 	ExpSpawnerData expSpawner;
 	LootSpawnerData lootSpawner;
 };
@@ -412,6 +431,7 @@ union ActorState {
 	EffectState effectState;
 	DamageNumberState dmgNumberState;
 	CheckpointState checkpointState;
+	TreasureChestState treasureChestState;
 	ExpSpawnerState expSpawner;
 };
 
