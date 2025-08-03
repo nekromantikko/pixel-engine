@@ -947,7 +947,7 @@ const Overworld* Game::GetOverworld() {
 bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
     const Overworld* pOverworld = AssetManager::GetAsset(overworldHandle);
     if (!pOverworld) {
-		DEBUG_ERROR("Failed to load overworld asset with ID: %llu", overworldHandle.id);
+		DEBUG_ERROR("Failed to load overworld asset with ID: %llu\n", overworldHandle.id);
         return false;
     }
 

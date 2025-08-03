@@ -1,4 +1,3 @@
-#ifdef EDITOR
 #include "asset_serialization.h"
 #include <cstdlib>
 #include "core_types.h"
@@ -380,7 +379,6 @@ static SerializationResult LoadMetaspriteFromFile(FILE* pFile, const nlohmann::j
 		}
 	}
 
-	fclose(pFile);
 	return SERIALIZATION_SUCCESS;
 
 }
@@ -459,7 +457,7 @@ static SerializationResult SaveAnimationToFile(FILE* pFile, nlohmann::json& meta
 
 	std::string jsonStr = json.dump(4);
 	fwrite(jsonStr.c_str(), sizeof(char), jsonStr.size(), pFile);
-	fclose(pFile);
+
 	return SERIALIZATION_SUCCESS;
 }
 
@@ -1065,6 +1063,7 @@ SerializationResult AssetSerialization::LoadAssetFromFile(const std::filesystem:
 		return SERIALIZATION_FILE_NOT_FOUND;
 	}
 
+	// TODO: Reuse file handle
 	FILE* pFile = fopen(path.string().c_str(), "rb");
 	if (!pFile) {
 		return SERIALIZATION_FAILED_TO_OPEN_FILE;
@@ -1126,6 +1125,7 @@ SerializationResult AssetSerialization::SaveAssetToFile(const std::filesystem::p
 		return SERIALIZATION_NULL_POINTER;
 	}
 	
+	// TODO: Reuse file handle
 	FILE* pFile = fopen(path.string().c_str(), "wb");
 	if (!pFile) {
 		return SERIALIZATION_FAILED_TO_OPEN_FILE;
@@ -1183,4 +1183,3 @@ SerializationResult AssetSerialization::SaveAssetToFile(const std::filesystem::p
 	fclose(pFile);
 	return saveResult;
 }
-#endif

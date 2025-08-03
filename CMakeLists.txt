@@ -27,7 +27,8 @@ set(SHARED_SOURCES
 	src/shared/debug.cpp
 	src/shared/random.cpp
 	src/shared/asset_serialization.cpp
-	src/shared/asset_manager.cpp)
+	src/shared/asset_manager.cpp
+	src/shared/asset_archive.cpp)
 
 set(SOURCES 
 		src/main.cpp
