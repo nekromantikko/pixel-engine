@@ -22,37 +22,37 @@ FetchContent_MakeAvailable(nlohmann_json)
 find_package(Vulkan REQUIRED)
 find_package(SDL2 REQUIRED)
 
-set(SHARED_INCLUDE_DIR src/shared)
+set(SHARED_INCLUDE_DIR src/assets/shared)
 set(SHARED_SOURCES 
-	src/shared/debug.cpp
-	src/shared/random.cpp
-	src/shared/asset_serialization.cpp
-	src/shared/asset_manager.cpp)
+	src/assets/shared/debug.cpp
+	src/assets/shared/random.cpp
+	src/assets/shared/asset_serialization.cpp
+	src/assets/shared/asset_manager.cpp)
 
 set(SOURCES 
-		src/main.cpp
-		src/collision.cpp
-		src/game.cpp
-		src/input.cpp
-		src/rendering_util.cpp
-		src/rendering_vulkan.cpp
-		src/game_rendering.cpp
-		src/tilemap.cpp
-		src/actors.cpp
-		src/audio.cpp
-		src/coroutines.cpp
-		src/dialog.cpp
-		src/game_input.cpp
-		src/game_state.cpp
-		src/game_ui.cpp
-		src/player.cpp
-		src/enemy.cpp
-		src/bullet.cpp
-		src/pickup.cpp
-		src/effect.cpp
-		src/interactable.cpp
-		src/spawner.cpp
-		src/shader.cpp)
+		src/platform/main.cpp
+		src/game/collision.cpp
+		src/game/game.cpp
+		src/core/input.cpp
+		src/rendering/rendering_util.cpp
+		src/rendering/rendering_vulkan.cpp
+		src/game/game_rendering.cpp
+		src/game/tilemap.cpp
+		src/game/actors.cpp
+		src/audio/audio.cpp
+		src/game/coroutines.cpp
+		src/game/dialog.cpp
+		src/game/game_input.cpp
+		src/game/game_state.cpp
+		src/game/game_ui.cpp
+		src/game/player.cpp
+		src/game/enemy.cpp
+		src/game/bullet.cpp
+		src/game/pickup.cpp
+		src/game/effect.cpp
+		src/game/interactable.cpp
+		src/game/spawner.cpp
+		src/rendering/shader.cpp)
 
 option(ENABLE_EDITOR "Enable editor functionality" ON)
 option(USE_AVX "Use AVX implementation where applicable" ON)
@@ -64,7 +64,11 @@ set(ASSETS_NPAK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
 set (ASSET_PACKER_SOURCES src/tools/asset_packer.cpp)
 
 add_executable(asset_packer ${SHARED_SOURCES} ${ASSET_PACKER_SOURCES})
-target_include_directories(asset_packer PRIVATE ${SHARED_INCLUDE_DIR} ${glm_SOURCE_DIR})
+target_include_directories(asset_packer PRIVATE 
+	${SHARED_INCLUDE_DIR} 
+	src/core 
+	src/assets
+	${glm_SOURCE_DIR})
 target_compile_features(asset_packer PUBLIC cxx_std_20)
 target_compile_definitions(asset_packer PRIVATE EDITOR ASSETS_SRC_DIR="${ASSETS_SRC_DIR}")
 target_link_libraries(asset_packer PRIVATE nlohmann_json)
@@ -76,7 +80,7 @@ endif()
 
 IF(ENABLE_EDITOR)
 	set(EDITOR_INCLUDE_DIRS src/ext/imgui-filebrowser)
-	set(EDITOR_SOURCES src/editor.cpp src/editor_assets.cpp)
+	set(EDITOR_SOURCES src/editor/editor.cpp src/editor/editor_assets.cpp)
 
 	FetchContent_Declare(
         	imgui
@@ -107,14 +111,29 @@ IF(ENABLE_EDITOR)
 ENDIF()
 
 add_executable(${PROJECT_NAME} WIN32 ${SHARED_SOURCES} ${SOURCES})
-target_include_directories(${PROJECT_NAME} PRIVATE ${SHARED_INCLUDE_DIR} ${SDL2_INCLUDE_DIRS} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE 
+	${SHARED_INCLUDE_DIR} 
+	src/core 
+	src/rendering 
+	src/audio 
+	src/game 
+	src/platform
+	src/assets
+	${SDL2_INCLUDE_DIRS} 
+	${Vulkan_INCLUDE_DIRS} 
+	${glm_SOURCE_DIR})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2 SDL2::SDL2main)
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_NPAK_OUTPUT="${ASSETS_NPAK_OUTPUT}")
 
 IF(ENABLE_EDITOR)
 	target_sources(${PROJECT_NAME} PRIVATE ${IMGUI_SOURCES} ${EDITOR_SOURCES})
-	target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${nlohmann_json_INCLUDE_DIRS} ${EDITOR_INCLUDE_DIRS})
+	target_include_directories(${PROJECT_NAME} PRIVATE 
+		src/editor
+		${imgui_SOURCE_DIR} 
+		${imgui_SOURCE_DIR}/backends 
+		${nlohmann_json_INCLUDE_DIRS} 
+		${EDITOR_INCLUDE_DIRS})
 	target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_SRC_DIR="${ASSETS_SRC_DIR}")
 ENDIF()
