@@ -8,9 +8,10 @@ set(CMAKE_CXX_EXTENSIONS ON)
 
 if(MSVC)
 set(COMPILER_FLAGS
-	"/Zc:preprocessor"
-	"/permissive-"
-	"/W4"
+	"/arch:AVX2" # Enable AVX2 instructions
+	"/Zc:preprocessor" # Enable C++20 preprocessor features
+	"/permissive-" # Disable MSVC's non-standard C++ extensions
+	"/W4" # Set warning level to 4
 	"/wd4100" # Disable warning C4100: unreferenced formal parameter
 	"/wd4101" # Disable warning C4101: unreferenced local variable
 	"/wd4189" # Disable warning C4189: local variable is initialized but not referenced
@@ -20,6 +21,7 @@ set(COMPILER_FLAGS
 )
 else()
 set(COMPILER_FLAGS
+	"-mavx2"
 	"-Wall"
 	"-Wextra"
 	"-Wno-unused-parameter"
@@ -81,7 +83,6 @@ set(SOURCES
 		src/asset_manager.cpp)
 
 option(ENABLE_EDITOR "Enable editor functionality" ON)
-option(USE_AVX "Use AVX implementation where applicable" ON)
 
 set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set(ASSETS_NPAK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
@@ -204,14 +205,9 @@ IF(WIN32)
 ENDIF()
 
 IF(UNIX AND NOT APPLE)
-	set(USE_AVX OFF)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC PLATFORM_LINUX)
 ENDIF()
 
 IF(ENABLE_EDITOR)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC EDITOR)
-ENDIF()
-
-IF(USE_AVX)
-	target_compile_definitions(${PROJECT_NAME} PUBLIC USE_AVX)
 ENDIF()

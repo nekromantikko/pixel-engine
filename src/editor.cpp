@@ -10,11 +10,7 @@
 #include <imgui_internal.h>
 #include <imgui_impl_sdl2.h>
 #include <imfilebrowser.h>
-
-#ifdef USE_AVX
 #include <immintrin.h>
-#endif
-
 #include "tilemap.h"
 #include "rendering_util.h"
 #include "game.h"
@@ -200,7 +196,6 @@ static ImVec2 DrawColorGrid(ImVec2 size, s32* selection = nullptr, bool* focused
 	return gridPos;
 }
 
-#ifdef USE_AVX
 // See GetMetatileVertices for human-readable version
 static void GetMetatileVerticesAVX(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
 	constexpr r32 TILE_SIZE = 1.0f / METATILE_DIM_TILES;
@@ -310,7 +305,6 @@ static void GetMetatileVerticesAVX(const Metatile& metatile, const ImVec2& pos, 
 	_mm256_store_ps((r32*)outUV + 16, _mm256_unpacklo_ps(u1, v1));
 	_mm256_store_ps((r32*)outUV + 24, _mm256_unpackhi_ps(u1, v1));
 }
-#endif
 
 static void GetMetatileVertices(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
 	constexpr r32 tileSize = 1.0f / METATILE_DIM_TILES;
@@ -361,13 +355,9 @@ static void GetMetatileVertices(const Metatile& metatile, const ImVec2& pos, r32
 	}
 }
 
-// Wrapper function to choose between AVX and non-AVX implementations based on build option
 static inline void GetMetatileVerticesImpl(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
-#ifdef USE_AVX
+	// TODO: Check CPU capabilities and use AVX if available
 	GetMetatileVerticesAVX(metatile, pos, scale, outVertices, outUV);
-#else
-	GetMetatileVertices(metatile, pos, scale, outVertices, outUV);
-#endif
 }
 
 static void WriteMetatile(const ImVec2* verts, const ImVec2* uv, ImU32 color = IM_COL32(255, 255, 255, 255)) {
