@@ -729,7 +729,7 @@ static bool DrawPlayerGun(const Actor* pPlayer) {
         break;
     }
     default:
-        break;
+        return false;
     }
     weaponOffset.x *= pPlayer->flags.facingDir;
 
