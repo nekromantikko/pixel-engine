@@ -2,6 +2,8 @@
 #include <filesystem>
 #include "../asset_archive.h"
 #include "../asset_serialization.h"
+#include "../shader_compiler.h"
+#include <fstream>
 
 namespace fs = std::filesystem;
 
@@ -82,5 +84,6 @@ int main(int argc, char* argv[]) {
 	}
 
 	std::cout << "Assets successfully packed into " << outputFile << std::endl;
+
 	return 0;
 }
