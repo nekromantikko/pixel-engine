@@ -2,6 +2,7 @@
 #include "editor_assets.h"
 #include "rendering.h"
 #include "debug.h"
+#include "cpu_features.h"
 #include <cassert>
 #include <limits>
 #include <type_traits>
@@ -361,13 +362,19 @@ static void GetMetatileVertices(const Metatile& metatile, const ImVec2& pos, r32
 	}
 }
 
-// Wrapper function to choose between AVX and non-AVX implementations based on build option
+// Wrapper function to choose between AVX and non-AVX implementations based on runtime detection
 static inline void GetMetatileVerticesImpl(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
+	// Check both compile-time support and runtime availability
+	if (CpuFeatures::IsAVXAvailable()) {
 #ifdef USE_AVX
-	GetMetatileVerticesAVX(metatile, pos, scale, outVertices, outUV);
+		GetMetatileVerticesAVX(metatile, pos, scale, outVertices, outUV);
 #else
-	GetMetatileVertices(metatile, pos, scale, outVertices, outUV);
+		// Fallback - this shouldn't happen if IsAVXAvailable() works correctly
+		GetMetatileVertices(metatile, pos, scale, outVertices, outUV);
 #endif
+	} else {
+		GetMetatileVertices(metatile, pos, scale, outVertices, outUV);
+	}
 }
 
 static void WriteMetatile(const ImVec2* verts, const ImVec2* uv, ImU32 color = IM_COL32(255, 255, 255, 255)) {
@@ -4374,6 +4381,9 @@ void Editor::CreateContext() {
 }
 
 void Editor::Init(SDL_Window *pWindow) {
+	// Initialize CPU features detection
+	CpuFeatures::Initialize();
+	
 	ImGui::CreateContext();
 	Rendering::InitEditor(pWindow);
 

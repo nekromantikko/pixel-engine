@@ -49,10 +49,55 @@ set(SOURCES
 		src/random.cpp
 		src/debug.cpp
 		src/asset_archive.cpp
-		src/asset_manager.cpp)
+		src/asset_manager.cpp
+		src/cpu_features.cpp)
 
 option(ENABLE_EDITOR "Enable editor functionality" ON)
-option(USE_AVX "Use AVX implementation where applicable" ON)
+
+# AVX Support Detection
+option(FORCE_DISABLE_AVX "Force disable AVX even if supported" OFF)
+
+# Check if AVX is supported by the compiler and target architecture
+include(CheckCXXSourceCompiles)
+
+# Try to compile AVX2 code to check support (since the existing code uses AVX2 instructions)
+set(CMAKE_REQUIRED_FLAGS "-mavx2")
+check_cxx_source_compiles("
+#include <immintrin.h>
+int main() {
+    __m256 a = _mm256_setzero_ps();
+    __m256i b = _mm256_setzero_si256();
+    __m256i c = _mm256_and_si256(b, b);  // AVX2 instruction
+    return 0;
+}
+" COMPILER_SUPPORTS_AVX)
+set(CMAKE_REQUIRED_FLAGS "")
+
+# Determine if we should use AVX
+set(USE_AVX OFF)
+if(NOT FORCE_DISABLE_AVX AND COMPILER_SUPPORTS_AVX)
+    # Enable AVX on Windows by default, but allow override on Linux
+    if(WIN32)
+        set(USE_AVX ON)
+    else()
+        # On Linux, let users explicitly enable it
+        option(ENABLE_AVX "Enable AVX support (requires compatible CPU)" OFF)
+        set(USE_AVX ${ENABLE_AVX})
+    endif()
+endif()
+
+# Print AVX status
+if(USE_AVX)
+    message(STATUS "AVX support: ENABLED")
+else()
+    if(FORCE_DISABLE_AVX)
+        message(STATUS "AVX support: DISABLED (forced)")
+    elseif(NOT COMPILER_SUPPORTS_AVX)
+        message(STATUS "AVX support: DISABLED (compiler/target doesn't support AVX)")
+    else()
+        message(STATUS "AVX support: DISABLED (not enabled on this platform)")
+    endif()
+endif()
 
 set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set(ASSETS_NPAK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
@@ -175,7 +220,6 @@ IF(WIN32)
 ENDIF()
 
 IF(UNIX AND NOT APPLE)
-	set(USE_AVX OFF)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC PLATFORM_LINUX)
 ENDIF()
 
@@ -185,4 +229,10 @@ ENDIF()
 
 IF(USE_AVX)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC USE_AVX)
+	# Add AVX2 compiler flags (since the existing code uses AVX2 instructions)
+	if(MSVC)
+		target_compile_options(${PROJECT_NAME} PRIVATE /arch:AVX2)
+	else()
+		target_compile_options(${PROJECT_NAME} PRIVATE -mavx2)
+	endif()
 ENDIF()
