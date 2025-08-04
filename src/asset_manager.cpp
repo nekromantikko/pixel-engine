@@ -56,7 +56,7 @@ bool AssetManager::LoadAssetsFromDirectory(const std::filesystem::path& director
 
 			const u64 guid = metadata["guid"];
 
-			u32 size;
+			size_t size;
 			if (AssetSerialization::LoadAssetFromFile(entry.path(), assetType, metadata, size, nullptr) != SERIALIZATION_SUCCESS) {
 				DEBUG_ERROR("Failed to get size for asset %s\n", pathCStr);
 				continue;
@@ -69,14 +69,14 @@ bool AssetManager::LoadAssetsFromDirectory(const std::filesystem::path& director
 			}
 
 			const std::filesystem::path relativePath = std::filesystem::relative(entry.path(), ASSETS_SRC_DIR);
-			void* pData = AssetManager::AddAsset(guid, assetType, size, relativePath.string().c_str(), name.c_str(), nullptr);
+			void* pData = AddAsset(guid, assetType, size, relativePath.string().c_str(), name.c_str(), nullptr);
 			if (!pData) {
 				DEBUG_ERROR("Failed to add asset %s to manager\n", pathCStr);
 				continue;
 			}
 			if (AssetSerialization::LoadAssetFromFile(entry.path(), assetType, metadata, size, pData) != SERIALIZATION_SUCCESS) {
 				DEBUG_ERROR("Failed to load asset data from %s\n", pathCStr);
-				AssetManager::RemoveAsset(guid);
+				RemoveAsset(guid);
 				continue;
 			}
 			DEBUG_LOG("Asset %s loaded successfully with GUID: %llu\n", pathCStr, guid);
@@ -100,7 +100,7 @@ bool AssetManager::RepackArchive() {
 	return true;
 }
 
-u64 AssetManager::CreateAsset(AssetType type, u32 size, const char* path, const char* name) {
+u64 AssetManager::CreateAsset(AssetType type, size_t size, const char* path, const char* name) {
 	DEBUG_LOG("Creating new asset of size %d with name %s\n", size, name);
 
 	const u64 id = Random::GenerateUUID();
@@ -112,7 +112,7 @@ u64 AssetManager::CreateAsset(AssetType type, u32 size, const char* path, const 
 	return id;
 }
 
-void* AssetManager::AddAsset(u64 id, AssetType type, u32 size, const char* path, const char* name, void* data) {
+void* AssetManager::AddAsset(u64 id, AssetType type, size_t size, const char* path, const char* name, void* data) {
 	return g_archive.AddAsset(id, type, size, path, name, data);
 }
 
@@ -126,13 +126,13 @@ bool AssetManager::RemoveAsset(u64 id) {
 	return true;
 }
 
-bool AssetManager::ResizeAsset(u64 id, u32 newSize) {
+bool AssetManager::ResizeAsset(u64 id, size_t newSize) {
 	AssetEntry* asset = g_archive.GetAssetEntry(id);
 	if (!asset) {
 		return false;
 	}
 	
-	const u32 oldSize = asset->size;
+	const size_t oldSize = asset->size;
 	DEBUG_LOG("Resizing asset %lld (%d -> %d)\n", id, oldSize, newSize);
 
 	return g_archive.ResizeAsset(id, newSize);
@@ -154,7 +154,7 @@ const char* AssetManager::GetAssetName(u64 id) {
 	return pAssetInfo->name;
 }
 
-u32 AssetManager::GetAssetCount() {
+size_t AssetManager::GetAssetCount() {
 	return g_archive.GetAssetCount();
 }
 

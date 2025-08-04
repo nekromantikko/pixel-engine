@@ -11,6 +11,8 @@
 #include "actors.h"
 #include "rendering.h"
 
+// TODO: Use g_ prefix for globals or combine into larger state struct
+
 // TODO: Define in editor in game settings 
 constexpr ActorPrototypeHandle playerPrototypeHandle(18154189127814674930);
 constexpr ActorPrototypeHandle playerOverworldPrototypeHandle(6197846074548071416);
@@ -36,8 +38,8 @@ static u16 mapScrollCounter = 0;
 static glm::vec2 mapScrollOffset(0);
 static glm::vec2 mapScrollDir(0);
 
-static GameData gameData;
-static GameState state;
+static GameData g_gameData;
+static GameState g_state;
 
 // TODO: Store bitfield instead
 static bool discoveredScreens[DUNGEON_GRID_SIZE]{};
@@ -276,7 +278,7 @@ static void StepDungeonGameplayFrame() {
                     mapScrollOffset.y = glm::clamp(mapScrollOffset.y, mapScrollMin.y, mapScrollMax.y);
                 }
 
-                state = GAME_STATE_DUNGEON_MAP;
+                g_state = GAME_STATE_DUNGEON_MAP;
             }
         }
 		
@@ -289,8 +291,8 @@ static void StepDungeonGameplayFrame() {
     Game::DrawActors();
 
     // Draw HUD
-    Game::UI::DrawPlayerHealthBar(gameData.playerMaxHealth);
-    Game::UI::DrawPlayerStaminaBar(gameData.playerMaxStamina);
+    Game::UI::DrawPlayerHealthBar(g_gameData.playerMaxHealth);
+    Game::UI::DrawPlayerStaminaBar(g_gameData.playerMaxStamina);
     Game::UI::DrawExpCounter();
 }
 #pragma endregion
@@ -354,8 +356,8 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
     constexpr u16 borderIndexOffset = 0x110;
     const glm::ivec2 borderMin(tileMin - 1);
     const glm::ivec2 borderMax(tileMax + 1);
-    for (int y = borderMin.y; y < borderMax.y; ++y) {
-        for (int x = borderMin.x; x < borderMax.x; ++x) {
+    for (s32 y = borderMin.y; y < borderMax.y; ++y) {
+        for (s32 x = borderMin.x; x < borderMax.x; ++x) {
             u8 xEdge = ((x == borderMin.x) || (x == borderMax.x - 1)) ? 1 : 0;
             u8 yEdge = ((y == borderMin.y) || (y == borderMax.y - 1)) ? 2 : 0;
             bool hFlip = (x == borderMin.x);
@@ -390,7 +392,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
                 continue;
             }
 
-            const u32 yTile = y + tileMin.y - scrollOffset.y;
+            const s32 yTile = y + tileMin.y - scrollOffset.y;
             // Vertical clipping
             if (yTile < tileMin.y || yTile >= tileMax.y) {
                 continue;
@@ -405,7 +407,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
 
                 const u8 dir = ~(cell.roomIndex) - 1;
 
-                const u32 xTile = (x * 2) + tileMin.x - scrollOffset.x;
+                const s32 xTile = (x * 2) + tileMin.x - scrollOffset.x;
 
                 switch (dir) {
                 case SCREEN_EXIT_DIR_RIGHT: {
@@ -493,7 +495,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
             // Room width = 2;
             const BgTile* pMapTiles = pTemplate->GetMapTiles();
             for (u32 i = 0; i < 2; i++) {
-                const u32 xTile = (x * 2) + tileMin.x + i - scrollOffset.x;
+                const s32 xTile = (x * 2) + tileMin.x + i - scrollOffset.x;
 
                 // Clipping: Check if tile is within worldTileBounds
                 if (xTile >= tileMin.x && xTile < tileMax.x) {
@@ -512,8 +514,8 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
     }
 
     // Draw dropped exp with placeholder graphics
-    if (gameData.expRemnant.dungeonId == currentDungeonId) {
-        DrawMapIcon(gameData.expRemnant.gridOffset, 0x68, 0x00, scrollOffset, worldBounds);
+    if (g_gameData.expRemnant.dungeonId == currentDungeonId) {
+        DrawMapIcon(g_gameData.expRemnant.gridOffset, 0x68, 0x00, scrollOffset, worldBounds);
     }
 
     if (!Game::IsDialogOpen()) {
@@ -607,7 +609,7 @@ static glm::vec2 GetScrollDir(u8 inputDir) {
 
 static void StepDungeonMap() {
     if (!Game::UpdateDialog()) {
-        state = GAME_STATE_DUNGEON;
+        g_state = GAME_STATE_DUNGEON;
     }
 
     if (Game::Input::ButtonPressed(BUTTON_START)) {
@@ -638,8 +640,8 @@ static void StepDungeonMap() {
     DrawMap(mapScrollOffset);
 
     // Draw HUD
-    Game::UI::DrawPlayerHealthBar(gameData.playerMaxHealth);
-    Game::UI::DrawPlayerStaminaBar(gameData.playerMaxStamina);
+    Game::UI::DrawPlayerHealthBar(g_gameData.playerMaxHealth);
+    Game::UI::DrawPlayerStaminaBar(g_gameData.playerMaxStamina);
     Game::UI::DrawExpCounter();
 }
 #pragma endregion
@@ -773,18 +775,18 @@ static bool LevelTransitionCoroutine(void* userData) {
 // Initializes game data to new game state
 void Game::InitGameData() {
     // TODO: Come up with actual values
-	gameData.playerMaxHealth = 96;
-    SetPlayerHealth(gameData.playerMaxHealth);
-    gameData.playerMaxStamina = 64;
-    SetPlayerStamina(gameData.playerMaxStamina);
+    g_gameData.playerMaxHealth = 96;
+    SetPlayerHealth(g_gameData.playerMaxHealth);
+    g_gameData.playerMaxStamina = 64;
+    SetPlayerStamina(g_gameData.playerMaxStamina);
     SetPlayerExp(0);
     SetPlayerWeapon(PLAYER_WEAPON_LAUNCHER);
 
 	// TODO: Initialize first checkpoint
 
-	gameData.expRemnant.dungeonId = DungeonHandle::Null();
+    g_gameData.expRemnant.dungeonId = DungeonHandle::Null();
 
-	gameData.persistedActorData.Clear();
+    g_gameData.persistedActorData.Clear();
 }
 void Game::LoadGameData(u32 saveSlot) {
 	// TODO: Load game data from save slot
@@ -796,75 +798,75 @@ void Game::SaveGameData(u32 saveSlot) {
 
 #pragma region Player
 s16 Game::GetPlayerHealth() {
-    return gameData.playerCurrentHealth;
+    return g_gameData.playerCurrentHealth;
 }
 s16 Game::GetPlayerMaxHealth() {
-	return gameData.playerMaxHealth;
+	return g_gameData.playerMaxHealth;
 }
 void Game::AddPlayerHealth(s16 health) {
-    gameData.playerCurrentHealth += health;
-    gameData.playerCurrentHealth = glm::clamp(gameData.playerCurrentHealth, s16(0), gameData.playerMaxHealth);
-	Game::UI::SetPlayerDisplayHealth(gameData.playerCurrentHealth);
+    g_gameData.playerCurrentHealth += health;
+    g_gameData.playerCurrentHealth = glm::clamp(g_gameData.playerCurrentHealth, s16(0), g_gameData.playerMaxHealth);
+	Game::UI::SetPlayerDisplayHealth(g_gameData.playerCurrentHealth);
 }
 void Game::SetPlayerHealth(s16 health) {
-    gameData.playerCurrentHealth = health;
-    gameData.playerCurrentHealth = glm::clamp(gameData.playerCurrentHealth, s16(0), gameData.playerMaxHealth);
-	Game::UI::SetPlayerDisplayHealth(gameData.playerCurrentHealth);
+    g_gameData.playerCurrentHealth = health;
+    g_gameData.playerCurrentHealth = glm::clamp(g_gameData.playerCurrentHealth, s16(0), g_gameData.playerMaxHealth);
+	Game::UI::SetPlayerDisplayHealth(g_gameData.playerCurrentHealth);
 }
 s16 Game::GetPlayerStamina() {
-    return gameData.playerCurrentStamina;
+    return g_gameData.playerCurrentStamina;
 }
 
 s16 Game::GetPlayerMaxStamina() {
-    return gameData.playerMaxStamina;
+    return g_gameData.playerMaxStamina;
 }
 
 void Game::AddPlayerStamina(s16 stamina) {
-    gameData.playerCurrentStamina += stamina;
-    gameData.playerCurrentStamina = glm::clamp(gameData.playerCurrentStamina, s16(0), gameData.playerMaxStamina);
-    Game::UI::SetPlayerDisplayStamina(gameData.playerCurrentStamina);
+    g_gameData.playerCurrentStamina += stamina;
+    g_gameData.playerCurrentStamina = glm::clamp(g_gameData.playerCurrentStamina, s16(0), g_gameData.playerMaxStamina);
+    Game::UI::SetPlayerDisplayStamina(g_gameData.playerCurrentStamina);
 }
 
 void Game::SetPlayerStamina(s16 stamina) {
-    gameData.playerCurrentStamina = stamina;
-    gameData.playerCurrentStamina = glm::clamp(gameData.playerCurrentStamina, s16(0), gameData.playerMaxStamina);
-    Game::UI::SetPlayerDisplayStamina(gameData.playerCurrentStamina);
+    g_gameData.playerCurrentStamina = stamina;
+    g_gameData.playerCurrentStamina = glm::clamp(g_gameData.playerCurrentStamina, s16(0), g_gameData.playerMaxStamina);
+    Game::UI::SetPlayerDisplayStamina(g_gameData.playerCurrentStamina);
 }
 s16 Game::GetPlayerExp() {
-    return gameData.playerExperience;
+    return g_gameData.playerExperience;
 }
 void Game::AddPlayerExp(s16 exp) {
-	gameData.playerExperience += exp;
-    gameData.playerExperience = glm::clamp(gameData.playerExperience, s16(0), s16(SHRT_MAX));
-	Game::UI::SetPlayerDisplayExp(gameData.playerExperience);
+    g_gameData.playerExperience += exp;
+    g_gameData.playerExperience = glm::clamp(g_gameData.playerExperience, s16(0), s16(SHRT_MAX));
+	Game::UI::SetPlayerDisplayExp(g_gameData.playerExperience);
 }
 void Game::SetPlayerExp(s16 exp) {
-	gameData.playerExperience = exp;
-	Game::UI::SetPlayerDisplayExp(gameData.playerExperience);
+    g_gameData.playerExperience = exp;
+	Game::UI::SetPlayerDisplayExp(g_gameData.playerExperience);
 }
 u16 Game::GetPlayerWeapon() {
-    return gameData.playerWeapon;
+    return g_gameData.playerWeapon;
 }
 void Game::SetPlayerWeapon(u16 weapon) {
-    gameData.playerWeapon = weapon;
+    g_gameData.playerWeapon = weapon;
 }
 #pragma endregion
 
 #pragma region ExpRemnant
 void Game::ClearExpRemnant() {
-    gameData.expRemnant.dungeonId = DungeonHandle::Null();
+    g_gameData.expRemnant.dungeonId = DungeonHandle::Null();
 }
 void Game::SetExpRemnant(const glm::vec2& position, u16 value) {
-    gameData.expRemnant.dungeonId = currentDungeonId;
-    gameData.expRemnant.gridOffset = RoomPosToDungeonGridOffset(currentRoomOffset, position);
-	gameData.expRemnant.position = position;
-	gameData.expRemnant.value = value;
+    g_gameData.expRemnant.dungeonId = currentDungeonId;
+    g_gameData.expRemnant.gridOffset = RoomPosToDungeonGridOffset(currentRoomOffset, position);
+    g_gameData.expRemnant.position = position;
+    g_gameData.expRemnant.value = value;
 }
 #pragma endregion
 
 #pragma region Checkpoint
 Checkpoint Game::GetCheckpoint() {
-    return gameData.checkpoint;
+    return g_gameData.checkpoint;
 }
 void Game::ActivateCheckpoint(const Actor* pCheckpoint) {
     if (pCheckpoint == nullptr) {
@@ -879,13 +881,13 @@ void Game::ActivateCheckpoint(const Actor* pCheckpoint) {
     else SetPersistedActorData(pCheckpoint->persistId, { .activated = true });
 
     // Set checkpoint data
-    gameData.checkpoint = {
+    g_gameData.checkpoint = {
         .dungeonId = currentDungeonId,
         .gridOffset = RoomPosToDungeonGridOffset(currentRoomOffset, pCheckpoint->position)
     };
 
     // Revive dead actors
-    gameData.persistedActorData.ForEach(ReviveDeadActor);
+    g_gameData.persistedActorData.ForEach(ReviveDeadActor);
 }
 #pragma endregion
 
@@ -895,7 +897,7 @@ PersistedActorData* Game::GetPersistedActorData(u64 id) {
         return nullptr;
     }
 
-    PersistedActorData* pPersistData = gameData.persistedActorData.Get(id);
+    PersistedActorData* pPersistData = g_gameData.persistedActorData.Get(id);
     return pPersistData;
 }
 void Game::SetPersistedActorData(u64 id, const PersistedActorData& data) {
@@ -903,12 +905,12 @@ void Game::SetPersistedActorData(u64 id, const PersistedActorData& data) {
         return;
     }
 
-    PersistedActorData* pPersistData = gameData.persistedActorData.Get(id);
+    PersistedActorData* pPersistData = g_gameData.persistedActorData.Get(id);
     if (pPersistData) {
         *pPersistData = data;
     }
     else {
-        gameData.persistedActorData.Add(id, data);
+        g_gameData.persistedActorData.Add(id, data);
     }
 }
 #pragma endregion
@@ -951,7 +953,7 @@ bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
         return false;
     }
 
-    state = GAME_STATE_OVERWORLD;
+    g_state = GAME_STATE_OVERWORLD;
 
     Rendering::SetViewportPos(glm::vec2(0.0f), false);
     ClearActors();
@@ -1012,7 +1014,7 @@ void Game::UnloadRoom() {
 }
 
 bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
-    state = GAME_STATE_DUNGEON;
+    g_state = GAME_STATE_DUNGEON;
     UnloadRoom();
 
     const RoomInstance* pCurrentRoom = GetCurrentRoom();
@@ -1023,7 +1025,7 @@ bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
         const RoomActor& actor = pRoomActors[i];
 
         const u64 combinedId = actor.id | (u64(pCurrentRoom->id) << 32);
-        const PersistedActorData* pPersistData = gameData.persistedActorData.Get(combinedId);
+        const PersistedActorData* pPersistData = g_gameData.persistedActorData.Get(combinedId);
         if (!pPersistData || !(pPersistData->dead || pPersistData->permaDead)) {
             SpawnActor(&actor, pCurrentRoom->id);
         }
@@ -1034,11 +1036,11 @@ bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
     ViewportFollowPlayer();
 
     // Spawn xp remnant, if it belongs in this room
-    if (gameData.expRemnant.dungeonId == currentDungeonId && currentDungeonId != DungeonHandle::Null()) {
-        const RoomInstance* pRoom = GetDungeonRoom(currentDungeonId, gameData.expRemnant.gridOffset);
+    if (g_gameData.expRemnant.dungeonId == currentDungeonId && currentDungeonId != DungeonHandle::Null()) {
+        const RoomInstance* pRoom = GetDungeonRoom(currentDungeonId, g_gameData.expRemnant.gridOffset);
         if (pRoom->id == pCurrentRoom->id) {
-            Actor* pRemnant = SpawnActor(xpRemnantPrototypeHandle, gameData.expRemnant.position);
-            pRemnant->state.pickupState.value = gameData.expRemnant.value;
+            Actor* pRemnant = SpawnActor(xpRemnantPrototypeHandle, g_gameData.expRemnant.position);
+            pRemnant->state.pickupState.value = g_gameData.expRemnant.value;
         }
     }
 
@@ -1083,7 +1085,7 @@ void Game::DiscoverScreen(const glm::i8vec2 gridCell) {
 }
 
 glm::ivec2 Game::GetCurrentPlayAreaSize() {
-    switch (state) {
+    switch (g_state) {
     case GAME_STATE_DUNGEON:
     case GAME_STATE_DUNGEON_MAP: {
         const RoomTemplate* pTemplate = GetCurrentRoomTemplate();
@@ -1108,7 +1110,7 @@ glm::ivec2 Game::GetCurrentPlayAreaSize() {
 }
 
 const Tilemap* Game::GetCurrentTilemap() {
-    switch (state) {
+    switch (g_state) {
     case GAME_STATE_DUNGEON:
     case GAME_STATE_DUNGEON_MAP: {
         const RoomTemplate* pTemplate = GetCurrentRoomTemplate();
@@ -1134,14 +1136,14 @@ u32 Game::GetFramesElapsed() {
 #pragma endregion
 
 void Game::InitGameState(GameState initialState) {
-    state = initialState;
+    g_state = initialState;
 }
 
 void Game::StepFrame() {
     Input::Update();
     StepCoroutines();
 
-	switch (state) {
+	switch (g_state) {
 	case GAME_STATE_TITLE:
 		break;
     case GAME_STATE_OVERWORLD:

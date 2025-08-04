@@ -17,8 +17,8 @@ struct AssetEntry {
 	u64 id;
 	char name[MAX_ASSET_NAME_LENGTH];
 	char relativePath[MAX_ASSET_PATH_LENGTH];
-	u32 offset;
-	u32 size;
+	size_t offset;
+	size_t size;
 	AssetFlags flags;
 };
 
@@ -36,9 +36,9 @@ public:
 	bool CreateEmpty();
 
 	// Asset operations
-	void* AddAsset(u64 id, AssetType type, u32 size, const char* path, const char* name, const void* data = nullptr);
+	void* AddAsset(u64 id, AssetType type, size_t size, const char* path, const char* name, const void* data = nullptr);
 	bool RemoveAsset(u64 id);
-	bool ResizeAsset(u64 id, u32 newSize);
+	bool ResizeAsset(u64 id, size_t newSize);
 	
 	// Asset retrieval
 	void* GetAssetData(u64 id, AssetType type);
@@ -49,22 +49,22 @@ public:
 	void Clear();
 	
 	// Statistics
-	u32 GetAssetCount() const;
+	size_t GetAssetCount() const;
 	const AssetIndex& GetIndex() const;
 
 private:
 	struct ArchiveHeader {
 		char signature[4];
-		u32 assetCount;
-		u32 directoryOffset;
+		size_t assetCount;
+		size_t directoryOffset;
 	};
 
-	u32 m_capacity;
-	u32 m_size;
+	size_t m_capacity;
+	size_t m_size;
 	u8* m_data;
 	AssetIndex m_index;
 
-	bool ResizeStorage(u32 minCapacity);
-	bool ReserveMemory(u32 size);
-	static constexpr u32 GetNextPOT(u32 n);
+	bool ResizeStorage(size_t minCapacity);
+	bool ReserveMemory(size_t size);
+	static constexpr size_t GetNextPOT(size_t n);
 };

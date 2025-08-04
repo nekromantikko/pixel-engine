@@ -166,7 +166,7 @@ struct AudioContext {
     u32 sfxPos[CHAN_COUNT]{};
 };
 
-static AudioContext* pContext = nullptr;
+static AudioContext* g_pContext = nullptr;
 
 static void WritePulse(PulseChannel* pulse, u8 address, u8 data) {
     if (address > 3) {
@@ -206,7 +206,7 @@ static void WritePulse(PulseChannel* pulse, u8 address, u8 data) {
 }
 
 static void WritePulse(bool idx, u8 address, u8 data) {
-    PulseChannel& pulse = pContext->pulse[idx];
+    PulseChannel& pulse = g_pContext->pulse[idx];
     WritePulse(&pulse, address, data);
 }
 
@@ -243,7 +243,7 @@ static void WriteTriangle(TriangleChannel* triangle, u8 address, u8 data) {
 }
 
 static void WriteTriangle(u8 address, u8 data) {
-    TriangleChannel& triangle = pContext->triangle;
+    TriangleChannel& triangle = g_pContext->triangle;
     WriteTriangle(&triangle, address, data);
 }
 
@@ -278,7 +278,7 @@ static void WriteNoise(NoiseChannel* noise, u8 address, u8 data) {
 }
 
 static void WriteNoise(u8 address, u8 data) {
-    NoiseChannel& noise = pContext->noise;
+    NoiseChannel& noise = g_pContext->noise;
     WriteNoise(&noise, address, data);
 }
 
@@ -336,19 +336,19 @@ static bool TickSFX(u32 channel) {
         return false;
     }
 
-    const SoundHandle soundHandle = pContext->sfx[channel];
-    u32& pos = pContext->sfxPos[channel];
+    const SoundHandle soundHandle = g_pContext->sfx[channel];
+    u32& pos = g_pContext->sfxPos[channel];
 
     const Sound* pSound = AssetManager::GetAsset(soundHandle);
     if (pSound == nullptr) {
-        pContext->sfx[channel] = SoundHandle::Null();
+        g_pContext->sfx[channel] = SoundHandle::Null();
         return false;
     }
 
-    PulseChannel* p0 = (channel == CHAN_ID_PULSE0) ? &pContext->pulse[0] : nullptr;
-    PulseChannel* p1 = (channel == CHAN_ID_PULSE1) ? &pContext->pulse[1] : nullptr;
-    TriangleChannel* tri = (channel == CHAN_ID_TRIANGLE) ? &pContext->triangle : nullptr;
-    NoiseChannel* noise = (channel == CHAN_ID_NOISE) ? &pContext->noise : nullptr;
+    PulseChannel* p0 = (channel == CHAN_ID_PULSE0) ? &g_pContext->pulse[0] : nullptr;
+    PulseChannel* p1 = (channel == CHAN_ID_PULSE1) ? &g_pContext->pulse[1] : nullptr;
+    TriangleChannel* tri = (channel == CHAN_ID_TRIANGLE) ? &g_pContext->triangle : nullptr;
+    NoiseChannel* noise = (channel == CHAN_ID_NOISE) ? &g_pContext->noise : nullptr;
 
     bool keepReading = true;
     while (keepReading) {
@@ -365,30 +365,30 @@ static bool TickSFX(u32 channel) {
 }
 
 static bool TickMusic() {
-    if (pContext->music == SoundHandle::Null()) {
+    if (g_pContext->music == SoundHandle::Null()) {
         return false;
     }
 
-    const Sound* pSound = AssetManager::GetAsset(pContext->music);
+    const Sound* pSound = AssetManager::GetAsset(g_pContext->music);
     if (!pSound) {
-        pContext->music = SoundHandle::Null();
+        g_pContext->music = SoundHandle::Null();
         return false;
     }
 
-    PulseChannel* p0 = (pContext->sfx[CHAN_ID_PULSE0] == SoundHandle::Null()) ? &pContext->pulse[CHAN_ID_PULSE0] : &pContext->pulseReserve[0];
-    PulseChannel* p1 = (pContext->sfx[CHAN_ID_PULSE1] == SoundHandle::Null()) ? &pContext->pulse[CHAN_ID_PULSE1] : &pContext->pulseReserve[1];
-    TriangleChannel* tri = (pContext->sfx[CHAN_ID_TRIANGLE] == SoundHandle::Null()) ? &pContext->triangle : &pContext->triangleReserve;
-    NoiseChannel* noise = (pContext->sfx[CHAN_ID_NOISE] == SoundHandle::Null()) ? &pContext->noise : &pContext->noiseReserve;
+    PulseChannel* p0 = (g_pContext->sfx[CHAN_ID_PULSE0] == SoundHandle::Null()) ? &g_pContext->pulse[CHAN_ID_PULSE0] : &g_pContext->pulseReserve[0];
+    PulseChannel* p1 = (g_pContext->sfx[CHAN_ID_PULSE1] == SoundHandle::Null()) ? &g_pContext->pulse[CHAN_ID_PULSE1] : &g_pContext->pulseReserve[1];
+    TriangleChannel* tri = (g_pContext->sfx[CHAN_ID_TRIANGLE] == SoundHandle::Null()) ? &g_pContext->triangle : &g_pContext->triangleReserve;
+    NoiseChannel* noise = (g_pContext->sfx[CHAN_ID_NOISE] == SoundHandle::Null()) ? &g_pContext->noise : &g_pContext->noiseReserve;
 
     bool keepReading = true;
     while (keepReading) {
-        const SoundOperation* operation = pSound->GetData() + pContext->musicPos;
+        const SoundOperation* operation = pSound->GetData() + g_pContext->musicPos;
 
         keepReading = ProcessOp(operation, p0, p1, tri, noise);
 
-        if (++pContext->musicPos == pSound->length) {
-            if (pContext->loopMusic) {
-                pContext->musicPos = pSound->loopPoint;
+        if (++g_pContext->musicPos == pSound->length) {
+            if (g_pContext->loopMusic) {
+                g_pContext->musicPos = pSound->loopPoint;
             }
             else {
                 return false;
@@ -401,26 +401,26 @@ static bool TickMusic() {
 
 static void TickSoundPlayer() {
     for (int channel = 0; channel < CHAN_COUNT; channel++) {
-        if (pContext->sfx[channel] == SoundHandle::Null()) {
+        if (g_pContext->sfx[channel] == SoundHandle::Null()) {
             continue;
         }
 
         if (!TickSFX(channel)) {
-            pContext->sfx[channel] = SoundHandle::Null();
+            g_pContext->sfx[channel] = SoundHandle::Null();
 
             // I think this should happen one frame later
             switch (channel) {
             case CHAN_ID_PULSE0:
-                pContext->pulse[0] = pContext->pulseReserve[0];
+                g_pContext->pulse[0] = g_pContext->pulseReserve[0];
                 break;
             case CHAN_ID_PULSE1:
-                pContext->pulse[1] = pContext->pulseReserve[1];
+                g_pContext->pulse[1] = g_pContext->pulseReserve[1];
                 break;
             case CHAN_ID_TRIANGLE:
-                pContext->triangle = pContext->triangleReserve;
+                g_pContext->triangle = g_pContext->triangleReserve;
                 break;
             case CHAN_ID_NOISE:
-                pContext->noise = pContext->noiseReserve;
+                g_pContext->noise = g_pContext->noiseReserve;
                 break;
             default:
                 break;
@@ -429,7 +429,7 @@ static void TickSoundPlayer() {
     }
 
     if (!TickMusic()) {
-        pContext->music = SoundHandle::Null();
+        g_pContext->music = SoundHandle::Null();
     }
 }
 
@@ -575,39 +575,39 @@ static bool Clock(u8& outSample) {
     const r64 sampleTime = 1.0f / 44100.f;
     bool result = false;
 
-    pContext->clockCounter++;
+    g_pContext->clockCounter++;
     bool quarterFrame = false;
     bool halfFrame = false;
 
-    if (pContext->clockCounter == QUARTER_FRAME_CLOCK) {
+    if (g_pContext->clockCounter == QUARTER_FRAME_CLOCK) {
         quarterFrame = true;
     }
-    else if (pContext->clockCounter == HALF_FRAME_CLOCK) {
+    else if (g_pContext->clockCounter == HALF_FRAME_CLOCK) {
         quarterFrame = true;
         halfFrame = true;
     }
-    else if (pContext->clockCounter == THREEQUARTERS_FRAME_CLOCK) {
+    else if (g_pContext->clockCounter == THREEQUARTERS_FRAME_CLOCK) {
         quarterFrame = true;
     }
-    else if (pContext->clockCounter == FRAME_CLOCK) {
+    else if (g_pContext->clockCounter == FRAME_CLOCK) {
         quarterFrame = true;
         halfFrame = true;
-        pContext->clockCounter = 0;
+        g_pContext->clockCounter = 0;
         TickSoundPlayer();
     }
 
     r32 pulseOut = 0.0f;
 
-    u8 pulseSum = ClockPulse(pContext->pulse[0], quarterFrame, halfFrame, 1);
-    pulseSum += ClockPulse(pContext->pulse[1], quarterFrame, halfFrame, 0);
+    u8 pulseSum = ClockPulse(g_pContext->pulse[0], quarterFrame, halfFrame, 1);
+    pulseSum += ClockPulse(g_pContext->pulse[1], quarterFrame, halfFrame, 0);
 
     if (pulseSum > 0) {
         pulseOut = 95.66f / (8128.0f / pulseSum + 100);
     }
 
     r32 tndOut = 0.0f;
-    u8 triangle = ClockTriangle(pContext->triangle, quarterFrame, halfFrame);
-    u8 noise = ClockNoise(pContext->noise, quarterFrame, halfFrame);
+    u8 triangle = ClockTriangle(g_pContext->triangle, quarterFrame, halfFrame);
+    u8 noise = ClockNoise(g_pContext->noise, quarterFrame, halfFrame);
 
     if (triangle != 0 || noise != 0) {
         tndOut = 159.79f / (1 / ((r32)triangle / 8227 + (r32)noise / 12241) + 100);
@@ -616,9 +616,9 @@ static bool Clock(u8& outSample) {
     r32 mix = pulseOut + tndOut;
     u8 sample = u8(mix * 127.0f + 128.0f);
 
-    pContext->accumulator += CLOCK_PERIOD;
-    if (pContext->accumulator >= sampleTime) {
-        pContext->accumulator -= sampleTime;
+    g_pContext->accumulator += CLOCK_PERIOD;
+    if (g_pContext->accumulator >= sampleTime) {
+        g_pContext->accumulator -= sampleTime;
         outSample = sample;
         result = true;
     }
@@ -627,15 +627,15 @@ static bool Clock(u8& outSample) {
 }
 
 #ifdef EDITOR
-static void WriteDebugBuffer(AudioContext* pContext, u8* samples, u32 count) {
+static void WriteDebugBuffer(u8* samples, u32 count) {
     u32 remainingSamples = count;
     while (remainingSamples > 0) {
-        u32 capacity = DEBUG_BUFFER_SIZE - pContext->debugWriteOffset;
+        u32 capacity = DEBUG_BUFFER_SIZE - g_pContext->debugWriteOffset;
         u32 samplesToWrite = capacity >= remainingSamples ? remainingSamples : capacity;
-        memcpy(pContext->debugBuffer + pContext->debugWriteOffset, samples, samplesToWrite);
+        memcpy(g_pContext->debugBuffer + g_pContext->debugWriteOffset, samples, samplesToWrite);
         remainingSamples -= samplesToWrite;
-        pContext->debugWriteOffset += samplesToWrite;
-        pContext->debugWriteOffset %= DEBUG_BUFFER_SIZE;
+        g_pContext->debugWriteOffset += samplesToWrite;
+        g_pContext->debugWriteOffset %= DEBUG_BUFFER_SIZE;
     }
 }
 #endif
@@ -650,26 +650,26 @@ static void FillAudioBuffer(void* userdata, u8* stream, int len) {
     }
 
 #ifdef EDITOR
-    WriteDebugBuffer(pContext, stream, len);
+    WriteDebugBuffer(stream, len);
 #endif
 }
 
 namespace Audio {
     void CreateContext() {
-        pContext = new AudioContext{};
-        assert(pContext != nullptr);
+        g_pContext = new AudioContext{};
+        assert(g_pContext != nullptr);
     }
 
     void Init() {
 #ifdef EDITOR
-        memset(pContext->debugBuffer, 0, DEBUG_BUFFER_SIZE);
-        pContext->debugWriteOffset = 0;
-        pContext->debugReadOffset = 0;
+        memset(g_pContext->debugBuffer, 0, DEBUG_BUFFER_SIZE);
+        g_pContext->debugWriteOffset = 0;
+        g_pContext->debugReadOffset = 0;
 #endif
 
         ClearRegisters();
         // Make sure there's silence at startup
-        pContext->noise.reg.constantVolume = true;
+        g_pContext->noise.reg.constantVolume = true;
 
         SDL_AudioSpec audioSpec{};
         audioSpec.freq = 44100;
@@ -679,27 +679,27 @@ namespace Audio {
         audioSpec.callback = FillAudioBuffer;
         audioSpec.userdata = nullptr;
 
-        pContext->audioDevice = SDL_OpenAudioDevice(
+        g_pContext->audioDevice = SDL_OpenAudioDevice(
             nullptr,
             0,
             &audioSpec,
             nullptr,
             0);
 
-        SDL_PauseAudioDevice(pContext->audioDevice, 0);
+        SDL_PauseAudioDevice(g_pContext->audioDevice, 0);
     }
 
     void Free() {
-        SDL_CloseAudioDevice(pContext->audioDevice);
+        SDL_CloseAudioDevice(g_pContext->audioDevice);
     }
 
     void DestroyContext() {
-        if (pContext == nullptr) {
+        if (g_pContext == nullptr) {
             return;
         }
 
-        delete pContext;
-        pContext = nullptr;
+        delete g_pContext;
+        g_pContext = nullptr;
     }
 
     void WriteChannel(u32 channel, u8 address, u8 data) {
@@ -727,13 +727,13 @@ namespace Audio {
             return;
         }
 
-        pContext->music = musicHandle;
-        pContext->musicPos = 0;
-        pContext->loopMusic = loop;
+        g_pContext->music = musicHandle;
+        g_pContext->musicPos = 0;
+        g_pContext->loopMusic = loop;
     }
 
     void StopMusic() {
-        pContext->music = SoundHandle::Null();
+        g_pContext->music = SoundHandle::Null();
         ClearRegisters();
     }
 
@@ -748,49 +748,49 @@ namespace Audio {
         }
 
         // Save register state to later continue music
-        if (pContext->sfx[pSound->sfxChannel] == SoundHandle::Null()) {
+        if (g_pContext->sfx[pSound->sfxChannel] == SoundHandle::Null()) {
             switch (pSound->sfxChannel) {
             case CHAN_ID_PULSE0:
-                pContext->pulseReserve[0] = pContext->pulse[0];
+                g_pContext->pulseReserve[0] = g_pContext->pulse[0];
                 break;
             case CHAN_ID_PULSE1:
-                pContext->pulseReserve[1] = pContext->pulse[1];
+                g_pContext->pulseReserve[1] = g_pContext->pulse[1];
                 break;
             case CHAN_ID_TRIANGLE:
-                pContext->triangleReserve = pContext->triangle;
+                g_pContext->triangleReserve = g_pContext->triangle;
                 break;
             case CHAN_ID_NOISE:
-                pContext->noiseReserve = pContext->noise;
+                g_pContext->noiseReserve = g_pContext->noise;
                 break;
             default:
                 break;
             }
         }
 
-        pContext->sfx[pSound->sfxChannel] = soundHandle;
-        pContext->sfxPos[pSound->sfxChannel] = 0;
+        g_pContext->sfx[pSound->sfxChannel] = soundHandle;
+        g_pContext->sfxPos[pSound->sfxChannel] = 0;
     }
 
 #ifdef EDITOR
     void ReadChannel(u32 channel, void* outData) {
         switch (channel) {
         case CHAN_ID_PULSE0: {
-            PulseChannel& pulse = pContext->pulse[0];
+            PulseChannel& pulse = g_pContext->pulse[0];
             memcpy(outData, &pulse.reg, 4);
             break;
         }
         case CHAN_ID_PULSE1: {
-            PulseChannel& pulse = pContext->pulse[1];
+            PulseChannel& pulse = g_pContext->pulse[1];
             memcpy(outData, &pulse.reg, 4);
             break;
         }
         case CHAN_ID_TRIANGLE: {
-            TriangleChannel& triangle = pContext->triangle;
+            TriangleChannel& triangle = g_pContext->triangle;
             memcpy(outData, &triangle.reg, 4);
             break;
         }
         case CHAN_ID_NOISE: {
-            NoiseChannel& noise = pContext->noise;
+            NoiseChannel& noise = g_pContext->noise;
             memcpy(outData, &noise.reg, 4);
             break;
         }
@@ -802,12 +802,12 @@ namespace Audio {
     void ReadDebugBuffer(u8* outSamples, u32 count) {
         u32 remainingSamples = count;
         while (remainingSamples > 0) {
-            u32 capacity = DEBUG_BUFFER_SIZE - pContext->debugReadOffset;
+            u32 capacity = DEBUG_BUFFER_SIZE - g_pContext->debugReadOffset;
             u32 samplesToRead = capacity >= remainingSamples ? remainingSamples : capacity;
-            memcpy(outSamples, pContext->debugBuffer + pContext->debugReadOffset, samplesToRead);
+            memcpy(outSamples, g_pContext->debugBuffer + g_pContext->debugReadOffset, samplesToRead);
             remainingSamples -= samplesToRead;
-            pContext->debugReadOffset += samplesToRead;
-            pContext->debugReadOffset %= DEBUG_BUFFER_SIZE;
+            g_pContext->debugReadOffset += samplesToRead;
+            g_pContext->debugReadOffset %= DEBUG_BUFFER_SIZE;
         }
     }
 #endif

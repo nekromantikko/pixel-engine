@@ -107,7 +107,7 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
 }
 
 static void ClearSprites(Sprite* spr, u32 count) {
-    for (int i = 0; i < count; i++) {
+    for (u32 i = 0; i < count; i++) {
         Sprite& sprite = spr[i];
 
         // Really just moves the sprites off screen (This is how the NES clears sprites as well)

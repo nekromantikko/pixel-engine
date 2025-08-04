@@ -55,7 +55,7 @@ namespace Rendering
 	void BeginEditorFrame();
 	void ShutdownEditor();
 
-	EditorRenderBuffer* CreateEditorBuffer(u32 size, const void* data = nullptr);
+	EditorRenderBuffer* CreateEditorBuffer(size_t size, const void* data = nullptr);
 	bool UpdateEditorBuffer(const EditorRenderBuffer* pBuffer, const void* data);
 	void FreeEditorBuffer(EditorRenderBuffer* pBuffer);
 

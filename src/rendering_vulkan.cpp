@@ -1871,7 +1871,7 @@ struct EditorRenderTexture {
 	VkDescriptorSet dstSet;
 };
 
-EditorRenderBuffer* Rendering::CreateEditorBuffer(u32 size, const void* data) {
+EditorRenderBuffer* Rendering::CreateEditorBuffer(size_t size, const void* data) {
 	EditorRenderBuffer* pBuffer = (EditorRenderBuffer*)calloc(1, sizeof(EditorRenderBuffer));
 	if (!pBuffer) {
 		DEBUG_ERROR("Failed to allocate editor buffer!\n");

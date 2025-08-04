@@ -858,8 +858,9 @@ static void DrawGenericEditableList(ImVector<T>& elements, ImVector<s32>& select
 }
 
 template <typename T>
-static bool DrawTypeSelectionCombo(const char* label, const char* const* const typeNames, u32 typeCount, T& selection, bool allowNone = true) {
+static bool DrawTypeSelectionCombo(const char* label, const char* const* const typeNames, size_t typeCount, T& selection, bool allowNone = true) {
 	static_assert(std::is_integral<T>::value);
+	assert(!allowNone || std::is_signed<T>::value);
 	const T oldSelection = selection;
 
 	const char* noSelectionLabel = "NONE";
@@ -868,15 +869,15 @@ static bool DrawTypeSelectionCombo(const char* label, const char* const* const t
 
 	if (ImGui::BeginCombo(label, selectedLabel)) {
 		if (allowNone && ImGui::Selectable(noSelectionLabel, selection < 0)) {
-			selection = -1;
+			selection = T(-1);
 		}
 
-		for (u32 i = 0; i < typeCount; i++) {
-			ImGui::PushID(i);
+		for (size_t i = 0; i < typeCount; i++) {
+			ImGui::PushID((s32)i);
 
 			const bool selected = selection == i;
 			if (ImGui::Selectable(typeNames[i], selected)) {
-				selection = i;
+				selection = T(i);
 			}
 
 			if (selected) {
@@ -897,7 +898,7 @@ struct EditedAsset {
 	AssetType type;
 	char name[MAX_ASSET_NAME_LENGTH];
 	char relativePath[MAX_ASSET_PATH_LENGTH];
-	u32 size;
+	size_t size;
 	void* data;
 
 	bool dirty;
@@ -914,13 +915,13 @@ typedef void (*PopulateAssetEditorDataFn)(EditedAsset&);
 typedef void (*ApplyAssetEditorDataFn)(EditedAsset&);
 typedef void (*DeleteAssetEditorDataFn)(EditedAsset&);
 
-static EditorRenderBuffer* CreateRenderBuffer(u64 id, u32 size, const void* data) {
+static EditorRenderBuffer* CreateRenderBuffer(u64 id, size_t size, const void* data) {
 	EditorRenderBuffer* pBuffer = Rendering::CreateEditorBuffer(size, data);
 	pContext->assetRenderBuffers.emplace(id, pBuffer);
 	return pBuffer;
 }
 
-static EditorRenderBuffer* GetRenderBuffer(u64 id, AssetType type, u32 dataSize) {
+static EditorRenderBuffer* GetRenderBuffer(u64 id, AssetType type, size_t dataSize) {
 	if (id == UUID_NULL) {
 		return nullptr;
 	}
@@ -939,7 +940,7 @@ static EditorRenderBuffer* GetRenderBuffer(u64 id, AssetType type, u32 dataSize)
 	return pBuffer;
 }
 
-static void UpdateRenderBuffer(u64 id, AssetType type, u32 dataSize, const void* data) {
+static void UpdateRenderBuffer(u64 id, AssetType type, size_t dataSize, const void* data) {
 	if (type != ASSET_TYPE_CHR_BANK && type != ASSET_TYPE_PALETTE) {
 		return;
 	}
@@ -969,7 +970,7 @@ static EditedAsset CopyAssetForEditing(u64 id, PopulateAssetEditorDataFn populat
 	return result;
 }
 
-static bool ResizeEditedAsset(EditedAsset& asset, u32 newSize) {
+static bool ResizeEditedAsset(EditedAsset& asset, size_t newSize) {
 	if (newSize > asset.size) {
 		void* newData = malloc(newSize);
 		if (!newData) {
@@ -988,31 +989,31 @@ static bool SaveAssetToFile(AssetType type, const std::filesystem::path& relativ
 
 	nlohmann::json metadata;
 	if (!AssetSerialization::HasMetadata(fullPath)) {
-		DEBUG_LOG("Creating metadata file for asset: %s", fullPath);
+		DEBUG_LOG("Creating metadata file for asset: %s", fullPath.string().c_str());
 		if (id == UUID_NULL) {
 			id = Random::GenerateUUID();
 		}
 
 		if (AssetSerialization::CreateAssetMetadataFile(fullPath, id, metadata) != SERIALIZATION_SUCCESS) {
-			DEBUG_ERROR("Failed to create metadata file for asset: %s", fullPath);
+			DEBUG_ERROR("Failed to create metadata file for asset: %s", fullPath.string().c_str());
 			return false;
 		}
 	}
 	else {
-		DEBUG_LOG("Updating metadata file for asset: %s", fullPath);
+		DEBUG_LOG("Updating metadata file for asset: %s", fullPath.string().c_str());
 		if (AssetSerialization::LoadAssetMetadataFromFile(fullPath, metadata) != SERIALIZATION_SUCCESS) {
-			DEBUG_ERROR("Failed to load metadata file for asset: %s", fullPath);
+			DEBUG_ERROR("Failed to load metadata file for asset: %s", fullPath.string().c_str());
 			return false;
 		}
 	}
 
 	if (AssetSerialization::SaveAssetToFile(fullPath, name, type, metadata, pData) != SERIALIZATION_SUCCESS) {
-		DEBUG_ERROR("Failed to save asset to file: %s", fullPath);
+		DEBUG_ERROR("Failed to save asset to file: %s", fullPath.string().c_str());
 		return false;
 	}
 
 	if (AssetSerialization::SaveAssetMetadataToFile(fullPath, metadata) != SERIALIZATION_SUCCESS) {
-		DEBUG_ERROR("Failed to save asset metadata to file: %s", fullPath);
+		DEBUG_ERROR("Failed to save asset metadata to file: %s", fullPath.string().c_str());
 		return false;
 	}
 
@@ -1123,7 +1124,7 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 		}
 
 		if (id == selectedId) {
-			selectedIndex = ids.size();
+			selectedIndex = (s32)ids.size();
 		}
 
 		ids.push_back(id);
@@ -1374,7 +1375,7 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 				continue;
 			}
 
-			bool open = true;
+			bool assetOpen = true;
 
 			char label[256];
 			if (asset.dirty) {
@@ -1384,13 +1385,13 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 				sprintf(label, "%s###%lld", asset.name, kvp.first);
 			}
 
-			if (ImGui::BeginTabItem(label, &open)) {
+			if (ImGui::BeginTabItem(label, &assetOpen)) {
 				state.currentAsset = kvp.first;
 				drawEditor(asset);
 				ImGui::EndTabItem();
 			}
 
-			if (!open) {
+			if (!assetOpen) {
 				// TODO: Popup that asks if the user is sure they want to close this
 				FreeEditedAsset(asset, deleteFn);
 				eraseList.push_back(kvp.first);
@@ -2431,10 +2432,9 @@ static void DrawRoomTools(EditedAsset& asset) {
 					const u8 index = (u8)tile.tileId;
 					const bool flipX = tile.flipHorizontal;
 					const bool flipY = tile.flipVertical;
-					const u8 palette = tile.palette;
 					const u8 pageIndex = (tile.tileId >> 8) & 3;
 
-					glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex, palette);
+					glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex, tile.palette);
 
 					const ImVec2 pos(gridPos.x + x * previewTileSize, gridPos.y + y * previewTileSize);
 					drawList->AddImage(GetTextureID(pContext->pChrTexture), pos, ImVec2(pos.x + previewTileSize, pos.y + previewTileSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
@@ -2692,22 +2692,21 @@ static void DrawActorEditor(EditedAsset& asset) {
 
 		if (ImGui::BeginTabBar("Actor editor tabs")) {
 			if (ImGui::BeginTabItem("Behaviour")) {
-
 				if (DrawTypeSelectionCombo("Type", Editor::actorTypeNames, ACTOR_TYPE_COUNT, pPrototype->type)) {
 					asset.dirty = true;
 				}
 				const auto& editorData = Editor::actorEditorData[pPrototype->type];
 
-				u32 subtypeCount = editorData.GetSubtypeCount();
-				pPrototype->subtype = glm::clamp(pPrototype->subtype, u16(0), u16(subtypeCount - 1));
+				size_t subtypeCount = editorData.GetSubtypeCount();
+				pPrototype->subtype = glm::clamp<TActorSubtype>(pPrototype->subtype, u16(0), u16(subtypeCount - 1));
 				if (DrawTypeSelectionCombo("Subtype", editorData.GetSubtypeNames(), subtypeCount, pPrototype->subtype)) {
 					asset.dirty = true;
 				}
 
 				ImGui::SeparatorText("Type data");
 
-				u32 propCount = editorData.GetPropertyCount(pPrototype->subtype);
-				for (u32 i = 0; i < propCount; i++) {
+				size_t propCount = editorData.GetPropertyCount(pPrototype->subtype);
+				for (size_t i = 0; i < propCount; i++) {
 					if (DrawActorPrototypeProperty(editorData.GetProperty(pPrototype->subtype, i), pPrototype->data)) {
 						asset.dirty = true;
 					}
@@ -3085,9 +3084,9 @@ static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon)
 			const u32 gridIndex = node.gridPos.x + node.gridPos.y * DUNGEON_GRID_DIM;
 
 			// Convert direction to negative room index value
-			const s8 roomIndex = ~(node.exitData.direction + 1);
+			const s8 ind = ~(node.exitData.direction + 1);
 			pOutDungeon->grid[gridIndex] = {
-				.roomIndex = roomIndex,
+				.roomIndex = ind,
 				.screenIndex = node.exitData.keyArea,
 			};
 		}
@@ -3684,7 +3683,7 @@ static void DumpAssetArchive() {
 		u64 id;
 		AssetType type;
 		char name[MAX_ASSET_NAME_LENGTH];
-		u32 size;
+		size_t size;
 	};
 
 	std::filesystem::path directory = "assets_dump";
@@ -3740,7 +3739,7 @@ static void DrawAssetBrowser() {
 	}
 
 	static u64 selectedAsset = UUID_NULL;
-	static u32 assetCount = 0;
+	static size_t assetCount = 0;
 	static std::vector<u64> assetIds;
 
 	ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_Sortable;
@@ -3755,7 +3754,7 @@ static void DrawAssetBrowser() {
 		ImGuiTableSortSpecs* pSortSpecs = ImGui::TableGetSortSpecs();
 
 		const AssetIndex& index = AssetManager::GetIndex();
-		const u32 newAssetCount = AssetManager::GetAssetCount();
+		const size_t newAssetCount = AssetManager::GetAssetCount();
 
 		if (assetCount != newAssetCount) {
 			assetIds.clear();
@@ -3779,7 +3778,7 @@ static void DrawAssetBrowser() {
 
 			const AssetEntry* pAsset = AssetManager::GetAssetInfo(id);
 
-			ImGui::PushID(id);
+			ImGui::PushID((s32)id);
 			ImGui::TableNextRow();
 			ImGui::BeginDisabled(pAsset->flags.deleted);
 			ImGui::TableNextColumn();

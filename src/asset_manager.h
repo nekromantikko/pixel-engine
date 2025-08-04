@@ -7,14 +7,15 @@
 
 namespace AssetManager {
 	bool LoadAssets();
-
+#ifdef EDITOR
 	bool LoadAssetsFromDirectory(const std::filesystem::path& directory);
+#endif
 
 	bool LoadArchive(const std::filesystem::path& path);
 	bool SaveArchive(const std::filesystem::path& path);
 	bool RepackArchive();
 
-	u64 CreateAsset(AssetType type, u32 size, const char* path, const char* name);
+	u64 CreateAsset(AssetType type, size_t size, const char* path, const char* name);
 	template <IsAssetHandle HandleType>
 	HandleType CreateAsset(u32 size, const char* path, const char* name) {
 		constexpr AssetType assetType = AssetHandleTraits<HandleType>::asset_type::value;
@@ -22,10 +23,10 @@ namespace AssetManager {
 		return HandleType{ id };
 	}
 
-	void* AddAsset(u64 id, AssetType type, u32 size, const char* path, const char* name, void* data = nullptr);
+	void* AddAsset(u64 id, AssetType type, size_t size, const char* path, const char* name, void* data = nullptr);
 	bool RemoveAsset(u64 id);
 
-	bool ResizeAsset(u64 id, u32 newSize);
+	bool ResizeAsset(u64 id, size_t newSize);
 
 	void* GetAsset(u64 id, AssetType type);
 	template <IsAssetHandle HandleType>
@@ -38,6 +39,6 @@ namespace AssetManager {
 	AssetEntry* GetAssetInfo(u64 id);
 	const char* GetAssetName(u64 id);
 
-	u32 GetAssetCount();
+	size_t GetAssetCount();
 	const AssetIndex& GetIndex();
 }
