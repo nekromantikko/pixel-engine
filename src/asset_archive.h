@@ -1,11 +1,12 @@
 #pragma once
 #include "typedef.h"
 #include "asset_types.h"
+#include "memory_pool.h"
 #include <filesystem>
-#include <unordered_map>
 
 constexpr u32 MAX_ASSET_NAME_LENGTH = 56;
 constexpr u32 MAX_ASSET_PATH_LENGTH = 256;
+constexpr u32 MAX_ASSETS = 4096;
 
 struct AssetFlags {
 	AssetType type : 4;
@@ -22,7 +23,7 @@ struct AssetEntry {
 	AssetFlags flags;
 };
 
-typedef std::unordered_map<u64, AssetEntry> AssetIndex;
+typedef Pool<AssetEntry, MAX_ASSETS> AssetIndex;
 
 // Self-contained asset archive class without dependencies on debug or random
 class AssetArchive {
@@ -51,6 +52,13 @@ public:
 	// Statistics
 	size_t GetAssetCount() const;
 	const AssetIndex& GetIndex() const;
+
+private:
+	// Binary search helpers for sorted asset pool
+	AssetEntry* FindAssetByIdBinary(u64 id);
+	const AssetEntry* FindAssetByIdBinary(u64 id) const;
+	u32 FindInsertionPointBinary(u64 id) const;
+	void InsertAssetSorted(const AssetEntry& entry);
 
 private:
 	struct ArchiveHeader {

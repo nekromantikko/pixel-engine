@@ -1106,19 +1106,21 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 	s32 selectedIndex = -1;
 
 	const AssetIndex& assetIndex = AssetManager::GetIndex();
-	for (auto& kvp : assetIndex) {
-		const auto& [id, asset] = kvp;
+	for (u32 i = 0; i < assetIndex.Count(); i++) {
+		PoolHandle<AssetEntry> handle = assetIndex.GetHandle(i);
+		const AssetEntry* asset = assetIndex.Get(handle);
+		if (!asset) continue;
 
-		if (asset.flags.type != type || asset.flags.deleted) {
+		if (asset->flags.type != type || asset->flags.deleted) {
 			continue;
 		}
 
-		if (id == selectedId) {
+		if (asset->id == selectedId) {
 			selectedIndex = (s32)ids.size();
 		}
 
-		ids.push_back(id);
-		assetNames.push_back(asset.name);
+		ids.push_back(asset->id);
+		assetNames.push_back(asset->name);
 	}
 
 	if (selectedId != UUID_NULL && selectedIndex < 0) {
@@ -1186,25 +1188,27 @@ static u64 DrawAssetList(AssetType type) {
 	ImGui::BeginChild("Asset list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 
 	const AssetIndex& assetIndex = AssetManager::GetIndex();
-	for (auto& kvp : assetIndex) {
-		const AssetEntry& asset = kvp.second;
+	for (u32 i = 0; i < assetIndex.Count(); i++) {
+		PoolHandle<AssetEntry> handle = assetIndex.GetHandle(i);
+		const AssetEntry* asset = assetIndex.Get(handle);
+		if (!asset) continue;
 
-		if (asset.flags.type != type || asset.flags.deleted) {
+		if (asset->flags.type != type || asset->flags.deleted) {
 			continue;
 		}
 
-		ImGui::PushID(asset.id);
+		ImGui::PushID(asset->id);
 
-		ImGui::Selectable(asset.name);
+		ImGui::Selectable(asset->name);
 
 		if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-			result = asset.id;
+			result = asset->id;
 		}
 
 		if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
 		{
-			ImGui::SetDragDropPayload("dd_asset", &kvp.first, sizeof(u64));
-			ImGui::Text("%s", asset.name);
+			ImGui::SetDragDropPayload("dd_asset", &asset->id, sizeof(u64));
+			ImGui::Text("%s", asset->name);
 
 			ImGui::EndDragDropSource();
 		}
@@ -1222,19 +1226,21 @@ static u64 DrawAssetListWithFunctionality(AssetType type, ImGui::FileBrowser& fi
 	ImGui::BeginChild("Asset list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 
 	const AssetIndex& assetIndex = AssetManager::GetIndex();
-	for (auto& kvp : assetIndex) {
-		const AssetEntry& asset = kvp.second;
+	for (u32 i = 0; i < assetIndex.Count(); i++) {
+		PoolHandle<AssetEntry> handle = assetIndex.GetHandle(i);
+		const AssetEntry* asset = assetIndex.Get(handle);
+		if (!asset) continue;
 
-		if (asset.flags.type != type || asset.flags.deleted) {
+		if (asset->flags.type != type || asset->flags.deleted) {
 			continue;
 		}
 
-		ImGui::PushID(asset.id);
+		ImGui::PushID(asset->id);
 
-		ImGui::Selectable(asset.name);
+		ImGui::Selectable(asset->name);
 
 		if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-			result = asset.id;
+			result = asset->id;
 		}
 
 		if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
@@ -1242,13 +1248,13 @@ static u64 DrawAssetListWithFunctionality(AssetType type, ImGui::FileBrowser& fi
 		}
 		if (ImGui::BeginPopup("AssetPopup")) {
 			if (ImGui::MenuItem("Delete")) {
-				AssetManager::RemoveAsset(asset.id);
-				if (pContext->assetRenderBuffers.contains(asset.id)) {
-					pContext->bufferEraseList.push_back(asset.id);
+				AssetManager::RemoveAsset(asset->id);
+				if (pContext->assetRenderBuffers.contains(asset->id)) {
+					pContext->bufferEraseList.push_back(asset->id);
 				}
 			}
 			if (ImGui::MenuItem("Duplicate")) {
-				duplicateAssetId = asset.id;
+				duplicateAssetId = asset->id;
 				fileBrowser.SetDirectory(ASSETS_SRC_DIR);
 				fileBrowser.SetTitle("Create new asset");
 				fileBrowser.SetTypeFilters({ ASSET_TYPE_FILE_EXTENSIONS[type] });
@@ -1259,8 +1265,8 @@ static u64 DrawAssetListWithFunctionality(AssetType type, ImGui::FileBrowser& fi
 
 		if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
 		{
-			ImGui::SetDragDropPayload("dd_asset", &kvp.first, sizeof(u64));
-			ImGui::Text("%s", asset.name);
+			ImGui::SetDragDropPayload("dd_asset", &asset->id, sizeof(u64));
+			ImGui::Text("%s", asset->name);
 
 			ImGui::EndDragDropSource();
 		}
@@ -3678,9 +3684,12 @@ static void DumpAssetArchive() {
 
 	std::filesystem::path directory = "assets_dump";
 	std::filesystem::create_directory(directory);
-	for (const auto& kvp : index) {
-		const u64 id = kvp.first;
-		const AssetEntry* pAsset = AssetManager::GetAssetInfo(id);
+	for (u32 i = 0; i < index.Count(); i++) {
+		PoolHandle<AssetEntry> handle = index.GetHandle(i);
+		const AssetEntry* pAsset = index.Get(handle);
+		if (!pAsset) continue;
+
+		const u64 id = pAsset->id;
 		const void* pData = AssetManager::GetAsset(id, pAsset->flags.type);
 
 		std::filesystem::path filePath = directory / std::filesystem::path(std::to_string(id));
@@ -3749,9 +3758,12 @@ static void DrawAssetBrowser() {
 		if (assetCount != newAssetCount) {
 			assetIds.clear();
 			assetIds.reserve(newAssetCount);
-			for (const auto& kvp : index) {
-				const u64 id = kvp.first;
-				assetIds.emplace_back(id);
+			for (u32 i = 0; i < index.Count(); i++) {
+				PoolHandle<AssetEntry> handle = index.GetHandle(i);
+				const AssetEntry* asset = index.Get(handle);
+				if (asset) {
+					assetIds.emplace_back(asset->id);
+				}
 			}
 			assetCount = newAssetCount;
 			if (pSortSpecs) {

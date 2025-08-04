@@ -84,11 +84,26 @@ bool AssetArchive::LoadFromFile(const std::filesystem::path& path) {
 	fread(m_data, 1, size, pFile);
 	m_size = size;
 
-	m_index.reserve(header.assetCount);
-	for (size_t i = 0; i < header.assetCount; i++) {
-		AssetEntry asset;
-		fread(&asset, sizeof(AssetEntry), 1, pFile);
-		m_index.emplace(asset.id, asset);
+	// Load assets and maintain sorted order by ID
+	AssetEntry tempAssets[MAX_ASSETS];
+	size_t assetCount = header.assetCount;
+	if (assetCount > MAX_ASSETS) {
+		fclose(pFile);
+		return false;
+	}
+	
+	for (size_t i = 0; i < assetCount; i++) {
+		fread(&tempAssets[i], sizeof(AssetEntry), 1, pFile);
+	}
+	
+	// Sort assets by ID
+	std::sort(tempAssets, tempAssets + assetCount, [](const AssetEntry& a, const AssetEntry& b) {
+		return a.id < b.id;
+	});
+	
+	// Add sorted assets to the pool
+	for (size_t i = 0; i < assetCount; i++) {
+		m_index.Add(tempAssets[i]);
 	}
 
 	fclose(pFile);
@@ -105,16 +120,19 @@ bool AssetArchive::SaveToFile(const std::filesystem::path& path) {
 
 	ArchiveHeader header{
 		.signature = { 'N','P','A','K' },
-		.assetCount = static_cast<u32>(m_index.size()),
+		.assetCount = static_cast<u32>(m_index.Count()),
 		.directoryOffset = sizeof(ArchiveHeader) + m_size,
 	};
 	fwrite(&header, sizeof(ArchiveHeader), 1, pFile);
 
 	fwrite(m_data, 1, m_size, pFile);
 
-	for (const auto& kvp : m_index) {
-		const AssetEntry& asset = kvp.second;
-		fwrite(&asset, sizeof(AssetEntry), 1, pFile);
+	for (u32 i = 0; i < m_index.Count(); i++) {
+		PoolHandle<AssetEntry> handle = m_index.GetHandle(i);
+		const AssetEntry* asset = m_index.Get(handle);
+		if (asset) {
+			fwrite(asset, sizeof(AssetEntry), 1, pFile);
+		}
 	}
 
 	fclose(pFile);
@@ -122,8 +140,8 @@ bool AssetArchive::SaveToFile(const std::filesystem::path& path) {
 }
 
 void* AssetArchive::AddAsset(u64 id, AssetType type, size_t size, const char* path, const char* name, const void* data) {
-	const auto it = m_index.find(id);
-	if (it != m_index.end()) {
+	const AssetEntry* existing = FindAssetByIdBinary(id);
+	if (existing != nullptr) {
 		return nullptr; // Asset already exists
 	}
 
@@ -143,7 +161,7 @@ void* AssetArchive::AddAsset(u64 id, AssetType type, size_t size, const char* pa
 	newEntry.flags.deleted = false;
 	newEntry.flags.compressed = false;
 
-	m_index.emplace(id, newEntry);
+	InsertAssetSorted(newEntry);
 
 	if (data) {
 		memcpy(m_data + m_size, data, size);
@@ -156,28 +174,26 @@ void* AssetArchive::AddAsset(u64 id, AssetType type, size_t size, const char* pa
 }
 
 bool AssetArchive::RemoveAsset(u64 id) {
-	const auto it = m_index.find(id);
-	if (it == m_index.end()) {
+	AssetEntry* asset = FindAssetByIdBinary(id);
+	if (asset == nullptr) {
 		return false;
 	}
 
-	AssetEntry& asset = it->second;
-	if (asset.flags.deleted) {
+	if (asset->flags.deleted) {
 		return false;
 	}
 
-	asset.flags.deleted = true;
+	asset->flags.deleted = true;
 	return true;
 }
 
 bool AssetArchive::ResizeAsset(u64 id, size_t newSize) {
-	const auto it = m_index.find(id);
-	if (it == m_index.end()) {
+	AssetEntry* asset = FindAssetByIdBinary(id);
+	if (asset == nullptr) {
 		return false;
 	}
-	AssetEntry& asset = it->second;
 
-	const size_t oldSize = asset.size;
+	const size_t oldSize = asset->size;
 
 	if (newSize > oldSize) {
 		// TODO: This could reserve more space than needed to avoid repeated resizes that fragment the memory
@@ -185,44 +201,39 @@ bool AssetArchive::ResizeAsset(u64 id, size_t newSize) {
 			return false;
 		}
 
-		memcpy(m_data + m_size, m_data + asset.offset, oldSize);
-		asset.offset = m_size;
+		memcpy(m_data + m_size, m_data + asset->offset, oldSize);
+		asset->offset = m_size;
 		m_size += newSize;
 	}
 
-	asset.size = newSize;
+	asset->size = newSize;
 	return true;
 }
 
 void* AssetArchive::GetAssetData(u64 id, AssetType type) {
-	const auto it = m_index.find(id);
-	if (it == m_index.end()) {
+	const AssetEntry* asset = FindAssetByIdBinary(id);
+	if (asset == nullptr) {
 		return nullptr;
 	}
-	const AssetEntry& asset = it->second;
-	if (asset.flags.type != type || asset.flags.deleted) {
+	if (asset->flags.type != type || asset->flags.deleted) {
 		return nullptr;
 	}
 
-	return m_data + asset.offset;
+	return m_data + asset->offset;
 }
 
 AssetEntry* AssetArchive::GetAssetEntry(u64 id) {
-	const auto it = m_index.find(id);
-	if (it == m_index.end()) {
-		return nullptr;
-	}
-	return &it->second;
+	return FindAssetByIdBinary(id);
 }
 
 void AssetArchive::Repack() {
 	size_t newSize = 0;
-	for (auto& kvp : m_index) {
-		auto& [id, asset] = kvp;
-		if (asset.flags.deleted) {
-			continue;
+	for (u32 i = 0; i < m_index.Count(); i++) {
+		PoolHandle<AssetEntry> handle = m_index.GetHandle(i);
+		const AssetEntry* asset = m_index.Get(handle);
+		if (asset && !asset->flags.deleted) {
+			newSize += asset->size;
 		}
-		newSize += asset.size;
 	}
 
 	u8* newData = (u8*)malloc(newSize);
@@ -230,18 +241,26 @@ void AssetArchive::Repack() {
 		return;
 	}
 
-	// Remove deleted assets from index
-	const size_t removedCount = std::erase_if(m_index, [](const auto& item) {
-		const auto& [id, asset] = item;
-		return asset.flags.deleted;
-	});
-
+	// Remove deleted assets from index and compact remaining ones
+	AssetEntry tempAssets[MAX_ASSETS];
+	u32 activeCount = 0;
+	
 	size_t offset = 0;
-	for (auto& kvp : m_index) {
-		auto& [id, asset] = kvp;
-		memcpy(newData + offset, m_data + asset.offset, asset.size);
-		asset.offset = offset;
-		offset += asset.size;
+	for (u32 i = 0; i < m_index.Count(); i++) {
+		PoolHandle<AssetEntry> handle = m_index.GetHandle(i);
+		AssetEntry* asset = m_index.Get(handle);
+		if (asset && !asset->flags.deleted) {
+			memcpy(newData + offset, m_data + asset->offset, asset->size);
+			asset->offset = offset;
+			offset += asset->size;
+			tempAssets[activeCount++] = *asset;
+		}
+	}
+	
+	// Rebuild the index with only non-deleted assets
+	m_index.Clear();
+	for (u32 i = 0; i < activeCount; i++) {
+		m_index.Add(tempAssets[i]);
 	}
 
 	free(m_data);
@@ -257,13 +276,120 @@ void AssetArchive::Clear() {
 	}
 	m_capacity = 0;
 	m_size = 0;
-	m_index.clear();
+	m_index.Clear();
 }
 
 size_t AssetArchive::GetAssetCount() const {
-	return m_index.size();
+	return m_index.Count();
 }
 
 const AssetIndex& AssetArchive::GetIndex() const {
 	return m_index;
+}
+
+// Binary search helpers for sorted asset pool
+AssetEntry* AssetArchive::FindAssetByIdBinary(u64 id) {
+	u32 left = 0;
+	u32 right = m_index.Count();
+	
+	while (left < right) {
+		u32 mid = left + (right - left) / 2;
+		PoolHandle<AssetEntry> handle = m_index.GetHandle(mid);
+		const AssetEntry* entry = m_index.Get(handle);
+		
+		if (!entry) {
+			return nullptr;
+		}
+		
+		if (entry->id == id) {
+			return const_cast<AssetEntry*>(entry);
+		} else if (entry->id < id) {
+			left = mid + 1;
+		} else {
+			right = mid;
+		}
+	}
+	
+	return nullptr;
+}
+
+const AssetEntry* AssetArchive::FindAssetByIdBinary(u64 id) const {
+	u32 left = 0;
+	u32 right = m_index.Count();
+	
+	while (left < right) {
+		u32 mid = left + (right - left) / 2;
+		PoolHandle<AssetEntry> handle = m_index.GetHandle(mid);
+		const AssetEntry* entry = m_index.Get(handle);
+		
+		if (!entry) {
+			return nullptr;
+		}
+		
+		if (entry->id == id) {
+			return entry;
+		} else if (entry->id < id) {
+			left = mid + 1;
+		} else {
+			right = mid;
+		}
+	}
+	
+	return nullptr;
+}
+
+u32 AssetArchive::FindInsertionPointBinary(u64 id) const {
+	u32 left = 0;
+	u32 right = m_index.Count();
+	
+	while (left < right) {
+		u32 mid = left + (right - left) / 2;
+		PoolHandle<AssetEntry> handle = m_index.GetHandle(mid);
+		const AssetEntry* entry = m_index.Get(handle);
+		
+		if (!entry) {
+			return left;
+		}
+		
+		if (entry->id < id) {
+			left = mid + 1;
+		} else {
+			right = mid;
+		}
+	}
+	
+	return left;
+}
+
+void AssetArchive::InsertAssetSorted(const AssetEntry& entry) {
+	// Add the entry to the pool
+	PoolHandle<AssetEntry> newHandle = m_index.Add(entry);
+	if (newHandle == PoolHandle<AssetEntry>::Null()) {
+		return; // Pool is full
+	}
+	
+	// Sort the pool to maintain order by asset ID
+	// Create a temporary array to sort
+	AssetEntry tempEntries[MAX_ASSETS];
+	u32 count = m_index.Count();
+	
+	// Copy all entries
+	for (u32 i = 0; i < count; i++) {
+		PoolHandle<AssetEntry> handle = m_index.GetHandle(i);
+		const AssetEntry* existing = m_index.Get(handle);
+		if (existing) {
+			tempEntries[i] = *existing;
+		}
+	}
+	
+	// Sort by asset ID
+	std::sort(tempEntries, tempEntries + count, [](const AssetEntry& a, const AssetEntry& b) {
+		return a.id < b.id;
+	});
+	
+	// Rebuild the pool with sorted entries
+	m_index.Clear();
+	for (u32 i = 0; i < count; i++) {
+		m_index.Add(tempEntries[i]);
+	}
 }
