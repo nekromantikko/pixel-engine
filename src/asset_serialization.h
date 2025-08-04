@@ -23,7 +23,6 @@ namespace AssetSerialization {
 	SerializationResult TryGetAssetTypeFromPath(const std::filesystem::path& path, AssetType& outType);
 	bool HasMetadata(const std::filesystem::path& path);
 	std::filesystem::path GetAssetMetadataPath(const std::filesystem::path& path);
-	std::filesystem::path GetAssetFullPath(const std::filesystem::path& relativePath);
 
 	SerializationResult LoadAssetMetadataFromFile(const std::filesystem::path& origPath, nlohmann::json& outJson);
 	SerializationResult SaveAssetMetadataToFile(const std::filesystem::path& origPath, const nlohmann::json& json);

@@ -95,7 +95,6 @@ set (ASSET_PACKER_SOURCES
 
 add_executable(asset_packer ${ASSET_PACKER_SOURCES})
 target_include_directories(asset_packer PRIVATE ${glm_SOURCE_DIR})
-target_compile_definitions(asset_packer PRIVATE EDITOR ASSETS_SRC_DIR="${ASSETS_SRC_DIR}")
 target_link_libraries(asset_packer PRIVATE nlohmann_json)
 target_compile_definitions(asset_packer PRIVATE EDITOR)
 target_compile_options(asset_packer PRIVATE ${COMPILER_FLAGS})

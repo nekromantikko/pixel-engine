@@ -1003,11 +1003,6 @@ std::filesystem::path AssetSerialization::GetAssetMetadataPath(const std::filesy
 	return path.string() + ".meta";
 }
 
-std::filesystem::path AssetSerialization::GetAssetFullPath(const std::filesystem::path& relativePath) {
-	const std::filesystem::path sourceDirPath = ASSETS_SRC_DIR;
-	return sourceDirPath / relativePath;
-}
-
 SerializationResult AssetSerialization::LoadAssetMetadataFromFile(const std::filesystem::path& origPath, nlohmann::json& outJson) {
 	std::filesystem::path path = GetAssetMetadataPath(origPath);
 
