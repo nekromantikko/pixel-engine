@@ -186,7 +186,7 @@ static void to_json(nlohmann::json& j, const RoomInstance& room) {
 }
 
 static void from_json(const nlohmann::json& j, Dungeon& dungeon) {
-	dungeon.roomCount = j.at("rooms").size();
+	dungeon.roomCount = (u32)j.at("rooms").size();
 	for (u32 i = 0; i < dungeon.roomCount; ++i) {
 		dungeon.rooms[i] = j.at("rooms").at(i).get<RoomInstance>();
 	}
@@ -251,7 +251,7 @@ static void CreateChrSheetFromBmp(const char* pixels, ChrSheet* pOutSheet) {
 	}
 }
 
-static SerializationResult LoadChrSheetFromFile(FILE* pFile, const nlohmann::json& metadata, u32& size, void* pOutData) {
+static SerializationResult LoadChrSheetFromFile(FILE* pFile, const nlohmann::json& metadata, size_t& size, void* pOutData) {
 	if (!pOutData) {
 		size = sizeof(ChrSheet);
 		return SERIALIZATION_SUCCESS; // Just return size if no output data is provided
@@ -292,7 +292,7 @@ struct NSFHeader {
 	u32 loopPoint;
 };
 
-static SerializationResult LoadSoundFromFile(FILE* pFile, const nlohmann::json& metadata, u32& size, void* pOutData) {
+static SerializationResult LoadSoundFromFile(FILE* pFile, const nlohmann::json& metadata, size_t& size, void* pOutData) {
 	NSFHeader header{};
 	fread(&header, sizeof(NSFHeader), 1, pFile);
 	if (strcmp(header.signature, "NSF") != 0) {
@@ -345,7 +345,7 @@ static SerializationResult SaveSoundToFile(FILE* pFile, nlohmann::json& metadata
 	return SERIALIZATION_SUCCESS;
 }
 
-static SerializationResult LoadPaletteFromFile(FILE* pFile, const nlohmann::json& metadata, u32& size, void* pOutData) {
+static SerializationResult LoadPaletteFromFile(FILE* pFile, const nlohmann::json& metadata, size_t& size, void* pOutData) {
 	if (!pOutData) {
 		size = sizeof(Palette);
 		return SERIALIZATION_SUCCESS; // Just return size if no output data is provided
@@ -362,15 +362,15 @@ static SerializationResult SavePaletteToFile(FILE* pFile, nlohmann::json& metada
 	return SERIALIZATION_SUCCESS;
 }
 
-static SerializationResult LoadMetaspriteFromFile(FILE* pFile, const nlohmann::json& metadata, u32& size, void* pOutData) {
+static SerializationResult LoadMetaspriteFromFile(FILE* pFile, const nlohmann::json& metadata, size_t& size, void* pOutData) {
 	const nlohmann::json json = nlohmann::json::parse(pFile);
 	const nlohmann::json spritesJson = json["sprites"];
-	const u32 spriteCount = spritesJson != nullptr && spritesJson.is_array() ? spritesJson.size() : 0;
+	const size_t spriteCount = spritesJson != nullptr && spritesJson.is_array() ? spritesJson.size() : 0;
 	size = sizeof(Metasprite) + spriteCount * sizeof(Sprite);
 
 	if (pOutData) {
 		Metasprite* pMetasprite = (Metasprite*)pOutData;
-		pMetasprite->spriteCount = spriteCount;
+		pMetasprite->spriteCount = (u32)spriteCount;
 		pMetasprite->spritesOffset = sizeof(Metasprite);
 
 		Sprite* pSprites = pMetasprite->GetSprites();
@@ -397,7 +397,7 @@ static SerializationResult SaveMetaspriteToFile(FILE* pFile, nlohmann::json& met
 	return SERIALIZATION_SUCCESS;
 }
 
-static SerializationResult LoadTilesetFromFile(FILE* pFile, const nlohmann::json& metadata, u32& size, void* pOutData) {
+static SerializationResult LoadTilesetFromFile(FILE* pFile, const nlohmann::json& metadata, size_t& size, void* pOutData) {
 	if (!pOutData) {
 		size = sizeof(Tileset);
 		return SERIALIZATION_SUCCESS; // Just return size if no output data is provided
@@ -419,17 +419,17 @@ static SerializationResult SaveTilesetToFile(FILE* pFile, nlohmann::json& metada
 	return SERIALIZATION_SUCCESS;
 }
 
-static SerializationResult LoadAnimationFromFile(FILE* pFile, const nlohmann::json& metadata, u32& size, void* pOutData) {
+static SerializationResult LoadAnimationFromFile(FILE* pFile, const nlohmann::json& metadata, size_t& size, void* pOutData) {
 	const nlohmann::json json = nlohmann::json::parse(pFile);
 	const nlohmann::json framesJson = json["frames"];
-	const u32 frameCount = framesJson != nullptr && framesJson.is_array() ? framesJson.size() : 0;
+	const size_t frameCount = framesJson != nullptr && framesJson.is_array() ? framesJson.size() : 0;
 	size = sizeof(Animation) + frameCount * sizeof(AnimationFrame);
 
 	if (pOutData) {
 		Animation* pAnim = (Animation*)pOutData;
 		pAnim->frameLength = json["frame_length"].get<u8>();
 		pAnim->loopPoint = json["loop_point"].get<s16>();
-		pAnim->frameCount = frameCount;
+		pAnim->frameCount = (u16)frameCount;
 		pAnim->framesOffset = sizeof(Animation);
 
 		AnimationFrame* pFrames = pAnim->GetFrames();
@@ -633,10 +633,10 @@ static nlohmann::json SerializeActorPropertyValue(const void* pData, const Actor
 	}
 }
 
-static SerializationResult LoadActorPrototypeFromFile(FILE* pFile, const nlohmann::json& metadata, u32& size, void* pOutData) {
+static SerializationResult LoadActorPrototypeFromFile(FILE* pFile, const nlohmann::json& metadata, size_t& size, void* pOutData) {
 	const nlohmann::json json = nlohmann::json::parse(pFile);
 	const nlohmann::json animationsJson = json["animation_ids"];
-	const u32 animCount = animationsJson != nullptr && animationsJson.is_array() ? animationsJson.size() : 0;
+	const size_t animCount = animationsJson != nullptr && animationsJson.is_array() ? animationsJson.size() : 0;
 	size = sizeof(ActorPrototype) + animCount * sizeof(AnimationHandle);
 
 	if (pOutData) {
@@ -665,11 +665,11 @@ static SerializationResult LoadActorPrototypeFromFile(FILE* pFile, const nlohman
 			}
 		}
 
-		pProto->animCount = animCount;
+		pProto->animCount = (u32)animCount;
 		pProto->animOffset = sizeof(ActorPrototype);
 
 		AnimationHandle* pAnims = pProto->GetAnimations();
-		for (u32 i = 0; i < animCount; i++) {
+		for (size_t i = 0; i < animCount; i++) {
 			pAnims[i].id = animationsJson[i].get<u64>();
 		}
 	}
@@ -731,7 +731,7 @@ static bool ValidateTilemapJson(const nlohmann::json& json, u32& outWidth, u32& 
 		return false;
 	}
 
-	outTileCount = tilesJson.size();
+	outTileCount = (u32)tilesJson.size();
 
 	if (outTileCount != outWidth * outHeight) {
 		return false;
@@ -740,20 +740,20 @@ static bool ValidateTilemapJson(const nlohmann::json& json, u32& outWidth, u32& 
 	return true;
 }
 
-static SerializationResult LoadRoomTemplateFromFile(FILE* pFile, const nlohmann::json& metadata, u32& size, void* pOutData) {
+static SerializationResult LoadRoomTemplateFromFile(FILE* pFile, const nlohmann::json& metadata, size_t& size, void* pOutData) {
 	const nlohmann::json json = nlohmann::json::parse(pFile);
 	const u8 width = json["width"] != nullptr ? json["width"].get<u8>() : 0;
 	const u8 height = json["height"] != nullptr ? json["height"].get<u8>() : 0;
 
 	const nlohmann::json mapTilesJson = json["map_tiles"];
-	const u32 mapTileCount = mapTilesJson != nullptr && mapTilesJson.is_array() ? mapTilesJson.size() : 0;
+	const size_t mapTileCount = mapTilesJson != nullptr && mapTilesJson.is_array() ? mapTilesJson.size() : 0;
 	const u32 expectedMapTileCount = ROOM_MAP_TILE_COUNT;
 	if (mapTileCount != expectedMapTileCount) {
 		return SERIALIZATION_INVALID_ASSET_DATA; // Invalid map tile count
 	}
 
 	const nlohmann::json actorsJson = json["actors"];
-	const u32 actorCount = actorsJson != nullptr && actorsJson.is_array() ? actorsJson.size() : 0;
+	const size_t actorCount = actorsJson != nullptr && actorsJson.is_array() ? actorsJson.size() : 0;
 
 	const nlohmann::json tilemapJson = json["tilemap"];
 	u32 tilemapWidth, tilemapHeight, tileCount;
@@ -797,7 +797,7 @@ static SerializationResult LoadRoomTemplateFromFile(FILE* pFile, const nlohmann:
 		tilemap.tilesetHandle.id = tilemapJson["tileset_id"].get<u64>();
 		tilemap.tilesOffset = tilesOffset - offsetof(RoomTemplate, tilemap);
 
-		pRoom->actorCount = actorCount;
+		pRoom->actorCount = (u32)actorCount;
 		pRoom->actorOffset = actorOffset;
 
 		// Load map tiles
@@ -863,7 +863,7 @@ static SerializationResult SaveRoomTemplateToFile(FILE* pFile, nlohmann::json& m
 	return SERIALIZATION_SUCCESS;
 }
 
-static SerializationResult LoadOverworldFromFile(FILE* pFile, const nlohmann::json& metadata, u32& size, void* pOutData) {
+static SerializationResult LoadOverworldFromFile(FILE* pFile, const nlohmann::json& metadata, size_t& size, void* pOutData) {
 	if (!pOutData) {
 		size = sizeof(Overworld)
 			+ OVERWORLD_METATILE_COUNT
@@ -911,12 +911,12 @@ static SerializationResult LoadOverworldFromFile(FILE* pFile, const nlohmann::js
 
 	// Load key areas
 	const nlohmann::json& keyAreasJson = json["key_areas"];
-	u32 keyAreaCount = keyAreasJson != nullptr && keyAreasJson.is_array() ? keyAreasJson.size() : 0;
+	size_t keyAreaCount = keyAreasJson != nullptr && keyAreasJson.is_array() ? keyAreasJson.size() : 0;
 	if (keyAreaCount > MAX_OVERWORLD_KEY_AREA_COUNT) {
 		return SERIALIZATION_INVALID_ASSET_DATA; // Too many key areas
 	}
 
-	for (u32 i = 0; i < keyAreaCount; i++) {
+	for (size_t i = 0; i < keyAreaCount; i++) {
 		if (i < keyAreasJson.size()) {
 			keyAreasJson[i].get_to(pOverworld->keyAreas[i]);
 		}
@@ -959,7 +959,7 @@ static SerializationResult SaveOverworldToFile(FILE* pFile, nlohmann::json& meta
 	return SERIALIZATION_SUCCESS;
 }
 
-static SerializationResult LoadDungeonFromFile(FILE* pFile, const nlohmann::json& metadata, u32& size, void* pOutData) {
+static SerializationResult LoadDungeonFromFile(FILE* pFile, const nlohmann::json& metadata, size_t& size, void* pOutData) {
 	if (!pOutData) {
 		size = sizeof(Dungeon);
 		return SERIALIZATION_SUCCESS; // Just return size if no output data is provided
@@ -1057,7 +1057,7 @@ SerializationResult AssetSerialization::CreateAssetMetadataFile(const std::files
 	return SaveAssetMetadataToFile(path, outMetadata);
 }
 
-SerializationResult AssetSerialization::LoadAssetFromFile(const std::filesystem::path& path, AssetType type, const nlohmann::json& metadata, u32& size, void* pOutData) {
+SerializationResult AssetSerialization::LoadAssetFromFile(const std::filesystem::path& path, AssetType type, const nlohmann::json& metadata, size_t& size, void* pOutData) {
 	if (!std::filesystem::exists(path)) {
 		return SERIALIZATION_FILE_NOT_FOUND;
 	}

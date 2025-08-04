@@ -1,5 +1,7 @@
 #include "game_ui.h"
 #include "game_rendering.h"
+#include <cstdio>
+#include <cstring>
 
 constexpr u16 animDuration = 20;
 constexpr u16 barAnimDelay = 16;
@@ -137,22 +139,24 @@ void Game::UI::DrawPlayerStaminaBar(s16 maxStamina) {
 void Game::UI::DrawExpCounter() {
     static char buffer[10];
     snprintf(buffer, sizeof(buffer), "%05u", playerExpCounterState.exp);
-    u32 length = strlen(buffer);
+    u8 length = (u8)strlen(buffer);
 
     const u16 xStart = VIEWPORT_WIDTH_PIXELS - 16 - (length * 8);
     const u16 y = 16;
 
     // Draw halo indicator
-    Sprite sprite{};
-    sprite.tileId = 0x68;
-    sprite.palette = 0x0;
-    sprite.x = xStart - 8;
-    sprite.y = y;
-    Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+    {
+        Sprite sprite{};
+        sprite.tileId = 0x68;
+        sprite.palette = 0x0;
+        sprite.x = xStart - 8;
+        sprite.y = y;
+        Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+    }
 
     // Draw counter
     u16 x = xStart;
-    for (u32 i = 0; i < length; i++) {
+    for (u8 i = 0; i < length; i++) {
         Sprite sprite{};
         sprite.tileId = 0xc6 + buffer[i] - '0';
         sprite.palette = 0x1;

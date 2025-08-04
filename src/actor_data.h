@@ -1,6 +1,9 @@
 #pragma once
 #include "core_types.h"
 
+typedef u16 TActorType;
+typedef u16 TActorSubtype;
+
 #ifdef EDITOR
 #include <vector>
 #include "data_types.h"
@@ -37,16 +40,16 @@ public:
 		}
 	}
 
-	inline const u32 GetSubtypeCount() const {
+	inline size_t GetSubtypeCount() const {
 		return subtypeNames.size();
 	}
 	inline const char* const* GetSubtypeNames() const {
 		return subtypeNames.data();
 	}
-	inline u32 GetPropertyCount(u32 subtype) const {
+	inline size_t GetPropertyCount(TActorSubtype subtype) const {
 		return subtypeProperties[subtype]->size();
 	}
-	inline const ActorEditorProperty& GetProperty(u32 subtype, u32 index) const {
+	inline const ActorEditorProperty& GetProperty(TActorSubtype subtype, size_t index) const {
 		return subtypeProperties[subtype]->at(index);
 	}
 };
@@ -80,9 +83,6 @@ public:
 		{}
 #define ACTOR_EDITOR_DATA(ACTOR_TYPE, ...)
 #endif
-
-typedef u16 TActorType;
-typedef u16 TActorSubtype;
 
 enum ActorType : TActorType {
 	ACTOR_TYPE_PLAYER,
