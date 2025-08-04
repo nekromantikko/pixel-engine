@@ -23,7 +23,13 @@ For the final image, I apply a CRT shader originally by Timothy Lottes (https://
 ## Build Commands
 - Use cmake to configure and build
 - Use ENABLE_EDITOR option to disable/enable editor
-- Example: `cmake -DENABLE_EDITOR=ON ..` then `make`
+- Use ENABLE_AVX option to enable AVX2 optimizations on Linux (Windows: auto-enabled)
+- Example: `cmake -DENABLE_EDITOR=ON -DENABLE_AVX=ON ..` then `make`
+
+## Performance Features
+- **AVX2 Support**: Automatic detection and use of AVX2 instructions for improved performance
+- **Runtime CPU Detection**: Safely falls back to standard implementations on older CPUs
+- **Cross-platform**: AVX optimizations work on Windows, Linux, and macOS
 
 # Videos:
 
