@@ -5,7 +5,7 @@
 #include <cstring>
 
 // Calls itoa, but adds a plus sign if value is positive
-static u32 ItoaSigned(s16 value, char* str) {
+static size_t ItoaSigned(s16 value, char* str) {
     s32 i = 0;
     if (value > 0) {
         str[i++] = '+';
@@ -25,7 +25,7 @@ static bool DrawDmgNumbers(const Actor* pActor, const ActorPrototype* pPrototype
     if (!damage.flags.healing) {
         value *= -1;
     }
-    const u32 strLength = ItoaSigned(value, numberStr);
+    const u8 strLength = (u8)ItoaSigned(value, numberStr);
 
     // Ascii character '*' = 0x2A
     constexpr u8 chrOffset = 0x2A;
@@ -38,7 +38,7 @@ static bool DrawDmgNumbers(const Actor* pActor, const ActorPrototype* pPrototype
     const s16 xStart = pixelPos.x - widthPx / 2;
 
     bool result = true;
-    for (u32 i = 0; i < strLength; i++) {
+    for (u8 i = 0; i < strLength; i++) {
         Sprite sprite{};
         sprite.tileId = 0xe0 + numberStr[i] - chrOffset;
         sprite.palette = palette;

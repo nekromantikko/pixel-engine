@@ -56,7 +56,7 @@ bool AssetManager::LoadAssetsFromDirectory(const std::filesystem::path& director
 
 			const u64 guid = metadata["guid"];
 
-			u32 size;
+			size_t size;
 			if (AssetSerialization::LoadAssetFromFile(entry.path(), assetType, metadata, size, nullptr) != SERIALIZATION_SUCCESS) {
 				DEBUG_ERROR("Failed to get size for asset %s\n", pathCStr);
 				continue;

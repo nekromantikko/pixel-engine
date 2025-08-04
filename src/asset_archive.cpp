@@ -12,7 +12,7 @@ AssetArchive::~AssetArchive() {
 	Clear();
 }
 
-constexpr u32 AssetArchive::GetNextPOT(u32 n) {
+constexpr size_t AssetArchive::GetNextPOT(size_t n) {
 	if (n == 0) {
 		return 1;
 	}
@@ -26,8 +26,8 @@ constexpr u32 AssetArchive::GetNextPOT(u32 n) {
 	return n + 1;
 }
 
-bool AssetArchive::ResizeStorage(u32 minCapacity) {
-	const u32 newCapacity = GetNextPOT(minCapacity);
+bool AssetArchive::ResizeStorage(size_t minCapacity) {
+	const size_t newCapacity = GetNextPOT(minCapacity);
 	void* newBlock = realloc(m_data, newCapacity);
 	if (!newBlock) {
 		return false;
@@ -38,8 +38,8 @@ bool AssetArchive::ResizeStorage(u32 minCapacity) {
 	return true;
 }
 
-bool AssetArchive::ReserveMemory(u32 size) {
-	const u32 minCapacity = m_size + size;
+bool AssetArchive::ReserveMemory(size_t size) {
+	const size_t minCapacity = m_size + size;
 	if (m_capacity < minCapacity) {
 		if (!ResizeStorage(minCapacity)) {
 			return false;
@@ -75,7 +75,7 @@ bool AssetArchive::LoadFromFile(const std::filesystem::path& path) {
 		return false;
 	}
 
-	const u32 size = header.directoryOffset - sizeof(ArchiveHeader);
+	const size_t size = header.directoryOffset - sizeof(ArchiveHeader);
 	if (!ResizeStorage(size)) {
 		fclose(pFile);
 		return false;
@@ -85,7 +85,7 @@ bool AssetArchive::LoadFromFile(const std::filesystem::path& path) {
 	m_size = size;
 
 	m_index.reserve(header.assetCount);
-	for (u32 i = 0; i < header.assetCount; i++) {
+	for (size_t i = 0; i < header.assetCount; i++) {
 		AssetEntry asset;
 		fread(&asset, sizeof(AssetEntry), 1, pFile);
 		m_index.emplace(asset.id, asset);
@@ -121,7 +121,7 @@ bool AssetArchive::SaveToFile(const std::filesystem::path& path) {
 	return true;
 }
 
-void* AssetArchive::AddAsset(u64 id, AssetType type, u32 size, const char* path, const char* name, const void* data) {
+void* AssetArchive::AddAsset(u64 id, AssetType type, size_t size, const char* path, const char* name, const void* data) {
 	const auto it = m_index.find(id);
 	if (it != m_index.end()) {
 		return nullptr; // Asset already exists
@@ -170,14 +170,14 @@ bool AssetArchive::RemoveAsset(u64 id) {
 	return true;
 }
 
-bool AssetArchive::ResizeAsset(u64 id, u32 newSize) {
+bool AssetArchive::ResizeAsset(u64 id, size_t newSize) {
 	const auto it = m_index.find(id);
 	if (it == m_index.end()) {
 		return false;
 	}
 	AssetEntry& asset = it->second;
 
-	const u32 oldSize = asset.size;
+	const size_t oldSize = asset.size;
 
 	if (newSize > oldSize) {
 		// TODO: This could reserve more space than needed to avoid repeated resizes that fragment the memory
@@ -216,7 +216,7 @@ AssetEntry* AssetArchive::GetAssetEntry(u64 id) {
 }
 
 void AssetArchive::Repack() {
-	u32 newSize = 0;
+	size_t newSize = 0;
 	for (auto& kvp : m_index) {
 		auto& [id, asset] = kvp;
 		if (asset.flags.deleted) {
@@ -231,12 +231,12 @@ void AssetArchive::Repack() {
 	}
 
 	// Remove deleted assets from index
-	const u32 removedCount = std::erase_if(m_index, [](const auto& item) {
+	const size_t removedCount = std::erase_if(m_index, [](const auto& item) {
 		const auto& [id, asset] = item;
 		return asset.flags.deleted;
 	});
 
-	u32 offset = 0;
+	size_t offset = 0;
 	for (auto& kvp : m_index) {
 		auto& [id, asset] = kvp;
 		memcpy(newData + offset, m_data + asset.offset, asset.size);
@@ -260,8 +260,8 @@ void AssetArchive::Clear() {
 	m_index.clear();
 }
 
-u32 AssetArchive::GetAssetCount() const {
-	return static_cast<u32>(m_index.size());
+size_t AssetArchive::GetAssetCount() const {
+	return m_index.size();
 }
 
 const AssetIndex& AssetArchive::GetIndex() const {

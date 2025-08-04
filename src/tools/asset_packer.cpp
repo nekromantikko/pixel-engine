@@ -34,7 +34,7 @@ bool PackAssetsFromDirectory(AssetArchive& archive, const fs::path& directory) {
 
 			const u64 guid = metadata["guid"];
 
-			u32 size;
+			size_t size;
 			if (AssetSerialization::LoadAssetFromFile(entry.path(), assetType, metadata, size, nullptr) != SERIALIZATION_SUCCESS) {
 				std::cerr << "Failed to get size for asset " << pathCStr << std::endl;
 				continue;

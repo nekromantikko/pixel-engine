@@ -354,8 +354,8 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
     constexpr u16 borderIndexOffset = 0x110;
     const glm::ivec2 borderMin(tileMin - 1);
     const glm::ivec2 borderMax(tileMax + 1);
-    for (int y = borderMin.y; y < borderMax.y; ++y) {
-        for (int x = borderMin.x; x < borderMax.x; ++x) {
+    for (s32 y = borderMin.y; y < borderMax.y; ++y) {
+        for (s32 x = borderMin.x; x < borderMax.x; ++x) {
             u8 xEdge = ((x == borderMin.x) || (x == borderMax.x - 1)) ? 1 : 0;
             u8 yEdge = ((y == borderMin.y) || (y == borderMax.y - 1)) ? 2 : 0;
             bool hFlip = (x == borderMin.x);
@@ -390,7 +390,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
                 continue;
             }
 
-            const u32 yTile = y + tileMin.y - scrollOffset.y;
+            const s32 yTile = y + tileMin.y - scrollOffset.y;
             // Vertical clipping
             if (yTile < tileMin.y || yTile >= tileMax.y) {
                 continue;
@@ -405,7 +405,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
 
                 const u8 dir = ~(cell.roomIndex) - 1;
 
-                const u32 xTile = (x * 2) + tileMin.x - scrollOffset.x;
+                const s32 xTile = (x * 2) + tileMin.x - scrollOffset.x;
 
                 switch (dir) {
                 case SCREEN_EXIT_DIR_RIGHT: {
@@ -493,7 +493,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
             // Room width = 2;
             const BgTile* pMapTiles = pTemplate->GetMapTiles();
             for (u32 i = 0; i < 2; i++) {
-                const u32 xTile = (x * 2) + tileMin.x + i - scrollOffset.x;
+                const s32 xTile = (x * 2) + tileMin.x + i - scrollOffset.x;
 
                 // Clipping: Check if tile is within worldTileBounds
                 if (xTile >= tileMin.x && xTile < tileMax.x) {

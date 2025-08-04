@@ -2,6 +2,40 @@ cmake_minimum_required(VERSION 3.22.1)
 set(PROJECT_NAME pixelengine)
 project(${PROJECT_NAME})
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+if(MSVC)
+set(COMPILER_FLAGS
+	"/Zc:preprocessor"
+	"/permissive-"
+	"/W4"
+	"/WX"
+	"/wd4100" # Disable warning C4100: unreferenced formal parameter
+	"/wd4101" # Disable warning C4101: unreferenced local variable
+	"/wd4189" # Disable warning C4189: local variable is initialized but not referenced
+	"/wd4201" # Disable warning C4201: nonstandard extension used: nameless struct/union
+	"/wd4244" # Disable warning C4244: conversion from 'type1' to 'type2', possible loss of data
+	"/wd4324" # Disable warning C4324: structure was padded due to alignment specifier
+	"/wd4505" # Disable warning C4505: unreferenced local function has been removed
+)
+else()
+set(COMPILER_FLAGS
+	"-Wall"
+	"-Wextra"
+	"-pedantic"
+	"-Werror"
+	"-Wno-unused-parameter"
+	"-Wno-unused-variable"
+	"-Wno-unused-but-set-variable"
+	"-Wno_gnu_anonymous_struct"
+	"-Wno-conversion"
+	"-Wno-padded"
+	"-Wno-unused-function"
+)
+endif()
+
 # For FetchContent_Declare() and FetchContent_MakeAvailable()
 include(FetchContent)
 
@@ -65,13 +99,14 @@ set (ASSET_PACKER_SOURCES
 
 add_executable(asset_packer ${ASSET_PACKER_SOURCES})
 target_include_directories(asset_packer PRIVATE ${glm_SOURCE_DIR})
-target_compile_features(asset_packer PUBLIC cxx_std_20)
+target_compile_features(asset_packer PRIVATE cxx_std_20)
 target_compile_definitions(asset_packer PRIVATE EDITOR ASSETS_SRC_DIR="${ASSETS_SRC_DIR}")
 target_link_libraries(asset_packer PRIVATE nlohmann_json)
-target_compile_definitions(asset_packer PUBLIC EDITOR)
+target_compile_definitions(asset_packer PRIVATE EDITOR)
+target_compile_options(asset_packer PRIVATE ${COMPILER_FLAGS})
 
-if (MSVC)
-    target_compile_options(asset_packer PUBLIC /Zc:preprocessor)
+if(MSVC)
+	target_compile_definitions(asset_packer PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
 IF(ENABLE_EDITOR)
@@ -114,6 +149,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${SHARED_INCLUDE_DIR} ${Vulka
 target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2 SDL2::SDL2main)
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_NPAK_OUTPUT="${ASSETS_NPAK_OUTPUT}")
+target_compile_options(${PROJECT_NAME} PRIVATE ${COMPILER_FLAGS})
 
 IF(ENABLE_EDITOR)
 	target_sources(${PROJECT_NAME} PRIVATE ${IMGUI_SOURCES} ${EDITOR_SOURCES})
@@ -122,8 +158,8 @@ IF(ENABLE_EDITOR)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_SRC_DIR="${ASSETS_SRC_DIR}")
 ENDIF()
 
-if (MSVC)
-    target_compile_options(${PROJECT_NAME} PUBLIC /Zc:preprocessor)
+if(MSVC)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
 # Compile shaders
