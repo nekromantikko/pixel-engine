@@ -1,4 +1,5 @@
 #include "asset_serialization.h"
+#include "shader_compiler.h"
 #include <cstdlib>
 #include "core_types.h"
 #include "data_types.h"
@@ -963,6 +964,29 @@ static SerializationResult SaveDungeonToFile(FILE* pFile, nlohmann::json& metada
 	return SERIALIZATION_SUCCESS;
 }
 
+static SerializationResult LoadShaderFromFile(FILE* pFile, const std::filesystem::path& path, std::vector<u8>& outData) {
+	std::string filename = path.filename().string();
+	size_t fileSize = std::filesystem::file_size(path);
+	std::string shaderSource;
+	if (fileSize > 0) {
+		shaderSource.resize(fileSize);
+		fread(shaderSource.data(), 1, fileSize, pFile);
+	}
+	std::vector<u8> compiledShaderData;
+	ShaderCompiler::Compile(filename.c_str(), path.string().c_str(), shaderSource.c_str(), compiledShaderData);
+	size_t size = sizeof(Shader) + compiledShaderData.size();
+	outData.resize(size);
+	Shader* pShader = (Shader*)outData.data();
+	pShader->sourceOffset = sizeof(Shader);
+	pShader->sourceSize = (u32)compiledShaderData.size();
+	memcpy(pShader->GetSource(), compiledShaderData.data(), compiledShaderData.size());
+	return SERIALIZATION_SUCCESS;
+}
+
+static SerializationResult SaveShaderToFile(FILE* pFile, nlohmann::json& metadata, const void* pData) {
+	return SERIALIZATION_NOT_IMPLEMENTED;
+}
+
 #pragma endregion
 
 SerializationResult AssetSerialization::TryGetAssetTypeFromPath(const std::filesystem::path& path, AssetType& outType) {
@@ -1089,6 +1113,10 @@ SerializationResult AssetSerialization::LoadAssetFromFile(const std::filesystem:
 		result = LoadDungeonFromFile(pFile, metadata, outData);
 		break;
 	}
+	case (ASSET_TYPE_SHADER): {
+		result = LoadShaderFromFile(pFile, path, outData);
+		break;
+	}
 	default:
 		result = SERIALIZATION_INVALID_ASSET_TYPE;
 		break;
@@ -1151,6 +1179,10 @@ SerializationResult AssetSerialization::SaveAssetToFile(const std::filesystem::p
 	}
 	case (ASSET_TYPE_DUNGEON): {
 		saveResult = SaveDungeonToFile(pFile, metadata, pData);
+		break;
+	}
+	case (ASSET_TYPE_SHADER): {
+		saveResult = SaveShaderToFile(pFile, metadata, pData);
 		break;
 	}
 	default:

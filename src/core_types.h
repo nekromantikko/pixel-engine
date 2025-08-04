@@ -55,7 +55,7 @@ constexpr u32 PALETTE_MEMORY_SIZE = PALETTE_COUNT * PALETTE_COLOR_COUNT;
 
 constexpr u32 SCANLINE_COUNT = VIEWPORT_HEIGHT_PIXELS;
 
-struct alignas(4) Sprite {
+struct Sprite {
 	// y is first so we can easily set it offscreen when clearing
 	s16 y;
 	s16 x;
@@ -78,7 +78,7 @@ struct ChrTile {
 };
 
 struct ChrSheet {
-	ChrTile tiles[0x100];
+	ChrTile tiles[CHR_SIZE_TILES];
 };
 
 struct BgTile {
@@ -108,6 +108,37 @@ struct Metasprite {
 
 	inline Sprite* GetSprites() const {
 		return (Sprite*)((u8*)this + spritesOffset);
+	}
+};
+#pragma endregion
+
+#pragma region Shaders
+// TODO: For future use
+enum ShaderStageType : u8 {
+	SHADER_STAGE_NONE = 0,
+	SHADER_STAGE_VERTEX,
+	SHADER_STAGE_FRAGMENT,
+	SHADER_STAGE_COMPUTE,
+
+	SHADER_STAGE_COUNT
+};
+
+// TODO: For future use
+struct ShaderStageInfo {
+	ShaderStageType type;
+	u32 nameOffset;
+
+	inline const char* GetName() const {
+		return (const char*)this + nameOffset;
+	}
+};
+
+struct Shader {
+	u32 sourceOffset;
+	u32 sourceSize;
+
+	inline u8* GetSource() const {
+		return (u8*)this + sourceOffset;
 	}
 };
 #pragma endregion
