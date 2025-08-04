@@ -2,7 +2,10 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
-#include <algorithm>
+
+static bool CompareAssetEntries(const AssetEntry& a, const AssetEntry& b) {
+	return a.id < b.id;
+}
 
 AssetArchive::AssetArchive() 
 	: m_capacity(0), m_size(0), m_data(nullptr) {
@@ -84,12 +87,19 @@ bool AssetArchive::LoadFromFile(const std::filesystem::path& path) {
 	fread(m_data, 1, size, pFile);
 	m_size = size;
 
-	m_index.reserve(header.assetCount);
-	for (size_t i = 0; i < header.assetCount; i++) {
-		AssetEntry asset;
-		fread(&asset, sizeof(AssetEntry), 1, pFile);
-		m_index.emplace(asset.id, asset);
+	size_t assetCount = header.assetCount;
+	if (assetCount > MAX_ASSETS) {
+		fclose(pFile);
+		return false;
 	}
+	
+	for (size_t i = 0; i < assetCount; i++) {
+		PoolHandle<AssetEntry> handle = m_index.Add();
+		AssetEntry* entry = m_index.Get(handle);
+		fread(entry, sizeof(AssetEntry), 1, pFile);
+	}
+	
+	m_index.Sort(CompareAssetEntries);
 
 	fclose(pFile);
 	return true;
@@ -105,16 +115,19 @@ bool AssetArchive::SaveToFile(const std::filesystem::path& path) {
 
 	ArchiveHeader header{
 		.signature = { 'N','P','A','K' },
-		.assetCount = static_cast<u32>(m_index.size()),
+		.assetCount = static_cast<u32>(m_index.Count()),
 		.directoryOffset = sizeof(ArchiveHeader) + m_size,
 	};
 	fwrite(&header, sizeof(ArchiveHeader), 1, pFile);
 
 	fwrite(m_data, 1, m_size, pFile);
 
-	for (const auto& kvp : m_index) {
-		const AssetEntry& asset = kvp.second;
-		fwrite(&asset, sizeof(AssetEntry), 1, pFile);
+	for (u32 i = 0; i < m_index.Count(); i++) {
+		PoolHandle<AssetEntry> handle = m_index.GetHandle(i);
+		const AssetEntry* asset = m_index.Get(handle);
+		if (asset) {
+			fwrite(asset, sizeof(AssetEntry), 1, pFile);
+		}
 	}
 
 	fclose(pFile);
@@ -122,8 +135,8 @@ bool AssetArchive::SaveToFile(const std::filesystem::path& path) {
 }
 
 void* AssetArchive::AddAsset(u64 id, AssetType type, size_t size, const char* path, const char* name, const void* data) {
-	const auto it = m_index.find(id);
-	if (it != m_index.end()) {
+	const AssetEntry* existing = FindAssetByIdBinary(id);
+	if (existing != nullptr) {
 		return nullptr; // Asset already exists
 	}
 
@@ -143,7 +156,8 @@ void* AssetArchive::AddAsset(u64 id, AssetType type, size_t size, const char* pa
 	newEntry.flags.deleted = false;
 	newEntry.flags.compressed = false;
 
-	m_index.emplace(id, newEntry);
+	m_index.Add(newEntry);
+	m_index.Sort(CompareAssetEntries);
 
 	if (data) {
 		memcpy(m_data + m_size, data, size);
@@ -156,28 +170,26 @@ void* AssetArchive::AddAsset(u64 id, AssetType type, size_t size, const char* pa
 }
 
 bool AssetArchive::RemoveAsset(u64 id) {
-	const auto it = m_index.find(id);
-	if (it == m_index.end()) {
+	AssetEntry* asset = FindAssetByIdBinary(id);
+	if (asset == nullptr) {
 		return false;
 	}
 
-	AssetEntry& asset = it->second;
-	if (asset.flags.deleted) {
+	if (asset->flags.deleted) {
 		return false;
 	}
 
-	asset.flags.deleted = true;
+	asset->flags.deleted = true;
 	return true;
 }
 
 bool AssetArchive::ResizeAsset(u64 id, size_t newSize) {
-	const auto it = m_index.find(id);
-	if (it == m_index.end()) {
+	AssetEntry* asset = FindAssetByIdBinary(id);
+	if (asset == nullptr) {
 		return false;
 	}
-	AssetEntry& asset = it->second;
 
-	const size_t oldSize = asset.size;
+	const size_t oldSize = asset->size;
 
 	if (newSize > oldSize) {
 		// TODO: This could reserve more space than needed to avoid repeated resizes that fragment the memory
@@ -185,63 +197,67 @@ bool AssetArchive::ResizeAsset(u64 id, size_t newSize) {
 			return false;
 		}
 
-		memcpy(m_data + m_size, m_data + asset.offset, oldSize);
-		asset.offset = m_size;
+		memcpy(m_data + m_size, m_data + asset->offset, oldSize);
+		asset->offset = m_size;
 		m_size += newSize;
 	}
 
-	asset.size = newSize;
+	asset->size = newSize;
 	return true;
 }
 
 void* AssetArchive::GetAssetData(u64 id, AssetType type) {
-	const auto it = m_index.find(id);
-	if (it == m_index.end()) {
+	const AssetEntry* asset = FindAssetByIdBinary(id);
+	if (asset == nullptr) {
 		return nullptr;
 	}
-	const AssetEntry& asset = it->second;
-	if (asset.flags.type != type || asset.flags.deleted) {
+	if (asset->flags.type != type || asset->flags.deleted) {
 		return nullptr;
 	}
 
-	return m_data + asset.offset;
+	return m_data + asset->offset;
 }
 
 AssetEntry* AssetArchive::GetAssetEntry(u64 id) {
-	const auto it = m_index.find(id);
-	if (it == m_index.end()) {
-		return nullptr;
-	}
-	return &it->second;
+	return FindAssetByIdBinary(id);
 }
 
 void AssetArchive::Repack() {
 	size_t newSize = 0;
-	for (auto& kvp : m_index) {
-		auto& [id, asset] = kvp;
-		if (asset.flags.deleted) {
-			continue;
+
+	// Iterate backwards so we can delete entries
+	for (s32 i = m_index.Count() - 1; i >= 0; i--) {
+		PoolHandle<AssetEntry> handle = m_index.GetHandle(i);
+		const AssetEntry* asset = m_index.Get(handle);
+		if (!asset) {
+			continue; // Skip null entries
 		}
-		newSize += asset.size;
+
+		if (!asset->flags.deleted) {
+			newSize += asset->size;
+		}
+		else {
+			m_index.Remove(handle);
+		}
 	}
+	m_index.Sort(CompareAssetEntries);
 
 	u8* newData = (u8*)malloc(newSize);
 	if (!newData) {
 		return;
 	}
-
-	// Remove deleted assets from index
-	const size_t removedCount = std::erase_if(m_index, [](const auto& item) {
-		const auto& [id, asset] = item;
-		return asset.flags.deleted;
-	});
-
+	
 	size_t offset = 0;
-	for (auto& kvp : m_index) {
-		auto& [id, asset] = kvp;
-		memcpy(newData + offset, m_data + asset.offset, asset.size);
-		asset.offset = offset;
-		offset += asset.size;
+	for (u32 i = 0; i < m_index.Count(); i++) {
+		PoolHandle<AssetEntry> handle = m_index.GetHandle(i);
+		AssetEntry* asset = m_index.Get(handle);
+		if (!asset) {
+			continue; // Skip null entries
+		}
+
+		memcpy(newData + offset, m_data + asset->offset, asset->size);
+		asset->offset = offset;
+		offset += asset->size;
 	}
 
 	free(m_data);
@@ -257,13 +273,64 @@ void AssetArchive::Clear() {
 	}
 	m_capacity = 0;
 	m_size = 0;
-	m_index.clear();
+	m_index.Clear();
 }
 
 size_t AssetArchive::GetAssetCount() const {
-	return m_index.size();
+	return m_index.Count();
 }
 
 const AssetIndex& AssetArchive::GetIndex() const {
 	return m_index;
+}
+
+// Binary search helpers for sorted asset pool
+AssetEntry* AssetArchive::FindAssetByIdBinary(u64 id) {
+	u32 left = 0;
+	u32 right = m_index.Count();
+	
+	while (left < right) {
+		u32 mid = left + (right - left) / 2;
+		PoolHandle<AssetEntry> handle = m_index.GetHandle(mid);
+		AssetEntry* entry = m_index.Get(handle);
+		
+		if (!entry) {
+			return nullptr;
+		}
+		
+		if (entry->id == id) {
+			return entry;
+		} else if (entry->id < id) {
+			left = mid + 1;
+		} else {
+			right = mid;
+		}
+	}
+	
+	return nullptr;
+}
+
+const AssetEntry* AssetArchive::FindAssetByIdBinary(u64 id) const {
+	u32 left = 0;
+	u32 right = m_index.Count();
+	
+	while (left < right) {
+		u32 mid = left + (right - left) / 2;
+		PoolHandle<AssetEntry> handle = m_index.GetHandle(mid);
+		const AssetEntry* entry = m_index.Get(handle);
+		
+		if (!entry) {
+			return nullptr;
+		}
+		
+		if (entry->id == id) {
+			return entry;
+		} else if (entry->id < id) {
+			left = mid + 1;
+		} else {
+			right = mid;
+		}
+	}
+	
+	return nullptr;
 }
