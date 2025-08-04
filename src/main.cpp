@@ -1,5 +1,6 @@
 #include <SDL.h>
 #include <cfloat>
+#include "asset_manager.h"
 #include "rendering.h"
 #include "game.h"
 #include "input.h"
@@ -59,6 +60,8 @@ static void UpdateWindowTitle(SDL_Window* pWindow, r64 averageFramerate, r64 dt)
 }
 
 int main(int argc, char** argv) {
+    AssetManager::LoadAssets();
+
     SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS | SDL_INIT_HAPTIC);
     SDL_Window* pWindow = SDL_CreateWindow(WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1536, 864, SDL_WINDOW_VULKAN | SDL_WINDOW_SHOWN);
 

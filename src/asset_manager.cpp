@@ -59,7 +59,7 @@ bool AssetManager::LoadAssetsFromDirectory(const std::filesystem::path& director
 
 			data.clear();
 			if (AssetSerialization::LoadAssetFromFile(entry.path(), assetType, metadata, data) != SERIALIZATION_SUCCESS) {
-				DEBUG_ERROR("Failed to get size for asset %s\n", pathCStr);
+				DEBUG_ERROR("Failed to load asset %s\n", pathCStr);
 				continue;
 			}
 			const std::string filenameWithoutExt = entry.path().filename().replace_extension("").string();

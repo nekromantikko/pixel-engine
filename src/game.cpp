@@ -2,7 +2,6 @@
 #include "game_input.h"
 #include "game_state.h"
 #include "game_rendering.h"
-#include "asset_manager.h"
 #include "nes_timing.h"
 
 // TEMP
@@ -32,7 +31,6 @@ namespace Game {
 
 #pragma region Public API
     void Initialize() {
-        AssetManager::LoadAssets();
         Rendering::Init();
 
 		InitGameData();
