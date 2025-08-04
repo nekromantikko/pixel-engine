@@ -61,10 +61,10 @@ constexpr u16 sitAnimIndex = 1;
 constexpr u16 deathAnimIndex = 2;
 
 // TODO: These should be set in editor somehow
-constexpr ChrBankHandle playerBankId(17419163809364512109);
-constexpr ActorPrototypeHandle playerGrenadePrototypeId(5433896513301451046);
-constexpr ActorPrototypeHandle playerArrowPrototypeId(13929813062463858187);
-constexpr ActorPrototypeHandle featherPrototypeId(4150894991750855816);
+constexpr ChrBankHandle playerBankId(17419163809364512109ULL);
+constexpr ActorPrototypeHandle playerGrenadePrototypeId(5433896513301451046ULL);
+constexpr ActorPrototypeHandle playerArrowPrototypeId(13929813062463858187ULL);
+constexpr ActorPrototypeHandle featherPrototypeId(4150894991750855816ULL);
 
 // TODO: Would it be possible to define these in the editor?
 constexpr u8 playerWingFrameBankOffsets[4] = { 0x00, 0x08, 0x10, 0x18 };
@@ -87,12 +87,12 @@ constexpr u8 playerHandFrameTileCount = 2;
 constexpr u8 playerWeaponFrameTileCount = 8;
 
 constexpr glm::ivec2 playerBowOffsets[3] = { { 10, -4 }, { 9, -14 }, { 10, 4 } };
-constexpr MetaspriteHandle playerBowFwdMetaspriteId(14903895514375038294);
-constexpr MetaspriteHandle playerBowDiagMetaspriteId(13305472537268631013);
+constexpr MetaspriteHandle playerBowFwdMetaspriteId(14903895514375038294ULL);
+constexpr MetaspriteHandle playerBowDiagMetaspriteId(13305472537268631013ULL);
 
 constexpr glm::ivec2 playerLauncherOffsets[3] = { { 5, -5 }, { 7, -12 }, { 8, 1 } };
-constexpr MetaspriteHandle playerLauncherFwdMetaspriteId(11359313821138079876);
-constexpr MetaspriteHandle playerLauncherDiagMetaspriteId(10921545440614489200);
+constexpr MetaspriteHandle playerLauncherFwdMetaspriteId(11359313821138079876ULL);
+constexpr MetaspriteHandle playerLauncherDiagMetaspriteId(10921545440614489200ULL);
 
 static void AnimateWings(Actor* pPlayer, u16 frameLength) {
     pPlayer->state.playerState.wingCounter = glm::clamp(pPlayer->state.playerState.wingCounter, u16(0), frameLength);

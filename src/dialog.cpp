@@ -51,7 +51,10 @@ static void CopyBoxTileToNametable(Nametable* pNametables, const glm::ivec2& wor
         for (u32 x = 0; x < METATILE_DIM_TILES; x++) {
             metatile.tiles[x + y * METATILE_DIM_TILES] = {
                 .tileId = u16(borderTileOffset + GetBoxTileId(tileOffset.x + x, tileOffset.y + y, sizeTiles.x, sizeTiles.y)),
-                .palette = palette
+                .palette = palette,
+                .unused = 0,
+                .flipHorizontal = 0,
+                .flipVertical = 0,
             };
         }
     }
@@ -124,7 +127,7 @@ static void DrawBgText(const glm::ivec2& boxViewportOffset, const glm::ivec2& bo
             }
         }
 
-        Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, { .tileId = u16(c) });
+        Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, { .tileId = u16(c), .palette = 0, .unused = 0, .flipHorizontal = 0, .flipVertical = 0 });
         xTile++;
     }
 }
@@ -146,7 +149,7 @@ static void ClearBgText(const glm::ivec2& boxViewportOffset, const glm::ivec2& b
         for (u32 x = 0; x < innerSizeTiles.x; x++) {
             u32 xTile = xTileStart + x;
 
-            Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, { .tileId = 0 });
+            Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, { .tileId = 0, .palette = 0, .unused = 0, .flipHorizontal = 0, .flipVertical = 0 });
         }
     }
 }

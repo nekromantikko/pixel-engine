@@ -168,7 +168,7 @@ struct AABB {
 	};
 
 	AABB() : min{}, max{} {}
-	AABB(r32 x1, r32 x2, r32 y1, r32 y2) : x1(x1), x2(x2), y1(y1), y2(y2) {}
+	AABB(r32 x1, r32 x2, r32 y1, r32 y2) : min(x1, y1), max(x2, y2) {}
 	AABB(const glm::vec2& min, const glm::vec2& max) : min(min), max(max) {}
 };
 

@@ -41,7 +41,13 @@ Actor* Game::SpawnActor(const RoomActor* pTemplate, u32 roomId) {
 
 	Actor actor{
 		.persistId = pTemplate->id | u64(roomId) << 32,
+		.flags = {},
+		.initialPosition = pTemplate->position,
 		.position = pTemplate->position,
+		.initialVelocity = {},
+		.velocity = {},
+		.drawState = {},
+		.state = {},
 		.prototypeHandle = pTemplate->prototypeHandle,
 	};
 
@@ -66,8 +72,13 @@ Actor* Game::SpawnActor(const ActorPrototypeHandle& prototypeHandle, const glm::
 
 	Actor actor {
 		.persistId = UUID_NULL,
+		.flags = {},
+		.initialPosition = position,
 		.position = position,
+		.initialVelocity = velocity,
 		.velocity = velocity,
+		.drawState = {},
+		.state = {},
 		.prototypeHandle = prototypeHandle,
 	};
 

@@ -21,7 +21,7 @@ public:
 		return (u32)(raw >> 32ull);
 	}
 
-	inline const u64 Raw() const {
+	inline u64 Raw() const {
 		return raw;
 	}
 

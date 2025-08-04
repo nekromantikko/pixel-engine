@@ -1228,7 +1228,7 @@ void Rendering::Init() {
 
 	vkCreateDescriptorSetLayout(pContext->device, &layoutInfo, nullptr, &pContext->graphicsDescriptorSetLayout);
 
-	for (int i = 0; i < COMMAND_BUFFER_COUNT; i++) {
+	for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
 		VkDescriptorSetAllocateInfo descriptorSetAllocInfo{};
 		descriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 		descriptorSetAllocInfo.descriptorPool = pContext->descriptorPool;
@@ -1298,7 +1298,7 @@ void Rendering::Init() {
 	CreatePalette();
 	CreateComputeBuffers();
 
-	for (int i = 0; i < COMMAND_BUFFER_COUNT; i++) {
+	for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
 		AllocateBuffer(sizeof(ScanlineData) * SCANLINE_COUNT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pContext->scanlineBuffers[i]);
 		CreateImage(VIEWPORT_WIDTH_TILES * TILE_DIM_PIXELS, VIEWPORT_HEIGHT_TILES * TILE_DIM_PIXELS, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, pContext->colorImages[i]);
 
@@ -1386,7 +1386,7 @@ void Rendering::Init() {
 
 	vkCreateDescriptorSetLayout(pContext->device, &computeLayoutInfo, nullptr, &pContext->computeDescriptorSetLayout);
 
-	for (int i = 0; i < COMMAND_BUFFER_COUNT; i++) {
+	for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
 		VkDescriptorSetAllocateInfo computeDescriptorSetAllocInfo{};
 		computeDescriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 		computeDescriptorSetAllocInfo.descriptorPool = pContext->descriptorPool;
@@ -1446,7 +1446,7 @@ void Rendering::Init() {
 
 	vkCreateComputePipelines(pContext->device, VK_NULL_HANDLE, 1, &computeCreateInfo, nullptr, &pContext->softwarePipeline);
 
-	for (int i = 0; i < COMMAND_BUFFER_COUNT; i++) {
+	for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
 		VkDescriptorImageInfo outBufferInfo{};
 		outBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 		outBufferInfo.imageView = pContext->colorImages[i].view;
@@ -2004,8 +2004,8 @@ static void BlitEditorColorsTexture(const EditorRenderTexture* pTexture) {
 
 	const s32 rowSize = pTexture->image.width;
 	const s32 rowCount = COLOR_COUNT / rowSize;
-	const s32 texSize = pTexture->image.width * pTexture->image.height;
-	const s32 emptyCount = texSize > COLOR_COUNT ? texSize - COLOR_COUNT : 0;
+	const u32 texSize = (u32)(pTexture->image.width * pTexture->image.height);
+	const s32 emptyCount = texSize > COLOR_COUNT ? (s32)(texSize - COLOR_COUNT) : 0;
 	VkImageBlit regions[COLOR_COUNT]{};
 	for (s32 i = 0; i < rowCount; i++) {
 		VkImageBlit& region = regions[i];

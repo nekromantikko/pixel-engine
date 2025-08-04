@@ -82,7 +82,7 @@ namespace Rendering
 		};
 
 		void GeneratePaletteColors(u32* data) {
-			for (s32 i = 0; i < COLOR_COUNT; i++) {
+			for (u32 i = 0; i < COLOR_COUNT; i++) {
 				s32 hue = i & 0b1111;
 				s32 brightness = (i & 0b1110000) >> 4;
 

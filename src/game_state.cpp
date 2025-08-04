@@ -12,11 +12,11 @@
 #include "rendering.h"
 
 // TODO: Define in editor in game settings 
-constexpr ActorPrototypeHandle playerPrototypeHandle(18154189127814674930);
-constexpr ActorPrototypeHandle playerOverworldPrototypeHandle(6197846074548071416);
-constexpr ActorPrototypeHandle xpRemnantPrototypeHandle(11197223615879147344);
+constexpr ActorPrototypeHandle playerPrototypeHandle(18154189127814674930ULL);
+constexpr ActorPrototypeHandle playerOverworldPrototypeHandle(6197846074548071416ULL);
+constexpr ActorPrototypeHandle xpRemnantPrototypeHandle(11197223615879147344ULL);
 
-constexpr OverworldHandle overworldHandle(17959228201269526891);
+constexpr OverworldHandle overworldHandle(17959228201269526891ULL);
 
 // Map drawing
 static constexpr glm::ivec2 mapViewportOffset = { 7, 4 };
@@ -61,7 +61,7 @@ static void ReviveDeadActor(u64 id, PersistedActorData& persistedData) {
 // TODO: Move somewhere else
 #pragma region Dungeon utils
 static const DungeonCell* GetDungeonCell(const Dungeon* pDungeon, const glm::i8vec2 offset) {
-    if (offset.x < 0 || offset.x >= DUNGEON_GRID_DIM || offset.y < 0 || offset.y >= DUNGEON_GRID_DIM) {
+    if (offset.x < 0 || (u32)offset.x >= DUNGEON_GRID_DIM || offset.y < 0 || (u32)offset.y >= DUNGEON_GRID_DIM) {
         return nullptr;
     }
     
@@ -89,7 +89,7 @@ static const RoomInstance* GetDungeonRoom(DungeonHandle dungeonHandle, const glm
         return nullptr;
     }
 
-    if (pCell->roomIndex < 0 || pCell->roomIndex >= MAX_DUNGEON_ROOM_COUNT) {
+    if (pCell->roomIndex < 0 || (u32)pCell->roomIndex >= MAX_DUNGEON_ROOM_COUNT) {
         return nullptr;
     }
 
@@ -416,6 +416,9 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
                     const BgTile tile{
                         .tileId = rightExitTileIndex,
                         .palette = 0x03,
+                        .unused = 0,
+                        .flipHorizontal = 0,
+                        .flipVertical = 0,
                     };
                     if (xTile >= tileMin.x && xTile < tileMax.x) {
                         Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tile);
@@ -430,6 +433,9 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
                     const BgTile tile{
                         .tileId = leftExitTileIndex,
                         .palette = 0x03,
+                        .unused = 0,
+                        .flipHorizontal = 0,
+                        .flipVertical = 0,
                     };
                     if (xTile + 1 >= tileMin.x && xTile + 1 < tileMax.x) {
                         Rendering::Util::SetNametableTile(pNametables, { xTile + 1, yTile }, tile);
@@ -444,6 +450,9 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
                     BgTile tile{
                         .tileId = bottomExitTileIndex,
                         .palette = 0x03,
+                        .unused = 0,
+                        .flipHorizontal = 0,
+                        .flipVertical = 0,
                     };
                     if (xTile >= tileMin.x && xTile < tileMax.x) {
                         Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tile);
@@ -462,6 +471,9 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
                     BgTile tile{
                         .tileId = topExitTileIndex,
                         .palette = 0x03,
+                        .unused = 0,
+                        .flipHorizontal = 0,
+                        .flipVertical = 0,
                     };
                     if (xTile >= tileMin.x && xTile < tileMax.x) {
                         Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tile);

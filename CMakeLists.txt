@@ -24,12 +24,10 @@ else()
 set(COMPILER_FLAGS
 	"-Wall"
 	"-Wextra"
-	"-pedantic"
 	"-Werror"
 	"-Wno-unused-parameter"
 	"-Wno-unused-variable"
 	"-Wno-unused-but-set-variable"
-	"-Wno-gnu_anonymous_struct"
 	"-Wno-conversion"
 	"-Wno-padded"
 	"-Wno-unused-function"

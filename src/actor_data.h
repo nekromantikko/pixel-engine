@@ -37,7 +37,7 @@ public:
 		}
 	}
 
-	inline const size_t GetSubtypeCount() const {
+	inline size_t GetSubtypeCount() const {
 		return subtypeNames.size();
 	}
 	inline const char* const* GetSubtypeNames() const {

@@ -29,7 +29,7 @@ static void UpdateScreenScroll() {
         (s32)(viewportPos.x * METATILE_DIM_PIXELS),
         (s32)(viewportPos.y * METATILE_DIM_PIXELS)
     };
-    for (int i = 0; i < SCANLINE_COUNT; i++) {
+    for (u32 i = 0; i < SCANLINE_COUNT; i++) {
         pScanlines[i] = state;
     }
 }
@@ -148,24 +148,24 @@ void Game::Rendering::Init() {
 
     // Init chr memory
 	// TODO: Figure out what to do with these hardcoded values
-    constexpr ChrBankHandle asciiBankHandle(8539419541591404705);
-    constexpr ChrBankHandle mapBankHandle(12884965207213169338);
-    constexpr ChrBankHandle debugTilesetBankHandle(5051829589002943406);
-    constexpr ChrBankHandle fgBankHandle(1554696323931700844);
+    constexpr ChrBankHandle asciiBankHandle(8539419541591404705ULL);
+    constexpr ChrBankHandle mapBankHandle(12884965207213169338ULL);
+    constexpr ChrBankHandle debugTilesetBankHandle(5051829589002943406ULL);
+    constexpr ChrBankHandle fgBankHandle(1554696323931700844ULL);
 	CopyBankTiles(asciiBankHandle, 0, 0, 0, CHR_SIZE_TILES);
 	CopyBankTiles(mapBankHandle, 0, 1, 0, CHR_SIZE_TILES);
     CopyBankTiles(debugTilesetBankHandle, 0, 2, 0, CHR_SIZE_TILES);
     CopyBankTiles(fgBankHandle, 0, 4, 0, CHR_SIZE_TILES);
 
-    constexpr PaletteHandle debug0PaletteHandle(9826404639351995940);
-    constexpr PaletteHandle debug1PaletteHandle(15753953292764895790);
-    constexpr PaletteHandle worldMapPaletteHandle(235843673484981221);
-    constexpr PaletteHandle dungeonMapPaletteHandle(17785843363754367893);
-    constexpr PaletteHandle freyaPaletteHandle(12681477220579246228);
-    constexpr PaletteHandle freyaDarkPaletteHandle(5947198864976396277);
-    constexpr PaletteHandle checkpointPaletteHandle(17417799732251940800);
-    constexpr PaletteHandle goldBluePaletteHandle(16493657319985968026);
-	constexpr PaletteHandle greenRedPaletteHandle(14621729332936982450);
+    constexpr PaletteHandle debug0PaletteHandle(9826404639351995940ULL);
+    constexpr PaletteHandle debug1PaletteHandle(15753953292764895790ULL);
+    constexpr PaletteHandle worldMapPaletteHandle(235843673484981221ULL);
+    constexpr PaletteHandle dungeonMapPaletteHandle(17785843363754367893ULL);
+    constexpr PaletteHandle freyaPaletteHandle(12681477220579246228ULL);
+    constexpr PaletteHandle freyaDarkPaletteHandle(5947198864976396277ULL);
+    constexpr PaletteHandle checkpointPaletteHandle(17417799732251940800ULL);
+    constexpr PaletteHandle goldBluePaletteHandle(16493657319985968026ULL);
+	constexpr PaletteHandle greenRedPaletteHandle(14621729332936982450ULL);
 
 	CopyPaletteColors(debug0PaletteHandle, 0);
 	CopyPaletteColors(worldMapPaletteHandle, 1);
