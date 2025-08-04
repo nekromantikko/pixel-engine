@@ -222,6 +222,17 @@ AssetEntry* AssetArchive::GetAssetEntry(u64 id) {
 	return FindAssetByIdBinary(id);
 }
 
+AssetEntry* AssetArchive::GetAssetEntryByPath(const std::filesystem::path& relativePath) {
+	for (u32 i = 0; i < m_index.Count(); i++) {
+		PoolHandle<AssetEntry> handle = m_index.GetHandle(i);
+		AssetEntry* asset = m_index.Get(handle);
+		if (asset && relativePath.compare(asset->relativePath) == 0) {
+			return asset;
+		}
+	}
+	return nullptr;
+}
+
 void AssetArchive::Repack() {
 	size_t newSize = 0;
 

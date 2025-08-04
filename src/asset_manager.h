@@ -28,6 +28,13 @@ namespace AssetManager {
 
 	bool ResizeAsset(u64 id, size_t newSize);
 
+	u64 GetAssetId(const std::filesystem::path& relativePath, AssetType type);
+	template <IsAssetHandle HandleType>
+	HandleType GetAssetHandle(const std::filesystem::path& relativePath) {
+		constexpr AssetType assetType = AssetHandleTraits<HandleType>::asset_type::value;
+		u64 id = GetAssetId(relativePath, assetType);
+		return HandleType{ id };
+	}
 	void* GetAsset(u64 id, AssetType type);
 	template <IsAssetHandle HandleType>
 	typename AssetHandleTraits<HandleType>::data_type* GetAsset(const HandleType& handle) {

@@ -3650,15 +3650,20 @@ static void SortAssets(std::vector<u64>& assetIds, ImGuiTableSortSpecs* pSortSpe
 				if (cmp != 0) return spec.SortDirection == ImGuiSortDirection_Ascending ? (cmp < 0) : (cmp > 0);
 				break;
 			}
-			case 1: { // Sort by UUID
+			case 1: { // Sort by Path
+				int cmp = strcmp(a.relativePath, b.relativePath);
+				if (cmp != 0) return spec.SortDirection == ImGuiSortDirection_Ascending ? (cmp < 0) : (cmp > 0);
+				break;
+			}
+			case 2: { // Sort by UUID
 				if (a.id != b.id) return spec.SortDirection == ImGuiSortDirection_Ascending ? (a.id < b.id) : (a.id > b.id);
 				break;
 			}
-			case 2: { // Sort by Type
+			case 3: { // Sort by Type
 				if (a.flags.type != b.flags.type) return spec.SortDirection == ImGuiSortDirection_Ascending ? (a.flags.type < b.flags.type) : (a.flags.type > b.flags.type);
 				break;
 			}
-			case 3: { // Sort by Size
+			case 4: { // Sort by Size
 				if (a.size != b.size) return spec.SortDirection == ImGuiSortDirection_Ascending ? (a.size < b.size) : (a.size > b.size);
 				break;
 			}
@@ -3742,8 +3747,9 @@ static void DrawAssetBrowser() {
 	static std::vector<u64> assetIds;
 
 	ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_Sortable;
-	if (ImGui::BeginTable("Assets", 4, flags)) {
+	if (ImGui::BeginTable("Assets", 5, flags)) {
 		ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_DefaultSort);
+		ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_DefaultSort);
 		ImGui::TableSetupColumn("UUID", ImGuiTableColumnFlags_DefaultSort);
 		ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_DefaultSort);
 		ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_DefaultSort);
@@ -3794,6 +3800,8 @@ static void DrawAssetBrowser() {
 
 				ImGui::EndDragDropSource();
 			}
+			ImGui::TableNextColumn();
+			ImGui::Text("%s", pAsset->relativePath);
 			ImGui::TableNextColumn();
 			ImGui::Text("%llu", id);
 			ImGui::TableNextColumn();
