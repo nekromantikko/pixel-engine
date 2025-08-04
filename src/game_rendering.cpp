@@ -146,26 +146,26 @@ void Game::Rendering::Init() {
 	viewportPos = { 0, 0 };
     ClearSpriteLayers(true);
 
-    // Init chr memory
-	// TODO: Figure out what to do with these hardcoded values
-    constexpr ChrBankHandle asciiBankHandle(8539419541591404705);
-    constexpr ChrBankHandle mapBankHandle(12884965207213169338);
-    constexpr ChrBankHandle debugTilesetBankHandle(5051829589002943406);
-    constexpr ChrBankHandle fgBankHandle(1554696323931700844);
+    // Init chr memory  
+    const ChrBankHandle asciiBankHandle = AssetManager::GetAssetHandle<ChrBankHandle>("chr_sheets/ascii.bmp");
+	const ChrBankHandle mapBankHandle = AssetManager::GetAssetHandle<ChrBankHandle>("chr_sheets/map_tiles.bmp");
+	const ChrBankHandle debugTilesetBankHandle = AssetManager::GetAssetHandle<ChrBankHandle>("chr_sheets/bg_0.bmp");
+	const ChrBankHandle fgBankHandle = AssetManager::GetAssetHandle<ChrBankHandle>("chr_sheets/fg_0.bmp");
+
 	CopyBankTiles(asciiBankHandle, 0, 0, 0, CHR_SIZE_TILES);
 	CopyBankTiles(mapBankHandle, 0, 1, 0, CHR_SIZE_TILES);
     CopyBankTiles(debugTilesetBankHandle, 0, 2, 0, CHR_SIZE_TILES);
     CopyBankTiles(fgBankHandle, 0, 4, 0, CHR_SIZE_TILES);
 
-    constexpr PaletteHandle debug0PaletteHandle(9826404639351995940);
-    constexpr PaletteHandle debug1PaletteHandle(15753953292764895790);
-    constexpr PaletteHandle worldMapPaletteHandle(235843673484981221);
-    constexpr PaletteHandle dungeonMapPaletteHandle(17785843363754367893);
-    constexpr PaletteHandle freyaPaletteHandle(12681477220579246228);
-    constexpr PaletteHandle freyaDarkPaletteHandle(5947198864976396277);
-    constexpr PaletteHandle checkpointPaletteHandle(17417799732251940800);
-    constexpr PaletteHandle goldBluePaletteHandle(16493657319985968026);
-	constexpr PaletteHandle greenRedPaletteHandle(14621729332936982450);
+	const PaletteHandle debug0PaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/debug_0.dat");
+	const PaletteHandle debug1PaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/debug_1.dat");
+	const PaletteHandle worldMapPaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/world_map.dat");
+	const PaletteHandle dungeonMapPaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/dungeon_map.dat");
+	const PaletteHandle freyaPaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/freya.dat");
+	const PaletteHandle freyaDarkPaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/freya_dark.dat");
+	const PaletteHandle checkpointPaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/checkpoint.dat");
+	const PaletteHandle goldBluePaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/gold_blue.dat");
+	const PaletteHandle greenRedPaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/green_red.dat");
 
 	CopyPaletteColors(debug0PaletteHandle, 0);
 	CopyPaletteColors(worldMapPaletteHandle, 1);

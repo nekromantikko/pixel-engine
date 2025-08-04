@@ -44,6 +44,7 @@ public:
 	// Asset retrieval
 	void* GetAssetData(u64 id, AssetType type);
 	AssetEntry* GetAssetEntry(u64 id);
+	AssetEntry* GetAssetEntryByPath(const std::filesystem::path& relativePath);
 	
 	// Archive management
 	void Repack();
