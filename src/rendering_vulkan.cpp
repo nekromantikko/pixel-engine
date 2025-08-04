@@ -11,23 +11,16 @@
 #include <SDL_vulkan.h>
 #include <cassert>
 #include <vector>
-#include "shader.h"
+#include "asset_manager.h"
 
 static constexpr u32 COMMAND_BUFFER_COUNT = 2;
 static constexpr u32 SWAPCHAIN_IMAGE_COUNT = 3;
+static constexpr u32 EVALUATED_SPRITE_INDEX_BUFFER_SIZE = (MAX_SPRITES_PER_SCANLINE + 1) * SCANLINE_COUNT * sizeof(u32);
 
 struct Quad {
 	r32 x, y, w, h;
 };
 static constexpr Quad DEFAULT_QUAD = { 0, 0, 1, 1 };
-
-struct ScanlineData {
-	u32 spriteCount;
-	u32 spriteIndices[MAX_SPRITES_PER_SCANLINE];
-
-	s32 scrollX;
-	s32 scrollY;
-};
 
 struct Image {
 	u32 width, height;
@@ -42,7 +35,24 @@ struct Buffer {
 	VkDeviceMemory memory;
 };
 
+struct PhysicalDeviceFeatures {
+	VkPhysicalDeviceFeatures2 deviceFeatures2;
+	VkPhysicalDeviceVulkan11Features vulkan11Features;
+	VkPhysicalDeviceVulkan12Features vulkan12Features;
+
+	PhysicalDeviceFeatures()
+		: deviceFeatures2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 },
+		vulkan11Features{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES },
+		vulkan12Features{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES } {
+		deviceFeatures2.pNext = &vulkan11Features;
+		vulkan11Features.pNext = &vulkan12Features;
+	}
+};
+
 struct RenderContext {
+	ShaderHandle blitShaderHandle;
+	ShaderHandle softwareShaderHandle;
+
 	VkInstance instance;
 	VkPhysicalDevice physicalDevice;
 	// VkPhysicalDeviceFeatures physicalDeviceFeatures;
@@ -73,9 +83,7 @@ struct RenderContext {
 	VkSampler defaultSampler;
 
 	// Grafix
-	VkShaderModule blitVertexShaderModule;
-	VkShaderModule blitRawFragmentShaderModule;
-	VkShaderModule blitCRTFragmentShaderModule;
+	VkShaderModule blitShaderModule;
 	VkDescriptorSetLayout graphicsDescriptorSetLayout;
 	VkDescriptorSet graphicsDescriptorSets[COMMAND_BUFFER_COUNT];
 	VkRenderPass renderImagePass;
@@ -115,7 +123,6 @@ struct RenderContext {
 	VkShaderModule softwareShaderModule;
 	VkPipelineLayout evaluatePipelineLayout;
 	VkPipeline evaluatePipeline;
-	VkShaderModule evaluateShaderModule;
 
 	// Settings
 	RenderSettings settings;
@@ -171,12 +178,19 @@ static void CreateVulkanInstance() {
 	}
 }
 
-static bool IsPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, u32& outQueueFamilyIndex) {
+static bool IsPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, u32& outQueueFamilyIndex, PhysicalDeviceFeatures& outDeviceFeatures) {
 	VkPhysicalDeviceProperties deviceProperties;
 	vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
 
-	VkPhysicalDeviceFeatures deviceFeatures;
-	vkGetPhysicalDeviceFeatures(physicalDevice, &deviceFeatures);
+	vkGetPhysicalDeviceFeatures2(physicalDevice, &outDeviceFeatures.deviceFeatures2);
+
+	if (!outDeviceFeatures.vulkan12Features.shaderInt8 ||
+		!outDeviceFeatures.vulkan12Features.storageBuffer8BitAccess ||
+		!outDeviceFeatures.deviceFeatures2.features.shaderInt16 ||
+		!outDeviceFeatures.vulkan11Features.storageBuffer16BitAccess ||
+		!outDeviceFeatures.deviceFeatures2.features.shaderInt64) {
+		return false;
+	}
 
 	u32 extensionCount = 0;
 	vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
@@ -256,7 +270,7 @@ static bool IsPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceK
 	return false;
 }
 
-static void GetSuitablePhysicalDevice() {
+static void GetSuitablePhysicalDevice(PhysicalDeviceFeatures& outDeviceFeatures) {
 	u32 physicalDeviceCount = 0;
 	vkEnumeratePhysicalDevices(pContext->instance, &physicalDeviceCount, nullptr);
 	if (physicalDeviceCount == 0) {
@@ -271,7 +285,7 @@ static void GetSuitablePhysicalDevice() {
 
 	for (auto& physicalDevice : availableDevices) {
 		u32 queueFamilyIndex;
-		if (IsPhysicalDeviceSuitable(physicalDevice, pContext->surface, queueFamilyIndex)) {
+		if (IsPhysicalDeviceSuitable(physicalDevice, pContext->surface, queueFamilyIndex, outDeviceFeatures)) {
 			physicalDeviceFound = true;
 			foundDevice = physicalDevice;
 			foundQueueFamilyIndex = queueFamilyIndex;
@@ -285,7 +299,7 @@ static void GetSuitablePhysicalDevice() {
 	pContext->physicalDevice = foundDevice;
 }
 
-static void CreateDevice() {
+static void CreateDevice(PhysicalDeviceFeatures& deviceFeatures) {
 	float queuePriority = 1.0f;
 
 	VkDeviceQueueCreateInfo queueCreateInfo{};
@@ -296,17 +310,15 @@ static void CreateDevice() {
 	queueCreateInfo.queueCount = 1;
 	queueCreateInfo.pQueuePriorities = &queuePriority;
 
-	VkPhysicalDeviceFeatures deviceFeatures{};
-
 	const char* swapchainExtensionName = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 
 	VkDeviceCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	createInfo.pNext = nullptr;
+	createInfo.pNext = &deviceFeatures.deviceFeatures2;
 	createInfo.flags = 0;
 	createInfo.queueCreateInfoCount = 1;
 	createInfo.pQueueCreateInfos = &queueCreateInfo;
-	createInfo.pEnabledFeatures = &deviceFeatures;
+	createInfo.pEnabledFeatures = nullptr;
 	createInfo.enabledExtensionCount = 1;
 	createInfo.ppEnabledExtensionNames = &swapchainExtensionName;
 
@@ -450,7 +462,7 @@ static void FreeSwapchain() {
 	vkDestroySwapchainKHR(pContext->device, pContext->swapchain, nullptr);
 }
 
-static VkShaderModule CreateShaderModule(VkDevice device, const char* code, const u32 size) {
+static VkShaderModule CreateShaderModule(VkDevice device, u8* code, const u32 size) {
 	VkShaderModuleCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 	createInfo.codeSize = size;
@@ -464,49 +476,33 @@ static VkShaderModule CreateShaderModule(VkDevice device, const char* code, cons
 	return module;
 }
 
-static VkShaderModule CreateShaderModule(const char* fname) {
-	std::filesystem::path path(fname);
-
-	u32 size;
-	if (!Assets::LoadShaderFromFile(path, size)) {
-		DEBUG_ERROR("Failed to load shader from file (%s)\n", path.string().c_str());
+static VkShaderModule CreateShaderModule(ShaderHandle handle) {
+	Shader* pShader = AssetManager::GetAsset(handle);
+	if (!pShader) {
 		return VK_NULL_HANDLE;
 	}
-	char* data = (char*)malloc(size);
-	if (!data) {
-		DEBUG_ERROR("Failed to allocate memory for shader (%s)\n", path.string().c_str());
-		return VK_NULL_HANDLE;
-
-	}
-	if (!Assets::LoadShaderFromFile(path, size, data)) {
-		DEBUG_ERROR("Failed to load shader from file (%s)\n", path.string().c_str());
-		free(data);
-		return VK_NULL_HANDLE;
-	}
-	return CreateShaderModule(pContext->device, data, size);
+	return CreateShaderModule(pContext->device, pShader->GetSource(), pShader->sourceSize);
 }
 
 static void CreateGraphicsPipeline()
 {
-	pContext->blitVertexShaderModule = CreateShaderModule("shaders/quad.spv");
-	pContext->blitRawFragmentShaderModule = CreateShaderModule("shaders/textured_raw.spv");
-	pContext->blitCRTFragmentShaderModule = CreateShaderModule("shaders/textured_crt.spv");
+	pContext->blitShaderModule = CreateShaderModule(pContext->blitShaderHandle);
 
 	VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
 	vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-	vertShaderStageInfo.module = pContext->blitVertexShaderModule;
-	vertShaderStageInfo.pName = "main";
+	vertShaderStageInfo.module = pContext->blitShaderModule;
+	vertShaderStageInfo.pName = "Vertex";
 	VkPipelineShaderStageCreateInfo rawFragShaderStageInfo{};
 	rawFragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	rawFragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	rawFragShaderStageInfo.module = pContext->blitRawFragmentShaderModule;
-	rawFragShaderStageInfo.pName = "main";
+	rawFragShaderStageInfo.module = pContext->blitShaderModule;
+	rawFragShaderStageInfo.pName = "FragmentRaw";
 	VkPipelineShaderStageCreateInfo CRTFragShaderStageInfo{};
 	CRTFragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	CRTFragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	CRTFragShaderStageInfo.module = pContext->blitCRTFragmentShaderModule;
-	CRTFragShaderStageInfo.pName = "main";
+	CRTFragShaderStageInfo.module = pContext->blitShaderModule;
+	CRTFragShaderStageInfo.pName = "FragmentCRT";
 
 	VkPipelineShaderStageCreateInfo rawShaderStages[] = { vertShaderStageInfo, rawFragShaderStageInfo };
 	VkPipelineShaderStageCreateInfo CRTShaderStages[] = { vertShaderStageInfo, CRTFragShaderStageInfo };
@@ -640,9 +636,7 @@ static void FreeGraphicsPipeline()
 	vkDestroyPipeline(pContext->device, pContext->blitCRTPipeline, nullptr);
 	vkDestroyPipelineLayout(pContext->device, pContext->blitPipelineLayout, nullptr);
 	vkDestroyRenderPass(pContext->device, pContext->renderImagePass, nullptr);
-	vkDestroyShaderModule(pContext->device, pContext->blitVertexShaderModule, nullptr);
-	vkDestroyShaderModule(pContext->device, pContext->blitRawFragmentShaderModule, nullptr);
-	vkDestroyShaderModule(pContext->device, pContext->blitCRTFragmentShaderModule, nullptr);
+	vkDestroyShaderModule(pContext->device, pContext->blitShaderModule, nullptr);
 	vkDestroyDescriptorSetLayout(pContext->device, pContext->graphicsDescriptorSetLayout, nullptr);
 }
 
@@ -1035,7 +1029,7 @@ static void RunSoftwareRenderer() {
 		commandBuffer,
 		pContext->scanlineBuffers[pContext->currentCbIndex].buffer,
 		0,
-		sizeof(ScanlineData) * SCANLINE_COUNT,
+		EVALUATED_SPRITE_INDEX_BUFFER_SIZE,
 		0
 	);
 
@@ -1053,7 +1047,7 @@ static void RunSoftwareRenderer() {
 	scanlineBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	scanlineBarrier.buffer = pContext->scanlineBuffers[pContext->currentCbIndex].buffer;
 	scanlineBarrier.offset = 0;
-	scanlineBarrier.size = sizeof(ScanlineData) * SCANLINE_COUNT;
+	scanlineBarrier.size = EVALUATED_SPRITE_INDEX_BUFFER_SIZE;
 
 	vkCmdPipelineBarrier(
 		commandBuffer,
@@ -1191,9 +1185,13 @@ void Rendering::CreateSurface(SDL_Window* sdlWindow) {
 }
 
 void Rendering::Init() {
-	GetSuitablePhysicalDevice();
+	pContext->blitShaderHandle = AssetManager::GetAssetHandle<ShaderHandle>("shaders/blit.slang");
+	pContext->softwareShaderHandle = AssetManager::GetAssetHandle<ShaderHandle>("shaders/software.slang");
+
+	PhysicalDeviceFeatures deviceFeatures = PhysicalDeviceFeatures();
+	GetSuitablePhysicalDevice(deviceFeatures);
 	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(pContext->physicalDevice, pContext->surface, &pContext->surfaceCapabilities);
-	CreateDevice();
+	CreateDevice(deviceFeatures);
 	vkGetDeviceQueue(pContext->device, pContext->primaryQueueFamilyIndex, 0, &pContext->primaryQueue);
 	CreateRenderPass();
 	CreateSwapchain();
@@ -1299,7 +1297,7 @@ void Rendering::Init() {
 	CreateComputeBuffers();
 
 	for (int i = 0; i < COMMAND_BUFFER_COUNT; i++) {
-		AllocateBuffer(sizeof(ScanlineData) * SCANLINE_COUNT, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pContext->scanlineBuffers[i]);
+		AllocateBuffer(EVALUATED_SPRITE_INDEX_BUFFER_SIZE, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pContext->scanlineBuffers[i]);
 		CreateImage(VIEWPORT_WIDTH_TILES * TILE_DIM_PIXELS, VIEWPORT_HEIGHT_TILES * TILE_DIM_PIXELS, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, pContext->colorImages[i]);
 
 		VkDescriptorImageInfo imageInfo{};
@@ -1404,13 +1402,13 @@ void Rendering::Init() {
 
 	vkCreatePipelineLayout(pContext->device, &evaluatePipelineLayoutInfo, nullptr, &pContext->evaluatePipelineLayout);
 
-	pContext->evaluateShaderModule = CreateShaderModule("shaders/scanline_evaluate.spv");
+	pContext->softwareShaderModule = CreateShaderModule(pContext->softwareShaderHandle);
 
 	VkPipelineShaderStageCreateInfo evaluateShaderStageInfo{};
 	evaluateShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	evaluateShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	evaluateShaderStageInfo.module = pContext->evaluateShaderModule;
-	evaluateShaderStageInfo.pName = "main";
+	evaluateShaderStageInfo.module = pContext->softwareShaderModule;
+	evaluateShaderStageInfo.pName = "ScanlineEvaluate";
 
 	VkComputePipelineCreateInfo evaluateCreateInfo{};
 	evaluateCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -1430,13 +1428,11 @@ void Rendering::Init() {
 
 	vkCreatePipelineLayout(pContext->device, &softwarePipelineLayoutInfo, nullptr, &pContext->softwarePipelineLayout);
 
-	pContext->softwareShaderModule = CreateShaderModule("shaders/software.spv");
-
 	VkPipelineShaderStageCreateInfo compShaderStageInfo{};
 	compShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	compShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
 	compShaderStageInfo.module = pContext->softwareShaderModule;
-	compShaderStageInfo.pName = "main";
+	compShaderStageInfo.pName = "SoftwareRenderMain";
 
 	VkComputePipelineCreateInfo computeCreateInfo{};
 	computeCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -1477,15 +1473,15 @@ void Rendering::Init() {
 		oamInfo.offset = pContext->oamOffset;
 		oamInfo.range = pContext->oamSize;
 
-		VkDescriptorBufferInfo scanlineInfo{};
-		scanlineInfo.buffer = pContext->scanlineBuffers[i].buffer;
-		scanlineInfo.offset = 0;
-		scanlineInfo.range = VK_WHOLE_SIZE;
-
 		VkDescriptorBufferInfo renderStateInfo{};
 		renderStateInfo.buffer = pContext->computeBufferDevice[i].buffer;
 		renderStateInfo.offset = pContext->renderStateOffset;
 		renderStateInfo.range = pContext->renderStateSize;
+
+		VkDescriptorBufferInfo scanlineInfo{};
+		scanlineInfo.buffer = pContext->scanlineBuffers[i].buffer;
+		scanlineInfo.offset = 0;
+		scanlineInfo.range = VK_WHOLE_SIZE;
 
 		VkWriteDescriptorSet descriptorWrite[8]{};
 		descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1542,7 +1538,7 @@ void Rendering::Init() {
 		descriptorWrite[6].dstArrayElement = 0;
 		descriptorWrite[6].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		descriptorWrite[6].descriptorCount = 1;
-		descriptorWrite[6].pBufferInfo = &scanlineInfo;
+		descriptorWrite[6].pBufferInfo = &renderStateInfo;
 
 		descriptorWrite[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		descriptorWrite[7].dstSet = pContext->computeDescriptorSets[i];
@@ -1550,7 +1546,7 @@ void Rendering::Init() {
 		descriptorWrite[7].dstArrayElement = 0;
 		descriptorWrite[7].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		descriptorWrite[7].descriptorCount = 1;
-		descriptorWrite[7].pBufferInfo = &renderStateInfo;
+		descriptorWrite[7].pBufferInfo = &scanlineInfo;
 
 		vkUpdateDescriptorSets(pContext->device, 8, descriptorWrite, 0, nullptr);
 	}
@@ -1586,11 +1582,10 @@ void Rendering::Free() {
 
 	vkDestroyPipeline(pContext->device, pContext->softwarePipeline, nullptr);
 	vkDestroyPipelineLayout(pContext->device, pContext->softwarePipelineLayout, nullptr);
-	vkDestroyShaderModule(pContext->device, pContext->softwareShaderModule, nullptr);
-
 	vkDestroyPipeline(pContext->device, pContext->evaluatePipeline, nullptr);
 	vkDestroyPipelineLayout(pContext->device, pContext->evaluatePipelineLayout, nullptr);
-	vkDestroyShaderModule(pContext->device, pContext->evaluateShaderModule, nullptr);
+	vkDestroyShaderModule(pContext->device, pContext->softwareShaderModule, nullptr);
+
 	FreeImage(pContext->paletteImage);
 	vkDestroySampler(pContext->device, pContext->paletteSampler, nullptr);
 
@@ -1709,13 +1704,11 @@ static void CreateChrPipeline() {
 
 	vkCreatePipelineLayout(pContext->device, &chrPipelineLayoutInfo, nullptr, &pContext->chrPipelineLayout);
 
-	pContext->chrShaderModule = CreateShaderModule("shaders/debug_blit_chr.spv");
-
 	VkPipelineShaderStageCreateInfo chrShaderStageInfo{};
 	chrShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	chrShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	chrShaderStageInfo.module = pContext->chrShaderModule;
-	chrShaderStageInfo.pName = "main";
+	chrShaderStageInfo.module = pContext->softwareShaderModule;
+	chrShaderStageInfo.pName = "EditorBlitChr";
 
 	VkComputePipelineCreateInfo chrCreateInfo{};
 	chrCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -1734,13 +1727,11 @@ static void CreatePalettePipeline() {
 
 	VkResult err = vkCreatePipelineLayout(pContext->device, &chrPipelineLayoutInfo, nullptr, &pContext->palettePipelineLayout);
 
-	pContext->paletteShaderModule = CreateShaderModule("shaders/debug_blit_pal.spv");
-
 	VkPipelineShaderStageCreateInfo chrShaderStageInfo{};
 	chrShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	chrShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	chrShaderStageInfo.module = pContext->paletteShaderModule;
-	chrShaderStageInfo.pName = "main";
+	chrShaderStageInfo.module = pContext->softwareShaderModule;
+	chrShaderStageInfo.pName = "EditorBlitPalette";
 
 	VkComputePipelineCreateInfo chrCreateInfo{};
 	chrCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;

@@ -20,7 +20,6 @@ jobs:
         sudo apt install -y \
           libvulkan-dev \
           libsdl2-dev \
-          glslang-tools \
           build-essential
 
     - name: Verify dependencies

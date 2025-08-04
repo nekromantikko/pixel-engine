@@ -13,6 +13,7 @@ enum AssetType : u8 {
 	ASSET_TYPE_OVERWORLD,
 	ASSET_TYPE_ANIMATION,
 	ASSET_TYPE_PALETTE,
+	ASSET_TYPE_SHADER,
 
 	ASSET_TYPE_COUNT,
 };
@@ -28,6 +29,7 @@ static const char* ASSET_TYPE_FILE_EXTENSIONS[ASSET_TYPE_COUNT] = {
 	".ow", // OVERWORLD
 	".anim", // ANIMATION
 	".dat", // PALETTE
+	".slang", // SHADER
 };
 
 template <AssetType T>
@@ -127,6 +129,12 @@ struct AssetDataType<ASSET_TYPE_PALETTE> {
 	using Type = Palette;
 };
 
+struct Shader;
+template <>
+struct AssetDataType<ASSET_TYPE_SHADER> {
+	using Type = Shader;
+};
+
 typedef AssetHandle<ASSET_TYPE_CHR_BANK> ChrBankHandle;
 typedef AssetHandle<ASSET_TYPE_SOUND> SoundHandle;
 typedef AssetHandle<ASSET_TYPE_TILESET> TilesetHandle;
@@ -137,7 +145,8 @@ typedef AssetHandle<ASSET_TYPE_DUNGEON> DungeonHandle;
 typedef AssetHandle<ASSET_TYPE_OVERWORLD> OverworldHandle;
 typedef AssetHandle<ASSET_TYPE_ANIMATION> AnimationHandle;
 typedef AssetHandle<ASSET_TYPE_PALETTE> PaletteHandle;
+typedef AssetHandle<ASSET_TYPE_SHADER> ShaderHandle;
 
 #ifdef EDITOR
-constexpr const char* ASSET_TYPE_NAMES[ASSET_TYPE_COUNT] = { "Chr bank", "Sound", "Tileset", "Metasprite", "Actor prototype", "Room template", "Dungeon", "Overworld", "Animation", "Palette" };
+constexpr const char* ASSET_TYPE_NAMES[ASSET_TYPE_COUNT] = { "Chr bank", "Sound", "Tileset", "Metasprite", "Actor prototype", "Room template", "Dungeon", "Overworld", "Animation", "Palette", "Shader" };
 #endif

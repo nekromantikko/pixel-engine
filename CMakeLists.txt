@@ -52,6 +52,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 find_package(Vulkan REQUIRED)
 find_package(SDL2 REQUIRED)
+find_package(slang REQUIRED)
 
 set(SOURCES 
 		src/main.cpp
@@ -76,7 +77,6 @@ set(SOURCES
 		src/effect.cpp
 		src/interactable.cpp
 		src/spawner.cpp
-		src/shader.cpp
 		src/random.cpp
 		src/debug.cpp
 		src/asset_archive.cpp
@@ -91,11 +91,12 @@ set(ASSETS_NPAK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
 set (ASSET_PACKER_SOURCES 
 	src/tools/asset_packer.cpp 
 	src/asset_archive.cpp 
-	src/asset_serialization.cpp)
+	src/asset_serialization.cpp
+	src/shader_compiler.cpp)
 
 add_executable(asset_packer ${ASSET_PACKER_SOURCES})
 target_include_directories(asset_packer PRIVATE ${glm_SOURCE_DIR})
-target_link_libraries(asset_packer PRIVATE nlohmann_json)
+target_link_libraries(asset_packer PRIVATE nlohmann_json slang::slang)
 target_compile_definitions(asset_packer PRIVATE EDITOR)
 target_compile_options(asset_packer PRIVATE ${COMPILER_FLAGS})
 
@@ -108,7 +109,8 @@ IF(ENABLE_EDITOR)
 	set(EDITOR_SOURCES 
 		src/editor.cpp 
 		src/editor_assets.cpp
-		src/asset_serialization.cpp)
+		src/asset_serialization.cpp
+		src/shader_compiler.cpp)
 
 	FetchContent_Declare(
         	imgui
@@ -147,48 +149,13 @@ target_compile_options(${PROJECT_NAME} PRIVATE ${COMPILER_FLAGS})
 IF(ENABLE_EDITOR)
 	target_sources(${PROJECT_NAME} PRIVATE ${IMGUI_SOURCES} ${EDITOR_SOURCES})
 	target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${EDITOR_INCLUDE_DIRS})
-	target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json)
+	target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json slang::slang)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_SRC_DIR="${ASSETS_SRC_DIR}")
 ENDIF()
 
 if(MSVC)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
-
-# Compile shaders
-set (GLSL_SHADERS
-    src/shaders/debug_blit_chr.comp
-    src/shaders/debug_blit_pal.comp
-	src/shaders/scanline_evaluate.comp
-	src/shaders/software.comp
-	src/shaders/quad.vert
-	src/shaders/textured_crt.frag
-	src/shaders/textured_raw.frag)
-
-set(SHADER_DEST ${CMAKE_CURRENT_BINARY_DIR}/shaders)
-file(MAKE_DIRECTORY ${SHADER_DEST})
-include(${CMAKE_CURRENT_SOURCE_DIR}/glsl_shader.cmake)
-set_source_files_properties(src/shaders/debug_blit_chr.comp PROPERTIES ShaderType "comp")
-set_source_files_properties(src/shaders/debug_blit_pal.comp PROPERTIES ShaderType "comp")
-set_source_files_properties(src/shaders/scanline_evaluate.comp PROPERTIES ShaderType "comp")
-set_source_files_properties(src/shaders/software.comp PROPERTIES ShaderType "comp")
-set_source_files_properties(src/shaders/quad.vert PROPERTIES ShaderType "vert")
-set_source_files_properties(src/shaders/textured_crt.frag PROPERTIES ShaderType "frag")
-set_source_files_properties(src/shaders/textured_raw.frag PROPERTIES ShaderType "frag")
-
-foreach(FILE ${GLSL_SHADERS})
-    get_filename_component(FILE_WE ${FILE} NAME_WE)
-    get_source_file_property(shadertype ${FILE} ShaderType)
-    glsl_spv_shader(
-            INPUT "${CMAKE_CURRENT_SOURCE_DIR}/${FILE}"
-            OUTPUT "${SHADER_DEST}/${FILE_WE}.spv"
-            STAGE ${shadertype}
-            ENTRY_POINT main
-            TARGET_ENV vulkan1.0
-    )
-    # Make our project depend on these files
-    target_sources(${PROJECT_NAME} PRIVATE "${SHADER_DEST}/${FILE_WE}.spv")
-endforeach()
 
 # Generate assets.npak from source assets
 add_custom_target(generate_assets ALL
