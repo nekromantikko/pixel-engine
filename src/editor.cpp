@@ -3,6 +3,7 @@
 #include "rendering.h"
 #include "debug.h"
 #include <cassert>
+#include <cinttypes>
 #include <limits>
 #include <type_traits>
 #include <SDL.h>
@@ -454,7 +455,7 @@ static bool DrawCHRPageSelector(r32 chrSize, u32 index, u8 palette, s32* selecte
 			snprintf(label, 8, "Page #%d", i);
 			if (ImGui::BeginTabItem(label)) {
 				s32 selectedPageTile = -1;
-				if (selectedPage == i) {
+				if (selectedPage == (s32)i) {
 					selectedPageTile = *selectedTile & 0xff;
 				}
 
@@ -533,7 +534,7 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
 	ImVec2 uv[METATILE_TILE_COUNT * 4];
 
-	for (s32 i = 0; i < TILESET_SIZE; i++) {
+	for (u32 i = 0; i < TILESET_SIZE; i++) {
 		ImVec2 metatileCoord = ImVec2(i % TILESET_DIM, i / TILESET_DIM);
 		ImVec2 metatileOffset = ImVec2(chrPos.x + metatileCoord.x * gridStepPixels, chrPos.y + metatileCoord.y * gridStepPixels);
 
@@ -677,7 +678,7 @@ static void MoveElements(ImVector<T>& elements, ImVector<s32>& elementIndices, s
 	for (s32 s = 0; s < absStep; s++) {
 		alreadyMoved.clear();
 		while (alreadyMoved.size() < elementIndices.size()) {
-			for (u32 i = 0; i < elementIndices.size(); i++) {
+			for (s32 i = 0; i < (s32)elementIndices.size(); i++) {
 				if (alreadyMoved.contains(i))
 					continue;
 
@@ -712,7 +713,7 @@ static bool CanMoveElements(u32 totalCount, const ImVector<s32>& elementIndices,
 	s32 minIndex = INT_LEAST32_MAX;
 	s32 maxIndex = 0;
 
-	for (u32 i = 0; i < elementIndices.size(); i++) {
+	for (s32 i = 0; i < (s32)elementIndices.size(); i++) {
 		minIndex = glm::min(minIndex, elementIndices[i]);
 		maxIndex = glm::max(maxIndex, elementIndices[i]);
 	}
@@ -721,7 +722,7 @@ static bool CanMoveElements(u32 totalCount, const ImVector<s32>& elementIndices,
 		return minIndex + step >= 0;
 	}
 	else {
-		return maxIndex + step < totalCount;
+		return maxIndex + step < (s32)totalCount;
 	}
 }
 
@@ -768,7 +769,7 @@ static bool SelectElement(ImVector<s32>& selection, bool selectionLocked, s32 in
 template <typename T>
 static void DrawGenericEditableList(ImVector<T>& elements, ImVector<s32>& selection, const char* labelPrefix, bool selectionLocked = false, void (*drawExtraStuff)(const T&) = nullptr) {
 	ImGuiSelectableFlags selectableFlags = ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap;
-	for (u32 i = 0; i < elements.size(); i++) {
+	for (s32 i = 0; i < (s32)elements.size(); i++) {
 		T& element = elements[i];
 		static char labelStr[64];
 		snprintf(labelStr, 64, "%s 0x%02x", labelPrefix, i);
@@ -874,7 +875,7 @@ static bool DrawTypeSelectionCombo(const char* label, const char* const* const t
 		for (u32 i = 0; i < typeCount; i++) {
 			ImGui::PushID(i);
 
-			const bool selected = selection == i;
+			const bool selected = selection == (T)i;
 			if (ImGui::Selectable(typeNames[i], selected)) {
 				selection = i;
 			}
@@ -1089,7 +1090,7 @@ static bool DuplicateAsset(u64 id, const std::filesystem::path& path) {
 	}
 
 	char newName[MAX_ASSET_NAME_LENGTH];
-	snprintf(newName, MAX_ASSET_NAME_LENGTH, "%s (Copy)", pAssetInfo->name);
+	snprintf(newName, MAX_ASSET_NAME_LENGTH, "%.48s (Copy)", pAssetInfo->name);
 	const std::filesystem::path relativePath = std::filesystem::relative(path, ASSETS_SRC_DIR);
 
 	const u64 newId = AssetManager::CreateAsset(pAssetInfo->flags.type, pAssetInfo->size, relativePath.string().c_str(), newName);
@@ -1378,10 +1379,10 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 
 			char label[256];
 			if (asset.dirty) {
-				sprintf(label, "%s*###%lld", asset.name, kvp.first);
+				sprintf(label, "%s*###%" PRIu64, asset.name, kvp.first);
 			}
 			else {
-				sprintf(label, "%s###%lld", asset.name, kvp.first);
+				sprintf(label, "%s###%" PRIu64, asset.name, kvp.first);
 			}
 
 			if (ImGui::BeginTabItem(label, &open)) {
@@ -1749,7 +1750,7 @@ static void DrawDebugWindow() {
 			static s32 selectedPalettes[2]{};
 			static u32 selectedPages[2]{};
 
-			for (int i = 0; i < PALETTE_COUNT; i++) {
+			for (u32 i = 0; i < PALETTE_COUNT; i++) {
 				if (i == BG_PALETTE_COUNT) {
 					ImGui::NewLine();
 				}
@@ -1809,7 +1810,7 @@ struct MetaspriteEditorData {
 
 static void PopulateMetaspriteEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		delete (MetaspriteEditorData*)editedAsset.userData;
 	}
 
 	editedAsset.userData = new MetaspriteEditorData();
@@ -1838,7 +1839,7 @@ static void ApplyMetaspriteEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteMetaspriteEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	delete (MetaspriteEditorData*)editedAsset.userData;
 }
 
 
@@ -1966,7 +1967,7 @@ static void DrawSpriteEditor(MetaspriteEditorData* pEditorData, ImVector<s32>& s
 		ImGui::SameLine();
 		ImGui::BeginChild("sprite palette", ImVec2(0, chrSheetSize));
 		{
-			for (int i = 0; i < FG_PALETTE_COUNT; i++) {
+			for (u32 i = 0; i < FG_PALETTE_COUNT; i++) {
 				ImGui::PushID(i);
 				if (DrawPaletteButton(i + BG_PALETTE_COUNT)) {
 					sprite.palette = i;
@@ -2166,7 +2167,7 @@ struct RoomEditorData {
 
 static void PopulateRoomEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		delete (RoomEditorData*)editedAsset.userData;
 	}
 
 	editedAsset.userData = new RoomEditorData();
@@ -2195,7 +2196,7 @@ static void ApplyRoomEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteRoomEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	delete (RoomEditorData*)editedAsset.userData;
 }
 
 static void DrawScreenBorders(u32 index, ImVec2 pMin, ImVec2 pMax, r32 renderScale) {
@@ -2486,7 +2487,7 @@ static void DrawRoomTools(EditedAsset& asset) {
 			else {
 				ImGui::PushID(pEditorData->selectedActorHandle.Raw());
 
-				ImGui::Text("UUID: %lu", pActor->id);
+				ImGui::Text("UUID: %u", pActor->id);
 
 				if (DrawAssetField("Prototype", ASSET_TYPE_ACTOR_PROTOTYPE, pActor->prototypeHandle.id)) {
 					asset.dirty = true;
@@ -2543,7 +2544,7 @@ struct ActorPrototypeEditorData {
 
 static void PopulateActorEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		delete (ActorPrototypeEditorData*)editedAsset.userData;
 	}
 
 	editedAsset.userData = new ActorPrototypeEditorData();
@@ -2572,7 +2573,7 @@ static void ApplyActorEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteActorEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	delete (ActorPrototypeEditorData*)editedAsset.userData;
 }
 
 static ImVec2 DrawActorPreview(const ActorPrototypeEditorData* pEditorData, s32 animIndex, s32 frameIndex, r32 size) {
@@ -3097,7 +3098,7 @@ static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon)
 
 static void PopulateDungeonEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		delete (DungeonEditorData*)editedAsset.userData;
 	}
 
 	editedAsset.userData = new DungeonEditorData();
@@ -3114,7 +3115,7 @@ static void ApplyDungeonEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteDungeonEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	delete (DungeonEditorData*)editedAsset.userData;
 }
 
 static u32 GetRoomCount(const EditorDungeon& dungeon) {
@@ -3507,14 +3508,14 @@ struct OverworldEditorData {
 
 static void PopulateOverworldEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		delete (OverworldEditorData*)editedAsset.userData;
 	}
 
 	editedAsset.userData = new OverworldEditorData();
 }
 
 static void DeleteOverworldEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	delete (OverworldEditorData*)editedAsset.userData;
 }
 
 static void DrawOverworldEditor(EditedAsset& asset) {
@@ -3794,11 +3795,11 @@ static void DrawAssetBrowser() {
 				ImGui::EndDragDropSource();
 			}
 			ImGui::TableNextColumn();
-			ImGui::Text("%llu", id);
+			ImGui::Text("%" PRIu64, id);
 			ImGui::TableNextColumn();
 			ImGui::Text("%s", ASSET_TYPE_NAMES[pAsset->flags.type]);
 			ImGui::TableNextColumn();
-			ImGui::Text("%u bytes", pAsset->size);
+			ImGui::Text("%zu bytes", pAsset->size);
 			ImGui::EndDisabled();
 			ImGui::PopID();
 		}
@@ -3817,7 +3818,7 @@ struct AnimationEditorData {
 
 static void PopulateAnimationEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		delete (AnimationEditorData*)editedAsset.userData;
 	}
 
 	editedAsset.userData = new AnimationEditorData();
@@ -3845,7 +3846,7 @@ static void ApplyAnimationEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteAnimationEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	delete (AnimationEditorData*)editedAsset.userData;
 }
 
 static void DrawAnimationPreview(const AnimationEditorData* pEditorData, s32 frameIndex, r32 size) {
@@ -4144,7 +4145,7 @@ static void DeleteChrEditorData(EditedAsset& editedAsset) {
 
 	// NOTE: This does not free the render data, so it's potentially leaky
 	// Render data should be freed later when iterating the erase list
-	delete editedAsset.userData;
+	delete (ChrEditorData*)editedAsset.userData;
 }
 
 static void DrawEditedChrSheet(r32 size, ImTextureID chrTexture, s8 bgColorIndex) {
@@ -4230,7 +4231,7 @@ static void DeletePaletteEditorData(EditedAsset& editedAsset) {
 
 	// NOTE: This does not free the render data, so it's potentially leaky
 	// Render data should be freed later when iterating the erase list
-	delete editedAsset.userData;
+	delete (PaletteEditorData*)editedAsset.userData;
 }
 
 static void DrawPaletteEditor(EditedAsset& asset) {
