@@ -4,6 +4,7 @@
 #include "game.h"
 #include "input.h"
 #include "audio.h"
+#include "memory_arena.h"
 #define GLM_FORCE_RADIANS
 #include <glm.hpp>
 
@@ -59,6 +60,9 @@ static void UpdateWindowTitle(SDL_Window* pWindow, r64 averageFramerate, r64 dt)
 }
 
 int main(int argc, char** argv) {
+    // Initialize memory management first
+    ArenaAllocator::Initialize();
+    
     SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS | SDL_INIT_HAPTIC);
     SDL_Window* pWindow = SDL_CreateWindow(WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1536, 864, SDL_WINDOW_VULKAN | SDL_WINDOW_SHOWN);
 
@@ -143,5 +147,8 @@ int main(int argc, char** argv) {
 
     SDL_DestroyWindow(pWindow);
     SDL_Quit();
+    
+    // Shutdown memory management last
+    ArenaAllocator::Shutdown();
     return 0;
 }
