@@ -32,6 +32,7 @@ bool AssetManager::LoadAssetsFromDirectory(const std::filesystem::path& director
 
 	DEBUG_LOG("Listing assets in directory: %s\n", directory.string().c_str());
 
+	std::vector<u8> data;
 	for (const auto& entry : std::filesystem::recursive_directory_iterator(directory)) {
 		AssetType assetType;
 		if (entry.is_regular_file() && AssetSerialization::TryGetAssetTypeFromPath(entry.path(), assetType) == SERIALIZATION_SUCCESS) {
@@ -56,8 +57,8 @@ bool AssetManager::LoadAssetsFromDirectory(const std::filesystem::path& director
 
 			const u64 guid = metadata["guid"];
 
-			size_t size;
-			if (AssetSerialization::LoadAssetFromFile(entry.path(), assetType, metadata, size, nullptr) != SERIALIZATION_SUCCESS) {
+			data.clear();
+			if (AssetSerialization::LoadAssetFromFile(entry.path(), assetType, metadata, data) != SERIALIZATION_SUCCESS) {
 				DEBUG_ERROR("Failed to get size for asset %s\n", pathCStr);
 				continue;
 			}
@@ -69,14 +70,8 @@ bool AssetManager::LoadAssetsFromDirectory(const std::filesystem::path& director
 			}
 
 			const std::filesystem::path relativePath = std::filesystem::relative(entry.path(), ASSETS_SRC_DIR);
-			void* pData = AddAsset(guid, assetType, size, relativePath.string().c_str(), name.c_str(), nullptr);
-			if (!pData) {
+			if (!AddAsset(guid, assetType, data.size(), relativePath.string().c_str(), name.c_str(), data.data())) {
 				DEBUG_ERROR("Failed to add asset %s to manager\n", pathCStr);
-				continue;
-			}
-			if (AssetSerialization::LoadAssetFromFile(entry.path(), assetType, metadata, size, pData) != SERIALIZATION_SUCCESS) {
-				DEBUG_ERROR("Failed to load asset data from %s\n", pathCStr);
-				RemoveAsset(guid);
 				continue;
 			}
 			DEBUG_LOG("Asset %s loaded successfully with GUID: %llu\n", pathCStr, guid);

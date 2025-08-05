@@ -19,6 +19,7 @@ bool PackAssetsFromDirectory(AssetArchive& archive, const fs::path& directory) {
 
 	std::cout << "Packing assets from directory: " << directory.string() << std::endl;
 
+	std::vector<u8> data;
 	for (const auto& entry : std::filesystem::recursive_directory_iterator(directory)) {
 		AssetType assetType;
 		if (entry.is_regular_file() && AssetSerialization::TryGetAssetTypeFromPath(entry.path(), assetType) == SERIALIZATION_SUCCESS) {
@@ -34,9 +35,9 @@ bool PackAssetsFromDirectory(AssetArchive& archive, const fs::path& directory) {
 
 			const u64 guid = metadata["guid"];
 
-			size_t size;
-			if (AssetSerialization::LoadAssetFromFile(entry.path(), assetType, metadata, size, nullptr) != SERIALIZATION_SUCCESS) {
-				std::cerr << "Failed to get size for asset " << pathCStr << std::endl;
+			data.clear();
+			if (AssetSerialization::LoadAssetFromFile(entry.path(), assetType, metadata, data) != SERIALIZATION_SUCCESS) {
+				std::cerr << "Failed to load asset data from " << pathCStr << std::endl;
 				continue;
 			}
 			const std::string filenameWithoutExt = entry.path().filename().replace_extension("").string();
@@ -47,14 +48,8 @@ bool PackAssetsFromDirectory(AssetArchive& archive, const fs::path& directory) {
 			}
 
 			const std::filesystem::path relativePath = std::filesystem::relative(entry.path(), directory);
-			void* pData = archive.AddAsset(guid, assetType, size, relativePath.string().c_str(), name.c_str(), nullptr);
-			if (!pData) {
+			if (!archive.AddAsset(guid, assetType, data.size(), relativePath.string().c_str(), name.c_str(), data.data())) {
 				std::cerr << "Failed to add asset " << pathCStr << " to archive" << std::endl;
-				continue;
-			}
-			if (AssetSerialization::LoadAssetFromFile(entry.path(), assetType, metadata, size, pData) != SERIALIZATION_SUCCESS) {
-				std::cerr << "Failed to load asset data from " << pathCStr << std::endl;
-				archive.RemoveAsset(guid);
 				continue;
 			}
 			std::cout << "Asset " << pathCStr << " packed successfully with GUID: " << guid << std::endl;
