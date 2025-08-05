@@ -52,7 +52,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 find_package(Vulkan REQUIRED)
 find_package(SDL2 REQUIRED)
-find_package(slang REQUIRED)
+find_package(slang QUIET)
 
 set(SOURCES 
 		src/main.cpp
@@ -87,21 +87,25 @@ option(ENABLE_EDITOR "Enable editor functionality" ON)
 set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set(ASSETS_NPAK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
 
-# Asset Packer Tool
-set (ASSET_PACKER_SOURCES 
-	src/tools/asset_packer.cpp 
-	src/asset_archive.cpp 
-	src/asset_serialization.cpp
-	src/shader_compiler.cpp)
+# Asset Packer Tool (only if slang is available)
+if(slang_FOUND)
+	set (ASSET_PACKER_SOURCES 
+		src/tools/asset_packer.cpp 
+		src/asset_archive.cpp 
+		src/asset_serialization.cpp
+		src/shader_compiler.cpp)
 
-add_executable(asset_packer ${ASSET_PACKER_SOURCES})
-target_include_directories(asset_packer PRIVATE ${glm_SOURCE_DIR})
-target_link_libraries(asset_packer PRIVATE nlohmann_json slang::slang)
-target_compile_definitions(asset_packer PRIVATE EDITOR)
-target_compile_options(asset_packer PRIVATE ${COMPILER_FLAGS})
+	add_executable(asset_packer ${ASSET_PACKER_SOURCES})
+	target_include_directories(asset_packer PRIVATE ${glm_SOURCE_DIR})
+	target_link_libraries(asset_packer PRIVATE nlohmann_json slang::slang)
+	target_compile_definitions(asset_packer PRIVATE EDITOR)
+	target_compile_options(asset_packer PRIVATE ${COMPILER_FLAGS})
 
-if(MSVC)
-	target_compile_definitions(asset_packer PRIVATE _CRT_SECURE_NO_WARNINGS)
+	if(MSVC)
+		target_compile_definitions(asset_packer PRIVATE _CRT_SECURE_NO_WARNINGS)
+	endif()
+else()
+	message(STATUS "Slang not found, asset_packer will not be built")
 endif()
 
 IF(ENABLE_EDITOR)
@@ -149,7 +153,10 @@ target_compile_options(${PROJECT_NAME} PRIVATE ${COMPILER_FLAGS})
 IF(ENABLE_EDITOR)
 	target_sources(${PROJECT_NAME} PRIVATE ${IMGUI_SOURCES} ${EDITOR_SOURCES})
 	target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${EDITOR_INCLUDE_DIRS})
-	target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json slang::slang)
+	target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json)
+	if(slang_FOUND)
+		target_link_libraries(${PROJECT_NAME} PRIVATE slang::slang)
+	endif()
 	target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_SRC_DIR="${ASSETS_SRC_DIR}")
 ENDIF()
 
@@ -157,13 +164,17 @@ if(MSVC)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
-# Generate assets.npak from source assets
-add_custom_target(generate_assets ALL
-	COMMAND asset_packer "${ASSETS_SRC_DIR}" "${ASSETS_NPAK_OUTPUT}"
-	DEPENDS asset_packer
-	COMMENT "Generating assets.npak from source assets"
-)
-add_dependencies(${PROJECT_NAME} generate_assets)
+# Generate assets.npak from source assets (only if asset_packer was built)
+if(slang_FOUND)
+	add_custom_target(generate_assets ALL
+		COMMAND asset_packer "${ASSETS_SRC_DIR}" "${ASSETS_NPAK_OUTPUT}"
+		DEPENDS asset_packer
+		COMMENT "Generating assets.npak from source assets"
+	)
+	add_dependencies(${PROJECT_NAME} generate_assets)
+else()
+	message(STATUS "Skipping asset packing - slang not available")
+endif()
 
 IF(WIN32)
 	set_target_properties(${PROJECT_NAME} PROPERTIES WIN32_EXECUTABLE TRUE)
