@@ -1,5 +1,7 @@
 #include "shader_compiler.h"
 #include "core_types.h"
+
+#ifdef SLANG_AVAILABLE
 #include <slang.h>
 #include <slang-com-ptr.h>
 #include <slang-com-helper.h>
@@ -86,3 +88,12 @@ bool ShaderCompiler::Compile(const char* name, const char* path, const char* sou
 
 	return true;
 }
+
+#else
+// Stub implementation when slang is not available
+bool ShaderCompiler::Compile(const char* name, const char* path, const char* source, std::vector<u8>& outData) {
+	// Return empty data when slang is not available
+	outData.clear();
+	return false;
+}
+#endif
