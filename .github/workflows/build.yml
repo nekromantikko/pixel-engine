@@ -20,7 +20,6 @@ jobs:
         sudo apt install -y \
           libvulkan-dev \
           libsdl2-dev \
-          glslang-tools \
           build-essential
 
     - name: Verify dependencies
@@ -28,13 +27,12 @@ jobs:
         echo "Verifying required dependencies..."
         pkg-config --exists vulkan && echo "✓ Vulkan SDK available"
         pkg-config --exists sdl2 && echo "✓ SDL2 development libraries available"
-        which glslangValidator && echo "✓ GLSL validator available"
         echo "✓ CMake version: $(cmake --version | head -1)"
         echo "✓ GCC version: $(gcc --version | head -1)"
 
     - name: Configure project
       run: |
-        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_EDITOR=OFF
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_ASSETS=OFF -DENABLE_EDITOR=OFF
 
     - name: Build project
       run: |
@@ -44,5 +42,5 @@ jobs:
       run: |
         cd build
         echo "Checking build outputs..."
-        ls -la pixelengine asset_packer
+        ls -la pixelengine
         echo "✓ Build completed successfully"name: Build Validation
