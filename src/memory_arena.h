@@ -128,6 +128,9 @@ namespace ArenaAllocator {
     // Clear arena completely
     void ClearArena(ArenaType type);
     
+    // Clear temporary arena (common for frame-based cleanup)
+    void ClearTemporaryArena();
+    
     // Get memory usage statistics
     void GetMemoryStats(ArenaType type, size_t& used, size_t& total, r32& percent);
     

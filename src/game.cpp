@@ -4,6 +4,8 @@
 #include "game_rendering.h"
 #include "asset_manager.h"
 #include "nes_timing.h"
+#include "memory_arena.h"
+#include "debug.h"
 
 // TEMP
 constexpr DungeonHandle testDungeon(4648186456448694858);
@@ -32,6 +34,12 @@ namespace Game {
 
 #pragma region Public API
     void Initialize() {
+        DEBUG_LOG("=== Game Initialization Started ===\n");
+        ArenaAllocator::PrintMemoryStats();
+        
+        // Test arena allocator functionality
+        Debug::TestArenaAllocator();
+        
         AssetManager::LoadAssets();
         Rendering::Init();
 
@@ -39,9 +47,17 @@ namespace Game {
         InitGameState(GAME_STATE_DUNGEON);
 
         LoadRoom(testDungeon, { 14, 14 });
+        
+        DEBUG_LOG("=== Game Initialization Complete ===\n");
+        ArenaAllocator::PrintMemoryStats();
     }
 
-    void Free() {}
+    void Free() {
+        DEBUG_LOG("=== Game Shutdown Started ===\n");
+        ArenaAllocator::PrintMemoryStats();
+        
+        // Game cleanup logic would go here
+    }
 
     void Update(r64 dt) {
         secondsElapsed += dt;

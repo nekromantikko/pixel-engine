@@ -112,6 +112,10 @@ namespace ArenaAllocator {
         arena->Clear();
     }
     
+    void ClearTemporaryArena() {
+        ClearArena(ARENA_TEMPORARY);
+    }
+    
     void GetMemoryStats(ArenaType type, size_t& used, size_t& total, r32& percent) {
         MemoryArena* arena = GetArena(type);
         used = arena->used;
