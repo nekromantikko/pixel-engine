@@ -8,6 +8,7 @@
 #include "rendering.h"
 #include "rendering_util.h"
 #include "debug.h"
+#include "vulkan_memory.h"
 #include <SDL_vulkan.h>
 #include <cassert>
 #include <vector>
@@ -180,7 +181,11 @@ static bool IsPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceK
 
 	u32 extensionCount = 0;
 	vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
-	VkExtensionProperties* availableExtensions = (VkExtensionProperties*)calloc(extensionCount, sizeof(VkExtensionProperties));
+	
+	// Use temporary arena for device extension enumeration
+	ArenaMarker tempMarker = ArenaAllocator::GetMarker(ArenaAllocator::ARENA_TEMPORARY);
+	VkExtensionProperties* availableExtensions = ArenaAllocator::AllocateArray<VkExtensionProperties>(
+		ArenaAllocator::ARENA_TEMPORARY, extensionCount);
 	vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions);
 
 	bool hasSwapchainSupport = false;
@@ -193,7 +198,7 @@ static bool IsPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceK
 		}
 	}
 
-	free(availableExtensions);
+	ArenaAllocator::ResetToMarker(tempMarker); // Clean up temporary allocation
 
 	if (!hasSwapchainSupport) {
 		return false;
@@ -201,17 +206,21 @@ static bool IsPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceK
 
 	u32 surfaceFormatCount = 0;
 	vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, nullptr);
-	VkSurfaceFormatKHR* availableFormats = (VkSurfaceFormatKHR*)calloc(surfaceFormatCount, sizeof(VkSurfaceFormatKHR));
+	
+	// Use temporary arena for surface format and present mode enumeration
+	ArenaMarker surfaceMarker = ArenaAllocator::GetMarker(ArenaAllocator::ARENA_TEMPORARY);
+	VkSurfaceFormatKHR* availableFormats = ArenaAllocator::AllocateArray<VkSurfaceFormatKHR>(
+		ArenaAllocator::ARENA_TEMPORARY, surfaceFormatCount);
 	vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, availableFormats);
 
 	u32 presentModeCount = 0;
 	vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
-	VkPresentModeKHR* availablePresentModes = (VkPresentModeKHR*)calloc(presentModeCount, sizeof(VkPresentModeKHR));
+	VkPresentModeKHR* availablePresentModes = ArenaAllocator::AllocateArray<VkPresentModeKHR>(
+		ArenaAllocator::ARENA_TEMPORARY, presentModeCount);
 	vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, availablePresentModes);
 
 	// TODO: Something with these
-	free(availableFormats);
-	free(availablePresentModes);
+	ArenaAllocator::ResetToMarker(surfaceMarker); // Clean up temporary allocations
 
 	if (surfaceFormatCount == 0 || presentModeCount == 0) {
 		return false;
@@ -219,7 +228,10 @@ static bool IsPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceK
 
 	u32 queueFamilyCount = 0;
 	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
-	VkQueueFamilyProperties* queueFamilies = (VkQueueFamilyProperties*)calloc(queueFamilyCount, sizeof(VkQueueFamilyProperties));
+	// Use temporary arena for queue family enumeration
+	ArenaMarker queueMarker = ArenaAllocator::GetMarker(ArenaAllocator::ARENA_TEMPORARY);
+	VkQueueFamilyProperties* queueFamilies = ArenaAllocator::AllocateArray<VkQueueFamilyProperties>(
+		ArenaAllocator::ARENA_TEMPORARY, queueFamilyCount);
 	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies);
 
 	bool queueFamilyFound = false;
@@ -247,7 +259,7 @@ static bool IsPhysicalDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceK
 		}
 	}
 
-	free(queueFamilies);
+	ArenaAllocator::ResetToMarker(queueMarker); // Clean up temporary allocation
 
 	if (queueFamilyFound) {
 		outQueueFamilyIndex = foundIndex;
@@ -314,6 +326,9 @@ static void CreateDevice() {
 	if (err != VK_SUCCESS) {
 		DEBUG_ERROR("Failed to create logical device!\n");
 	}
+
+	// Initialize Vulkan memory management with arena allocator
+	VulkanMemory::Initialize(pContext->device, pContext->physicalDevice);
 }
 
 // TODO: Absorb into other function
@@ -472,18 +487,24 @@ static VkShaderModule CreateShaderModule(const char* fname) {
 		DEBUG_ERROR("Failed to load shader from file (%s)\n", path.string().c_str());
 		return VK_NULL_HANDLE;
 	}
-	char* data = (char*)malloc(size);
+	
+	// Use temporary arena for shader loading (will be cleaned up automatically)
+	ArenaMarker tempMarker = ArenaAllocator::GetMarker(ArenaAllocator::ARENA_TEMPORARY);
+	char* data = ArenaAllocator::AllocateArray<char>(ArenaAllocator::ARENA_TEMPORARY, size);
 	if (!data) {
 		DEBUG_ERROR("Failed to allocate memory for shader (%s)\n", path.string().c_str());
 		return VK_NULL_HANDLE;
-
 	}
+	
 	if (!Assets::LoadShaderFromFile(path, size, data)) {
 		DEBUG_ERROR("Failed to load shader from file (%s)\n", path.string().c_str());
-		free(data);
+		ArenaAllocator::ResetToMarker(tempMarker); // Clean up temporary allocation
 		return VK_NULL_HANDLE;
 	}
-	return CreateShaderModule(pContext->device, data, size);
+	
+	VkShaderModule module = CreateShaderModule(pContext->device, data, size);
+	ArenaAllocator::ResetToMarker(tempMarker); // Clean up temporary allocation
+	return module;
 }
 
 static void CreateGraphicsPipeline()
@@ -660,39 +681,16 @@ static u32 GetDeviceMemoryTypeIndex(u32 typeFilter, VkMemoryPropertyFlags proper
 	return UINT32_MAX;
 }
 
-static void AllocateMemory(VkMemoryRequirements requirements, VkMemoryPropertyFlags properties, VkDeviceMemory& outMemory) {
-	VkMemoryAllocateInfo memAllocInfo{};
-	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	memAllocInfo.allocationSize = requirements.size;
-	memAllocInfo.memoryTypeIndex = GetDeviceMemoryTypeIndex(requirements.memoryTypeBits, properties);
-
-	VkResult err = vkAllocateMemory(pContext->device, &memAllocInfo, nullptr, &outMemory);
-	if (err != VK_SUCCESS) {
-		DEBUG_ERROR("Failed to allocate memory!\n");
-	}
-}
-
 static void AllocateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memProps, Buffer& outBuffer) {
-	VkBufferCreateInfo bufferInfo{};
-	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferInfo.pNext = nullptr;
-	bufferInfo.flags = 0;
-	bufferInfo.size = size;
-	bufferInfo.usage = usage;
-	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-	VkResult err = vkCreateBuffer(pContext->device, &bufferInfo, nullptr, &outBuffer.buffer);
-	if (err != VK_SUCCESS) {
-		DEBUG_ERROR("Failed to create buffer!\n");
+	// Use our new Vulkan memory system with arena allocator
+	VkResult result = VulkanMemory::AllocateBuffer(size, usage, memProps, outBuffer.buffer, outBuffer.memory);
+	if (result != VK_SUCCESS) {
+		DEBUG_ERROR("Failed to allocate buffer with VulkanMemory system: %d\n", result);
+		outBuffer.buffer = VK_NULL_HANDLE;
+		outBuffer.memory = VK_NULL_HANDLE;
 	}
-
-	VkMemoryRequirements memRequirements;
-	vkGetBufferMemoryRequirements(pContext->device, outBuffer.buffer, &memRequirements);
-	DEBUG_LOG("Buffer memory required: %d\n", memRequirements.size);
-
-	AllocateMemory(memRequirements, memProps, outBuffer.memory);
-
-	vkBindBufferMemory(pContext->device, outBuffer.buffer, outBuffer.memory, 0);
+	outBuffer.size = (u32)size;
+}
 
 	outBuffer.size = size;
 }
@@ -739,10 +737,8 @@ static void CopyBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size) {
 }
 
 static void FreeBuffer(Buffer buffer) {
-	vkDestroyBuffer(pContext->device, buffer.buffer, nullptr);
-	if (buffer.memory != VK_NULL_HANDLE) {
-		vkFreeMemory(pContext->device, buffer.memory, nullptr);
-	}
+	// Use our new Vulkan memory system
+	VulkanMemory::FreeBuffer(buffer.buffer, buffer.memory);
 }
 
 static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFlags usage, Image& outImage, bool srgb = false) {
@@ -763,13 +759,14 @@ static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFla
 	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 
-	vkCreateImage(pContext->device, &imageInfo, nullptr, &outImage.image);
-
-	VkMemoryRequirements memRequirements;
-	vkGetImageMemoryRequirements(pContext->device, outImage.image, &memRequirements);
-
-	AllocateMemory(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, outImage.memory);
-	vkBindImageMemory(pContext->device, outImage.image, outImage.memory, 0);
+	// Use our new Vulkan memory system
+	VkResult result = VulkanMemory::AllocateImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, outImage.image, outImage.memory);
+	if (result != VK_SUCCESS) {
+		DEBUG_ERROR("Failed to allocate image with VulkanMemory system: %d\n", result);
+		outImage.image = VK_NULL_HANDLE;
+		outImage.memory = VK_NULL_HANDLE;
+		return;
+	}
 
 	VkImageViewCreateInfo viewInfo{};
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -790,8 +787,8 @@ static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFla
 
 static void FreeImage(Image image) {
 	vkDestroyImageView(pContext->device, image.view, nullptr);
-	vkDestroyImage(pContext->device, image.image, nullptr);
-	vkFreeMemory(pContext->device, image.memory, nullptr);
+	// Use our new Vulkan memory system
+	VulkanMemory::FreeImage(image.image, image.memory);
 }
 
 static VkImageMemoryBarrier GetImageBarrier(const Image* pImage, VkImageLayout oldLayout, VkImageLayout newLayout) {
@@ -950,7 +947,9 @@ static void CreateComputeBuffers() {
 	pContext->renderStateSize = PadBufferSize(sizeof(Scanline) * SCANLINE_COUNT, minOffsetAlignment);
 	pContext->computeBufferSize = pContext->paletteTableSize + pContext->chrSize + pContext->nametableSize + pContext->oamSize + pContext->renderStateSize;
 
-	pContext->renderData = calloc(1, pContext->computeBufferSize);
+	// Use permanent arena for render data that lasts the entire application lifetime
+	pContext->renderData = ArenaAllocator::Allocate(ArenaAllocator::ARENA_PERMANENT, pContext->computeBufferSize);
+	memset(pContext->renderData, 0, pContext->computeBufferSize);
 
 	for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
 		AllocateBuffer(pContext->computeBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, pContext->computeBufferDevice[i]);
@@ -1601,11 +1600,14 @@ void Rendering::Free() {
 		FreeBuffer(pContext->scanlineBuffers[i]);
 	}
 
+	// Shutdown Vulkan memory management before destroying device
+	VulkanMemory::Shutdown();
+
 	vkDestroyDevice(pContext->device, nullptr);
 	vkDestroySurfaceKHR(pContext->instance, pContext->surface, nullptr);
 	vkDestroyInstance(pContext->instance, nullptr);
 
-	free(pContext->renderData);
+	// renderData is allocated from permanent arena, no need to free
 }
 
 void Rendering::DestroyContext() {

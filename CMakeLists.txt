@@ -80,7 +80,9 @@ set(SOURCES
 		src/random.cpp
 		src/debug.cpp
 		src/asset_archive.cpp
-		src/asset_manager.cpp)
+		src/asset_manager.cpp
+		src/memory_arena.cpp
+		src/vulkan_memory.cpp)
 
 option(ENABLE_EDITOR "Enable editor functionality" ON)
 
