@@ -1,5 +1,5 @@
 #pragma once
-#include "asset_types.h"
+#include "../asset_types.h"
 #include <filesystem>
 #include <map>
 

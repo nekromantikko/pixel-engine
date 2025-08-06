@@ -9,7 +9,7 @@
 #include <glm.hpp>
 
 #ifdef EDITOR
-#include "editor.h"
+#include "editor/editor.h"
 #endif
 
 static constexpr const char* WINDOW_TITLE = "Nekro Pixel Engine";

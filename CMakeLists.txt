@@ -69,7 +69,17 @@ set(SOURCES
 		src/asset_archive.cpp
 		src/asset_manager.cpp)
 
-add_executable(${PROJECT_NAME} WIN32 ${SHARED_SOURCES} ${SOURCES})
+# Editor-dependent sources (require nlohmann/json)
+set(EDITOR_DEPENDENT_SOURCES
+		src/asset_serialization.cpp
+		src/shader_compiler.cpp)
+
+add_executable(${PROJECT_NAME} WIN32 ${SOURCES})
+
+# Add editor-dependent sources when editor is enabled
+if(ENABLE_EDITOR OR BUILD_ASSETS)
+	target_sources(${PROJECT_NAME} PRIVATE ${EDITOR_DEPENDENT_SOURCES})
+endif()
 target_include_directories(${PROJECT_NAME} PRIVATE ${SHARED_INCLUDE_DIR} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2 SDL2::SDL2main)
 target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_NPAK_OUTPUT="${ASSETS_NPAK_OUTPUT}")
@@ -115,12 +125,6 @@ endif()
 
 if(ENABLE_EDITOR)
 	message(STATUS "Editor functionality enabled")
-	set(EDITOR_INCLUDE_DIRS src/ext/imgui-filebrowser)
-	set(EDITOR_SOURCES 
-		src/editor.cpp 
-		src/editor_assets.cpp
-		src/asset_serialization.cpp
-		src/shader_compiler.cpp)
 
 	FetchContent_Declare(
         	imgui
@@ -149,9 +153,13 @@ if(ENABLE_EDITOR)
 		list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp)
 	endif()
 
-	target_sources(${PROJECT_NAME} PRIVATE ${IMGUI_SOURCES} ${EDITOR_SOURCES})
-	target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${EDITOR_INCLUDE_DIRS})
-	target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json slang::slang)
+	# Build editor as static library
+	add_subdirectory(src/editor)
+	
+	# Link imgui sources and editor library to main target
+	target_sources(${PROJECT_NAME} PRIVATE ${IMGUI_SOURCES})
+	target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+	target_link_libraries(${PROJECT_NAME} PRIVATE pixelengine_editor nlohmann_json slang::slang)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_SRC_DIR="${ASSETS_SRC_DIR}")
 
 	# Enable editor functionality
@@ -165,9 +173,7 @@ if(BUILD_ASSETS)
 	# Asset Packer Tool
 	set (ASSET_PACKER_SOURCES 
 		src/tools/asset_packer.cpp 
-		src/asset_archive.cpp 
-		src/asset_serialization.cpp
-		src/shader_compiler.cpp)
+		${EDITOR_DEPENDENT_SOURCES})
 
 	add_executable(asset_packer ${ASSET_PACKER_SOURCES})
 	target_include_directories(asset_packer PRIVATE ${glm_SOURCE_DIR})

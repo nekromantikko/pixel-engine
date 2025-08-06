@@ -1,6 +1,6 @@
 #include "editor_assets.h"
-#include "debug.h"
-#include "actor_data.h"
+#include "../debug.h"
+#include "../actor_data.h"
 
 #pragma region Size calculation
 static u32 GetRoomTemplateSize(const RoomTemplate* pHeader) {
