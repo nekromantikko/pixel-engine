@@ -1,5 +1,5 @@
 #pragma once
-#include "typedef.h"
+#include "../typedef.h"
 #include <cstdarg>
 
 struct SDL_Window;
