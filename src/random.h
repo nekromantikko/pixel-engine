@@ -3,8 +3,6 @@
 #define GLM_FORCE_RADIANS
 #include <glm.hpp>
 
-constexpr u64 UUID_NULL = 0;
-
 namespace Random {
 	u64 GenerateUUID();
 	u32 GenerateUUID32();

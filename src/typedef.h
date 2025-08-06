@@ -38,3 +38,5 @@ typedef uint64 u64;
 
 typedef real32 r32;
 typedef real64 r64;
+
+constexpr u64 UUID_NULL = 0;

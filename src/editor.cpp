@@ -1,5 +1,5 @@
 #include "editor.h"
-#include "editor_assets.h"
+#include "asset_serialization.h"
 #include "rendering.h"
 #include "debug.h"
 #include <cassert>
@@ -20,8 +20,6 @@
 #include "audio.h"
 #include "collision.h"
 #include "random.h"
-#include "asset_manager.h"
-#include "asset_serialization.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <gtx/matrix_transform_2d.hpp>
 #include <vector>
@@ -65,6 +63,8 @@ struct EditedAssetRenderData {
 };
 
 struct EditorContext {
+	AssetArchive* pAssetArchive;
+
 	EditorRenderTexture* pChrTexture;
 	EditorRenderTexture* pPaletteTexture;
 	EditorRenderTexture* pColorTexture;
@@ -471,7 +471,7 @@ static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, c
 	constexpr r32 invBgColorIndex = 1.0f / (PALETTE_COUNT * PALETTE_COLOR_COUNT);
 	drawList->AddImage(GetTextureID(pContext->pPaletteTexture), pos, ImVec2(pos.x + metatileSize.x * scale, pos.y + metatileSize.y * scale), ImVec2(0, 0), ImVec2(invBgColorIndex, 1.0f));
 
-	const Tileset* pTileset = AssetManager::GetAsset(pTilemap->tilesetHandle);
+	const Tileset* pTileset = (Tileset*)pContext->pAssetArchive->GetAssetData(pTilemap->tilesetHandle.id);
 	if (!pTileset) {
 		return;
 	}
@@ -569,20 +569,20 @@ static AABB GetActorBoundingBox(const RoomActor* pActor) {
 		return result;
 	}
 	
-	const ActorPrototype* pPrototype = AssetManager::GetAsset(pActor->prototypeHandle);
+	const ActorPrototype* pPrototype = (ActorPrototype*)pContext->pAssetArchive->GetAssetData(pActor->prototypeHandle.id);
 	if (!pPrototype) {
 		return result;
 	}
 
 	// TODO: What if animation changes bounds?
 	const AnimationHandle& animHandle = pPrototype->GetAnimations()[0];
-	const Animation* pAnimation = AssetManager::GetAsset(animHandle);
+	const Animation* pAnimation = (Animation*)pContext->pAssetArchive->GetAssetData(animHandle.id);
 	if (!pAnimation) {
 		return result;
 	}
 
 	const AnimationFrame& frame = pAnimation->GetFrames()[0];
-	const Metasprite* pMetasprite = AssetManager::GetAsset(frame.metaspriteId);
+	const Metasprite* pMetasprite = (Metasprite*)pContext->pAssetArchive->GetAssetData(frame.metaspriteId.id);
 
 	result.x1 = std::numeric_limits<r32>::max();
 	result.x2 = std::numeric_limits<r32>::min();
@@ -605,13 +605,13 @@ static AABB GetActorBoundingBox(const RoomActor* pActor) {
 }
 
 static void DrawAnimFrame(const AnimationHandle animHandle, const ImVec2& origin, r32 renderScale, s32 frameIndex = 0, ImU32 color = IM_COL32(255, 255, 255, 255)) {
-	const Animation* pAnimation = AssetManager::GetAsset(animHandle);
+	const Animation* pAnimation = (Animation*)pContext->pAssetArchive->GetAssetData(animHandle.id);
 	if (!pAnimation) {
 		return;
 	}
 
 	const AnimationFrame& frame = pAnimation->GetFrames()[frameIndex];
-	const Metasprite* pMetasprite = AssetManager::GetAsset(frame.metaspriteId);
+	const Metasprite* pMetasprite = (Metasprite*)pContext->pAssetArchive->GetAssetData(frame.metaspriteId.id);
 	if (!pMetasprite) {
 		return;
 	}
@@ -921,7 +921,7 @@ static EditorRenderBuffer* GetRenderBuffer(u64 id, AssetType type, size_t dataSi
 		pBuffer = pContext->assetRenderBuffers.at(id);
 	}
 	else {
-		const void* pData = AssetManager::GetAsset(id, type);
+		const void* pData = pContext->pAssetArchive->GetAssetData(id);
 		if (!pData) {
 			return nullptr;
 		}
@@ -943,13 +943,13 @@ static EditedAsset CopyAssetForEditing(u64 id, PopulateAssetEditorDataFn populat
 	EditedAsset result{};
 	result.id = id;
 
-	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(id);
+	const AssetEntry* pAssetInfo = pContext->pAssetArchive->GetAssetEntry(id);
 	result.type = pAssetInfo->flags.type;
 	strcpy(result.name, pAssetInfo->name);
 	strcpy(result.relativePath, pAssetInfo->relativePath);
 	result.size = pAssetInfo->size;
 	result.data = malloc(pAssetInfo->size);
-	memcpy(result.data, AssetManager::GetAsset(id, pAssetInfo->flags.type), pAssetInfo->size);
+	memcpy(result.data, pContext->pAssetArchive->GetAssetData(pAssetInfo), pAssetInfo->size);
 	result.dirty = false;
 
 	if (populateFn) {
@@ -1019,15 +1019,15 @@ static bool SaveEditedAsset(EditedAsset& asset, ApplyAssetEditorDataFn applyFn) 
 		return false;
 	}
 
-	AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
+	AssetEntry* pAssetInfo = pContext->pAssetArchive->GetAssetEntry(asset.id);
 	if (pAssetInfo->size != asset.size) {
-		if (!AssetManager::ResizeAsset(asset.id, asset.size)) {
+		if (!pContext->pAssetArchive->ResizeAsset(asset.id, asset.size)) {
 			return false;
 		}
 	}
 
 	memcpy(pAssetInfo->name, asset.name, MAX_ASSET_NAME_LENGTH);
-	void* data = AssetManager::GetAsset(asset.id, pAssetInfo->flags.type);
+	void* data = pContext->pAssetArchive->GetAssetData(asset.id);
 	memcpy(data, asset.data, asset.size);
 
 	UpdateRenderBuffer(pAssetInfo->id, pAssetInfo->flags.type, pAssetInfo->size, data);
@@ -1037,7 +1037,7 @@ static bool SaveEditedAsset(EditedAsset& asset, ApplyAssetEditorDataFn applyFn) 
 }
 
 static bool RevertEditedAsset(EditedAsset& asset, PopulateAssetEditorDataFn populateFn) {
-	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(asset.id);
+	const AssetEntry* pAssetInfo = pContext->pAssetArchive->GetAssetEntry(asset.id);
 	if (pAssetInfo->size != asset.size) {
 		if (!ResizeEditedAsset(asset, pAssetInfo->size)) {
 			return false;
@@ -1045,7 +1045,7 @@ static bool RevertEditedAsset(EditedAsset& asset, PopulateAssetEditorDataFn popu
 	}
 
 	memcpy(asset.name, pAssetInfo->name, MAX_ASSET_NAME_LENGTH);
-	const void* data = AssetManager::GetAsset(asset.id, pAssetInfo->flags.type);
+	const void* data = pContext->pAssetArchive->GetAssetData(pAssetInfo);
 	memcpy(asset.data, data, asset.size);
 	asset.dirty = false;
 
@@ -1069,12 +1069,12 @@ static void FreeEditedAsset(EditedAsset& asset, DeleteAssetEditorDataFn deleteFn
 }
 
 static bool DuplicateAsset(u64 id, const std::filesystem::path& path) {
-	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(id);
+	const AssetEntry* pAssetInfo = pContext->pAssetArchive->GetAssetEntry(id);
 	if (!pAssetInfo) {
 		return false;
 	}
 
-	const void* assetData = AssetManager::GetAsset(id, pAssetInfo->flags.type);
+	const void* assetData = pContext->pAssetArchive->GetAssetData(pAssetInfo);
 	if (!assetData) {
 		return false;
 	}
@@ -1083,15 +1083,11 @@ static bool DuplicateAsset(u64 id, const std::filesystem::path& path) {
 	snprintf(newName, MAX_ASSET_NAME_LENGTH, "%s (Copy)", pAssetInfo->name);
 	const std::filesystem::path relativePath = std::filesystem::relative(path, ASSETS_SRC_DIR);
 
-	const u64 newId = AssetManager::CreateAsset(pAssetInfo->flags.type, pAssetInfo->size, relativePath.string().c_str(), newName);
-	if (newId == UUID_NULL) {
-		return false;
-	}
-	void* newData = AssetManager::GetAsset(newId, pAssetInfo->flags.type);
-	memcpy(newData, assetData, pAssetInfo->size);
+	const u64 newId = Random::GenerateUUID();
+	pContext->pAssetArchive->AddAsset(newId, pAssetInfo->flags.type, pAssetInfo->size, relativePath.string().c_str(), newName, assetData);
 
 	if (!SaveAssetToFile(pAssetInfo->flags.type, relativePath, newName, assetData, newId)) {
-		AssetManager::RemoveAsset(newId);
+		pContext->pAssetArchive->RemoveAsset(newId);
 		return false;
 	}
 
@@ -1105,7 +1101,7 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 	std::vector<const char*> assetNames;
 	s32 selectedIndex = -1;
 
-	const AssetIndex& assetIndex = AssetManager::GetIndex();
+	const AssetIndex& assetIndex = pContext->pAssetArchive->GetIndex();
 	for (u32 i = 0; i < assetIndex.Count(); i++) {
 		PoolHandle<AssetEntry> handle = assetIndex.GetHandle(i);
 		const AssetEntry* asset = assetIndex.Get(handle);
@@ -1138,7 +1134,7 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 		{
 			const u64 assetId = *(const u64*)payload->Data;
 
-			const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(assetId);
+			const AssetEntry* pAssetInfo = pContext->pAssetArchive->GetAssetEntry(assetId);
 			const bool isValid = pAssetInfo && pAssetInfo->flags.type == type;
 
 			if (isValid && payload->IsDelivery()) {
@@ -1187,7 +1183,7 @@ static u64 DrawAssetList(AssetType type) {
 	u64 result = UUID_NULL;
 	ImGui::BeginChild("Asset list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 
-	const AssetIndex& assetIndex = AssetManager::GetIndex();
+	const AssetIndex& assetIndex = pContext->pAssetArchive->GetIndex();
 	for (u32 i = 0; i < assetIndex.Count(); i++) {
 		PoolHandle<AssetEntry> handle = assetIndex.GetHandle(i);
 		const AssetEntry* asset = assetIndex.Get(handle);
@@ -1225,7 +1221,7 @@ static u64 DrawAssetListWithFunctionality(AssetType type, ImGui::FileBrowser& fi
 	u64 result = UUID_NULL;
 	ImGui::BeginChild("Asset list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 
-	const AssetIndex& assetIndex = AssetManager::GetIndex();
+	const AssetIndex& assetIndex = pContext->pAssetArchive->GetIndex();
 	for (u32 i = 0; i < assetIndex.Count(); i++) {
 		PoolHandle<AssetEntry> handle = assetIndex.GetHandle(i);
 		const AssetEntry* asset = assetIndex.Get(handle);
@@ -1248,7 +1244,8 @@ static u64 DrawAssetListWithFunctionality(AssetType type, ImGui::FileBrowser& fi
 		}
 		if (ImGui::BeginPopup("AssetPopup")) {
 			if (ImGui::MenuItem("Delete")) {
-				AssetManager::RemoveAsset(asset->id);
+				// TODO: Deleting an asset should also delete the source files
+				pContext->pAssetArchive->RemoveAsset(asset->id);
 				if (pContext->assetRenderBuffers.contains(asset->id)) {
 					pContext->bufferEraseList.push_back(asset->id);
 				}
@@ -1295,13 +1292,13 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 		else {
 			const std::filesystem::path relativePath = std::filesystem::relative(fileBrowser.GetSelected(), ASSETS_SRC_DIR);
 			const u32 newSize = Editor::Assets::GetAssetSize(type, nullptr);
-			const u64 id = AssetManager::CreateAsset(type, newSize, relativePath.string().c_str(), newName);
-			void* data = AssetManager::GetAsset(id, type);
+			const u64 id = Random::GenerateUUID();
+			void* data = pContext->pAssetArchive->AddAsset(id, type, newSize, relativePath.string().c_str(), newName);
 			Editor::Assets::InitializeAsset(type, data);
 
 			if (!SaveAssetToFile(type, relativePath, newName, data, id)) {
 				// Failed to save asset, remove it
-				AssetManager::RemoveAsset(id);
+				pContext->pAssetArchive->RemoveAsset(id);
 			}
 			else {
 				state.editedAssets.try_emplace(id, CopyAssetForEditing(id, populateFn));
@@ -1364,7 +1361,7 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 			auto& asset = kvp.second;
 
 			// Check if deleted
-			const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(kvp.first);
+			const AssetEntry* pAssetInfo = pContext->pAssetArchive->GetAssetEntry(kvp.first);
 			if (!pAssetInfo || pAssetInfo->flags.deleted) {
 				FreeEditedAsset(asset, deleteFn);
 				eraseList.push_back(kvp.first);
@@ -1414,7 +1411,7 @@ static bool DrawTilemapTools(TilemapClipboard& clipboard, TilesetHandle& tileset
 	const s32 currentSelection = (clipboard.size.x == 1 && clipboard.size.y == 1) ? clipboard.clipboard[0] : -1;
 	s32 newSelection = currentSelection;
 
-	const Tileset* pTileset = AssetManager::GetAsset(tilesetHandle);
+	const Tileset* pTileset = (Tileset*)pContext->pAssetArchive->GetAssetData(tilesetHandle.id);
 	if (!pTileset) {
 		ImGui::TextUnformatted("Select a tileset to paint tiles.");
 		return result;
@@ -1549,7 +1546,7 @@ static bool DrawTilemapEditor(Tilemap* pTilemap, ImVec2 topLeft, r32 renderScale
 					const ImVec2 metatileInPixelCoords = ImVec2(metatileInViewportCoords.x * tileDrawSize + topLeft.x, metatileInViewportCoords.y * tileDrawSize + topLeft.y);
 					const u8 metatileIndex = clipboard.clipboard[clipboardIndex];
 
-					const Tileset* pTileset = AssetManager::GetAsset(pTilemap->tilesetHandle);
+					const Tileset* pTileset = (Tileset*)pContext->pAssetArchive->GetAssetData(pTilemap->tilesetHandle.id);
 					if (pTileset) {
 						const Metatile& metatile = pTileset->tiles[metatileIndex].metatile;
 						DrawMetatile(metatile, metatileInPixelCoords, tileDrawSize, IM_COL32(255, 255, 255, 127));
@@ -2295,7 +2292,7 @@ static void DrawRoomView(EditedAsset& asset) {
 
 		const u8 opacity = pEditorData->editMode == ROOM_EDIT_MODE_ACTORS ? 255 : 80;
 
-		const ActorPrototype* pPrototype = AssetManager::GetAsset(pActor->prototypeHandle);
+		const ActorPrototype* pPrototype = (ActorPrototype*)pContext->pAssetArchive->GetAssetData(pActor->prototypeHandle.id);
 		if (!pPrototype) {
 			// Draw a placeholder thingy
 			drawList->AddText(drawPos, IM_COL32(255, 0, 0, opacity), "ERROR");
@@ -3058,7 +3055,7 @@ static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon)
 				.templateId = node.roomData.templateId
 			};
 
-			RoomTemplate* pRoomHeader = AssetManager::GetAsset(node.roomData.templateId);
+			RoomTemplate* pRoomHeader = (RoomTemplate*)pContext->pAssetArchive->GetAssetData(node.roomData.templateId.id);
 
 			const u32 width = pRoomHeader ? pRoomHeader->width : 1;
 			const u32 height = pRoomHeader ? pRoomHeader->height : 1;
@@ -3128,7 +3125,7 @@ static glm::ivec2 GetDungeonNodeSize(const DungeonNode& node) {
 	glm::ivec2 result(1, 1);
 
 	if (node.type == DUNGEON_NODE_ROOM) {
-		RoomTemplate* pRoomHeader = AssetManager::GetAsset(node.roomData.templateId);
+		RoomTemplate* pRoomHeader = (RoomTemplate*)pContext->pAssetArchive->GetAssetData(node.roomData.templateId.id);
 		if (pRoomHeader) {
 			result.x = pRoomHeader->width;
 			result.y = pRoomHeader->height;
@@ -3161,11 +3158,11 @@ static void DrawDungeonNode(const DungeonNode& node, const glm::mat3& gridToScre
 	constexpr r32 outlineHoveredThickness = 2.0f;
 
 	if (node.type == DUNGEON_NODE_ROOM) {
-		RoomTemplate* pRoomTemplate = AssetManager::GetAsset(node.roomData.templateId);
+		RoomTemplate* pRoomTemplate = (RoomTemplate*)pContext->pAssetArchive->GetAssetData(node.roomData.templateId.id);
 		if (pRoomTemplate) {
 			DrawTilemap(&pRoomTemplate->tilemap, ImVec2(0,0), ImVec2(nodeSize.x * VIEWPORT_WIDTH_METATILES, nodeSize.y * VIEWPORT_HEIGHT_METATILES), nodeDrawMin, scale);
 			drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0, 0, 0, 0x80));
-			drawList->AddText(ImVec2(nodeDrawMin.x + 10, nodeDrawMin.y + 10), IM_COL32(255, 255, 255, 255), AssetManager::GetAssetName(node.roomData.templateId.id));
+			drawList->AddText(ImVec2(nodeDrawMin.x + 10, nodeDrawMin.y + 10), IM_COL32(255, 255, 255, 255), pContext->pAssetArchive->GetAssetEntry(node.roomData.templateId.id)->name);
 		}
 		else {
 			drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0xc, 0xc, 0xc, 255));
@@ -3314,12 +3311,12 @@ static void DrawDungeonCanvas(EditedAsset& asset) {
 		{
 			const u64 assetId = *(const u64*)payload->Data;
 
-			const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(assetId);
+			const AssetEntry* pAssetInfo = pContext->pAssetArchive->GetAssetEntry(assetId);
 			const bool isValidRoomTemplate = pAssetInfo && pAssetInfo->flags.type == ASSET_TYPE_ROOM_TEMPLATE;
 
 			if (isValidRoomTemplate) {
 				RoomTemplateHandle handle(assetId);
-				RoomTemplate* pRoomHeader = AssetManager::GetAsset(handle);
+				RoomTemplate* pRoomHeader = (RoomTemplate*)pContext->pAssetArchive->GetAssetData(handle.id);
 
 				const glm::ivec2 roomTopLeft = hoveredCellPos;
 				const glm::ivec2 roomDim = { pRoomHeader->width, pRoomHeader->height };
@@ -3439,7 +3436,7 @@ static void DrawDungeonTools(EditedAsset& asset) {
 				if (node.type == DUNGEON_NODE_ROOM) {
 					ImGui::Text("Node Type: ROOM");
 
-					ImGui::Text("Room: %s", AssetManager::GetAssetName(node.roomData.templateId.id));
+					ImGui::Text("Room: %s", pContext->pAssetArchive->GetAssetEntry(node.roomData.templateId.id)->name);
 				}
 				else {
 					ImGui::Text("Node Type: EXIT");
@@ -3638,8 +3635,8 @@ static void SortAssets(std::vector<u64>& assetIds, ImGuiTableSortSpecs* pSortSpe
 	std::sort(assetIds.begin(), assetIds.end(), [pSortSpecs](u64 aId, u64 bId) {
 		const ImGuiTableColumnSortSpecs* sortSpecs = pSortSpecs->Specs;
 
-		const AssetEntry& a = *AssetManager::GetAssetInfo(aId);
-		const AssetEntry& b = *AssetManager::GetAssetInfo(bId);
+		const AssetEntry& a = *pContext->pAssetArchive->GetAssetEntry(aId);
+		const AssetEntry& b = *pContext->pAssetArchive->GetAssetEntry(bId);
 
 		for (int i = 0; i < pSortSpecs->SpecsCount; i++) {
 			const ImGuiTableColumnSortSpecs& spec = sortSpecs[i];
@@ -3678,7 +3675,7 @@ static void SortAssets(std::vector<u64>& assetIds, ImGuiTableSortSpecs* pSortSpe
 }
 
 static void DumpAssetArchive() {
-	const AssetIndex& index = AssetManager::GetIndex();
+	const AssetIndex& index = pContext->pAssetArchive->GetIndex();
 
 	struct IntermediateAssetHeader {
 		u64 id;
@@ -3695,7 +3692,7 @@ static void DumpAssetArchive() {
 		if (!pAsset) continue;
 
 		const u64 id = pAsset->id;
-		const void* pData = AssetManager::GetAsset(id, pAsset->flags.type);
+		const void* pData = pContext->pAssetArchive->GetAssetData(pAsset);
 
 		std::filesystem::path filePath = directory / std::filesystem::path(std::to_string(id));
 		filePath.replace_extension(".bin");
@@ -3725,14 +3722,12 @@ static void DrawAssetBrowser() {
 	if (ImGui::BeginMenuBar())
 	{
 		if (ImGui::BeginMenu("File")) {
-			if (ImGui::MenuItem("Save archive")) {
-				AssetManager::SaveArchive(ASSETS_NPAK_OUTPUT);
-			}
-			if (ImGui::MenuItem("Reload archive")) {
-				AssetManager::LoadArchive(ASSETS_NPAK_OUTPUT);
+			if (ImGui::MenuItem("Reload assets")) {
+				pContext->pAssetArchive->Clear();
+				Editor::Assets::LoadSourceAssetsFromDirectory(ASSETS_SRC_DIR, pContext->pAssetArchive);
 			}
 			if (ImGui::MenuItem("Repack archive")) {
-				AssetManager::RepackArchive();
+				pContext->pAssetArchive->Repack();
 			}
 			if (ImGui::MenuItem("Dump archive")) {
 				DumpAssetArchive();
@@ -3758,8 +3753,8 @@ static void DrawAssetBrowser() {
 
 		ImGuiTableSortSpecs* pSortSpecs = ImGui::TableGetSortSpecs();
 
-		const AssetIndex& index = AssetManager::GetIndex();
-		const size_t newAssetCount = AssetManager::GetAssetCount();
+		const AssetIndex& index = pContext->pAssetArchive->GetIndex();
+		const size_t newAssetCount = pContext->pAssetArchive->GetAssetCount();
 
 		if (assetCount != newAssetCount) {
 			assetIds.clear();
@@ -3784,7 +3779,7 @@ static void DrawAssetBrowser() {
 		for (const auto& id : assetIds) {
 			const bool selected = id == selectedAsset;
 
-			const AssetEntry* pAsset = AssetManager::GetAssetInfo(id);
+			const AssetEntry* pAsset = pContext->pAssetArchive->GetAssetEntry(id);
 
 			ImGui::PushID((s32)id);
 			ImGui::TableNextRow();
@@ -3870,7 +3865,7 @@ static void DrawAnimationPreview(const AnimationEditorData* pEditorData, s32 fra
 	}
 
 	const AnimationFrame& frame = pEditorData->frames[frameIndex];
-	const Metasprite* pMetasprite = AssetManager::GetAsset(frame.metaspriteId);
+	const Metasprite* pMetasprite = (Metasprite*)pContext->pAssetArchive->GetAssetData(frame.metaspriteId.id);
 	if (!pMetasprite) {
 		return;
 	}
@@ -4014,7 +4009,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 			{
 				const u64 assetId = *(const u64*)payload->Data;
 				
-				const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(assetId);
+				const AssetEntry* pAssetInfo = pContext->pAssetArchive->GetAssetEntry(assetId);
 				const bool isValidMetasprite = pAssetInfo && pAssetInfo->flags.type == ASSET_TYPE_METASPRITE;
 
 				if (isValidMetasprite && payload->IsDelivery()) {
@@ -4029,7 +4024,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 
 		drawList->AddRect(frameMin, frameMax, IM_COL32(255, 255, 255, 255), 4.0f);
 		if (frame.metaspriteId != MetaspriteHandle::Null()) {
-			const Metasprite* pMetasprite = AssetManager::GetAsset(frame.metaspriteId);
+			const Metasprite* pMetasprite = (Metasprite*)pContext->pAssetArchive->GetAssetData(frame.metaspriteId.id);
 			if (pMetasprite) {
 				DrawMetasprite(pMetasprite, ImVec2(frameMin.x + frameBoxSize * 0.5f, frameMin.y + frameBoxSize * 0.5f), 1.0f);
 			}
@@ -4196,7 +4191,7 @@ static void DrawChrEditor(EditedAsset& asset) {
 	ImGui::SeparatorText("Preview");
 
 	constexpr r32 gridSizePixels = 512.0f;
-	const Palette* pPalette = AssetManager::GetAsset(PaletteHandle(pEditorData->selectedPalette.id));
+	const Palette* pPalette = (Palette*)pContext->pAssetArchive->GetAssetData(pEditorData->selectedPalette.id);
 	const s8 bgColorIndex = pPalette ? pPalette->colors[0] : -1;
 	DrawEditedChrSheet(gridSizePixels, GetTextureID(pEditorData->pRenderData->pTexture), bgColorIndex);
 	DrawAssetField("Palette", ASSET_TYPE_PALETTE, pEditorData->selectedPalette.id);
@@ -4376,10 +4371,11 @@ static void DrawMainMenu() {
 #pragma endregion
 
 #pragma region Public API
-void Editor::CreateContext() {
+void Editor::CreateContext(AssetArchive* pAssetArchive) {
 	pContext = new EditorContext{};
-	Debug::HookEditorDebugLog(ConsoleLog);
 	assert(pContext != nullptr);
+	pContext->pAssetArchive = pAssetArchive;
+	Debug::HookEditorDebugLog(ConsoleLog);
 }
 
 void Editor::Init(SDL_Window *pWindow) {

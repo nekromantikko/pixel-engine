@@ -5,6 +5,7 @@
 #include "rendering_util.h"
 #include "game.h"
 #include "asset_manager.h"
+#include "debug.h"
 
 static constexpr s32 BUFFER_DIM_METATILES = 2;
 static constexpr u32 LAYER_SPRITE_COUNT = MAX_SPRITE_COUNT / SPRITE_LAYER_COUNT;
@@ -325,7 +326,7 @@ bool Game::Rendering::DrawMetasprite(u8 layerIndex, MetaspriteHandle metaspriteH
 }
 
 void Game::Rendering::CopyBankTiles(ChrBankHandle bankHandle, u32 bankOffset, u32 sheetIndex, u32 sheetOffset, u32 count) {
-	ChrSheet* pBank = AssetManager::GetAsset(bankHandle);
+	const ChrSheet* pBank = AssetManager::GetAsset(bankHandle);
 	if (!pBank) {
 		DEBUG_ERROR("Failed to load bank %llu\n", bankHandle);
 		return;
@@ -338,7 +339,7 @@ void Game::Rendering::CopyBankTiles(ChrBankHandle bankHandle, u32 bankOffset, u3
 }
 
 bool Game::Rendering::GetPalettePresetColors(PaletteHandle paletteHandle, u8* pOutColors) {
-    Palette* pPalette = AssetManager::GetAsset(paletteHandle);
+    const Palette* pPalette = AssetManager::GetAsset(paletteHandle);
     if (!pPalette) {
         DEBUG_ERROR("Failed to load palette %llu\n", paletteHandle);
         return false;
@@ -353,7 +354,7 @@ void Game::Rendering::WritePaletteColors(u8 paletteIndex, u8* pColors) {
 }
 
 void Game::Rendering::CopyPaletteColors(PaletteHandle paletteHandle, u8 paletteIndex) {
-	Palette* pPalette = AssetManager::GetAsset(paletteHandle);
+	const Palette* pPalette = AssetManager::GetAsset(paletteHandle);
 	if (!pPalette) {
 		DEBUG_ERROR("Failed to load palette %llu\n", paletteHandle);
 		return;

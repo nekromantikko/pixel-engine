@@ -477,7 +477,7 @@ static VkShaderModule CreateShaderModule(VkDevice device, u8* code, const u32 si
 }
 
 static VkShaderModule CreateShaderModule(ShaderHandle handle) {
-	Shader* pShader = AssetManager::GetAsset(handle);
+	const Shader* pShader = AssetManager::GetAsset(handle);
 	if (!pShader) {
 		return VK_NULL_HANDLE;
 	}

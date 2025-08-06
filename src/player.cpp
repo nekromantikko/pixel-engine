@@ -778,7 +778,7 @@ bool Game::PlayerInvulnerable(Actor* pPlayer) {
 void Game::PlayerTakeDamage(Actor* pPlayer, const Damage& damage, const glm::vec2& enemyPos) {
     u16 health = GetPlayerHealth();
 
-    ActorPrototype* pPrototype = AssetManager::GetAsset(pPlayer->prototypeHandle);
+    const ActorPrototype* pPrototype = AssetManager::GetAsset(pPlayer->prototypeHandle);
     if (pPrototype && pPrototype->data.playerData.damageSound != SoundHandle::Null()) {
         Audio::PlaySFX(pPrototype->data.playerData.damageSound);
     }

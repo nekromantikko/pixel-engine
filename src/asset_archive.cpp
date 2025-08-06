@@ -3,19 +3,17 @@
 #include <cstring>
 #include <cstdlib>
 
+struct ArchiveHeader {
+	char signature[4];
+	size_t assetCount;
+	size_t directoryOffset;
+};
+
 static bool CompareAssetEntries(const AssetEntry& a, const AssetEntry& b) {
 	return a.id < b.id;
 }
 
-AssetArchive::AssetArchive() 
-	: m_capacity(0), m_size(0), m_data(nullptr) {
-}
-
-AssetArchive::~AssetArchive() {
-	Clear();
-}
-
-constexpr size_t AssetArchive::GetNextPOT(size_t n) {
+static constexpr size_t GetNextPOT(size_t n) {
 	if (n == 0) {
 		return 1;
 	}
@@ -27,6 +25,14 @@ constexpr size_t AssetArchive::GetNextPOT(size_t n) {
 	n |= n >> 8;
 	n |= n >> 16;
 	return n + 1;
+}
+
+AssetArchive::AssetArchive() 
+	: m_capacity(0), m_size(0), m_data(nullptr) {
+}
+
+AssetArchive::~AssetArchive() {
+	Clear();
 }
 
 bool AssetArchive::ResizeStorage(size_t minCapacity) {
@@ -51,14 +57,9 @@ bool AssetArchive::ReserveMemory(size_t size) {
 	return true;
 }
 
-bool AssetArchive::CreateEmpty() {
-	Clear();
-	return true;
-}
-
 bool AssetArchive::LoadFromFile(const std::filesystem::path& path) {
 	if (!std::filesystem::exists(path)) {
-		return CreateEmpty();
+		return false;
 	}
 
 	// Clear existing data
@@ -206,15 +207,15 @@ bool AssetArchive::ResizeAsset(u64 id, size_t newSize) {
 	return true;
 }
 
-void* AssetArchive::GetAssetData(u64 id, AssetType type) {
-	const AssetEntry* asset = FindAssetByIdBinary(id);
-	if (asset == nullptr) {
-		return nullptr;
-	}
-	if (asset->flags.type != type || asset->flags.deleted) {
-		return nullptr;
-	}
+void* AssetArchive::GetAssetData(const AssetEntry* pEntry) {
+	return m_data + pEntry->offset;
+}
 
+void* AssetArchive::GetAssetData(u64 id) {
+	const AssetEntry* asset = FindAssetByIdBinary(id);
+	if (!asset) {
+		return nullptr;
+	}
 	return m_data + asset->offset;
 }
 
