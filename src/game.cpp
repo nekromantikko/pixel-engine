@@ -39,7 +39,9 @@ namespace Game {
         LoadRoom(testDungeon, { 14, 14 });
     }
 
-    void Free() {}
+    void Free() {
+        Rendering::Free();
+    }
 
     void Update(r64 dt) {
         secondsElapsed += dt;
