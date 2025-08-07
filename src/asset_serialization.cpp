@@ -91,12 +91,31 @@ static void from_json(const nlohmann::json& j, Tileset& tileset) {
 	for (u32 i = 0; i < TILESET_SIZE; ++i) {
 		tileset.tiles[i] = j.at("tiles").at(i).get<TilesetTile>();
 	}
+	
+	// Load virtual CHR ROM fields (optional for backward compatibility)
+	if (j.contains("chr_bank_id")) {
+		tileset.chrBankHandle.id = j["chr_bank_id"].get<u64>();
+	} else {
+		tileset.chrBankHandle = ChrBankHandle::Null();
+	}
+	
+	if (j.contains("chr_bank_offset")) {
+		tileset.chrBankOffset = j["chr_bank_offset"].get<u32>();
+	} else {
+		tileset.chrBankOffset = 0;
+	}
 }
 
 inline void to_json(nlohmann::json& j, const Tileset& tileset) {
 	j["tiles"] = nlohmann::json::array();
 	for (u32 i = 0; i < TILESET_SIZE; ++i) {
 		j["tiles"].push_back(tileset.tiles[i]);
+	}
+	
+	// Save virtual CHR ROM fields
+	if (tileset.chrBankHandle.id != 0) {
+		j["chr_bank_id"] = tileset.chrBankHandle.id;
+		j["chr_bank_offset"] = tileset.chrBankOffset;
 	}
 }
 
@@ -366,6 +385,19 @@ static SerializationResult LoadMetaspriteFromFile(FILE* pFile, const nlohmann::j
 	Metasprite* pMetasprite = (Metasprite*)outData.data();
 	pMetasprite->spriteCount = (u32)spriteCount;
 	pMetasprite->spritesOffset = sizeof(Metasprite);
+	
+	// Load virtual CHR ROM fields (optional for backward compatibility)
+	if (json.contains("chr_bank_id")) {
+		pMetasprite->chrBankHandle.id = json["chr_bank_id"].get<u64>();
+	} else {
+		pMetasprite->chrBankHandle = ChrBankHandle::Null();
+	}
+	
+	if (json.contains("chr_bank_offset")) {
+		pMetasprite->chrBankOffset = json["chr_bank_offset"].get<u32>();
+	} else {
+		pMetasprite->chrBankOffset = 0;
+	}
 
 	Sprite* pSprites = pMetasprite->GetSprites();
 	for (u32 i = 0; i < spriteCount; i++) {
@@ -384,6 +416,13 @@ static SerializationResult SaveMetaspriteToFile(FILE* pFile, nlohmann::json& met
 	for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
 		json["sprites"].push_back(pSprites[i]);
 	}
+	
+	// Save virtual CHR ROM fields
+	if (pMetasprite->chrBankHandle.id != 0) {
+		json["chr_bank_id"] = pMetasprite->chrBankHandle.id;
+		json["chr_bank_offset"] = pMetasprite->chrBankOffset;
+	}
+	
 	std::string jsonStr = json.dump(4);
 	fwrite(jsonStr.c_str(), sizeof(char), jsonStr.size(), pFile);
 

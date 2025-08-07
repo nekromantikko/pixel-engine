@@ -105,6 +105,9 @@ struct Metasprite {
 	u32 spriteCount;
 	// Sprite positions are relative to the metasprite origin
 	u32 spritesOffset;
+	// Virtual CHR ROM fields
+	ChrBankHandle chrBankHandle;
+	u32 chrBankOffset;
 
 	inline Sprite* GetSprites() const {
 		return (Sprite*)((u8*)this + spritesOffset);
@@ -169,6 +172,9 @@ struct TilesetTile {
 
 struct Tileset {
 	TilesetTile tiles[TILESET_SIZE];
+	// Virtual CHR ROM fields
+	ChrBankHandle chrBankHandle;
+	u32 chrBankOffset;
 };
 
 struct Tilemap {

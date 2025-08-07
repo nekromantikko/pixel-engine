@@ -67,7 +67,8 @@ set(SOURCES
 		src/random.cpp
 		src/debug.cpp
 		src/asset_archive.cpp
-		src/asset_manager.cpp)
+		src/asset_manager.cpp
+		src/virtual_chr_manager.cpp)
 
 add_executable(${PROJECT_NAME} WIN32 ${SHARED_SOURCES} ${SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${SHARED_INCLUDE_DIR} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
