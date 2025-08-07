@@ -116,7 +116,9 @@ static void InitMetasprite(void* data) {
 
 	Metasprite newHeader{
 		.spriteCount = 0,
-		.spritesOffset = spritesOffset
+		.spritesOffset = spritesOffset,
+		.chrBankHandle = ChrBankHandle::Null(),
+		.chrBankOffset = 0
 	};
 
 	memcpy(data, &newHeader, sizeof(Metasprite));
@@ -130,6 +132,8 @@ static void InitSound(void* data) {
 
 static void InitTileset(void* data) {
 	Tileset newTileset{};
+	newTileset.chrBankHandle = ChrBankHandle::Null();
+	newTileset.chrBankOffset = 0;
 	memcpy(data, &newTileset, sizeof(Tileset));
 }
 
