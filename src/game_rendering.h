@@ -18,6 +18,7 @@ struct SpriteLayer {
 namespace Game {
 	namespace Rendering {
 		void Init();
+		void Free();
 
 		glm::vec2 GetViewportPos();
 		glm::vec2 SetViewportPos(const glm::vec2& pos, bool loadTiles = true);

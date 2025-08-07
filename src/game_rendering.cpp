@@ -5,6 +5,7 @@
 #include "rendering_util.h"
 #include "game.h"
 #include "asset_manager.h"
+#include "virtual_chr_manager.h"
 
 static constexpr s32 BUFFER_DIM_METATILES = 2;
 static constexpr u32 LAYER_SPRITE_COUNT = MAX_SPRITE_COUNT / SPRITE_LAYER_COUNT;
@@ -146,6 +147,9 @@ void Game::Rendering::Init() {
 	viewportPos = { 0, 0 };
     ClearSpriteLayers(true);
 
+    // Initialize virtual CHR manager
+    VirtualChrManager::Init();
+
     // Init chr memory  
     const ChrBankHandle asciiBankHandle = AssetManager::GetAssetHandle<ChrBankHandle>("chr_sheets/ascii.bmp");
 	const ChrBankHandle mapBankHandle = AssetManager::GetAssetHandle<ChrBankHandle>("chr_sheets/map_tiles.bmp");
@@ -156,6 +160,12 @@ void Game::Rendering::Init() {
 	CopyBankTiles(mapBankHandle, 0, 1, 0, CHR_SIZE_TILES);
     CopyBankTiles(debugTilesetBankHandle, 0, 2, 0, CHR_SIZE_TILES);
     CopyBankTiles(fgBankHandle, 0, 4, 0, CHR_SIZE_TILES);
+
+    // Register manually managed CHR banks with virtual CHR manager
+    VirtualChrManager::RegisterChrBankUsage(asciiBankHandle, 0);
+    VirtualChrManager::RegisterChrBankUsage(mapBankHandle, 1);
+    VirtualChrManager::RegisterChrBankUsage(debugTilesetBankHandle, 2);
+    VirtualChrManager::RegisterChrBankUsage(fgBankHandle, 4);
 
 	const PaletteHandle debug0PaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/debug_0.dat");
 	const PaletteHandle debug1PaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/debug_1.dat");
@@ -203,10 +213,17 @@ void Game::Rendering::RefreshViewport() {
 		return;
 	}
 
-
 	const Tileset* pTileset = AssetManager::GetAsset(pTilemap->tilesetHandle);
     if (!pTileset) {
         return;
+    }
+
+    // Automatically ensure CHR data is loaded for this tileset
+    s32 chrSheetIndex = VirtualChrManager::EnsureTilesetChrLoaded(pTilemap->tilesetHandle);
+    if (chrSheetIndex < 0 && pTileset->chrBankHandle.id != 0) {
+        // Failed to load CHR data, but it was requested
+        DEBUG_ERROR("Failed to load CHR data for tileset %llu\n", pTilemap->tilesetHandle.id);
+        // Continue anyway - might be using pre-loaded tiles
     }
 
     for (s32 x = xStart; x < xEnd; x++) {
@@ -296,6 +313,14 @@ bool Game::Rendering::DrawMetaspriteSprite(u8 layerIndex, MetaspriteHandle metas
 		return false;
 	}
 
+    // Automatically ensure CHR data is loaded for this metasprite
+    s32 chrSheetIndex = VirtualChrManager::EnsureMetaspriteChrLoaded(metaspriteHandle);
+    if (chrSheetIndex < 0 && pMetasprite->chrBankHandle.id != 0) {
+        // Failed to load CHR data, but it was requested
+        DEBUG_ERROR("Failed to load CHR data for metasprite %llu\n", metaspriteHandle.id);
+        // Continue anyway - might be using pre-loaded tiles
+    }
+
     Sprite* outSprite = GetNextFreeSprite(layerIndex);
     if (outSprite == nullptr) {
         return false;
@@ -310,6 +335,14 @@ bool Game::Rendering::DrawMetasprite(u8 layerIndex, MetaspriteHandle metaspriteH
     const Metasprite* pMetasprite = AssetManager::GetAsset(metaspriteHandle);
     if (!pMetasprite) {
         return false;
+    }
+
+    // Automatically ensure CHR data is loaded for this metasprite
+    s32 chrSheetIndex = VirtualChrManager::EnsureMetaspriteChrLoaded(metaspriteHandle);
+    if (chrSheetIndex < 0 && pMetasprite->chrBankHandle.id != 0) {
+        // Failed to load CHR data, but it was requested
+        DEBUG_ERROR("Failed to load CHR data for metasprite %llu\n", metaspriteHandle.id);
+        // Continue anyway - might be using pre-loaded tiles
     }
 
     Sprite* outSprites = GetNextFreeSprite(layerIndex, pMetasprite->spriteCount);
@@ -360,5 +393,10 @@ void Game::Rendering::CopyPaletteColors(PaletteHandle paletteHandle, u8 paletteI
 	}
 
 	memcpy(::Rendering::GetPalettePtr(paletteIndex)->colors, pPalette->colors, PALETTE_COLOR_COUNT);
+}
+
+void Game::Rendering::Free() {
+    // Clean up virtual CHR manager
+    VirtualChrManager::Free();
 }
 #pragma endregion
