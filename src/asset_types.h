@@ -147,6 +147,4 @@ typedef AssetHandle<ASSET_TYPE_ANIMATION> AnimationHandle;
 typedef AssetHandle<ASSET_TYPE_PALETTE> PaletteHandle;
 typedef AssetHandle<ASSET_TYPE_SHADER> ShaderHandle;
 
-#ifdef EDITOR
 constexpr const char* ASSET_TYPE_NAMES[ASSET_TYPE_COUNT] = { "Chr bank", "Sound", "Tileset", "Metasprite", "Actor prototype", "Room template", "Dungeon", "Overworld", "Animation", "Palette", "Shader" };
-#endif
