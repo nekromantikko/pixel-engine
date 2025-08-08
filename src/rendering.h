@@ -28,11 +28,8 @@ struct EditorRenderBuffer;
 
 namespace Rendering
 {
-	void CreateContext();
-	void CreateSurface(SDL_Window* sdlWindow);
-	void Init();
+	void Init(SDL_Window* sdlWindow);
 	void Free();
-	void DestroyContext();
 
 	// Generic commands
 	void BeginFrame();
