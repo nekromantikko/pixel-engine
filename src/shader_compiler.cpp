@@ -4,6 +4,10 @@
 #include <slang-com-ptr.h>
 #include <slang-com-helper.h>
 #include <string>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <functional>
 
 static Slang::ComPtr<slang::IGlobalSession> g_slangGlobalSession = nullptr;
 Slang::ComPtr<slang::ISession> g_slangSession = nullptr;
@@ -85,4 +89,79 @@ bool ShaderCompiler::Compile(const char* name, const char* path, const char* sou
 	memcpy(outData.data(), spirvBlob->getBufferPointer(), spirvBlob->getBufferSize());
 
 	return true;
+}
+
+std::string ShaderCompiler::CalculateSourceHash(const std::string& source) {
+	// Use std::hash for simplicity in editor code - performance not critical
+	std::hash<std::string> hasher;
+	size_t hashValue = hasher(source);
+
+	// Convert to hex string
+	std::stringstream ss;
+	ss << std::hex << hashValue;
+	return ss.str();
+}
+
+std::filesystem::path ShaderCompiler::GetCacheDirectory() {
+	std::filesystem::path cacheDir = "shader_cache";
+
+	// Create cache directory if it doesn't exist
+	if (!std::filesystem::exists(cacheDir)) {
+		std::filesystem::create_directories(cacheDir);
+	}
+
+	return cacheDir;
+}
+
+std::filesystem::path ShaderCompiler::GetCachedShaderPath(const std::string& hash) {
+	return GetCacheDirectory() / (hash + ".spv");
+}
+
+bool ShaderCompiler::LoadCachedShader(const std::string& hash, std::vector<u8>& outData) {
+	std::filesystem::path cachePath = GetCachedShaderPath(hash);
+
+	if (!std::filesystem::exists(cachePath)) {
+		return false;
+	}
+
+	try {
+		std::ifstream file(cachePath, std::ios::binary);
+		if (!file.is_open()) {
+			return false;
+		}
+
+		// Get file size
+		file.seekg(0, std::ios::end);
+		size_t size = file.tellg();
+		file.seekg(0, std::ios::beg);
+
+		// Read cached data
+		outData.resize(size);
+		file.read(reinterpret_cast<char*>(outData.data()), size);
+
+		return file.good();
+	}
+	catch (...) {
+		return false;
+	}
+}
+
+bool ShaderCompiler::SaveCachedShader(const std::string& hash, const std::vector<u8>& data) {
+	std::filesystem::path cachePath = GetCachedShaderPath(hash);
+
+	try {
+		// Ensure cache directory exists
+		std::filesystem::create_directories(cachePath.parent_path());
+
+		std::ofstream file(cachePath, std::ios::binary);
+		if (!file.is_open()) {
+			return false;
+		}
+
+		file.write(reinterpret_cast<const char*>(data.data()), data.size());
+		return file.good();
+	}
+	catch (...) {
+		return false;
+	}
 }
