@@ -1665,6 +1665,9 @@ static void DrawDebugConsole() {
 			if (strstr(msg, "[error]")) { 
 				color = ImVec4(1.0f, 0.4f, 0.4f, 1.0f);
 			}
+			else if (strstr(msg, "[warn]")) {
+				color = ImVec4(1.0f, 1.0f, 0.4f, 1.0f);
+			}
 
 			ImGui::PushStyleColor(ImGuiCol_Text, color);
 			ImGui::TextUnformatted(msg);
