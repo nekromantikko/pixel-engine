@@ -43,6 +43,7 @@ endif()
 
 set(SOURCES 
 		src/main.cpp
+		src/memory_arena.cpp
 		src/collision.cpp
 		src/game.cpp
 		src/input.cpp

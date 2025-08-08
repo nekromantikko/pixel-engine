@@ -1,5 +1,6 @@
 #include <SDL.h>
 #include <cfloat>
+#include "memory_arena.h"
 #include "asset_manager.h"
 #include "rendering.h"
 #include "game.h"
@@ -60,6 +61,8 @@ static void UpdateWindowTitle(SDL_Window* pWindow, r64 averageFramerate, r64 dt)
 }
 
 int main(int argc, char** argv) {
+	ArenaAllocator::Init();
+
     AssetManager::LoadAssets();
 
     SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS | SDL_INIT_HAPTIC);
@@ -146,5 +149,7 @@ int main(int argc, char** argv) {
 
     SDL_DestroyWindow(pWindow);
     SDL_Quit();
+
+	ArenaAllocator::Free();
     return 0;
 }
