@@ -1,6 +1,17 @@
 #pragma once
 #include "typedef.h"
 #include <cassert>
+#include <type_traits>
+
+class Arena;
+
+struct ArenaMarker {
+	u8* position;
+	const Arena* const pArena;
+
+	ArenaMarker() : position(nullptr), pArena(nullptr) {}
+	ArenaMarker(const Arena* arena, u8* pos) : position(pos), pArena(arena) {}
+};
 
 class Arena {
 private:
@@ -58,6 +69,20 @@ public:
 		size = current - data;
 	}
 
+	ArenaMarker GetMarker() const {
+		return ArenaMarker(this, current);
+	}
+
+	size_t PopToMarker(const ArenaMarker& marker) {
+		assert(marker.pArena == this && "Invalid arena marker");
+		assert(marker.position >= data && marker.position <= end && "Marker position out of bounds");
+
+		size_t bytesToPop = current - marker.position;
+		current = marker.position;
+		size = current - data;
+		return bytesToPop;
+	}
+
 	void Clear() {
 		current = data;
 		size = 0;
@@ -77,7 +102,9 @@ public:
 };
 
 enum ArenaType {
+	ARENA_PERMANENT,
 	ARENA_SCRATCH,
+	// ARENA_PER_FRAME, // Uncomment if needed for per-frame allocations
 
 	ARENA_COUNT
 };
@@ -91,11 +118,34 @@ namespace ArenaAllocator {
 	void* Push(ArenaType type, size_t bytes, size_t alignment = sizeof(void*));
 	template <typename T, typename... Args>
 	T* Push(ArenaType type, Args&&... args) {
+		static_assert(std::is_trivially_destructible<T>::value, "Type must be trivially destructible");
 		void* pResult = Push(type, sizeof(T), alignof(T));
 		if (pResult == nullptr) {
 			return nullptr;
 		}
 		return new (pResult) T(args...);
 	}
+	template<typename T>
+	T* PushArray(ArenaType type, size_t count) {
+		static_assert(std::is_trivially_destructible<T>::value, "Type must be trivially destructible");
+		void* pResult = Push(type, sizeof(T) * count, alignof(T));
+		if (pResult == nullptr) {
+			return nullptr;
+		}
+		T* arr = static_cast<T*>(pResult);
+		if constexpr (std::is_trivial<T>::value) {
+			memset(arr, 0, sizeof(T) * count); // Zero-initialize for trivial types
+		}
+		else {
+			for (size_t i = 0; i < count; ++i) {
+				new (&arr[i]) T(); // Placement new for default initialization
+			}
+		}
+		return arr;
+	}
+
+	ArenaMarker GetMarker(ArenaType type);
+	void Pop(ArenaType type, size_t bytes);
+	void PopToMarker(ArenaType type, const ArenaMarker& marker);
 	void Clear(ArenaType type);
 }
