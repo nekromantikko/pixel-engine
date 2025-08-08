@@ -1,21 +1,18 @@
 #pragma once
 #include "core_types.h"
+#include "data_types.h"
 
 typedef u16 TActorType;
 typedef u16 TActorSubtype;
 
-#ifdef EDITOR
-#include <vector>
-#include "data_types.h"
-
-enum ActorEditorPropertyType {
-	ACTOR_EDITOR_PROPERTY_SCALAR,
-	ACTOR_EDITOR_PROPERTY_ASSET
+enum ActorPropertyType {
+	ACTOR_PROPERTY_SCALAR,
+	ACTOR_PROPERTY_ASSET
 };
 
-struct ActorEditorProperty {
+struct ActorProperty {
 	const char* name;
-	ActorEditorPropertyType type;
+	ActorPropertyType type;
 	union {
 		DataType dataType;
 		AssetType assetType;
@@ -24,65 +21,79 @@ struct ActorEditorProperty {
 	u32 offset;
 };
 
-class ActorEditorData {
-private:
-	typedef std::pair<const char*, const std::vector<ActorEditorProperty>&> SubtypePropertyPair;
-
-	std::vector<const char*> subtypeNames;
-	std::vector<const std::vector<ActorEditorProperty>*> subtypeProperties;
-public:
-	ActorEditorData(std::vector<SubtypePropertyPair>&& subtypePropertyPairs)
-		: subtypeNames(subtypePropertyPairs.size()), subtypeProperties(subtypePropertyPairs.size()) {
-
-		for (size_t i = 0; i < subtypePropertyPairs.size(); ++i) {
-			subtypeNames[i] = subtypePropertyPairs[i].first;
-			subtypeProperties[i] = &subtypePropertyPairs[i].second;
-		}
-	}
-
-	inline size_t GetSubtypeCount() const {
-		return subtypeNames.size();
-	}
-	inline const char* const* GetSubtypeNames() const {
-		return subtypeNames.data();
-	}
-	inline size_t GetPropertyCount(TActorSubtype subtype) const {
-		return subtypeProperties[subtype]->size();
-	}
-	inline const ActorEditorProperty& GetProperty(TActorSubtype subtype, size_t index) const {
-		return subtypeProperties[subtype]->at(index);
-	}
+struct ActorTypeReflectionData {
+	const size_t subtypeCount;
+	const char* const* subtypeNames;
+	const size_t* propertyCounts;
+	const ActorProperty* const* subtypeProperties;
 };
 
+#define PARENS ()
+
+#define EXPAND(...) EXPAND4(EXPAND4(EXPAND4(EXPAND4(__VA_ARGS__))))
+#define EXPAND4(...) EXPAND3(EXPAND3(EXPAND3(EXPAND3(__VA_ARGS__))))
+#define EXPAND3(...) EXPAND2(EXPAND2(EXPAND2(EXPAND2(__VA_ARGS__))))
+#define EXPAND2(...) EXPAND1(EXPAND1(EXPAND1(EXPAND1(__VA_ARGS__))))
+#define EXPAND1(...) __VA_ARGS__
+
+#define FOR_EACH(macro, ...)                                    \
+  __VA_OPT__(EXPAND(FOR_EACH_HELPER(macro, __VA_ARGS__)))
+#define FOR_EACH_HELPER(macro, a1, ...)                         \
+  macro(a1)                                                     \
+  __VA_OPT__(FOR_EACH_AGAIN PARENS (macro, __VA_ARGS__))
+#define FOR_EACH_AGAIN() FOR_EACH_HELPER
+
 #define ACTOR_SUBTYPE_PROPERTY_SCALAR(STRUCT_TYPE, FIELD, TYPE, COMPONENTS) \
-	{ .name = #FIELD, .type = ACTOR_EDITOR_PROPERTY_SCALAR, .dataType = DATA_TYPE_##TYPE, .components = COMPONENTS, .offset = offsetof(STRUCT_TYPE, FIELD) }
+	{ .name = #FIELD, .type = ACTOR_PROPERTY_SCALAR, .dataType = DATA_TYPE_##TYPE, .components = COMPONENTS, .offset = offsetof(STRUCT_TYPE, FIELD) }
 
 #define ACTOR_SUBTYPE_PROPERTY_ASSET(STRUCT_TYPE, FIELD, ASSET_TYPE, COMPONENTS) \
-	{ .name = #FIELD, .type = ACTOR_EDITOR_PROPERTY_ASSET, .assetType = ASSET_TYPE, .components = COMPONENTS, .offset = offsetof(STRUCT_TYPE, FIELD) }
+	{ .name = #FIELD, .type = ACTOR_PROPERTY_ASSET, .assetType = ASSET_TYPE, .components = COMPONENTS, .offset = offsetof(STRUCT_TYPE, FIELD) }
 
-#define ACTOR_SUBTYPE_PROPERTIES(STRUCT_TYPE, ...) \
-	inline static const std::vector<ActorEditorProperty>& Get##STRUCT_TYPE##EditorProperties() { \
-		static const std::vector<ActorEditorProperty> properties = { __VA_ARGS__ }; \
-		return properties; \
-	} \
+#define ACTOR_SUBTYPE_STRUCT_PROPERTIES(STRUCT_TYPE, ...) \
+	constexpr ActorProperty __##STRUCT_TYPE##_STRUCT_PROPERTIES[] = { __VA_ARGS__ __VA_OPT__(,) {} }; \
 
-#define GET_SUBTYPE_PROPERTIES(STRUCT_TYPE) \
-		Get##STRUCT_TYPE##EditorProperties()
+#define ACTOR_SUBTYPE_REFLECTION_DATA(SUBTYPE, STRUCT_TYPE, NAME) \
+	constexpr const char* __##SUBTYPE##_NAME = NAME; \
+	constexpr const ActorProperty* __##SUBTYPE##_PROPERTIES = __##STRUCT_TYPE##_STRUCT_PROPERTIES; \
+	constexpr size_t __##SUBTYPE##_PROPERTY_COUNT = sizeof(__##STRUCT_TYPE##_STRUCT_PROPERTIES) / sizeof(ActorProperty) - 1; \
 
-#define ACTOR_EDITOR_DATA(ACTOR_TYPE, ...) \
-	inline static const ActorEditorData Get##ACTOR_TYPE##EditorData() { \
-		static const ActorEditorData editorData = ActorEditorData({ __VA_ARGS__ }); \
-		return editorData; \
-	} \
+#define GET_ACTOR_SUBTYPE_NAME(SUBTYPE) \
+	__##SUBTYPE##_NAME,
 
-#else
-#define ACTOR_SUBTYPE_PROPERTY_SCALAR(STRUCT_TYPE, FIELD, TYPE, COMPONENTS)
-#define ACTOR_SUBTYPE_PROPERTY_ASSET(STRUCT_TYPE, FIELD, ASSET_TYPE, COMPONENTS)
-#define ACTOR_SUBTYPE_PROPERTIES(STRUCT_TYPE, ...)
-#define GET_SUBTYPE_PROPERTIES(STRUCT_TYPE) \
-		{}
-#define ACTOR_EDITOR_DATA(ACTOR_TYPE, ...)
-#endif
+#define GET_ACTOR_SUBTYPE_NAMES(...) \
+{ \
+	FOR_EACH(GET_ACTOR_SUBTYPE_NAME, __VA_ARGS__) \
+}
+
+#define GET_ACTOR_SUBTYPE_PROPERTIES_SINGLE(SUBTYPE) \
+	__##SUBTYPE##_PROPERTIES,
+
+#define GET_ACTOR_SUBTYPE_PROPERTIES(...) \
+{ \
+	FOR_EACH(GET_ACTOR_SUBTYPE_PROPERTIES_SINGLE, __VA_ARGS__) \
+}
+
+#define GET_ACTOR_SUBTYPE_PROPERTY_COUNT(SUBTYPE) \
+	__##SUBTYPE##_PROPERTY_COUNT,
+
+#define GET_ACTOR_SUBTYPE_PROPERTY_COUNTS(...) \
+{ \
+	FOR_EACH(GET_ACTOR_SUBTYPE_PROPERTY_COUNT, __VA_ARGS__) \
+}
+
+#define ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE, ...) \
+	constexpr const char* __##ACTOR_TYPE##_SUBTYPE_NAMES[] = GET_ACTOR_SUBTYPE_NAMES(__VA_ARGS__); \
+	constexpr size_t __##ACTOR_TYPE##_SUBTYPE_PROPERTY_COUNTS[] = GET_ACTOR_SUBTYPE_PROPERTY_COUNTS(__VA_ARGS__); \
+	constexpr const ActorProperty* const __##ACTOR_TYPE##_SUBTYPE_PROPERTIES[] = GET_ACTOR_SUBTYPE_PROPERTIES(__VA_ARGS__); \
+	constexpr ActorTypeReflectionData __##ACTOR_TYPE##_REFLECTION_DATA { \
+		.subtypeCount = sizeof(__##ACTOR_TYPE##_SUBTYPE_NAMES) / sizeof(const char*), \
+		.subtypeNames = __##ACTOR_TYPE##_SUBTYPE_NAMES, \
+		.propertyCounts = __##ACTOR_TYPE##_SUBTYPE_PROPERTY_COUNTS, \
+		.subtypeProperties = __##ACTOR_TYPE##_SUBTYPE_PROPERTIES \
+	};
+
+#define GET_ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE) \
+	__##ACTOR_TYPE##_REFLECTION_DATA
 
 enum ActorType : TActorType {
 	ACTOR_TYPE_PLAYER,
@@ -110,17 +121,20 @@ struct PlayerData {
 	SoundHandle gunSound; // TEMP!
 };
 
-ACTOR_SUBTYPE_PROPERTIES(PlayerData,
+ACTOR_SUBTYPE_STRUCT_PROPERTIES(PlayerData,
 	ACTOR_SUBTYPE_PROPERTY_ASSET(PlayerData, jumpSound, ASSET_TYPE_SOUND, 1),
 	ACTOR_SUBTYPE_PROPERTY_ASSET(PlayerData, damageSound, ASSET_TYPE_SOUND, 1),
 	ACTOR_SUBTYPE_PROPERTY_ASSET(PlayerData, gunSound, ASSET_TYPE_SOUND, 1)
 )
+ACTOR_SUBTYPE_REFLECTION_DATA(PLAYER_TYPE_SIDESCROLLER, PlayerData, "sidescroller")
+
 
 struct PlayerOverworldData {
 
 };
 
-ACTOR_SUBTYPE_PROPERTIES(PlayerOverworldData)
+ACTOR_SUBTYPE_STRUCT_PROPERTIES(PlayerOverworldData)
+ACTOR_SUBTYPE_REFLECTION_DATA(PLAYER_TYPE_OVERWORLD, PlayerOverworldData, "overworld")
 
 struct PlayerFlags {
 	u8 aimMode : 2;
@@ -146,10 +160,7 @@ struct PlayerOverworldState {
 	u16 movementCounter;
 };
 
-ACTOR_EDITOR_DATA(Player,
-	{ "sidescroller", GET_SUBTYPE_PROPERTIES(PlayerData) },
-	{ "overworld", GET_SUBTYPE_PROPERTIES(PlayerOverworldData) }
-)
+ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_PLAYER, PLAYER_TYPE_SIDESCROLLER, PLAYER_TYPE_OVERWORLD)
 #pragma endregion
 
 #pragma region Enemies
@@ -171,7 +182,7 @@ struct EnemyData {
 	ActorPrototypeHandle expSpawner;
 };
 
-ACTOR_SUBTYPE_PROPERTIES(EnemyData,
+ACTOR_SUBTYPE_STRUCT_PROPERTIES(EnemyData,
 	ACTOR_SUBTYPE_PROPERTY_SCALAR(EnemyData, health, U16, 1),
 	ACTOR_SUBTYPE_PROPERTY_SCALAR(EnemyData, expValue, U16, 1),
 	ACTOR_SUBTYPE_PROPERTY_ASSET(EnemyData, lootSpawner, ASSET_TYPE_ACTOR_PROTOTYPE, 1),
@@ -179,16 +190,19 @@ ACTOR_SUBTYPE_PROPERTIES(EnemyData,
 	ACTOR_SUBTYPE_PROPERTY_ASSET(EnemyData, projectile, ASSET_TYPE_ACTOR_PROTOTYPE, 1),
 	ACTOR_SUBTYPE_PROPERTY_ASSET(EnemyData, expSpawner, ASSET_TYPE_ACTOR_PROTOTYPE, 1)
 )
+ACTOR_SUBTYPE_REFLECTION_DATA(ENEMY_TYPE_SLIME, EnemyData, "slime")
+ACTOR_SUBTYPE_REFLECTION_DATA(ENEMY_TYPE_SKULL, EnemyData, "skull")
 
 struct FireballData {
 	u16 lifetime;
 	ActorPrototypeHandle deathEffect;
 };
 
-ACTOR_SUBTYPE_PROPERTIES(FireballData,
+ACTOR_SUBTYPE_STRUCT_PROPERTIES(FireballData,
 	ACTOR_SUBTYPE_PROPERTY_SCALAR(FireballData, lifetime, U16, 1),
 	ACTOR_SUBTYPE_PROPERTY_ASSET(FireballData, deathEffect, ASSET_TYPE_ACTOR_PROTOTYPE, 1)
 )
+ACTOR_SUBTYPE_REFLECTION_DATA(ENEMY_TYPE_FIREBALL, FireballData, "fireball")
 
 struct EnemyState {
 	u16 health;
@@ -199,11 +213,7 @@ struct FireballState {
 	u16 lifetimeCounter;
 };
 
-ACTOR_EDITOR_DATA(Enemy,
-	{ "slime", GET_SUBTYPE_PROPERTIES(EnemyData) },
-	{ "skull", GET_SUBTYPE_PROPERTIES(EnemyData) },
-	{ "fireball", GET_SUBTYPE_PROPERTIES(FireballData) }
-)
+ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_ENEMY, ENEMY_TYPE_SLIME, ENEMY_TYPE_SKULL, ENEMY_TYPE_FIREBALL)
 #pragma endregion
 
 #pragma region Bullets
@@ -219,19 +229,18 @@ struct BulletData {
 	ActorPrototypeHandle deathEffect;
 };
 
-ACTOR_SUBTYPE_PROPERTIES(BulletData,
+ACTOR_SUBTYPE_STRUCT_PROPERTIES(BulletData,
 	ACTOR_SUBTYPE_PROPERTY_SCALAR(BulletData, lifetime, U16, 1),
 	ACTOR_SUBTYPE_PROPERTY_ASSET(BulletData, deathEffect, ASSET_TYPE_ACTOR_PROTOTYPE, 1)
 )
+ACTOR_SUBTYPE_REFLECTION_DATA(BULLET_TYPE_DEFAULT, BulletData, "default")
+ACTOR_SUBTYPE_REFLECTION_DATA(BULLET_TYPE_GRENADE, BulletData, "grenade")
 
 struct BulletState {
 	u16 lifetimeCounter;
 };
 
-ACTOR_EDITOR_DATA(Bullet,
-	{ "bullet", GET_SUBTYPE_PROPERTIES(BulletData) },
-	{ "grenade", GET_SUBTYPE_PROPERTIES(BulletData) }
-)
+ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_BULLET, BULLET_TYPE_DEFAULT, BULLET_TYPE_GRENADE)
 #pragma endregion
 
 #pragma region Pickups
@@ -248,21 +257,20 @@ struct PickupData {
 	SoundHandle pickupSound;
 };
 
-ACTOR_SUBTYPE_PROPERTIES(PickupData,
+ACTOR_SUBTYPE_STRUCT_PROPERTIES(PickupData,
 	ACTOR_SUBTYPE_PROPERTY_SCALAR(PickupData, value, S16, 1),
 	ACTOR_SUBTYPE_PROPERTY_ASSET(PickupData, pickupSound, ASSET_TYPE_SOUND, 1)
 )
+ACTOR_SUBTYPE_REFLECTION_DATA(PICKUP_TYPE_EXP, PickupData, "exp")
+ACTOR_SUBTYPE_REFLECTION_DATA(PICKUP_TYPE_EXP_REMNANT, PickupData, "exp_remnant")
+ACTOR_SUBTYPE_REFLECTION_DATA(PICKUP_TYPE_HEAL, PickupData, "healing")
 
 struct PickupState {
 	s16 value;
 	u16 lingerCounter;
 };
 
-ACTOR_EDITOR_DATA(Pickup,
-	{ "exp", GET_SUBTYPE_PROPERTIES(PickupData) },
-	{ "exp_remnant", GET_SUBTYPE_PROPERTIES(PickupData) },
-	{ "healing", GET_SUBTYPE_PROPERTIES(PickupData) }
-)
+ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_PICKUP, PICKUP_TYPE_EXP, PICKUP_TYPE_EXP_REMNANT, PICKUP_TYPE_HEAL)
 #pragma endregion
 
 #pragma region Effects
@@ -279,10 +287,13 @@ struct EffectData {
 	SoundHandle sound;
 };
 
-ACTOR_SUBTYPE_PROPERTIES(EffectData,
+ACTOR_SUBTYPE_STRUCT_PROPERTIES(EffectData,
 	ACTOR_SUBTYPE_PROPERTY_SCALAR(EffectData, lifetime, U16, 1),
 	ACTOR_SUBTYPE_PROPERTY_ASSET(EffectData, sound, ASSET_TYPE_SOUND, 1)
 );
+ACTOR_SUBTYPE_REFLECTION_DATA(EFFECT_TYPE_NUMBERS, EffectData, "damage_numbers")
+ACTOR_SUBTYPE_REFLECTION_DATA(EFFECT_TYPE_EXPLOSION, EffectData, "explosion")
+ACTOR_SUBTYPE_REFLECTION_DATA(EFFECT_TYPE_FEATHER, EffectData, "feather")
 
 struct EffectState {
 	u16 initialLifetime;
@@ -306,11 +317,7 @@ struct DamageNumberState {
 	Damage damage;
 };
 
-ACTOR_EDITOR_DATA(Effect,
-	{ "damage_numbers", GET_SUBTYPE_PROPERTIES(EffectData) },
-	{ "explosion", GET_SUBTYPE_PROPERTIES(EffectData) },
-	{ "feather", GET_SUBTYPE_PROPERTIES(EffectData) }
-)
+ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_EFFECT, EFFECT_TYPE_NUMBERS, EFFECT_TYPE_EXPLOSION, EFFECT_TYPE_FEATHER)
 #pragma endregion
 
 #pragma region Interactables
@@ -325,7 +332,8 @@ struct CheckpointData {
 
 };
 
-ACTOR_SUBTYPE_PROPERTIES(CheckpointData)
+ACTOR_SUBTYPE_STRUCT_PROPERTIES(CheckpointData)
+ACTOR_SUBTYPE_REFLECTION_DATA(INTERACTABLE_TYPE_CHECKPOINT, CheckpointData, "checkpoint")
 
 struct CheckpointState {
 	bool activated;
@@ -335,12 +343,10 @@ struct NPCData {
 
 };
 
-ACTOR_SUBTYPE_PROPERTIES(NPCData)
+ACTOR_SUBTYPE_STRUCT_PROPERTIES(NPCData)
+ACTOR_SUBTYPE_REFLECTION_DATA(INTERACTABLE_TYPE_NPC, NPCData, "npc")
 
-ACTOR_EDITOR_DATA(Interactable,
-	{ "checkpoint", GET_SUBTYPE_PROPERTIES(CheckpointData) },
-	{ "npc", GET_SUBTYPE_PROPERTIES(NPCData) }
-)
+ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_INTERACTABLE, INTERACTABLE_TYPE_CHECKPOINT, INTERACTABLE_TYPE_NPC)
 #pragma endregion
 
 #pragma region Spawners
@@ -357,10 +363,11 @@ struct ExpSpawnerData {
 	ActorPrototypeHandle small;
 };
 
-ACTOR_SUBTYPE_PROPERTIES(ExpSpawnerData,
+ACTOR_SUBTYPE_STRUCT_PROPERTIES(ExpSpawnerData,
 	ACTOR_SUBTYPE_PROPERTY_ASSET(ExpSpawnerData, large, ASSET_TYPE_ACTOR_PROTOTYPE, 1),
 	ACTOR_SUBTYPE_PROPERTY_ASSET(ExpSpawnerData, small, ASSET_TYPE_ACTOR_PROTOTYPE, 1)
-);
+)
+ACTOR_SUBTYPE_REFLECTION_DATA(SPAWNER_TYPE_EXP, ExpSpawnerData, "exp_spawner")
 
 struct ExpSpawnerState {
 	u16 remainingValue;
@@ -369,7 +376,8 @@ struct ExpSpawnerState {
 struct EnemySpawnerData {
 };
 
-ACTOR_SUBTYPE_PROPERTIES(EnemySpawnerData);
+ACTOR_SUBTYPE_STRUCT_PROPERTIES(EnemySpawnerData)
+ACTOR_SUBTYPE_REFLECTION_DATA(SPAWNER_TYPE_ENEMY, EnemySpawnerData, "enemy_spawner")
 
 struct LootSpawnerData {
 	u8 typeCount;
@@ -377,17 +385,14 @@ struct LootSpawnerData {
 	ActorPrototypeHandle types[4];
 };
 
-ACTOR_SUBTYPE_PROPERTIES(LootSpawnerData,
+ACTOR_SUBTYPE_STRUCT_PROPERTIES(LootSpawnerData,
 	ACTOR_SUBTYPE_PROPERTY_SCALAR(LootSpawnerData, typeCount, U8, 1),
 	ACTOR_SUBTYPE_PROPERTY_SCALAR(LootSpawnerData, spawnRates, U8, 4),
 	ACTOR_SUBTYPE_PROPERTY_ASSET(LootSpawnerData, types, ASSET_TYPE_ACTOR_PROTOTYPE, 4)
-);
-
-ACTOR_EDITOR_DATA(Spawner,
-	{ "exp_spawner", GET_SUBTYPE_PROPERTIES(ExpSpawnerData) },
-	{ "enemy_spawner", GET_SUBTYPE_PROPERTIES(EnemySpawnerData) },
-	{ "loot_spawner", GET_SUBTYPE_PROPERTIES(LootSpawnerData) }
 )
+ACTOR_SUBTYPE_REFLECTION_DATA(SPAWNER_TYPE_LOOT, LootSpawnerData, "loot_spawner")
+
+ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_SPAWNER, SPAWNER_TYPE_EXP, SPAWNER_TYPE_ENEMY, SPAWNER_TYPE_LOOT)
 #pragma endregion
 
 union ActorPrototypeData {
@@ -435,14 +440,14 @@ struct ActorPrototype {
 namespace Editor {
 	constexpr const char* actorTypeNames[ACTOR_TYPE_COUNT] = { "Player", "Enemy", "Bullet", "Pickup", "Effect", "Interactable", "Spawner" };
 
-	inline static const ActorEditorData actorEditorData[ACTOR_TYPE_COUNT] = {
-		GetPlayerEditorData(),
-		GetEnemyEditorData(),
-		GetBulletEditorData(),
-		GetPickupEditorData(),
-		GetEffectEditorData(),
-		GetInteractableEditorData(),
-		GetSpawnerEditorData(),
+	inline static const ActorTypeReflectionData actorReflectionData[ACTOR_TYPE_COUNT] = {
+		GET_ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_PLAYER),
+		GET_ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_ENEMY),
+		GET_ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_BULLET),
+		GET_ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_PICKUP),
+		GET_ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_EFFECT),
+		GET_ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_INTERACTABLE),
+		GET_ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_SPAWNER),
 	};
 }
 #endif
