@@ -158,9 +158,7 @@ enum TilesetTileType : s32 {
 	TILE_TYPE_COUNT
 };
 
-#ifdef EDITOR
 constexpr const char* METATILE_TYPE_NAMES[TILE_TYPE_COUNT] = { "Empty", "Solid" };
-#endif
 
 struct TilesetTile {
 	s32 type;

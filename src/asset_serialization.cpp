@@ -632,7 +632,7 @@ static SerializationResult LoadActorPrototypeFromFile(FILE* pFile, const nlohman
 	ActorPrototype* pProto = (ActorPrototype*)outData.data();
 	pProto->type = json["type"].get<ActorType>();
 
-	const ActorTypeReflectionData& editorData = Editor::actorReflectionData[pProto->type];
+	const ActorTypeReflectionData& editorData = ACTOR_REFLECTION_DATA[pProto->type];
 	std::string subtypeStr = json["subtype"].get<std::string>();
 	if (!ParseActorSubtype(subtypeStr, editorData, pProto->subtype)) {
 		return SERIALIZATION_INVALID_ASSET_DATA; // Invalid subtype
@@ -667,7 +667,7 @@ static SerializationResult LoadActorPrototypeFromFile(FILE* pFile, const nlohman
 
 static SerializationResult SaveActorPrototypeToFile(FILE* pFile, nlohmann::json& metadata, const void* pData) {
 	const ActorPrototype* pProto = (const ActorPrototype*)pData;
-	const ActorTypeReflectionData& editorData = Editor::actorReflectionData[pProto->type];
+	const ActorTypeReflectionData& editorData = ACTOR_REFLECTION_DATA[pProto->type];
 
 	nlohmann::json json;
 	json["type"] = (ActorType)pProto->type;

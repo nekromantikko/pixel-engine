@@ -2688,10 +2688,10 @@ static void DrawActorEditor(EditedAsset& asset) {
 
 		if (ImGui::BeginTabBar("Actor editor tabs")) {
 			if (ImGui::BeginTabItem("Behaviour")) {
-				if (DrawTypeSelectionCombo("Type", Editor::actorTypeNames, ACTOR_TYPE_COUNT, pPrototype->type)) {
+				if (DrawTypeSelectionCombo("Type", ACTOR_TYPE_NAMES, ACTOR_TYPE_COUNT, pPrototype->type)) {
 					asset.dirty = true;
 				}
-				const auto& editorData = Editor::actorReflectionData[pPrototype->type];
+				const auto& editorData = ACTOR_REFLECTION_DATA[pPrototype->type];
 
 				size_t subtypeCount = editorData.subtypeCount;
 				pPrototype->subtype = glm::clamp<TActorSubtype>(pPrototype->subtype, u16(0), u16(subtypeCount - 1));
