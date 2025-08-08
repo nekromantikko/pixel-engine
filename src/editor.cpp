@@ -2627,17 +2627,17 @@ static DataType ImGuiToDataType(ImGuiDataType imguiType) {
 	}
 }
 
-static bool DrawActorPrototypeProperty(const ActorEditorProperty& property, ActorPrototypeData& data) {
+static bool DrawActorPrototypeProperty(const ActorProperty& property, ActorPrototypeData& data) {
 	void* propertyData = (u8*)&data + property.offset;
 	const ImGuiDataType imguiDataType = DataTypeToImGui(property.dataType);
 	bool result = false;
 
 	switch (property.type) {
-	case ACTOR_EDITOR_PROPERTY_SCALAR: {
+	case ACTOR_PROPERTY_SCALAR: {
 		result = ImGui::InputScalarN(property.name, imguiDataType, propertyData, property.components);
 		break;
 	}
-	case ACTOR_EDITOR_PROPERTY_ASSET: {
+	case ACTOR_PROPERTY_ASSET: {
 		u64* assetIds = (u64*)propertyData;
 		result = DrawAssetFieldN(property.name, property.assetType, assetIds, property.components);
 		break;
@@ -2691,19 +2691,19 @@ static void DrawActorEditor(EditedAsset& asset) {
 				if (DrawTypeSelectionCombo("Type", Editor::actorTypeNames, ACTOR_TYPE_COUNT, pPrototype->type)) {
 					asset.dirty = true;
 				}
-				const auto& editorData = Editor::actorEditorData[pPrototype->type];
+				const auto& editorData = Editor::actorReflectionData[pPrototype->type];
 
-				size_t subtypeCount = editorData.GetSubtypeCount();
+				size_t subtypeCount = editorData.subtypeCount;
 				pPrototype->subtype = glm::clamp<TActorSubtype>(pPrototype->subtype, u16(0), u16(subtypeCount - 1));
-				if (DrawTypeSelectionCombo("Subtype", editorData.GetSubtypeNames(), subtypeCount, pPrototype->subtype)) {
+				if (DrawTypeSelectionCombo("Subtype", editorData.subtypeNames, subtypeCount, pPrototype->subtype)) {
 					asset.dirty = true;
 				}
 
 				ImGui::SeparatorText("Type data");
 
-				size_t propCount = editorData.GetPropertyCount(pPrototype->subtype);
+				size_t propCount = editorData.propertyCounts[pPrototype->subtype];
 				for (size_t i = 0; i < propCount; i++) {
-					if (DrawActorPrototypeProperty(editorData.GetProperty(pPrototype->subtype, i), pPrototype->data)) {
+					if (DrawActorPrototypeProperty(editorData.subtypeProperties[pPrototype->subtype][i], pPrototype->data)) {
 						asset.dirty = true;
 					}
 				}

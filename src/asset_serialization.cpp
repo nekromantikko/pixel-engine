@@ -449,9 +449,9 @@ static SerializationResult SaveAnimationToFile(FILE* pFile, nlohmann::json& meta
 	return SERIALIZATION_SUCCESS;
 }
 
-static bool ParseActorSubtype(const std::string& subtypeStr, const ActorEditorData& editorData, TActorSubtype& outSubtype) {
-	for (u32 i = 0; i < editorData.GetSubtypeCount(); i++) {
-		const char* subtypeName = editorData.GetSubtypeNames()[i];
+static bool ParseActorSubtype(const std::string& subtypeStr, const ActorTypeReflectionData& editorData, TActorSubtype& outSubtype) {
+	for (u32 i = 0; i < editorData.subtypeCount; i++) {
+		const char* subtypeName = editorData.subtypeNames[i];
 		if (strcmp(subtypeStr.c_str(), subtypeName) == 0) {
 			outSubtype = (TActorSubtype)i;
 			return true;
@@ -460,9 +460,9 @@ static bool ParseActorSubtype(const std::string& subtypeStr, const ActorEditorDa
 	return false;
 }
 
-static bool ParseActorPropertyName(const std::string& propertyName, TActorSubtype subtype, const ActorEditorData& editorData, const ActorEditorProperty** ppOutProperty) {
-	for (u32 i = 0; i < editorData.GetPropertyCount(subtype); i++) {
-		const ActorEditorProperty& prop = editorData.GetProperty(subtype, i);
+static bool ParseActorPropertyName(const std::string& propertyName, TActorSubtype subtype, const ActorTypeReflectionData& editorData, const ActorProperty** ppOutProperty) {
+	for (u32 i = 0; i < editorData.propertyCounts[subtype]; i++) {
+		const ActorProperty& prop = editorData.subtypeProperties[subtype][i];
 		if (strcmp(prop.name, propertyName.c_str()) == 0) {
 			*ppOutProperty = &prop;
 			return true;
@@ -471,7 +471,7 @@ static bool ParseActorPropertyName(const std::string& propertyName, TActorSubtyp
 	return false;
 }
 
-static bool ParseActorPropertyComponentValueScalar(const nlohmann::json& jsonValue, const ActorEditorProperty& property, void* pOutData) {
+static bool ParseActorPropertyComponentValueScalar(const nlohmann::json& jsonValue, const ActorProperty& property, void* pOutData) {
 	switch (property.dataType) {
 	case DATA_TYPE_S8: {
 		jsonValue.get_to(*(s8*)pOutData);
@@ -525,9 +525,9 @@ static bool ParseActorPropertyComponentValueScalar(const nlohmann::json& jsonVal
 	return true;
 }
 
-static bool ParseActorPropertyValue(const nlohmann::json& jsonValue, const ActorEditorProperty& property, void* pOutData) {
+static bool ParseActorPropertyValue(const nlohmann::json& jsonValue, const ActorProperty& property, void* pOutData) {
 	switch (property.type) {
-	case ACTOR_EDITOR_PROPERTY_SCALAR: {
+	case ACTOR_PROPERTY_SCALAR: {
 		const DataTypeInfo* pTypeInfo = GetDataTypeInfo(property.dataType);
 		if (property.components == 1) {
 			ParseActorPropertyComponentValueScalar(jsonValue, property, pOutData);
@@ -542,7 +542,7 @@ static bool ParseActorPropertyValue(const nlohmann::json& jsonValue, const Actor
 		}
 		return true;
 	}
-	case ACTOR_EDITOR_PROPERTY_ASSET: {
+	case ACTOR_PROPERTY_ASSET: {
 		if (property.components == 1) {
 			*(u64*)pOutData = jsonValue != nullptr ? jsonValue.get<u64>() : 0;
 		}
@@ -560,7 +560,7 @@ static bool ParseActorPropertyValue(const nlohmann::json& jsonValue, const Actor
 	}
 }
 
-static nlohmann::json SerializeActorPropertyComponentValueScalar(const void* pData, const ActorEditorProperty& property) {
+static nlohmann::json SerializeActorPropertyComponentValueScalar(const void* pData, const ActorProperty& property) {
 	switch (property.dataType) {
 	case DATA_TYPE_S8:
 		return *(const s8*)pData;
@@ -589,9 +589,9 @@ static nlohmann::json SerializeActorPropertyComponentValueScalar(const void* pDa
 	}
 }
 
-static nlohmann::json SerializeActorPropertyValue(const void* pData, const ActorEditorProperty& property) {
+static nlohmann::json SerializeActorPropertyValue(const void* pData, const ActorProperty& property) {
 	switch (property.type) {
-	case ACTOR_EDITOR_PROPERTY_SCALAR: {
+	case ACTOR_PROPERTY_SCALAR: {
 		const DataTypeInfo* pTypeInfo = GetDataTypeInfo(property.dataType);
 		if (property.components == 1) {
 			return SerializeActorPropertyComponentValueScalar(pData, property);
@@ -605,7 +605,7 @@ static nlohmann::json SerializeActorPropertyValue(const void* pData, const Actor
 			return arrayJson;
 		}
 	}
-	case ACTOR_EDITOR_PROPERTY_ASSET: {
+	case ACTOR_PROPERTY_ASSET: {
 		if (property.components == 1) {
 			return *(const u64*)pData;
 		}
@@ -632,7 +632,7 @@ static SerializationResult LoadActorPrototypeFromFile(FILE* pFile, const nlohman
 	ActorPrototype* pProto = (ActorPrototype*)outData.data();
 	pProto->type = json["type"].get<ActorType>();
 
-	const ActorEditorData& editorData = Editor::actorEditorData[pProto->type];
+	const ActorTypeReflectionData& editorData = Editor::actorReflectionData[pProto->type];
 	std::string subtypeStr = json["subtype"].get<std::string>();
 	if (!ParseActorSubtype(subtypeStr, editorData, pProto->subtype)) {
 		return SERIALIZATION_INVALID_ASSET_DATA; // Invalid subtype
@@ -644,7 +644,7 @@ static SerializationResult LoadActorPrototypeFromFile(FILE* pFile, const nlohman
 	const nlohmann::json& propertiesJson = json["properties"];
 	if (propertiesJson.is_object()) {
 		for (const auto& [propertyName, propertyValue] : propertiesJson.items()) {
-			const ActorEditorProperty* pProperty = nullptr;
+			const ActorProperty* pProperty = nullptr;
 			if (!ParseActorPropertyName(propertyName, pProto->subtype, editorData, &pProperty)) {
 				continue;
 			}
@@ -667,14 +667,14 @@ static SerializationResult LoadActorPrototypeFromFile(FILE* pFile, const nlohman
 
 static SerializationResult SaveActorPrototypeToFile(FILE* pFile, nlohmann::json& metadata, const void* pData) {
 	const ActorPrototype* pProto = (const ActorPrototype*)pData;
-	const ActorEditorData& editorData = Editor::actorEditorData[pProto->type];
+	const ActorTypeReflectionData& editorData = Editor::actorReflectionData[pProto->type];
 
 	nlohmann::json json;
 	json["type"] = (ActorType)pProto->type;
 
 	// Get subtype name
-	if (pProto->subtype < editorData.GetSubtypeCount()) {
-		json["subtype"] = editorData.GetSubtypeNames()[pProto->subtype];
+	if (pProto->subtype < editorData.subtypeCount) {
+		json["subtype"] = editorData.subtypeNames[pProto->subtype];
 	}
 	else {
 		return SERIALIZATION_INVALID_ASSET_DATA; // Invalid subtype index
@@ -684,8 +684,8 @@ static SerializationResult SaveActorPrototypeToFile(FILE* pFile, nlohmann::json&
 
 	// Serialize properties
 	json["properties"] = nlohmann::json::object();
-	for (u32 i = 0; i < editorData.GetPropertyCount(pProto->subtype); i++) {
-		const ActorEditorProperty& prop = editorData.GetProperty(pProto->subtype, i);
+	for (u32 i = 0; i < editorData.propertyCounts[pProto->subtype]; i++) {
+		const ActorProperty& prop = editorData.subtypeProperties[pProto->subtype][i];
 		const void* pPropertyData = (const u8*)&pProto->data + prop.offset;
 		json["properties"][prop.name] = SerializeActorPropertyValue(pPropertyData, prop);
 	}
