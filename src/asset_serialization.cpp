@@ -972,8 +972,32 @@ static SerializationResult LoadShaderFromFile(FILE* pFile, const std::filesystem
 		shaderSource.resize(fileSize);
 		fread(shaderSource.data(), 1, fileSize, pFile);
 	}
+	
 	std::vector<u8> compiledShaderData;
-	ShaderCompiler::Compile(filename.c_str(), path.string().c_str(), shaderSource.c_str(), compiledShaderData);
+	
+#ifdef EDITOR
+	// Try to load from cache first
+	std::string sourceHash = ShaderCompiler::CalculateSourceHash(shaderSource);
+	bool loadedFromCache = ShaderCompiler::LoadCachedShader(sourceHash, compiledShaderData);
+	
+	if (!loadedFromCache) {
+		// Cache miss - compile shader
+		bool compileSuccess = ShaderCompiler::Compile(filename.c_str(), path.string().c_str(), shaderSource.c_str(), compiledShaderData);
+		if (!compileSuccess) {
+			return SERIALIZATION_INVALID_ASSET_DATA;
+		}
+		
+		// Save to cache for next time
+		ShaderCompiler::SaveCachedShader(sourceHash, compiledShaderData);
+	}
+#else
+	// Not in editor mode - always compile (no caching)
+	bool compileSuccess = ShaderCompiler::Compile(filename.c_str(), path.string().c_str(), shaderSource.c_str(), compiledShaderData);
+	if (!compileSuccess) {
+		return SERIALIZATION_INVALID_ASSET_DATA;
+	}
+#endif
+
 	size_t size = sizeof(Shader) + compiledShaderData.size();
 	outData.resize(size);
 	Shader* pShader = (Shader*)outData.data();
