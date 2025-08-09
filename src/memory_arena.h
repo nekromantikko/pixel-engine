@@ -73,6 +73,10 @@ public:
 		return ArenaMarker(this, current);
 	}
 
+	ArenaMarker GetBaseMarker() const {
+		return ArenaMarker(this, data);
+	}
+
 	size_t PopToMarker(const ArenaMarker& marker) {
 		assert(marker.pArena == this && "Invalid arena marker");
 		assert(marker.position >= data && marker.position <= end && "Marker position out of bounds");
@@ -92,6 +96,13 @@ public:
 		return end - current;
 	}
 
+	size_t GetRemainingBytes(const ArenaMarker& marker) const {
+		assert(marker.pArena == this && "Invalid arena marker");
+		assert(marker.position >= data && marker.position <= end && "Marker position out of bounds");
+
+		return end - marker.position;
+	}
+
 	size_t Size() const {
 		return size;
 	}
@@ -103,6 +114,7 @@ public:
 
 enum ArenaType {
 	ARENA_PERMANENT,
+	ARENA_ASSETS,
 	ARENA_SCRATCH,
 	// ARENA_PER_FRAME, // Uncomment if needed for per-frame allocations
 
@@ -145,7 +157,9 @@ namespace ArenaAllocator {
 	}
 
 	ArenaMarker GetMarker(ArenaType type);
+	ArenaMarker GetBaseMarker(ArenaType type);
 	void Pop(ArenaType type, size_t bytes);
 	void PopToMarker(ArenaType type, const ArenaMarker& marker);
 	void Clear(ArenaType type);
+	bool Copy(const ArenaMarker& dstMarker, const ArenaMarker& srcMarker, size_t bytes);
 }

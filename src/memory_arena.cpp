@@ -4,8 +4,9 @@
 #include <cstring>
 #include <cassert>
 
-static constexpr size_t PERMANENT_ARENA_SIZE = 64 * 1024 * 1024; // 64 MB
-static constexpr size_t SCRATCH_ARENA_SIZE = 8 * 1024 * 1024; // 8 MB
+static constexpr size_t PERMANENT_ARENA_SIZE = 8 * 1024 * 1024; // 8 MB
+static constexpr size_t ASSET_ARENA_SIZE = 4 * 1024 * 1024; // 4 MB
+static constexpr size_t SCRATCH_ARENA_SIZE = 4 * 1024 * 1024; // 4 MB
 
 static Arena g_arenas[ARENA_COUNT];
 static bool g_initialized = false;
@@ -21,12 +22,14 @@ void ArenaAllocator::Init() {
     // Arena sizes
     constexpr size_t arenaSizes[ARENA_COUNT] = {
 		PERMANENT_ARENA_SIZE,
+		ASSET_ARENA_SIZE,
 		SCRATCH_ARENA_SIZE
     };
 
     // Arena names for debugging
     const char* arenaNames[ARENA_COUNT] = {
 		"Permanent",
+		"Assets",
         "Scratch",
     };
 
@@ -101,9 +104,24 @@ ArenaMarker ArenaAllocator::GetMarker(ArenaType type) {
 	}
 	return pArena->GetMarker();
 }
-void ArenaAllocator::Pop(ArenaType type, size_t bytes) {
-
+ArenaMarker ArenaAllocator::GetBaseMarker(ArenaType type) {
+	Arena* pArena = GetArena(type);
+	if (!pArena) {
+		DEBUG_ERROR("Failed to get arena for type %d\n", type);
+		return ArenaMarker();
+	}
+	return pArena->GetBaseMarker();
 }
+
+void ArenaAllocator::Pop(ArenaType type, size_t bytes) {
+	Arena* pArena = GetArena(type);
+	if (!pArena) {
+		DEBUG_ERROR("Failed to get arena for type %d\n", type);
+		return;
+	}
+	pArena->Pop(bytes);
+}
+
 void ArenaAllocator::PopToMarker(ArenaType type, const ArenaMarker& marker) {
 	Arena* pArena = GetArena(type);
 	if (!pArena) {
@@ -123,4 +141,14 @@ void ArenaAllocator::Clear(ArenaType type) {
 	}
 
 	pArena->Clear();
+}
+
+bool ArenaAllocator::Copy(const ArenaMarker& dstMarker, const ArenaMarker& srcMarker, size_t bytes) {
+	if (dstMarker.pArena->GetRemainingBytes(dstMarker) < bytes) {
+		DEBUG_ERROR("Not enough space in destination arena to copy %zu bytes\n", bytes);
+		return false;
+	}
+
+	memcpy(dstMarker.position, srcMarker.position, bytes);
+	return true;
 }
