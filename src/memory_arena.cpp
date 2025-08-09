@@ -62,6 +62,10 @@ void ArenaAllocator::Free() {
 	DEBUG_LOG("Memory arenas freed successfully.\n");
 }
 
+bool ArenaAllocator::IsInitialized() {
+	return g_initialized;
+}
+
 Arena* ArenaAllocator::GetArena(ArenaType type) {
 	if (type < 0 || type >= ARENA_COUNT) {
 		DEBUG_ERROR("Invalid arena type: %d\n", type);
@@ -69,7 +73,7 @@ Arena* ArenaAllocator::GetArena(ArenaType type) {
 	}
 
 	if (!g_initialized) {
-		DEBUG_FATAL("Memory arenas not initialized.\n");
+		// Return nullptr instead of fatal error for graceful fallback
 		return nullptr;
 	}
 

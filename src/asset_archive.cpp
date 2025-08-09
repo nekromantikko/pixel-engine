@@ -8,7 +8,18 @@ static bool CompareAssetEntries(const AssetEntry& a, const AssetEntry& b) {
 }
 
 AssetArchive::AssetArchive() 
-	: m_capacity(0), m_size(0), m_data(nullptr) {
+	: m_capacity(0), m_size(0), m_data(nullptr), m_allocator(AssetAllocators::GetDefaultAllocator()) {
+}
+
+AssetArchive::AssetArchive(const AssetAllocator& allocator)
+	: m_capacity(0), m_size(0), m_data(nullptr), m_allocator(allocator) {
+}
+
+void AssetArchive::SetAllocator(const AssetAllocator& allocator) {
+	// Only allow setting allocator if no memory has been allocated yet
+	if (m_data == nullptr) {
+		m_allocator = allocator;
+	}
 }
 
 AssetArchive::~AssetArchive() {
@@ -31,7 +42,7 @@ constexpr size_t AssetArchive::GetNextPOT(size_t n) {
 
 bool AssetArchive::ResizeStorage(size_t minCapacity) {
 	const size_t newCapacity = GetNextPOT(minCapacity);
-	void* newBlock = realloc(m_data, newCapacity);
+	void* newBlock = m_allocator.Realloc(m_data, m_capacity, newCapacity, m_allocator.userData);
 	if (!newBlock) {
 		return false;
 	}
@@ -253,7 +264,7 @@ void AssetArchive::Repack() {
 	}
 	m_index.Sort(CompareAssetEntries);
 
-	u8* newData = (u8*)malloc(newSize);
+	u8* newData = (u8*)m_allocator.Alloc(newSize, m_allocator.userData);
 	if (!newData) {
 		return;
 	}
@@ -271,7 +282,7 @@ void AssetArchive::Repack() {
 		offset += asset->size;
 	}
 
-	free(m_data);
+	m_allocator.Free(m_data, m_allocator.userData);
 	m_data = newData;
 	m_size = newSize;
 	m_capacity = newSize;
@@ -279,7 +290,7 @@ void AssetArchive::Repack() {
 
 void AssetArchive::Clear() {
 	if (m_data) {
-		free(m_data);
+		m_allocator.Free(m_data, m_allocator.userData);
 		m_data = nullptr;
 	}
 	m_capacity = 0;

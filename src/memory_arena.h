@@ -111,6 +111,7 @@ enum ArenaType {
 namespace ArenaAllocator {
 	void Init();
 	void Free();
+	bool IsInitialized(); // Check if arena system is ready
 
 	Arena* GetArena(ArenaType type);
 

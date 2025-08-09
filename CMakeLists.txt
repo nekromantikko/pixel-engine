@@ -67,6 +67,7 @@ set(SOURCES
 		src/spawner.cpp
 		src/random.cpp
 		src/debug.cpp
+		src/asset_allocator.cpp
 		src/asset_archive.cpp
 		src/asset_manager.cpp)
 
@@ -166,6 +167,7 @@ if(BUILD_ASSETS)
 	# Asset Packer Tool
 	set (ASSET_PACKER_SOURCES 
 		src/tools/asset_packer.cpp 
+		src/asset_allocator.cpp
 		src/asset_archive.cpp 
 		src/asset_serialization.cpp
 		src/shader_compiler.cpp)

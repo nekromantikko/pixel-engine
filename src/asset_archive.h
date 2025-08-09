@@ -2,6 +2,7 @@
 #include "typedef.h"
 #include "asset_types.h"
 #include "memory_pool.h"
+#include "asset_allocator.h"
 #include <filesystem>
 
 constexpr u32 MAX_ASSET_NAME_LENGTH = 56;
@@ -29,7 +30,11 @@ typedef Pool<AssetEntry, MAX_ASSETS> AssetIndex;
 class AssetArchive {
 public:
 	AssetArchive();
+	AssetArchive(const AssetAllocator& allocator);
 	~AssetArchive();
+
+	// Set allocator (must be called before any memory operations if not set in constructor)
+	void SetAllocator(const AssetAllocator& allocator);
 
 	// Archive file operations
 	bool LoadFromFile(const std::filesystem::path& path);
@@ -70,6 +75,7 @@ private:
 	size_t m_size;
 	u8* m_data;
 	AssetIndex m_index;
+	AssetAllocator m_allocator;
 
 	bool ResizeStorage(size_t minCapacity);
 	bool ReserveMemory(size_t size);
