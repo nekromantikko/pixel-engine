@@ -167,8 +167,17 @@ static void CreateVulkanInstance() {
 	createInfo.pNext = nullptr;
 	createInfo.flags = 0;
 	createInfo.pApplicationInfo = &appInfo;
+	
+#ifdef ENABLE_VULKAN_VALIDATION
 	createInfo.enabledLayerCount = 1;
 	createInfo.ppEnabledLayerNames = &debugLayerName;
+	DEBUG_LOG("Vulkan validation layers enabled\n");
+#else
+	createInfo.enabledLayerCount = 0;
+	createInfo.ppEnabledLayerNames = nullptr;
+	DEBUG_LOG("Vulkan validation layers disabled\n");
+#endif
+	
 	createInfo.enabledExtensionCount = extensionCount;
 	createInfo.ppEnabledExtensionNames = extensionNames;
 

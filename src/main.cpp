@@ -1,6 +1,7 @@
 #include <SDL.h>
 #include <cfloat>
 #include "memory_arena.h"
+#include "memory_profiler.h"
 #include "asset_manager.h"
 #include "rendering.h"
 #include "game.h"
@@ -61,30 +62,43 @@ static void UpdateWindowTitle(SDL_Window* pWindow, r64 averageFramerate, r64 dt)
 }
 
 int main(int argc, char** argv) {
+	MemoryProfiler::Init();
+	
 	ArenaAllocator::Init();
+	MemoryProfiler::LogMemoryPoint("AFTER_ARENA_INIT");
 
     AssetManager::LoadAssets();
+    MemoryProfiler::LogMemoryPoint("AFTER_ASSET_LOADING");
 
     SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS | SDL_INIT_HAPTIC);
+    MemoryProfiler::LogMemoryPoint("AFTER_SDL_INIT");
+    
     SDL_Window* pWindow = SDL_CreateWindow(WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1536, 864, SDL_WINDOW_VULKAN | SDL_WINDOW_SHOWN);
+    MemoryProfiler::LogMemoryPoint("AFTER_WINDOW_CREATION");
 
     Rendering::Init(pWindow);
+    MemoryProfiler::LogMemoryPoint("AFTER_VULKAN_INIT");
 
     Audio::Init();
+    MemoryProfiler::LogMemoryPoint("AFTER_AUDIO_INIT");
 
 #ifdef EDITOR
     Editor::CreateContext();
     Editor::Init(pWindow);
+    MemoryProfiler::LogMemoryPoint("AFTER_EDITOR_INIT");
 #endif
 
     const s64 perfFreq = SDL_GetPerformanceFrequency();
     u64 currentTime = SDL_GetPerformanceCounter();
     
     Game::Initialize();
+    MemoryProfiler::LogMemoryPoint("AFTER_GAME_INIT");
     
     bool running = true;
     bool minimized = false;
     SDL_Event event;
+    
+    u32 frame_count = 0;
     while (running) {
         s64 newTime = SDL_GetPerformanceCounter();
         s64 deltaTime = newTime - currentTime;
@@ -130,6 +144,13 @@ int main(int argc, char** argv) {
 #endif
             Rendering::EndFrame();
         }
+        
+        // Log memory every 300 frames (roughly every 5 seconds at 60fps)
+        frame_count++;
+        if (frame_count == 300) {
+            MemoryProfiler::LogMemoryPoint("DURING_GAME_LOOP");
+            frame_count = 0;
+        }
     }
 
     Game::Free();
@@ -146,5 +167,6 @@ int main(int argc, char** argv) {
     SDL_Quit();
 
 	ArenaAllocator::Free();
+	MemoryProfiler::ReportFinal();
     return 0;
 }
