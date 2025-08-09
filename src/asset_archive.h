@@ -47,18 +47,12 @@ public:
 	AssetEntry* GetAssetEntryByPath(const std::filesystem::path& relativePath);
 	
 	// Archive management
-	void Repack();
+	bool Repack();
 	void Clear();
 	
 	// Statistics
 	size_t GetAssetCount() const;
 	const AssetIndex& GetIndex() const;
-
-private:
-	// Binary search helpers for sorted asset pool
-	AssetEntry* FindAssetByIdBinary(u64 id);
-	const AssetEntry* FindAssetByIdBinary(u64 id) const;
-
 private:
 	struct ArchiveHeader {
 		char signature[4];
@@ -74,4 +68,9 @@ private:
 	bool ResizeStorage(size_t minCapacity);
 	bool ReserveMemory(size_t size);
 	static constexpr size_t GetNextPOT(size_t n);
+
+	// Binary search helpers for sorted asset pool
+	AssetEntry* FindAssetByIdBinary(u64 id);
+	const AssetEntry* FindAssetByIdBinary(u64 id) const;
+
 };

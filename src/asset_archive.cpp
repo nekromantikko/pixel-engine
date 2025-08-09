@@ -3,6 +3,10 @@
 #include <cstring>
 #include <cstdlib>
 
+#ifdef ASSET_ARCHIVE_USE_ARENA
+#include "memory_arena.h"
+#endif
+
 static bool CompareAssetEntries(const AssetEntry& a, const AssetEntry& b) {
 	return a.id < b.id;
 }
@@ -31,7 +35,20 @@ constexpr size_t AssetArchive::GetNextPOT(size_t n) {
 
 bool AssetArchive::ResizeStorage(size_t minCapacity) {
 	const size_t newCapacity = GetNextPOT(minCapacity);
+#ifdef ASSET_ARCHIVE_USE_ARENA
+	// Resize in place
+	size_t bytesToPush = newCapacity - m_capacity;
+	void* result = ArenaAllocator::Push(ARENA_ASSETS, bytesToPush);
+	if (!result) {
+		return false;
+	}
+	if (m_data == nullptr) {
+		m_data = (u8*)result; // Initialize m_data if it was null
+	}
+	void* newBlock = m_data;
+#else
 	void* newBlock = realloc(m_data, newCapacity);
+#endif
 	if (!newBlock) {
 		return false;
 	}
@@ -233,7 +250,7 @@ AssetEntry* AssetArchive::GetAssetEntryByPath(const std::filesystem::path& relat
 	return nullptr;
 }
 
-void AssetArchive::Repack() {
+bool AssetArchive::Repack() {
 	size_t newSize = 0;
 
 	// Iterate backwards so we can delete entries
@@ -253,9 +270,20 @@ void AssetArchive::Repack() {
 	}
 	m_index.Sort(CompareAssetEntries);
 
+#ifdef ASSET_ARCHIVE_USE_ARENA
+	// Step 1: Resize the asset data
+	size_t bytesToPush = newSize - m_capacity;
+	if (ArenaAllocator::Push(ARENA_ASSETS, bytesToPush)) {
+		return false;
+	}
+	// Step 2: Get temporary storage for new data
+	ArenaMarker tempMarker = ArenaAllocator::GetMarker(ARENA_SCRATCH);
+	u8* newData = (u8*)ArenaAllocator::Push(ARENA_SCRATCH, newSize);
+#else
 	u8* newData = (u8*)malloc(newSize);
+#endif
 	if (!newData) {
-		return;
+		return false;
 	}
 	
 	size_t offset = 0;
@@ -271,15 +299,34 @@ void AssetArchive::Repack() {
 		offset += asset->size;
 	}
 
+#ifdef ASSET_ARCHIVE_USE_ARENA
+	// Step 3: Copy new data back to the asset arena
+	ArenaMarker assetBaseMarker = ArenaAllocator::GetBaseMarker(ARENA_ASSETS);
+	bool copyResult = ArenaAllocator::Copy(assetBaseMarker, tempMarker, newSize);
+	// Step 4: Pop the scratch arena
+	ArenaAllocator::Pop(ARENA_SCRATCH, newSize);
+
+	if (!copyResult) {
+		return false;
+	}
+#else
 	free(m_data);
 	m_data = newData;
+#endif
+
 	m_size = newSize;
 	m_capacity = newSize;
+
+	return true;
 }
 
 void AssetArchive::Clear() {
 	if (m_data) {
+#ifdef ASSET_ARCHIVE_USE_ARENA
+		ArenaAllocator::Pop(ARENA_ASSETS, m_capacity);
+#else
 		free(m_data);
+#endif
 		m_data = nullptr;
 	}
 	m_capacity = 0;
