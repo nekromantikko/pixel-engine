@@ -2,3 +2,15 @@
 bin/
 build/
 /.vs
+
+# Object files and build artifacts
+*.o
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test executables  
+test_*
+perf_test
+integration_test
