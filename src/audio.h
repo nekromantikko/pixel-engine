@@ -2,10 +2,8 @@
 #include "core_types.h"
 
 namespace Audio {
-	void CreateContext();
     void Init();
     void Free();
-    void DestroyContext();
 
     void WriteChannel(u32 channel, u8 address, u8 data);
 
