@@ -1,6 +1,7 @@
 #include <iostream>
 #include <filesystem>
 #include "../asset_archive.h"
+#include "../asset_allocator.h"
 #include "../asset_serialization.h"
 #include "../shader_compiler.h"
 #include <fstream>
@@ -72,7 +73,9 @@ int main(int argc, char* argv[]) {
 
 	std::cout << "Asset Packer - Generating " << outputFile << " from " << assetsDir << std::endl;
 
-	AssetArchive archive;
+	// Asset packer should always use malloc allocation, never arena allocation
+	AssetAllocator mallocAlloc = AssetAllocators::GetMallocAllocator();
+	AssetArchive archive(mallocAlloc);
 	if (!PackAssetsFromDirectory(archive, assetsDir)) {
 		std::cerr << "Failed to pack assets from " << assetsDir << std::endl;
 		return 1;

@@ -26,7 +26,11 @@ struct AssetEntry {
 
 typedef Pool<AssetEntry, MAX_ASSETS> AssetIndex;
 
-// Self-contained asset archive class without dependencies on debug or random
+// Self-contained asset archive class with configurable memory allocation
+// 
+// Supports both arena allocation (for engine runtime) and malloc allocation
+// (for asset packer tool). Allocation strategy is automatically selected based
+// on whether the arena system is initialized, or can be explicitly specified.
 class AssetArchive {
 public:
 	AssetArchive();

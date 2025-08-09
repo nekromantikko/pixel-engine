@@ -5,6 +5,10 @@
 class Arena;
 
 // Allocation strategy callbacks for AssetArchive
+// 
+// This system allows AssetArchive to use different allocation strategies:
+// - Arena allocation for engine runtime (fast, no fragmentation)  
+// - Malloc allocation for tools like asset packer (standard behavior)
 struct AssetAllocator {
 	// Function pointers for allocation operations
 	void* (*Alloc)(size_t size, void* userData);
