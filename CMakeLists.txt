@@ -8,13 +8,17 @@ set(CMAKE_CXX_EXTENSIONS ON)
 
 option(ENABLE_EDITOR "Enable editor functionality" ON)
 option(BUILD_ASSETS "Build asset archive" ON)
+option(HEADLESS "Enable headless mode (no graphics or audio)" OFF)
 
 set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set(ASSETS_NPAK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
 
-find_package(Vulkan REQUIRED)
-find_package(SDL2 REQUIRED)
 find_package(slang QUIET)
+
+if(NOT HEADLESS)
+	find_package(Vulkan REQUIRED)
+	find_package(SDL2 REQUIRED)
+endif()
 
 if(NOT slang_FOUND)
 	message(WARNING "Slang not found, disabling editor and asset building")
@@ -46,13 +50,10 @@ set(SOURCES
 		src/memory_arena.cpp
 		src/collision.cpp
 		src/game.cpp
-		src/input.cpp
 		src/rendering_util.cpp
-		src/rendering_vulkan.cpp
 		src/game_rendering.cpp
 		src/tilemap.cpp
 		src/actors.cpp
-		src/audio.cpp
 		src/coroutines.cpp
 		src/dialog.cpp
 		src/game_input.cpp
@@ -70,10 +71,29 @@ set(SOURCES
 		src/asset_archive.cpp
 		src/asset_manager.cpp)
 
+if(HEADLESS)
+	list(APPEND SOURCES 
+		src/rendering_headless.cpp
+		src/audio_headless.cpp
+		src/input_headless.cpp)
+else()
+	list(APPEND SOURCES 
+		src/rendering_vulkan.cpp
+		src/audio.cpp
+		src/input.cpp)
+endif()
+
 add_executable(${PROJECT_NAME} WIN32 ${SHARED_SOURCES} ${SOURCES})
-target_include_directories(${PROJECT_NAME} PRIVATE ${SHARED_INCLUDE_DIR} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
-target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2 SDL2::SDL2main)
+target_include_directories(${PROJECT_NAME} PRIVATE ${SHARED_INCLUDE_DIR} ${glm_SOURCE_DIR})
 target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_NPAK_OUTPUT="${ASSETS_NPAK_OUTPUT}" ASSET_ARCHIVE_USE_ARENA)
+
+if(HEADLESS)
+	message(STATUS "Headless mode enabled")
+	target_compile_definitions(${PROJECT_NAME} PRIVATE HEADLESS)
+else()
+	target_include_directories(${PROJECT_NAME} PRIVATE ${Vulkan_INCLUDE_DIRS})
+	target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2 SDL2::SDL2main)
+endif()
 
 if(MSVC)
 	set(COMPILER_FLAGS

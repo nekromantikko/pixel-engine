@@ -1,6 +1,11 @@
 #pragma once
 #include "typedef.h"
+#ifndef HEADLESS
 #include <SDL.h>
+#else
+// Forward declaration for headless mode
+struct SDL_Window;
+#endif
 
 struct RenderSettings {
 	bool useCRTFilter;
