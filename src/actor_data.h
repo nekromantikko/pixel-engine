@@ -116,12 +116,14 @@ enum PlayerType : TActorSubtype {
 };
 
 struct PlayerData {
+	AnimationHandle wingAnimation;
 	SoundHandle jumpSound;
 	SoundHandle damageSound;
 	SoundHandle gunSound; // TEMP!
 };
 
 ACTOR_SUBTYPE_STRUCT_PROPERTIES(PlayerData,
+	ACTOR_SUBTYPE_PROPERTY_ASSET(PlayerData, wingAnimation, ASSET_TYPE_ANIMATION, 1),
 	ACTOR_SUBTYPE_PROPERTY_ASSET(PlayerData, jumpSound, ASSET_TYPE_SOUND, 1),
 	ACTOR_SUBTYPE_PROPERTY_ASSET(PlayerData, damageSound, ASSET_TYPE_SOUND, 1),
 	ACTOR_SUBTYPE_PROPERTY_ASSET(PlayerData, gunSound, ASSET_TYPE_SOUND, 1)

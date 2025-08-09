@@ -1,0 +1,15 @@
+{
+    "frame_length": 6,
+    "frames": [
+        {
+            "metasprite_id": 12814647117031788691
+        },
+        {
+            "metasprite_id": 7460760599771046969
+        },
+        {
+            "metasprite_id": 5315309829704574570
+        }
+    ],
+    "loop_point": -1
+}

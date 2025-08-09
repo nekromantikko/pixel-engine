@@ -162,6 +162,21 @@ const char* AssetManager::GetAssetName(u64 id) {
 	return pAssetInfo->name;
 }
 
+// If ppOutEntries is nullptr, returns the count of assets of that type
+void AssetManager::GetAllAssetInfosByType(AssetType type, size_t& count, const AssetEntry** ppOutEntries) {
+	const AssetIndex& index = g_archive.GetIndex();
+	count = 0;
+	for (size_t i = 0; i < index.Count(); ++i) {
+		const AssetEntry* pEntry = index.Get(index.GetHandle(i));
+		if (pEntry && pEntry->flags.type == type) {
+			if (ppOutEntries) {
+				ppOutEntries[count] = pEntry;
+			}
+			count++;
+		}
+	}
+}
+
 size_t AssetManager::GetAssetCount() {
 	return g_archive.GetAssetCount();
 }

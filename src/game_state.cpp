@@ -1,6 +1,6 @@
 #include "game_state.h"
 #include "game_rendering.h"
-#include "rendering_util.h"
+#include "game.h"
 #include "game_input.h"
 #include "game_ui.h"
 #include "coroutines.h"
@@ -12,13 +12,6 @@
 #include "rendering.h"
 
 // TODO: Use g_ prefix for globals or combine into larger state struct
-
-// TODO: Define in editor in game settings 
-constexpr ActorPrototypeHandle playerPrototypeHandle(18154189127814674930);
-constexpr ActorPrototypeHandle playerOverworldPrototypeHandle(6197846074548071416);
-constexpr ActorPrototypeHandle xpRemnantPrototypeHandle(11197223615879147344);
-
-constexpr OverworldHandle overworldHandle(17959228201269526891);
 
 // Map drawing
 static constexpr glm::ivec2 mapViewportOffset = { 7, 4 };
@@ -157,9 +150,9 @@ static bool SpawnPlayerAtCheckpoint() {
         return false;
     }
 
-    Actor* pPlayer = Game::SpawnActor(playerPrototypeHandle, pCheckpoint->position);
+    Actor* pPlayer = Game::SpawnActor(Game::GetConfig().playerPrototypeHandle, pCheckpoint->position);
     if (pPlayer) {
-        pPlayer->state.playerState.flags.mode = PLAYER_MODE_SITTING;
+        Game::PlayerRespawnAtCheckpoint(pPlayer);
         return true;
     }
 
@@ -183,7 +176,7 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
     r32 x = (screenIndex % ROOM_MAX_DIM_SCREENS) * VIEWPORT_WIDTH_METATILES;
     r32 y = (screenIndex / ROOM_MAX_DIM_SCREENS) * VIEWPORT_HEIGHT_METATILES;
 
-    Actor* pPlayer = Game::SpawnActor(playerPrototypeHandle, glm::vec2(x, y));
+    Actor* pPlayer = Game::SpawnActor(Game::GetConfig().playerPrototypeHandle, glm::vec2(x, y));
     if (pPlayer == nullptr) {
         return false;
     }
@@ -325,15 +318,9 @@ static bool DrawMapIcon(const glm::i8vec2 gridCell, u8 tileId, u8 palette, const
     sprite.palette = palette;
     sprite.x = drawPos.x;
     sprite.y = drawPos.y;
-    Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+    Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
 
     return true;
-}
-
-static void DrawMapTile(Nametable* pNametables, const glm::ivec2& tileMin, const glm::ivec2& tileMax, const glm::ivec2& tilePos, const BgTile& tile) {
-    if (tilePos.x >= tileMin.x && tilePos.x < tileMax.x && tilePos.y >= tileMin.y && tilePos.y < tileMax.y) {
-        Rendering::Util::SetNametableTile(pNametables, tilePos, tile);
-    }
 }
 
 static void DrawMap(const glm::ivec2 scrollOffset) {
@@ -349,8 +336,6 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
     if (!pDungeon) {
         return;
     }
-
-    Nametable* pNametables = Rendering::GetNametablePtr(0);
 
     // Draw map background
     constexpr u16 borderIndexOffset = 0x110;
@@ -378,7 +363,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
             tile.palette = 0x03;
             tile.flipHorizontal = hFlip;
             tile.flipVertical = vFlip;
-            Rendering::Util::SetNametableTile(pNametables, { x, y }, tile);
+            Game::Rendering::DrawBackgroundTile(Game::GetConfig().mapBankHandle, tile, { x, y });
         }
     }
 
@@ -420,7 +405,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
                         .palette = 0x03,
                     };
                     if (xTile >= tileMin.x && xTile < tileMax.x) {
-                        Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tile);
+                        Game::Rendering::DrawBackgroundTile(Game::GetConfig().mapBankHandle, tile, { xTile, yTile });
                     }
                     continue;
                 }
@@ -434,7 +419,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
                         .palette = 0x03,
                     };
                     if (xTile + 1 >= tileMin.x && xTile + 1 < tileMax.x) {
-                        Rendering::Util::SetNametableTile(pNametables, { xTile + 1, yTile }, tile);
+                        Game::Rendering::DrawBackgroundTile(Game::GetConfig().mapBankHandle, tile, { xTile + 1, yTile });
                     }
                     continue;
                 }
@@ -448,11 +433,11 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
                         .palette = 0x03,
                     };
                     if (xTile >= tileMin.x && xTile < tileMax.x) {
-                        Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tile);
+                        Game::Rendering::DrawBackgroundTile(Game::GetConfig().mapBankHandle, tile, { xTile, yTile });
                     }
                     tile.tileId++;
                     if (xTile >= tileMin.x && xTile < tileMax.x) {
-                        Rendering::Util::SetNametableTile(pNametables, { xTile + 1, yTile }, tile);
+                        Game::Rendering::DrawBackgroundTile(Game::GetConfig().mapBankHandle, tile, { xTile + 1, yTile });
                     }
                     continue;
                 }
@@ -466,11 +451,11 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
                         .palette = 0x03,
                     };
                     if (xTile >= tileMin.x && xTile < tileMax.x) {
-                        Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tile);
+                        Game::Rendering::DrawBackgroundTile(Game::GetConfig().mapBankHandle, tile, { xTile, yTile });
                     }
                     tile.tileId++;
                     if (xTile + 1 >= tileMin.x && xTile + 1 < tileMax.x) {
-                        Rendering::Util::SetNametableTile(pNametables, { xTile + 1, yTile }, tile);
+                        Game::Rendering::DrawBackgroundTile(Game::GetConfig().mapBankHandle, tile, { xTile + 1, yTile });
                     }
                     continue;
                 }
@@ -501,7 +486,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
                 if (xTile >= tileMin.x && xTile < tileMax.x) {
                     const u32 roomTileIndex = (roomX * 2 + i) + roomY * ROOM_MAX_DIM_SCREENS * 2;
                     const BgTile& tile = pMapTiles[roomTileIndex];
-                    Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, tile);
+                    Game::Rendering::DrawBackgroundTile(pTemplate->mapChrBankHandle, tile, {xTile, yTile});
                 }
             }
         }
@@ -510,12 +495,12 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
     const Actor* pPlayer = Game::GetPlayer();
     if (pPlayer) {
         const glm::ivec2 playerGridPos = Game::GetDungeonGridCell(pPlayer->position);
-        DrawMapIcon(playerGridPos, 0xfc, 0x01, scrollOffset, worldBounds);
+        DrawMapIcon(playerGridPos, 0xac, 0x01, scrollOffset, worldBounds);
     }
 
     // Draw dropped exp with placeholder graphics
     if (g_gameData.expRemnant.dungeonId == currentDungeonId) {
-        DrawMapIcon(g_gameData.expRemnant.gridOffset, 0x68, 0x00, scrollOffset, worldBounds);
+        DrawMapIcon(g_gameData.expRemnant.gridOffset, 0x08, 0x00, scrollOffset, worldBounds);
     }
 
     if (!Game::IsDialogOpen()) {
@@ -527,7 +512,7 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
     sprite.palette = 0x01;
     
     if (scrollOffset.x > mapScrollMin.x) {
-        sprite.tileId = 0xf8;
+        sprite.tileId = 0xa8;
         glm::i16vec2 drawPos = Game::Rendering::WorldPosToScreenPixels({ worldBounds.x, worldBounds.y });
         drawPos.x += TILE_DIM_PIXELS * 0.5f;
         drawPos.y += mapCenter.y * s32(METATILE_DIM_PIXELS);
@@ -535,14 +520,14 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
         sprite.x = drawPos.x;
         sprite.y = drawPos.y;
         sprite.flipVertical = true;
-        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
 
         sprite.y -= TILE_DIM_PIXELS;
         sprite.flipVertical = false;
-        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
     }
     if (scrollOffset.x < mapScrollMax.x) {
-        sprite.tileId = 0xf8;
+        sprite.tileId = 0xa8;
         glm::i16vec2 drawPos = Game::Rendering::WorldPosToScreenPixels({ worldBounds.x, worldBounds.y });
         drawPos.x += (mapSize.x * s32(METATILE_DIM_PIXELS)) - TILE_DIM_PIXELS * 1.5f;
         drawPos.y += mapCenter.y * s32(METATILE_DIM_PIXELS);
@@ -551,14 +536,14 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
         sprite.y = drawPos.y;
         sprite.flipHorizontal = true;
         sprite.flipVertical = true;
-        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
 
         sprite.y -= TILE_DIM_PIXELS;
         sprite.flipVertical = false;
-        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
     }
     if (scrollOffset.y > mapScrollMin.y) {
-        sprite.tileId = 0xf9;
+        sprite.tileId = 0xa9;
         glm::i16vec2 drawPos = Game::Rendering::WorldPosToScreenPixels({ worldBounds.x, worldBounds.y });
         drawPos.x += mapCenter.x * s32(METATILE_DIM_PIXELS);
         drawPos.y += TILE_DIM_PIXELS * 0.5f;
@@ -566,14 +551,14 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
         sprite.x = drawPos.x;
         sprite.y = drawPos.y;
         sprite.flipHorizontal = true;
-        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
 
         sprite.x -= TILE_DIM_PIXELS;
         sprite.flipHorizontal = false;
-        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
     }
     if (scrollOffset.y < mapScrollMax.y) {
-        sprite.tileId = 0xf9;
+        sprite.tileId = 0xa9;
         glm::i16vec2 drawPos = Game::Rendering::WorldPosToScreenPixels({ worldBounds.x, worldBounds.y });
         drawPos.x += mapCenter.x * s32(METATILE_DIM_PIXELS);
         drawPos.y += (mapSize.y * s32(METATILE_DIM_PIXELS)) - TILE_DIM_PIXELS * 1.5f;
@@ -582,11 +567,11 @@ static void DrawMap(const glm::ivec2 scrollOffset) {
         sprite.y = drawPos.y;
         sprite.flipVertical = true;
         sprite.flipHorizontal = true;
-        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
 
         sprite.x -= TILE_DIM_PIXELS;
         sprite.flipHorizontal = false;
-        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
     }
 }
 
@@ -749,6 +734,7 @@ static bool LevelTransitionCoroutine(void* userData) {
             state->holdTimer--;
             return true;
         }
+        Game::Rendering::FlushBackgroundTiles();
         Game::LoadRoom(state->nextDungeon, state->nextGridCell, state->nextDirection);
         state->status = TRANSITION_FADE_IN;
         freezeGameplay = false;
@@ -943,15 +929,17 @@ static glm::ivec2 GetOverworldDir(const OverworldKeyArea& area, u8 direction) {
 }
 
 const Overworld* Game::GetOverworld() {
-    return AssetManager::GetAsset(overworldHandle);
+    auto overworldHandle = Game::GetConfig().overworldHandle;
+    auto pOverworld = AssetManager::GetAsset(overworldHandle);
+	if (!pOverworld) {
+		DEBUG_ERROR("Failed to load overworld asset with ID: %llu\n", overworldHandle.id);
+		return nullptr;
+	}
+	return pOverworld;
 }
 
 bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
-    const Overworld* pOverworld = AssetManager::GetAsset(overworldHandle);
-    if (!pOverworld) {
-		DEBUG_ERROR("Failed to load overworld asset with ID: %llu\n", overworldHandle.id);
-        return false;
-    }
+    const Overworld* pOverworld = GetOverworld();
 
     g_state = GAME_STATE_OVERWORLD;
 
@@ -965,7 +953,7 @@ bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
         spawnPos += overworldDir;
     }
 
-    Actor* pPlayer = Game::SpawnActor(playerOverworldPrototypeHandle, spawnPos);
+    Actor* pPlayer = Game::SpawnActor(Game::GetConfig().playerOverworldPrototypeHandle, spawnPos);
     if (!pPlayer) {
         return false;
     }
@@ -979,7 +967,7 @@ bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
 
 void Game::EnterOverworldArea(u8 keyAreaIndex, const glm::ivec2& direction) {
     currentOverworldArea = keyAreaIndex;
-    const Overworld* pOverworld = AssetManager::GetAsset(overworldHandle);
+    const Overworld* pOverworld = GetOverworld();
     const OverworldKeyArea& area = pOverworld->keyAreas[keyAreaIndex];
 
     overworldAreaEnterDir = direction;
@@ -1039,7 +1027,7 @@ bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
     if (g_gameData.expRemnant.dungeonId == currentDungeonId && currentDungeonId != DungeonHandle::Null()) {
         const RoomInstance* pRoom = GetDungeonRoom(currentDungeonId, g_gameData.expRemnant.gridOffset);
         if (pRoom->id == pCurrentRoom->id) {
-            Actor* pRemnant = SpawnActor(xpRemnantPrototypeHandle, g_gameData.expRemnant.position);
+            Actor* pRemnant = SpawnActor(Game::GetConfig().xpRemnantPrototypeHandle, g_gameData.expRemnant.position);
             pRemnant->state.pickupState.value = g_gameData.expRemnant.value;
         }
     }
@@ -1095,9 +1083,8 @@ glm::ivec2 Game::GetCurrentPlayAreaSize() {
         return { pTemplate->width * VIEWPORT_WIDTH_METATILES, pTemplate->height * VIEWPORT_HEIGHT_METATILES };
     }
     case GAME_STATE_OVERWORLD: {
-        const Overworld* pOverworld = AssetManager::GetAsset(overworldHandle);
+        const Overworld* pOverworld = GetOverworld();
 		if (!pOverworld) {
-			DEBUG_ERROR("Overworld asset not found: %ull", overworldHandle.id);
 			break;
 		}
         return { pOverworld->tilemap.width, pOverworld->tilemap.height };
@@ -1120,7 +1107,7 @@ const Tilemap* Game::GetCurrentTilemap() {
         return &pTemplate->tilemap;
     }
     case GAME_STATE_OVERWORLD: {
-        const Overworld* pOverworld = AssetManager::GetAsset(overworldHandle);
+        const Overworld* pOverworld = GetOverworld();
         return &pOverworld->tilemap;
     }
     default:

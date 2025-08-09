@@ -1,40 +1,41 @@
 {
+    "chr_bank_id": 17419163809364512109,
     "sprites": [
         {
             "flip_horizontal": false,
             "flip_vertical": false,
             "palette": 0,
             "priority": false,
-            "tile_id": 24,
-            "x": -8,
-            "y": -8
-        },
-        {
-            "flip_horizontal": false,
-            "flip_vertical": false,
-            "palette": 0,
-            "priority": false,
-            "tile_id": 25,
+            "tile_id": 176,
             "x": 0,
-            "y": -8
+            "y": -7
         },
         {
             "flip_horizontal": false,
             "flip_vertical": false,
             "palette": 0,
             "priority": false,
-            "tile_id": 26,
-            "x": -8,
-            "y": 0
+            "tile_id": 177,
+            "x": 8,
+            "y": -7
         },
         {
             "flip_horizontal": false,
             "flip_vertical": false,
             "palette": 0,
             "priority": false,
-            "tile_id": 27,
+            "tile_id": 178,
             "x": 0,
-            "y": 0
+            "y": 1
+        },
+        {
+            "flip_horizontal": false,
+            "flip_vertical": false,
+            "palette": 0,
+            "priority": false,
+            "tile_id": 179,
+            "x": 8,
+            "y": 1
         }
     ]
 }

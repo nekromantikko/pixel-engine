@@ -46,6 +46,8 @@ namespace AssetManager {
 	AssetEntry* GetAssetInfo(u64 id);
 	const char* GetAssetName(u64 id);
 
+	void GetAllAssetInfosByType(AssetType type, size_t& count, const AssetEntry** ppOutEntries);
+
 	size_t GetAssetCount();
 	const AssetIndex& GetIndex();
 }

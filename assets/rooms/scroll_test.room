@@ -1,6 +1,7 @@
 {
     "actors": [],
     "height": 2,
+    "map_chr_bank_id": 12884965207213169338,
     "map_tiles": [
         {
             "flip_horizontal": true,
