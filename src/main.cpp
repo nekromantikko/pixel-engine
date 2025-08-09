@@ -70,7 +70,6 @@ int main(int argc, char** argv) {
 
     Rendering::Init(pWindow);
 
-    Audio::CreateContext();
     Audio::Init();
 
 #ifdef EDITOR
@@ -142,7 +141,6 @@ int main(int argc, char** argv) {
     Rendering::Free();
 
     Audio::Free();
-    Audio::DestroyContext();
 
     SDL_DestroyWindow(pWindow);
     SDL_Quit();
