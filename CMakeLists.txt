@@ -44,6 +44,7 @@ endif()
 set(SOURCES 
 		src/main.cpp
 		src/memory_arena.cpp
+		src/memory_profiler.cpp
 		src/collision.cpp
 		src/game.cpp
 		src/input.cpp
@@ -74,6 +75,20 @@ add_executable(${PROJECT_NAME} WIN32 ${SHARED_SOURCES} ${SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${SHARED_INCLUDE_DIR} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2 SDL2::SDL2main)
 target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_NPAK_OUTPUT="${ASSETS_NPAK_OUTPUT}" ASSET_ARCHIVE_USE_ARENA)
+
+# Memory test executable (simplified version without full game logic)
+set(MEMORY_TEST_SOURCES
+		src/memory_test.cpp
+		src/memory_arena.cpp
+		src/memory_profiler.cpp
+		src/input.cpp
+		src/debug.cpp)
+
+add_executable(memory_test ${MEMORY_TEST_SOURCES})
+target_include_directories(memory_test PRIVATE ${SHARED_INCLUDE_DIR} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
+target_link_libraries(memory_test PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2 SDL2::SDL2main)
+target_compile_definitions(memory_test PRIVATE ASSETS_NPAK_OUTPUT="${ASSETS_NPAK_OUTPUT}")
+target_compile_options(memory_test PRIVATE ${COMPILER_FLAGS})
 
 if(MSVC)
 	set(COMPILER_FLAGS
