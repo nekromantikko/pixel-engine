@@ -8,6 +8,12 @@ set(CMAKE_CXX_EXTENSIONS ON)
 
 option(ENABLE_EDITOR "Enable editor functionality" ON)
 option(BUILD_ASSETS "Build asset archive" ON)
+option(ENABLE_VULKAN_VALIDATION "Enable Vulkan validation layers (impacts memory usage)" OFF)
+
+# Memory arena size options (in MB)
+set(PERMANENT_ARENA_SIZE_MB "4" CACHE STRING "Permanent arena size in MB (default: 4, original: 8)")
+set(ASSET_ARENA_SIZE_MB "2" CACHE STRING "Asset arena size in MB (default: 2, original: 4)")  
+set(SCRATCH_ARENA_SIZE_MB "2" CACHE STRING "Scratch arena size in MB (default: 2, original: 4)")
 
 set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set(ASSETS_NPAK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
@@ -75,6 +81,19 @@ add_executable(${PROJECT_NAME} WIN32 ${SHARED_SOURCES} ${SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${SHARED_INCLUDE_DIR} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2 SDL2::SDL2main)
 target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_NPAK_OUTPUT="${ASSETS_NPAK_OUTPUT}" ASSET_ARCHIVE_USE_ARENA)
+target_compile_definitions(${PROJECT_NAME} PRIVATE 
+    PERMANENT_ARENA_SIZE_MB=${PERMANENT_ARENA_SIZE_MB}
+    ASSET_ARENA_SIZE_MB=${ASSET_ARENA_SIZE_MB}
+    SCRATCH_ARENA_SIZE_MB=${SCRATCH_ARENA_SIZE_MB})
+
+if(ENABLE_VULKAN_VALIDATION)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE ENABLE_VULKAN_VALIDATION)
+	message(STATUS "Vulkan validation layers enabled - expect higher memory usage")
+else()
+	message(STATUS "Vulkan validation layers disabled for reduced memory usage")
+endif()
+
+message(STATUS "Arena sizes - Permanent: ${PERMANENT_ARENA_SIZE_MB}MB, Asset: ${ASSET_ARENA_SIZE_MB}MB, Scratch: ${SCRATCH_ARENA_SIZE_MB}MB")
 
 # Memory test executable (simplified version without full game logic)
 set(MEMORY_TEST_SOURCES
@@ -89,6 +108,14 @@ target_include_directories(memory_test PRIVATE ${SHARED_INCLUDE_DIR} ${Vulkan_IN
 target_link_libraries(memory_test PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2 SDL2::SDL2main)
 target_compile_definitions(memory_test PRIVATE ASSETS_NPAK_OUTPUT="${ASSETS_NPAK_OUTPUT}")
 target_compile_options(memory_test PRIVATE ${COMPILER_FLAGS})
+target_compile_definitions(memory_test PRIVATE 
+    PERMANENT_ARENA_SIZE_MB=${PERMANENT_ARENA_SIZE_MB}
+    ASSET_ARENA_SIZE_MB=${ASSET_ARENA_SIZE_MB}
+    SCRATCH_ARENA_SIZE_MB=${SCRATCH_ARENA_SIZE_MB})
+
+if(ENABLE_VULKAN_VALIDATION)
+	target_compile_definitions(memory_test PRIVATE ENABLE_VULKAN_VALIDATION)
+endif()
 
 if(MSVC)
 	set(COMPILER_FLAGS

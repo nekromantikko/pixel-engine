@@ -4,9 +4,23 @@
 #include <cstring>
 #include <cassert>
 
-static constexpr size_t PERMANENT_ARENA_SIZE = 8 * 1024 * 1024; // 8 MB
-static constexpr size_t ASSET_ARENA_SIZE = 4 * 1024 * 1024; // 4 MB
-static constexpr size_t SCRATCH_ARENA_SIZE = 4 * 1024 * 1024; // 4 MB
+// Memory arena sizes - can be adjusted based on game needs
+// For a pixel art game, these can often be smaller
+#ifndef PERMANENT_ARENA_SIZE_MB
+#define PERMANENT_ARENA_SIZE_MB 4  // Reduced from 8MB
+#endif
+
+#ifndef ASSET_ARENA_SIZE_MB  
+#define ASSET_ARENA_SIZE_MB 2      // Reduced from 4MB
+#endif
+
+#ifndef SCRATCH_ARENA_SIZE_MB
+#define SCRATCH_ARENA_SIZE_MB 2    // Reduced from 4MB
+#endif
+
+static constexpr size_t PERMANENT_ARENA_SIZE = PERMANENT_ARENA_SIZE_MB * 1024 * 1024;
+static constexpr size_t ASSET_ARENA_SIZE = ASSET_ARENA_SIZE_MB * 1024 * 1024; 
+static constexpr size_t SCRATCH_ARENA_SIZE = SCRATCH_ARENA_SIZE_MB * 1024 * 1024;
 
 static Arena g_arenas[ARENA_COUNT];
 static bool g_initialized = false;

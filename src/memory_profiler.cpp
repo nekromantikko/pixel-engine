@@ -6,6 +6,19 @@
 #include <cstring>
 #include <unistd.h>
 
+// Use the same arena size macros as memory_arena.cpp
+#ifndef PERMANENT_ARENA_SIZE_MB
+#define PERMANENT_ARENA_SIZE_MB 4
+#endif
+
+#ifndef ASSET_ARENA_SIZE_MB  
+#define ASSET_ARENA_SIZE_MB 2
+#endif
+
+#ifndef SCRATCH_ARENA_SIZE_MB
+#define SCRATCH_ARENA_SIZE_MB 2
+#endif
+
 static MemoryUsage s_initial_usage = {0, 0, 0};
 static MemoryUsage s_previous_usage = {0, 0, 0};
 static bool s_initialized = false;
@@ -65,17 +78,16 @@ void MemoryProfiler::GetArenaUsage(size_t& total_allocated, size_t& total_used) 
     for (int i = 0; i < ARENA_COUNT; i++) {
         Arena* arena = ArenaAllocator::GetArena(static_cast<ArenaType>(i));
         if (arena) {
-            // For capacity we need to access the internal size
-            // Since we can't access private members, we'll estimate based on constants
+            // Use the actual arena size constants from memory_arena.cpp
             switch (i) {
                 case ARENA_PERMANENT:
-                    total_allocated += 8 * 1024 * 1024; // 8MB
+                    total_allocated += PERMANENT_ARENA_SIZE_MB * 1024 * 1024;
                     break;
                 case ARENA_ASSETS:
-                    total_allocated += 4 * 1024 * 1024; // 4MB
+                    total_allocated += ASSET_ARENA_SIZE_MB * 1024 * 1024;
                     break;
                 case ARENA_SCRATCH:
-                    total_allocated += 4 * 1024 * 1024; // 4MB
+                    total_allocated += SCRATCH_ARENA_SIZE_MB * 1024 * 1024;
                     break;
             }
             total_used += arena->Size();
