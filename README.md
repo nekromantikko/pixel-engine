@@ -23,7 +23,16 @@ For the final image, I apply a CRT shader originally by Timothy Lottes (https://
 ## Build Commands
 - Use cmake to configure and build
 - Use ENABLE_EDITOR option to disable/enable editor
+- Use HEADLESS option to enable headless mode (no graphics or audio)
 - Example: `cmake -DENABLE_EDITOR=ON ..` then `make`
+- Example headless: `cmake -DHEADLESS=ON ..` then `make`
+
+## Headless Mode
+The engine supports headless mode for remote testing and CI environments:
+- Compile with `-DHEADLESS=ON` to build without graphics or audio dependencies
+- Game logic runs normally but no window, rendering, or audio output occurs
+- Useful for automated testing, server-side simulations, or CI systems
+- Test with: `./tests/test_headless.sh`
 
 # Videos:
 

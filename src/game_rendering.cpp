@@ -5,6 +5,7 @@
 #include "rendering_util.h"
 #include "game.h"
 #include "asset_manager.h"
+#include <cstring>
 
 static constexpr s32 BUFFER_DIM_METATILES = 2;
 static constexpr u32 LAYER_SPRITE_COUNT = MAX_SPRITE_COUNT / SPRITE_LAYER_COUNT;

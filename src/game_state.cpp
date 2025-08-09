@@ -10,6 +10,7 @@
 #include "debug.h"
 #include "actors.h"
 #include "rendering.h"
+#include <cstring>
 
 // TODO: Use g_ prefix for globals or combine into larger state struct
 
