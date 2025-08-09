@@ -37,19 +37,19 @@ int main(int argc, char** argv) {
     
     // Let's also test allocating some memory in the arenas
     printf("Testing arena allocations...\n");
-    void* test_alloc1 = ArenaAllocator::Push(ARENA_PERMANENT, 1024 * 1024); // 1MB
-    MemoryProfiler::LogMemoryPoint("AFTER_1MB_ARENA_ALLOC");
+    void* test_alloc1 = ArenaAllocator::Push(ARENA_PERMANENT, 512 * 1024); // 512KB
+    MemoryProfiler::LogMemoryPoint("AFTER_512KB_ARENA_ALLOC");
     
-    void* test_alloc2 = ArenaAllocator::Push(ARENA_SCRATCH, 2 * 1024 * 1024); // 2MB
-    MemoryProfiler::LogMemoryPoint("AFTER_2MB_ARENA_ALLOC");
+    void* test_alloc2 = ArenaAllocator::Push(ARENA_SCRATCH, 512 * 1024); // 512KB  
+    MemoryProfiler::LogMemoryPoint("AFTER_1MB_TOTAL_ARENA_ALLOC");
     
     // Test some regular heap allocations to compare
     printf("Testing heap allocations...\n");
-    void* heap_alloc1 = malloc(10 * 1024 * 1024); // 10MB
-    MemoryProfiler::LogMemoryPoint("AFTER_10MB_HEAP_ALLOC");
+    void* heap_alloc1 = malloc(5 * 1024 * 1024); // 5MB
+    MemoryProfiler::LogMemoryPoint("AFTER_5MB_HEAP_ALLOC");
     
-    void* heap_alloc2 = malloc(50 * 1024 * 1024); // 50MB
-    MemoryProfiler::LogMemoryPoint("AFTER_50MB_HEAP_ALLOC");
+    void* heap_alloc2 = malloc(10 * 1024 * 1024); // 10MB
+    MemoryProfiler::LogMemoryPoint("AFTER_10MB_HEAP_ALLOC");
     
     printf("Sleeping 2 more seconds...\n");
     SDL_Delay(2000);
