@@ -1,6 +1,6 @@
 #include "dialog.h"
-#include "rendering_util.h"
 #include "tilemap.h"
+#include "game.h"
 #include "game_state.h"
 #include "game_rendering.h"
 #include "game_input.h"
@@ -27,36 +27,19 @@ static u8 GetBoxTileId(u32 x, u32 y, u32 w, u32 h) {
     return xEdge | yEdge;
 }
 
-static void CopyLevelTileToNametable(Nametable* pNametables, const Tilemap* pTilemap, const glm::ivec2& worldPos) {
-    const u32 nametableIndex = Rendering::Util::GetNametableIndexFromMetatilePos(worldPos);
-    const glm::ivec2 nametableOffset = Rendering::Util::GetNametableOffsetFromMetatilePos(worldPos);
-
-    const Tileset* pTileset = AssetManager::GetAsset(pTilemap->tilesetHandle);
-
-    const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, worldPos);
-    const TilesetTile& tile = pTileset->tiles[tilesetIndex];
-
-    const Metatile& metatile = tile.metatile;
-    Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile);
-}
-
-static void CopyBoxTileToNametable(Nametable* pNametables, const glm::ivec2& worldPos, const glm::ivec2& tileOffset, const glm::ivec2& sizeTiles, u8 palette) {
-    const u32 nametableIndex = Rendering::Util::GetNametableIndexFromMetatilePos(worldPos);
-    const glm::ivec2 nametableOffset = Rendering::Util::GetNametableOffsetFromMetatilePos(worldPos);
-
-    constexpr u16 borderTileOffset = 256;
+static void CopyBoxTileToNametable(const glm::ivec2& worldPos, const glm::ivec2& tileOffset, const glm::ivec2& sizeTiles, u8 palette) {
     // Construct a metatile
     Metatile metatile{};
     for (u32 y = 0; y < METATILE_DIM_TILES; y++) {
         for (u32 x = 0; x < METATILE_DIM_TILES; x++) {
             metatile.tiles[x + y * METATILE_DIM_TILES] = {
-                .tileId = u16(borderTileOffset + GetBoxTileId(tileOffset.x + x, tileOffset.y + y, sizeTiles.x, sizeTiles.y)),
+                .tileId = u16(GetBoxTileId(tileOffset.x + x, tileOffset.y + y, sizeTiles.x, sizeTiles.y)),
                 .palette = palette
             };
         }
     }
 
-    Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile);
+	Game::Rendering::DrawBackgroundMetatile(Game::GetConfig().uiBankHandle, metatile, worldPos);
 }
 
 static void DrawBgBoxAnimated() {
@@ -65,7 +48,6 @@ static void DrawBgBoxAnimated() {
     const glm::ivec2 worldPos = g_viewportOffset + glm::ivec2(viewportPos);
     const glm::ivec2 sizeTiles(g_currentSize.x << 1, g_currentSize.y << 1);
 
-    Nametable* pNametables = Rendering::GetNametablePtr(0);
     const Tilemap* pTilemap = Game::GetCurrentTilemap();
 
     for (u32 y = 0; y < g_targetSize.y; y++) {
@@ -75,10 +57,10 @@ static void DrawBgBoxAnimated() {
 
             if (x < g_currentSize.x && y < g_currentSize.y) {
                 const glm::ivec2 tileOffset(x << 1, y << 1);
-                CopyBoxTileToNametable(pNametables, worldPos + offset, tileOffset, sizeTiles, 0x3);
+                CopyBoxTileToNametable(worldPos + offset, tileOffset, sizeTiles, 0x3);
             }
             else {
-                CopyLevelTileToNametable(pNametables, pTilemap, worldPos + offset);
+                Game::Rendering::CopyLevelTileToNametable(pTilemap, worldPos + offset);
             }
         }
     }
@@ -124,7 +106,7 @@ static void DrawBgText(const glm::ivec2& boxViewportOffset, const glm::ivec2& bo
             }
         }
 
-        Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, { .tileId = u16(c) });
+        Game::Rendering::DrawBackgroundTile(Game::GetConfig().uiBankHandle, { .tileId = u16(c) }, { xTile, yTile });
         xTile++;
     }
 }
@@ -146,7 +128,7 @@ static void ClearBgText(const glm::ivec2& boxViewportOffset, const glm::ivec2& b
         for (u32 x = 0; x < innerSizeTiles.x; x++) {
             u32 xTile = xTileStart + x;
 
-            Rendering::Util::SetNametableTile(pNametables, { xTile, yTile }, { .tileId = 0 });
+            Game::Rendering::ClearBackgroundTile({ xTile, yTile });
         }
     }
 }

@@ -1,4 +1,5 @@
 #include "actors.h"
+#include "game.h"
 #include "game_rendering.h"
 #include "audio.h"
 #include <cstdio>
@@ -40,11 +41,11 @@ static bool DrawDmgNumbers(const Actor* pActor, const ActorPrototype* pPrototype
     bool result = true;
     for (u8 i = 0; i < strLength; i++) {
         Sprite sprite{};
-        sprite.tileId = 0xe0 + numberStr[i] - chrOffset;
+        sprite.tileId = 0x90 + numberStr[i] - chrOffset;
         sprite.palette = palette;
         sprite.x = xStart + i * chrWidth;
         sprite.y = pixelPos.y;
-        result &= Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+        result &= Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
     }
 
 	if (damage.flags.crit) {
@@ -52,11 +53,11 @@ static bool DrawDmgNumbers(const Actor* pActor, const ActorPrototype* pPrototype
 		const s16 yCrit = pixelPos.y - TILE_DIM_PIXELS;
 		for (u32 i = 0; i < 4; i++) {
 			Sprite sprite{};
-			sprite.tileId = 0xf0 + i;
+			sprite.tileId = 0xa0 + i;
 			sprite.palette = palette;
 			sprite.x = xCrit + i * chrWidth;
 			sprite.y = yCrit;
-			result &= Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+			result &= Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
 		}
 	}
 

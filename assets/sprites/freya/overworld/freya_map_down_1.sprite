@@ -1,11 +1,12 @@
 {
+    "chr_bank_id": 17419163809364512109,
     "sprites": [
         {
             "flip_horizontal": true,
             "flip_vertical": false,
             "palette": 1,
             "priority": false,
-            "tile_id": 161,
+            "tile_id": 193,
             "x": 0,
             "y": 0
         },
@@ -14,7 +15,7 @@
             "flip_vertical": false,
             "palette": 1,
             "priority": false,
-            "tile_id": 160,
+            "tile_id": 192,
             "x": 8,
             "y": 0
         },
@@ -23,7 +24,7 @@
             "flip_vertical": false,
             "palette": 1,
             "priority": false,
-            "tile_id": 163,
+            "tile_id": 195,
             "x": 0,
             "y": 8
         },
@@ -32,7 +33,7 @@
             "flip_vertical": false,
             "palette": 1,
             "priority": false,
-            "tile_id": 162,
+            "tile_id": 194,
             "x": 8,
             "y": 8
         }

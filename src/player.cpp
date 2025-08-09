@@ -7,18 +7,15 @@
 #include "asset_manager.h"
 #include "tilemap.h"
 
-enum PlayerHeadFrame : u8 {
-    PLAYER_HEAD_IDLE,
-    PLAYER_HEAD_FWD,
-    PLAYER_HEAD_FALL,
-    PLAYER_HEAD_DMG
-};
-
-enum PlayerLegsFrame : u8 {
-    PLAYER_LEGS_IDLE,
-    PLAYER_LEGS_FWD,
-    PLAYER_LEGS_JUMP,
-    PLAYER_LEGS_FALL
+enum PlayerAnimation : u8 {
+    PLAYER_ANIM_IDLE = 0,
+    PLAYER_ANIM_FLY,
+    PLAYER_ANIM_JUMP,
+    PLAYER_ANIM_FALL,
+    PLAYER_ANIM_DAMAGED,
+    PLAYER_ANIM_SIT_DOWN,
+	PLAYER_ANIM_STAND_UP,
+    PLAYER_ANIM_DEATH
 };
 
 enum PlayerWingsFrame : u8 {
@@ -56,49 +53,19 @@ constexpr r32 dodgeSpeed = maxSpeed * 2;
 constexpr u16 dodgeDuration = 16;
 constexpr u16 dodgeStaminaCost = 16;
 
-constexpr u16 standAnimIndex = 0;
-constexpr u16 sitAnimIndex = 1;
-constexpr u16 deathAnimIndex = 2;
-
 // TODO: These should be set in editor somehow
 constexpr ChrBankHandle playerBankId(17419163809364512109);
 constexpr ActorPrototypeHandle playerGrenadePrototypeId(5433896513301451046);
 constexpr ActorPrototypeHandle playerArrowPrototypeId(13929813062463858187);
 constexpr ActorPrototypeHandle featherPrototypeId(4150894991750855816);
 
-// TODO: Would it be possible to define these in the editor?
-constexpr u8 playerWingFrameBankOffsets[4] = { 0x00, 0x08, 0x10, 0x18 };
-constexpr u8 playerHeadFrameBankOffsets[12] = { 0x20, 0x24, 0x28, 0x2C, 0x30, 0x34, 0x38, 0x3C, 0x40, 0x44, 0x48, 0x4C };
-constexpr u8 playerLegsFrameBankOffsets[4] = { 0x50, 0x54, 0x58, 0x5C };
-constexpr u8 playerSitBankOffsets[2] = { 0x60, 0x68 };
-constexpr u8 playerDeadBankOffsets[2] = { 0x70, 0x78 };
-constexpr u8 playerBowFrameBankOffsets[3] = { 0x80, 0x88, 0x90 };
-constexpr u8 playerLauncherFrameBankOffsets[3] = { 0xA0, 0xA8, 0xB0 };
-
-constexpr u8 playerWingFrameChrOffset = 0x00;
-constexpr u8 playerHeadFrameChrOffset = 0x08;
-constexpr u8 playerLegsFrameChrOffset = 0x0C;
-constexpr u8 playerWeaponFrameChrOffset = 0x18;
-
-constexpr u8 playerWingFrameTileCount = 8;
-constexpr u8 playerHeadFrameTileCount = 4;
-constexpr u8 playerLegsFrameTileCount = 4;
-constexpr u8 playerHandFrameTileCount = 2;
-constexpr u8 playerWeaponFrameTileCount = 8;
-
-constexpr glm::ivec2 playerBowOffsets[3] = { { 10, -4 }, { 9, -14 }, { 10, 4 } };
-constexpr MetaspriteHandle playerBowFwdMetaspriteId(14903895514375038294);
-constexpr MetaspriteHandle playerBowDiagMetaspriteId(13305472537268631013);
-
-constexpr glm::ivec2 playerLauncherOffsets[3] = { { 5, -5 }, { 7, -12 }, { 8, 1 } };
-constexpr MetaspriteHandle playerLauncherFwdMetaspriteId(11359313821138079876);
-constexpr MetaspriteHandle playerLauncherDiagMetaspriteId(10921545440614489200);
+constexpr AnimationHandle playerBowAnimationId(18043323496187879979);
+constexpr AnimationHandle playerLauncherAnimationId(2436774277981009799);
 
 static void AnimateWings(Actor* pPlayer, u16 frameLength) {
     pPlayer->state.playerState.wingCounter = glm::clamp(pPlayer->state.playerState.wingCounter, u16(0), frameLength);
 
     Game::AdvanceAnimation(pPlayer->state.playerState.wingCounter, pPlayer->state.playerState.wingFrame, PLAYER_WING_FRAME_COUNT, frameLength, 0);
-    Game::Rendering::CopyBankTiles(playerBankId, playerWingFrameBankOffsets[pPlayer->state.playerState.wingFrame], 4, playerWingFrameChrOffset, playerWingFrameTileCount);
 }
 
 static void AnimateWingsToTargetPosition(Actor* pPlayer, u8 targetFrame, u16 frameLength) {
@@ -110,41 +77,36 @@ static void AnimateWingsToTargetPosition(Actor* pPlayer, u8 targetFrame, u16 fra
 static void SetWingFrame(Actor* pPlayer, u16 frame, u16 frameLength) {
     pPlayer->state.playerState.wingCounter = frameLength;
     pPlayer->state.playerState.wingFrame = frame;
-    Game::Rendering::CopyBankTiles(playerBankId, playerWingFrameBankOffsets[pPlayer->state.playerState.wingFrame], 4, playerWingFrameChrOffset, playerWingFrameTileCount);
 }
 
-static void AnimateSitting(Actor* pPlayer, u16 frameIdx) {
-    Game::Rendering::CopyBankTiles(playerBankId, playerSitBankOffsets[frameIdx], 4, playerHeadFrameChrOffset, 8);
+static bool DrawWings(const Actor* pPlayer, const ActorPrototype* pPrototype, s16 vOffset = 0) {
+	Animation* pWingAnim = pPrototype->data.playerData.wingAnimation == AnimationHandle::Null() ? nullptr : AssetManager::GetAsset(pPrototype->data.playerData.wingAnimation);
+    if (!pWingAnim) {
+        return false;
+    }
 
-    // TODO: Custom wing graphics for sitting?
-    AnimateWingsToTargetPosition(pPlayer, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
-
-    pPlayer->drawState.animIndex = sitAnimIndex;
-    pPlayer->drawState.frameIndex = 0;
-    pPlayer->drawState.pixelOffset = { 0, 0 };
-    pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
-    pPlayer->drawState.useCustomPalette = false;
+    const u8 wingFrame = pPlayer->state.playerState.wingFrame;
+    MetaspriteHandle metaspriteHandle = pWingAnim->GetFrames()[wingFrame].metaspriteId;
+    glm::i16vec2 drawPos = Game::Rendering::WorldPosToScreenPixels(pPlayer->position) + pPlayer->drawState.pixelOffset;
+	drawPos.y += vOffset;
+	s32 paletteOverride = pPlayer->drawState.useCustomPalette ? pPlayer->drawState.palette : -1;
+    return Game::Rendering::DrawMetasprite(SPRITE_LAYER_FG, metaspriteHandle, drawPos, pPlayer->drawState.hFlip, pPlayer->drawState.vFlip, paletteOverride);
 }
 
 static void AnimateDeath(Actor* pPlayer) {
     u8 frameIdx = !pPlayer->flags.inAir;
 
-    Game::Rendering::CopyBankTiles(playerBankId, playerDeadBankOffsets[frameIdx], 4, playerHeadFrameChrOffset, 8);
-
-    pPlayer->drawState.animIndex = deathAnimIndex;
+    pPlayer->drawState.animIndex = PLAYER_ANIM_DEATH;
     pPlayer->drawState.frameIndex = frameIdx;
     pPlayer->drawState.pixelOffset = { 0, 0 };
     pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
     pPlayer->drawState.useCustomPalette = false;
 }
 
-static void AnimateStanding(Actor* pPlayer, u8 headFrameIndex, u8 legsFrameIndex, s16 vOffset) {
+static void AnimateStanding(Actor* pPlayer, u8 animIndex, s16 vOffset) {
     const u16 aimFrameIndex = pPlayer->state.playerState.flags.aimMode;
 
-    Game::Rendering::CopyBankTiles(playerBankId, playerHeadFrameBankOffsets[aimFrameIndex * playerHeadFrameTileCount + headFrameIndex], 4, playerHeadFrameChrOffset, playerHeadFrameTileCount);
-    Game::Rendering::CopyBankTiles(playerBankId, playerLegsFrameBankOffsets[legsFrameIndex], 4, playerLegsFrameChrOffset, playerLegsFrameTileCount);
-
-    pPlayer->drawState.animIndex = 0;
+    pPlayer->drawState.animIndex = animIndex;
     pPlayer->drawState.frameIndex = aimFrameIndex;
     pPlayer->drawState.pixelOffset = { 0, vOffset };
     pPlayer->drawState.hFlip = pPlayer->flags.facingDir == ACTOR_FACING_LEFT;
@@ -166,28 +128,20 @@ static void AnimatePlayer(Actor* pPlayer) {
         AnimateWings(pPlayer, wingFrameLength);
     }
 
-    u8 headFrameIndex = PLAYER_HEAD_IDLE;
-    if (falling) {
-        headFrameIndex = PLAYER_HEAD_FALL;
-    }
-    else if (moving) {
-        headFrameIndex = PLAYER_HEAD_FWD;
-    }
-
-    u8 legsFrameIndex = PLAYER_LEGS_IDLE;
+	u8 animIndex = PLAYER_ANIM_IDLE;
     if (descending) {
-        legsFrameIndex = PLAYER_LEGS_FALL;
+		animIndex = PLAYER_ANIM_FALL;
     }
     else if (jumping) {
-        legsFrameIndex = PLAYER_LEGS_JUMP;
+		animIndex = PLAYER_ANIM_JUMP;
     }
     else if (moving) {
-        legsFrameIndex = PLAYER_LEGS_FWD;
+		animIndex = PLAYER_ANIM_FLY;
     }
 
     // If grounded, bob up and down based on wing frame
     const s16 vOffset = (pPlayer->flags.inAir || pPlayer->state.playerState.wingFrame <= PLAYER_WINGS_FLAP_START) ? 0 : -1;
-    AnimateStanding(pPlayer, headFrameIndex, legsFrameIndex, vOffset);
+    AnimateStanding(pPlayer, animIndex, vOffset);
 }
 
 
@@ -239,7 +193,6 @@ static void HandleScreenDiscovery(const Actor* pPlayer) {
 }
 
 static void PlayerDie(Actor* pPlayer) {
-
     Game::SetExpRemnant(pPlayer->position, Game::GetPlayerExp());
     Game::SetPlayerExp(0);
 
@@ -275,12 +228,20 @@ static void PlayerMortalHit(Actor* pPlayer) {
 static void PlayerSitDown(Actor* pPlayer) {
     pPlayer->state.playerState.flags.mode = PLAYER_MODE_STAND_TO_SIT;
     pPlayer->state.playerState.modeTransitionCounter = sitDelay;
+
+    pPlayer->drawState.animIndex = PLAYER_ANIM_SIT_DOWN;
+    pPlayer->drawState.frameIndex = 0;
+    pPlayer->drawState.pixelOffset = { 0, 0 };
+
     pPlayer->velocity.x = 0.0f;
 }
 
 static void PlayerStandUp(Actor* pPlayer) {
     pPlayer->state.playerState.flags.mode = PLAYER_MODE_SIT_TO_STAND;
     pPlayer->state.playerState.modeTransitionCounter = sitDelay;
+
+    pPlayer->drawState.animIndex = PLAYER_ANIM_STAND_UP;
+    pPlayer->drawState.frameIndex = 0;
 }
 
 static void TriggerInteraction(Actor* pPlayer, Actor* pInteractable) {
@@ -426,6 +387,7 @@ static void PlayerInput(Actor* pPlayer, const PlayerData& data) {
     // Dodge
     if (PlayerDodge(pPlayer)) {
         pPlayer->state.playerState.flags.mode = PLAYER_MODE_DODGE;
+		pPlayer->drawState.animIndex = PLAYER_ANIM_FLY;
         return;
     }
 
@@ -525,15 +487,17 @@ static void UpdateSidescrollerMode(Actor* pActor, const PlayerData& data) {
             PlayerDecelerate(pActor);
         }
 
-        AnimatePlayer(pActor);
+		// Need to check if mode didn't change in PlayerInput (This is a bit stupid)
+        if (state.flags.mode == PLAYER_MODE_NORMAL) {
+            AnimatePlayer(pActor);
+        }
 
         break;
     }
     case PLAYER_MODE_STAND_TO_SIT: {
-        const r32 animProgress = r32(state.modeTransitionCounter) / sitDelay;
-        const u8 frameIdx = glm::mix(0, 1, animProgress);
-
-        AnimateSitting(pActor, frameIdx);
+        AnimateWingsToTargetPosition(pActor, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
+        ActorPrototype* pPrototype = AssetManager::GetAsset(pActor->prototypeHandle);
+        Game::AdvanceCurrentAnimation(pActor, pPrototype);
         break;
     }
     case PLAYER_MODE_SITTING: {
@@ -541,18 +505,20 @@ static void UpdateSidescrollerMode(Actor* pActor, const PlayerData& data) {
             PlayerStandUp(pActor);
         }
 
-        AnimateSitting(pActor, 1);
+        AnimateWingsToTargetPosition(pActor, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
+        ActorPrototype* pPrototype = AssetManager::GetAsset(pActor->prototypeHandle);
+        Game::AdvanceCurrentAnimation(pActor, pPrototype);
         break;
     }
     case PLAYER_MODE_SIT_TO_STAND: {
-        const r32 animProgress = r32(state.modeTransitionCounter) / sitDelay;
-        const u8 frameIdx = glm::mix(1, 0, animProgress);
-        AnimateSitting(pActor, frameIdx);
+        AnimateWingsToTargetPosition(pActor, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
+        ActorPrototype* pPrototype = AssetManager::GetAsset(pActor->prototypeHandle);
+        Game::AdvanceCurrentAnimation(pActor, pPrototype);
         break;
     }
     case PLAYER_MODE_DAMAGED: {
         PlayerDecelerate(pActor);
-        AnimateStanding(pActor, PLAYER_HEAD_DMG, PLAYER_LEGS_FALL, 0);
+        AnimateStanding(pActor, PLAYER_ANIM_DAMAGED, 0);
         Game::SetDamagePaletteOverride(pActor, state.modeTransitionCounter);
         break;
     }
@@ -710,40 +676,60 @@ static bool DrawPlayerGun(const Actor* pPlayer) {
     const ActorDrawState& drawState = pPlayer->drawState;
     glm::i16vec2 drawPos = Game::Rendering::WorldPosToScreenPixels(pPlayer->position) + drawState.pixelOffset;
 
-    // Draw weapon first
-    glm::i16vec2 weaponOffset{};
-    u8 weaponFrameBankOffset;
-    MetaspriteHandle weaponMetaspriteId;
+    AnimationHandle weaponAnimId = AnimationHandle::Null();
     const u16 playerWeapon = Game::GetPlayerWeapon();
     switch (playerWeapon) {
     case PLAYER_WEAPON_BOW: {
-        weaponOffset = playerBowOffsets[pPlayer->state.playerState.flags.aimMode];
-        weaponFrameBankOffset = playerBowFrameBankOffsets[pPlayer->state.playerState.flags.aimMode];
-        weaponMetaspriteId = pPlayer->state.playerState.flags.aimMode == PLAYER_AIM_FWD ? playerBowFwdMetaspriteId : playerBowDiagMetaspriteId;
+		weaponAnimId = playerBowAnimationId;
         break;
     }
     case PLAYER_WEAPON_LAUNCHER: {
-        weaponOffset = playerLauncherOffsets[pPlayer->state.playerState.flags.aimMode];
-        weaponFrameBankOffset = playerLauncherFrameBankOffsets[pPlayer->state.playerState.flags.aimMode];
-        weaponMetaspriteId = pPlayer->state.playerState.flags.aimMode == PLAYER_AIM_FWD ? playerLauncherFwdMetaspriteId : playerLauncherDiagMetaspriteId;
+		weaponAnimId = playerLauncherAnimationId;
         break;
     }
     default:
         return false;
     }
-    weaponOffset.x *= pPlayer->flags.facingDir;
+    
+    Animation* pAnim = AssetManager::GetAsset(weaponAnimId);
+	if (!pAnim) {
+		return false;
+	}
+	MetaspriteHandle weaponMetaspriteId = pAnim->GetFrames()[pPlayer->state.playerState.flags.aimMode].metaspriteId;
+    return Game::Rendering::DrawMetasprite(SPRITE_LAYER_FG, weaponMetaspriteId, drawPos, drawState.hFlip, drawState.vFlip, -1);
+}
 
-    Game::Rendering::CopyBankTiles(playerBankId, weaponFrameBankOffset, 4, playerWeaponFrameChrOffset, playerWeaponFrameTileCount);
-    return Game::Rendering::DrawMetasprite(SPRITE_LAYER_FG, weaponMetaspriteId, drawPos + weaponOffset, drawState.hFlip, drawState.vFlip, -1);
+static s16 GetWingsVerticalOffset(const Actor* pPlayer, const ActorPrototype* pPrototype) {
+    s16 vOffset = 0;
+    if (pPlayer->state.playerState.flags.mode == PLAYER_MODE_SITTING ||
+        pPlayer->state.playerState.flags.mode == PLAYER_MODE_STAND_TO_SIT ||
+        pPlayer->state.playerState.flags.mode == PLAYER_MODE_SIT_TO_STAND) {
+		AnimationHandle animHandle = pPrototype->GetAnimations()[pPlayer->drawState.animIndex];
+        const Animation* pAnim = AssetManager::GetAsset(animHandle);
+        if (pAnim) {
+			r32 animProgress = pPlayer->drawState.frameIndex / (r32)pAnim->frameCount;
+            if (pPlayer->state.playerState.flags.mode == PLAYER_MODE_SIT_TO_STAND) {
+                animProgress = 1.0f - animProgress;
+            }
+			vOffset = glm::roundEven(animProgress * 16.0f); // Sit down offset
+        }
+    }
+    return vOffset;
 }
 
 static bool DrawPlayerSidescroller(const Actor* pPlayer, const ActorPrototype* pPrototype) {
+    bool result = true;
     if (pPlayer->state.playerState.flags.mode == PLAYER_MODE_NORMAL || 
         pPlayer->state.playerState.flags.mode == PLAYER_MODE_DAMAGED ||
         pPlayer->state.playerState.flags.mode == PLAYER_MODE_ENTERING) {
-        DrawPlayerGun(pPlayer);
+        result &= DrawPlayerGun(pPlayer);
     }
-    return Game::DrawActorDefault(pPlayer, pPrototype);
+    result &= Game::DrawActorDefault(pPlayer, pPrototype);
+    if (pPlayer->state.playerState.flags.mode != PLAYER_MODE_DYING) {
+        s16 vOffset = GetWingsVerticalOffset(pPlayer, pPrototype);
+        result &= DrawWings(pPlayer, pPrototype, vOffset);
+    }
+    return result;
 }
 
 static bool DrawPlayerOverworld(const Actor* pPlayer, const ActorPrototype* pPrototype) {
@@ -807,7 +793,9 @@ void Game::PlayerTakeDamage(Actor* pPlayer, const Damage& damage, const glm::vec
         pPlayer->flags.facingDir = -1;
         pPlayer->velocity.x = recoilSpeed;
     }
-
+}
+void Game::PlayerRespawnAtCheckpoint(Actor* pPlayer) {
+	PlayerSitDown(pPlayer);
 }
 #pragma endregion
 

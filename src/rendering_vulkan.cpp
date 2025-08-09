@@ -398,7 +398,7 @@ static void CreateSwapchain() {
 	swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE; // As long as we're using a single queue
 	swapchainCreateInfo.preTransform = g_context.surfaceCapabilities.currentTransform;
 	swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	swapchainCreateInfo.presentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+	swapchainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
 	swapchainCreateInfo.clipped = VK_TRUE;
 	swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
 
@@ -1682,10 +1682,17 @@ Scanline* Rendering::GetScanlinePtr(u32 offset) {
 #include <imgui_impl_vulkan.h>
 
 static void CreateChrPipeline() {
+	VkPushConstantRange pushConstantRange{};
+	pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+	pushConstantRange.offset = 0;
+	pushConstantRange.size = sizeof(u32) * 2;
+
 	VkPipelineLayoutCreateInfo chrPipelineLayoutInfo{};
 	chrPipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	chrPipelineLayoutInfo.setLayoutCount = 1;
 	chrPipelineLayoutInfo.pSetLayouts = &g_context.debugDescriptorSetLayout;
+	chrPipelineLayoutInfo.pushConstantRangeCount = 1;
+	chrPipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
 	vkCreatePipelineLayout(g_context.device, &chrPipelineLayoutInfo, nullptr, &g_context.chrPipelineLayout);
 
@@ -1845,13 +1852,19 @@ struct EditorRenderTexture {
 	Image image;
 	VkDescriptorSet srcSet;
 	VkDescriptorSet dstSet;
+
+	u32 chrSheetOffset;
+	u32 chrPaletteOffset;
 };
 
-EditorRenderBuffer* Rendering::CreateEditorBuffer(size_t size, const void* data) {
-	EditorRenderBuffer* pBuffer = ArenaAllocator::Push<EditorRenderBuffer>(ARENA_PERMANENT);
+size_t Rendering::GetEditorBufferSize() {
+	return sizeof(EditorRenderBuffer);
+}
+
+bool Rendering::InitEditorBuffer(EditorRenderBuffer* pBuffer, size_t size, const void* data) {
 	if (!pBuffer) {
-		DEBUG_ERROR("Failed to allocate editor buffer!\n");
-		return nullptr;
+		DEBUG_ERROR("EditorRenderBuffer pointer is null!");
+		return false;
 	}
 
 	AllocateBuffer(size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pBuffer->buffer);
@@ -1859,7 +1872,7 @@ EditorRenderBuffer* Rendering::CreateEditorBuffer(size_t size, const void* data)
 		UpdateEditorBuffer(pBuffer, data);
 	}
 
-	return pBuffer;
+	return true;
 }
 bool Rendering::UpdateEditorBuffer(const EditorRenderBuffer* pBuffer, const void* data) {
 	if (!pBuffer || !data) {
@@ -1882,8 +1895,6 @@ void Rendering::FreeEditorBuffer(EditorRenderBuffer* pBuffer) {
 
 	vkWaitForFences(g_context.device, COMMAND_BUFFER_COUNT, g_context.commandBufferFences, VK_TRUE, UINT64_MAX);
 	FreeBuffer(pBuffer->buffer);
-	
-	// NOTE: Backing memory is freed by the arena allocator
 }
 
 static void UpdateEditorSrcDescriptorSet(const EditorRenderTexture* pTexture, const EditorRenderBuffer* pChrBuffer = nullptr, const EditorRenderBuffer* pPaletteBuffer = nullptr) {
@@ -2026,14 +2037,19 @@ static void BlitEditorColorsTexture(const EditorRenderTexture* pTexture) {
 	vkFreeCommandBuffers(g_context.device, g_context.primaryCommandPool, 1, &temp);
 }
 
-EditorRenderTexture* Rendering::CreateEditorTexture(u32 width, u32 height, u32 usage, const EditorRenderBuffer* pChrBuffer, const EditorRenderBuffer* pPaletteBuffer) {
-	EditorRenderTexture* pTexture = ArenaAllocator::Push<EditorRenderTexture>(ARENA_PERMANENT);
+size_t Rendering::GetEditorTextureSize() {
+	return sizeof(EditorRenderTexture);
+}
+
+bool Rendering::InitEditorTexture(EditorRenderTexture* pTexture, u32 width, u32 height, u32 usage, u32 chrSheetOffset, u32 chrPaletteOffset, const EditorRenderBuffer* pChrBuffer, const EditorRenderBuffer* pPaletteBuffer) {
 	if (!pTexture) {
-		DEBUG_ERROR("Failed to allocate editor texture!\n");
-		return nullptr;
+		DEBUG_ERROR("EditorRenderTexture pointer is null!\n");
+		return false;
 	}
 
 	pTexture->usage = usage;
+	pTexture->chrSheetOffset = chrSheetOffset;
+	pTexture->chrPaletteOffset = chrPaletteOffset;
 
 	CreateImage(width, height, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, pTexture->image);
 	pTexture->dstSet = ImGui_ImplVulkan_AddTexture(g_context.defaultSampler, pTexture->image.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -2052,7 +2068,7 @@ EditorRenderTexture* Rendering::CreateEditorTexture(u32 width, u32 height, u32 u
 		UpdateEditorSrcDescriptorSet(pTexture, pChrBuffer, pPaletteBuffer);
 	}
 
-	return pTexture;
+	return true;
 }
 bool Rendering::UpdateEditorTexture(const EditorRenderTexture* pTexture, const EditorRenderBuffer* pChrBuffer, const EditorRenderBuffer* pPaletteBuffer) {
 	if (!pTexture) {
@@ -2116,6 +2132,10 @@ void Rendering::RenderEditorTexture(const EditorRenderTexture* pTexture) {
 	if (pTexture->usage == EDITOR_TEXTURE_USAGE_CHR) {
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, g_context.chrPipelineLayout, 0, 1, &pTexture->srcSet, 0, nullptr);
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, g_context.chrPipeline);
+
+		vkCmdPushConstants(cmd, g_context.chrPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(u32), &pTexture->chrSheetOffset);
+		vkCmdPushConstants(cmd, g_context.chrPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, sizeof(u32), sizeof(u32), &pTexture->chrPaletteOffset);
+
 		vkCmdDispatch(cmd, pTexture->image.width / TILE_DIM_PIXELS, pTexture->image.height / TILE_DIM_PIXELS, 1);
 	}
 	else if (pTexture->usage == EDITOR_TEXTURE_USAGE_PALETTE) {

@@ -1,4 +1,5 @@
 {
+    "chr_bank_id": 5051829589002943406,
     "tiles": [
         {
             "metatile": {
@@ -7,7 +8,7 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
@@ -38,25 +39,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 640
+                        "tile_id": 128
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 641
+                        "tile_id": 129
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 656
+                        "tile_id": 144
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 657
+                        "tile_id": 145
                     }
                 ]
             },
@@ -69,25 +70,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 642
+                        "tile_id": 130
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 643
+                        "tile_id": 131
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 658
+                        "tile_id": 146
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 659
+                        "tile_id": 147
                     }
                 ]
             },
@@ -100,25 +101,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 643
+                        "tile_id": 131
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 641
+                        "tile_id": 129
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 659
+                        "tile_id": 147
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 675
+                        "tile_id": 163
                     }
                 ]
             },
@@ -131,25 +132,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 658
+                        "tile_id": 146
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 659
+                        "tile_id": 147
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 656
+                        "tile_id": 144
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 674
+                        "tile_id": 162
                     }
                 ]
             },
@@ -162,25 +163,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 659
+                        "tile_id": 147
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 675
+                        "tile_id": 163
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 674
+                        "tile_id": 162
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 657
+                        "tile_id": 145
                     }
                 ]
             },
@@ -193,25 +194,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 2,
-                        "tile_id": 640
+                        "tile_id": 128
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 2,
-                        "tile_id": 641
+                        "tile_id": 129
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 2,
-                        "tile_id": 656
+                        "tile_id": 144
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 2,
-                        "tile_id": 657
+                        "tile_id": 145
                     }
                 ]
             },
@@ -224,25 +225,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 652
+                        "tile_id": 140
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 653
+                        "tile_id": 141
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 668
+                        "tile_id": 156
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 669
+                        "tile_id": 157
                     }
                 ]
             },
@@ -255,25 +256,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 654
+                        "tile_id": 142
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 653
+                        "tile_id": 141
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 670
+                        "tile_id": 158
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 669
+                        "tile_id": 157
                     }
                 ]
             },
@@ -286,25 +287,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 684
+                        "tile_id": 172
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 685
+                        "tile_id": 173
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 668
+                        "tile_id": 156
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 669
+                        "tile_id": 157
                     }
                 ]
             },
@@ -317,25 +318,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 686
+                        "tile_id": 174
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 685
+                        "tile_id": 173
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 670
+                        "tile_id": 158
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 669
+                        "tile_id": 157
                     }
                 ]
             },
@@ -348,25 +349,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 2,
-                        "tile_id": 672
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 5,
-                        "tile_id": 673
+                        "tile_id": 160
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 688
+                        "tile_id": 161
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 176
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 3,
-                        "tile_id": 689
+                        "tile_id": 177
                     }
                 ]
             },
@@ -379,25 +380,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 640
+                        "tile_id": 128
                     },
                     {
                         "flip_horizontal": true,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 640
+                        "tile_id": 128
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": true,
                         "palette": 0,
-                        "tile_id": 640
+                        "tile_id": 128
                     },
                     {
                         "flip_horizontal": true,
                         "flip_vertical": true,
                         "palette": 0,
-                        "tile_id": 640
+                        "tile_id": 128
                     }
                 ]
             },
@@ -416,7 +417,7 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
@@ -447,7 +448,7 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
@@ -478,7 +479,7 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
@@ -503,25 +504,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 696
+                        "tile_id": 184
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 696
+                        "tile_id": 184
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 696
+                        "tile_id": 184
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 696
+                        "tile_id": 184
                     }
                 ]
             },
@@ -534,25 +535,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 705
+                        "tile_id": 193
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 706
+                        "tile_id": 194
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     }
                 ]
             },
@@ -565,56 +566,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 707
+                        "tile_id": 195
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 708
+                        "tile_id": 196
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     }
                 ]
             },
@@ -645,7 +615,7 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     }
                 ]
             },
@@ -676,7 +646,7 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     }
                 ]
             },
@@ -707,7 +677,38 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
+                        "tile_id": 0
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
                         "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 0
                     }
                 ]
             },
@@ -5959,25 +5960,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 722
+                        "tile_id": 210
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 722
+                        "tile_id": 210
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 722
+                        "tile_id": 210
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 721
+                        "tile_id": 209
                     }
                 ]
             },
@@ -5990,25 +5991,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 721
+                        "tile_id": 209
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 722
+                        "tile_id": 210
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 722
+                        "tile_id": 210
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 722
+                        "tile_id": 210
                     }
                 ]
             },
@@ -6021,25 +6022,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 712
+                        "tile_id": 200
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 713
+                        "tile_id": 201
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 728
+                        "tile_id": 216
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 729
+                        "tile_id": 217
                     }
                 ]
             },
@@ -6052,25 +6053,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 714
+                        "tile_id": 202
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 715
+                        "tile_id": 203
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 730
+                        "tile_id": 218
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 731
+                        "tile_id": 219
                     }
                 ]
             },
@@ -6083,25 +6084,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 716
+                        "tile_id": 204
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 717
+                        "tile_id": 205
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 732
+                        "tile_id": 220
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 733
+                        "tile_id": 221
                     }
                 ]
             },
@@ -6114,25 +6115,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": true,
                         "palette": 1,
-                        "tile_id": 732
+                        "tile_id": 220
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": true,
                         "palette": 1,
-                        "tile_id": 733
+                        "tile_id": 221
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": true,
                         "palette": 1,
-                        "tile_id": 716
+                        "tile_id": 204
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": true,
                         "palette": 1,
-                        "tile_id": 717
+                        "tile_id": 205
                     }
                 ]
             },
@@ -6145,25 +6146,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     }
                 ]
             },
@@ -6176,552 +6177,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 722
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 722
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 722
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 722
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 737
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 738
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 753
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 754
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 739
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 744
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 753
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 758
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 743
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 740
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 757
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 1,
-                        "tile_id": 754
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     }
                 ]
             },
@@ -6982,25 +6456,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 743
+                        "tile_id": 210
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 744
+                        "tile_id": 210
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 759
+                        "tile_id": 210
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 760
+                        "tile_id": 210
                     }
                 ]
             },
@@ -7013,25 +6487,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 737
+                        "tile_id": 225
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 742
+                        "tile_id": 226
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 755
+                        "tile_id": 241
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 760
+                        "tile_id": 242
                     }
                 ]
             },
@@ -7044,25 +6518,56 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 741
+                        "tile_id": 227
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 738
+                        "tile_id": 232
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 759
+                        "tile_id": 241
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 1,
-                        "tile_id": 756
+                        "tile_id": 246
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 231
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 228
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 245
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 242
                     }
                 ]
             },
@@ -7075,25 +6580,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     }
                 ]
             },
@@ -7106,87 +6611,25 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     },
                     {
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    }
-                ]
-            },
-            "type": "empty"
-        },
-        {
-            "metatile": {
-                "tiles": [
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
-                    },
-                    {
-                        "flip_horizontal": false,
-                        "flip_vertical": false,
-                        "palette": 0,
-                        "tile_id": 512
+                        "tile_id": 0
                     }
                 ]
             },
@@ -7217,7 +6660,565 @@
                         "flip_horizontal": false,
                         "flip_vertical": false,
                         "palette": 0,
+                        "tile_id": 0
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
                         "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 0
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 0
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 0
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 0
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 0
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 0
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 231
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 232
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 247
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 248
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 225
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 230
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 243
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 248
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 229
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 226
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 247
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 1,
+                        "tile_id": 244
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 0
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 0
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 0
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 0
+                    }
+                ]
+            },
+            "type": "empty"
+        },
+        {
+            "metatile": {
+                "tiles": [
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 512
+                    },
+                    {
+                        "flip_horizontal": false,
+                        "flip_vertical": false,
+                        "palette": 0,
+                        "tile_id": 0
                     }
                 ]
             },

@@ -102,6 +102,7 @@ namespace Game {
 	Actor* GetPlayer();
 	bool PlayerInvulnerable(Actor* pPlayer);
 	void PlayerTakeDamage(Actor* pPlayer, const Damage& damage, const glm::vec2& enemyPos);
+	void PlayerRespawnAtCheckpoint(Actor* pPlayer);
 
 	void EnemyDie(Actor* pActor, const ActorPrototype* pPrototype);
 

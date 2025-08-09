@@ -52,11 +52,13 @@ namespace Rendering
 	void BeginEditorFrame();
 	void ShutdownEditor();
 
-	EditorRenderBuffer* CreateEditorBuffer(size_t size, const void* data = nullptr);
+	size_t GetEditorBufferSize();
+	bool InitEditorBuffer(EditorRenderBuffer* pBuffer, size_t size, const void* data = nullptr);
 	bool UpdateEditorBuffer(const EditorRenderBuffer* pBuffer, const void* data);
 	void FreeEditorBuffer(EditorRenderBuffer* pBuffer);
 
-	EditorRenderTexture* CreateEditorTexture(u32 width, u32 height, u32 usage, const EditorRenderBuffer* pChrBuffer = nullptr, const EditorRenderBuffer* pPaletteBuffer = nullptr);
+	size_t GetEditorTextureSize();
+	bool InitEditorTexture(EditorRenderTexture* pTexture, u32 width, u32 height, u32 usage, u32 chrSheetOffset = 0, u32 chrPaletteOffset = 0, const EditorRenderBuffer* pChrBuffer = nullptr, const EditorRenderBuffer* pPaletteBuffer = nullptr);
 	bool UpdateEditorTexture(const EditorRenderTexture* pTexture, const EditorRenderBuffer* pChrBuffer = nullptr, const EditorRenderBuffer* pPaletteBuffer = nullptr);
 	void* GetEditorTextureData(const EditorRenderTexture* pTexture);
 	void FreeEditorTexture(EditorRenderTexture* pTexture);

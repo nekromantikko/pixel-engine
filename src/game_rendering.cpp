@@ -5,6 +5,192 @@
 #include "rendering_util.h"
 #include "game.h"
 #include "asset_manager.h"
+#include "memory_arena.h"
+
+#pragma region Virtual CHR
+constexpr u32 MAX_VIRTUAL_BANKS = 128;
+constexpr u32 VIRTUAL_CHR_BANK_SIZE = MAX_VIRTUAL_BANKS * CHR_SIZE_TILES;
+constexpr u32 PHYSICAL_TILE_COUNT = CHR_COUNT * CHR_SIZE_TILES;
+constexpr u32 PHYSICAL_TILE_BITS = PHYSICAL_TILE_COUNT >> 3;
+constexpr u32 FG_PAGE_BITS_OFFSET = (CHR_PAGE_COUNT * CHR_SIZE_TILES) >> 3;
+static constexpr u32 MAX_ACTIVE_BANKS = 8;
+
+enum TileDrawType {
+    TILE_DRAW_TYPE_BG,
+	TILE_DRAW_TYPE_FG,
+};
+
+struct PhysicalCHRBank {
+    s16 tiles[CHR_SIZE_TILES];
+};
+
+struct BankAddressMapping {
+    u64 bankId;
+    u16 virtualIndex; // The start of a block
+};
+
+BankAddressMapping g_bankAddressMapping[MAX_VIRTUAL_BANKS];
+
+s16 g_physicalToVirtualChrMap[PHYSICAL_TILE_COUNT];
+u8 g_physicalTileUsageFlags[PHYSICAL_TILE_BITS] = { 0 }; // Bitmask for physical tile usage
+// Hierarchical mapping of virtual banks to physical banks
+PhysicalCHRBank* g_virtualToPhysicalBankMap[MAX_VIRTUAL_BANKS];
+
+u8 g_activePageCount = 0;
+PhysicalCHRBank g_activePageTables[MAX_ACTIVE_BANKS];
+
+static s16 GetPhysicalTileIndex(s16 virtualTileIndex) {
+    if (virtualTileIndex < 0) {
+        return -1;
+    }
+
+    u8 virtualBankIndex = u8(virtualTileIndex >> 8);
+    u8 tileOffset = u8(virtualTileIndex & 0xFF);
+
+    PhysicalCHRBank* pTable = g_virtualToPhysicalBankMap[virtualBankIndex];
+    if (pTable == nullptr) {
+        return -1;
+    }
+
+    return pTable->tiles[tileOffset];
+}
+
+static s16 GetVirtualTileIndex(ChrBankHandle bankHandle, u8 tileIndex) {
+    u64 bankId = bankHandle.id;
+    for (u32 i = 0; i < MAX_VIRTUAL_BANKS; i++) {
+        if (g_bankAddressMapping[i].bankId == bankId) {
+            u16 virtualIndex = g_bankAddressMapping[i].virtualIndex;
+            return virtualIndex + tileIndex;
+        }
+    }
+    return -1;
+}
+
+static void CopyBankTiles(ChrBankHandle bankHandle, u32 bankOffset, u32 sheetIndex, u32 sheetOffset, u32 count) {
+    ChrSheet* pBank = AssetManager::GetAsset(bankHandle);
+    if (!pBank) {
+        DEBUG_ERROR("Failed to load bank %llu\n", bankHandle);
+        return;
+    }
+
+    const ChrTile* pBankTiles = pBank->tiles + bankOffset;
+    ChrTile* pSheetTiles = ::Rendering::GetChrPtr(sheetIndex)->tiles + sheetOffset;
+
+    memcpy(pSheetTiles, pBankTiles, sizeof(ChrTile) * count);
+}
+
+static void MarkPhysicalTileUsed(s16 physicalTileIndex) {
+	g_physicalTileUsageFlags[physicalTileIndex >> 3] |= (1 << (physicalTileIndex & 0x07));
+}
+
+static s16 GetFirstUnusedPhysicalTile(TileDrawType type) {
+	u32 startIndex = (type == TILE_DRAW_TYPE_BG) ? 0 : FG_PAGE_BITS_OFFSET;
+	for (u32 i = startIndex; i < PHYSICAL_TILE_BITS; i++) {
+		if (g_physicalTileUsageFlags[i] != 0xFF) {
+			// Find the first unused bit in this byte
+			for (u32 j = 0; j < 8; j++) {
+				if (!(g_physicalTileUsageFlags[i] & (1 << j))) {
+					return (i << 3) + j;
+				}
+			}
+		}
+	}
+	return -1; // No unused tiles found
+}
+
+static void ClearPhysicalTileUsageFlags(TileDrawType type) {
+	u32 offset = (type == TILE_DRAW_TYPE_BG) ? 0 : FG_PAGE_BITS_OFFSET;
+	memset(g_physicalTileUsageFlags + offset, 0, sizeof(g_physicalTileUsageFlags) / 2);
+}
+
+static s16 RequestTileForDrawing(ChrBankHandle bankHandle, u8 tileIndex, TileDrawType type) {
+    s16 virtualTileIndex = GetVirtualTileIndex(bankHandle, tileIndex);
+	if (virtualTileIndex < 0) {
+		// This shouldn't happen, but for some reason the tile is not in the virtual mapping
+		DEBUG_ERROR("Virtual tile index for bank %llu, tile %u is invalid\n", bankHandle.id, tileIndex);
+		return -1;
+	}
+
+	s16 physicalTileIndex = GetPhysicalTileIndex(virtualTileIndex);
+    if (physicalTileIndex >= 0) {
+		// Tile already exists in physical memory, return it
+		MarkPhysicalTileUsed(physicalTileIndex);
+		return physicalTileIndex;
+	}
+
+	// Create mapping for the virtual tile
+    u8 virtualBankIndex = u8(virtualTileIndex >> 8);
+	u8 tileOffset = u8(virtualTileIndex & 0xFF);
+
+	PhysicalCHRBank* pTable = g_virtualToPhysicalBankMap[virtualBankIndex];
+	if (pTable == nullptr) {
+		// If the bank is not active, we need to allocate a new one
+		if (g_activePageCount >= MAX_ACTIVE_BANKS) {
+			DEBUG_ERROR("No more active CHR banks available\n");
+			return -1;
+		}
+		pTable = &g_activePageTables[g_activePageCount++];
+		g_virtualToPhysicalBankMap[virtualBankIndex] = pTable;
+	}
+
+	// Assign the tile to the physical bank
+	physicalTileIndex = GetFirstUnusedPhysicalTile(type);
+    if (physicalTileIndex < 0) {
+		DEBUG_ERROR("No unused physical tiles available for bank %llu, tile %u\n", bankHandle.id, tileIndex);
+		return -1;
+    }
+	pTable->tiles[tileOffset] = physicalTileIndex;
+
+	// Update the mapping
+	// First, clear the previous mapping if it exists
+	s16 previousVirtualTileIndex = g_physicalToVirtualChrMap[physicalTileIndex];
+	if (previousVirtualTileIndex >= 0) {
+		// If the tile was already mapped, we need to clear it
+		u8 previousVirtualBankIndex = u8(previousVirtualTileIndex >> 8);
+		u8 previousTileOffset = u8(previousVirtualTileIndex & 0xFF);
+		g_virtualToPhysicalBankMap[previousVirtualBankIndex]->tiles[previousTileOffset] = -1;
+		DEBUG_LOG("Cleared previous mapping for physical tile %d from virtual bank %u, tile %u\n", physicalTileIndex, previousVirtualBankIndex, previousTileOffset);
+	}
+	g_physicalToVirtualChrMap[physicalTileIndex] = virtualTileIndex;
+	// Copy the tile data from the virtual bank to the physical bank
+    u32 chrPage = (physicalTileIndex >> 8) & 7;
+    u32 chrTileIndex = physicalTileIndex & 0xFF;
+	CopyBankTiles(bankHandle, tileIndex, chrPage, chrTileIndex, 1);
+
+	MarkPhysicalTileUsed(physicalTileIndex);
+	return physicalTileIndex;
+}
+
+static void InitVirtualCHR() {
+    size_t chrBankCount;
+    AssetManager::GetAllAssetInfosByType(ASSET_TYPE_CHR_BANK, chrBankCount, nullptr);
+    ArenaMarker scratchMarker = ArenaAllocator::GetMarker(ARENA_SCRATCH);
+    const AssetEntry** ppChrEntries = ArenaAllocator::PushArray<const AssetEntry*>(ARENA_SCRATCH, chrBankCount);
+    AssetManager::GetAllAssetInfosByType(ASSET_TYPE_CHR_BANK, chrBankCount, ppChrEntries);
+
+    for (size_t i = 0; i < chrBankCount; i++) {
+        g_bankAddressMapping[i].bankId = ppChrEntries[i]->id;
+        g_bankAddressMapping[i].virtualIndex = i << 8; // Each virtual bank can hold 256 tiles, so shift by 8 bits
+        DEBUG_LOG("Virtual CHR bank %zu: %s, Virtual Index = %u\n", i, ppChrEntries[i]->name, g_bankAddressMapping[i].virtualIndex);
+    }
+
+    for (u32 i = 0; i < CHR_COUNT * CHR_SIZE_TILES; i++) {
+        g_physicalToVirtualChrMap[i] = -1;
+    }
+
+    for (u32 i = 0; i < MAX_VIRTUAL_BANKS; i++) {
+        g_virtualToPhysicalBankMap[i] = nullptr;
+    }
+
+    for (u32 i = 0; i < MAX_ACTIVE_BANKS; i++) {
+        for (u32 t = 0; t < CHR_SIZE_TILES; t++) {
+            g_activePageTables[i].tiles[t] = -1;
+        }
+    }
+
+    ArenaAllocator::PopToMarker(ARENA_SCRATCH, scratchMarker);
+}
+#pragma endregion
 
 static constexpr s32 BUFFER_DIM_METATILES = 2;
 static constexpr u32 LAYER_SPRITE_COUNT = MAX_SPRITE_COUNT / SPRITE_LAYER_COUNT;
@@ -96,12 +282,7 @@ static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
             }
 
 			const TilesetTile& tile = pTileset->tiles[tilesetIndex];
-
-            const s32 nametableIndex = Rendering::Util::GetNametableIndexFromMetatilePos({ x, y });
-            const glm::ivec2 nametableOffset = Rendering::Util::GetNametableOffsetFromMetatilePos({ x, y });
-
-            const Metatile& metatile = tile.metatile;
-            Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile);
+			Game::Rendering::DrawBackgroundMetatile(pTileset->chrBankHandle, tile.metatile, { x, y });
         }
     }
 }
@@ -145,17 +326,7 @@ static Sprite TransformMetaspriteSprite(const Metasprite* pMetasprite, u32 sprit
 void Game::Rendering::Init() {
 	viewportPos = { 0, 0 };
     ClearSpriteLayers(true);
-
-    // Init chr memory  
-    const ChrBankHandle asciiBankHandle = AssetManager::GetAssetHandle<ChrBankHandle>("chr_sheets/ascii.bmp");
-	const ChrBankHandle mapBankHandle = AssetManager::GetAssetHandle<ChrBankHandle>("chr_sheets/map_tiles.bmp");
-	const ChrBankHandle debugTilesetBankHandle = AssetManager::GetAssetHandle<ChrBankHandle>("chr_sheets/bg_0.bmp");
-	const ChrBankHandle fgBankHandle = AssetManager::GetAssetHandle<ChrBankHandle>("chr_sheets/fg_0.bmp");
-
-	CopyBankTiles(asciiBankHandle, 0, 0, 0, CHR_SIZE_TILES);
-	CopyBankTiles(mapBankHandle, 0, 1, 0, CHR_SIZE_TILES);
-    CopyBankTiles(debugTilesetBankHandle, 0, 2, 0, CHR_SIZE_TILES);
-    CopyBankTiles(fgBankHandle, 0, 4, 0, CHR_SIZE_TILES);
+	InitVirtualCHR();
 
 	const PaletteHandle debug0PaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/debug_0.dat");
 	const PaletteHandle debug1PaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/debug_1.dat");
@@ -217,13 +388,8 @@ void Game::Rendering::RefreshViewport() {
                 continue;
             }
 
-			const TilesetTile& tile = pTileset->tiles[tilesetIndex];
-
-            const s32 nametableIndex = ::Rendering::Util::GetNametableIndexFromMetatilePos({ x, y });
-            const glm::ivec2 nametableOffset = ::Rendering::Util::GetNametableOffsetFromMetatilePos({ x, y });
-
-            const Metatile& metatile = tile.metatile;
-            ::Rendering::Util::SetNametableMetatile(&pNametables[nametableIndex], nametableOffset, metatile);
+            const TilesetTile& tile = pTileset->tiles[tilesetIndex];
+            Game::Rendering::DrawBackgroundMetatile(pTileset->chrBankHandle, tile.metatile, { x, y });
         }
     }
 }
@@ -256,6 +422,9 @@ void Game::Rendering::ClearSpriteLayers(bool fullClear) {
         layer.pNextSprite = pBeginSprite;
         layer.spriteCount = 0;
     }
+
+    // Clear fg tile usage
+	ClearPhysicalTileUsageFlags(TILE_DRAW_TYPE_FG);
 }
 
 Sprite* Game::Rendering::GetNextFreeSprite(u8 layerIndex, u32 count) {
@@ -276,12 +445,13 @@ Sprite* Game::Rendering::GetNextFreeSprite(u8 layerIndex, u32 count) {
     return result;
 }
 
-bool Game::Rendering::DrawSprite(u8 layerIndex, const Sprite& sprite) {
+bool Game::Rendering::DrawSprite(u8 layerIndex, ChrBankHandle bankHandle, const Sprite& sprite) {
     Sprite* outSprite = GetNextFreeSprite(layerIndex);
     if (outSprite == nullptr) {
         return false;
     }
     *outSprite = sprite;
+    outSprite->tileId = RequestTileForDrawing(bankHandle, sprite.tileId, TILE_DRAW_TYPE_FG);
 
     return true;
 }
@@ -302,6 +472,7 @@ bool Game::Rendering::DrawMetaspriteSprite(u8 layerIndex, MetaspriteHandle metas
     }
 
 	*outSprite = TransformMetaspriteSprite(pMetasprite, spriteIndex, pos, hFlip, vFlip, paletteOverride);
+    outSprite->tileId = RequestTileForDrawing(pMetasprite->chrBankHandle, outSprite->tileId, TILE_DRAW_TYPE_FG);
 
 	return true;
 }
@@ -319,22 +490,83 @@ bool Game::Rendering::DrawMetasprite(u8 layerIndex, MetaspriteHandle metaspriteH
 
     for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
 		outSprites[i] = TransformMetaspriteSprite(pMetasprite, i, pos, hFlip, vFlip, paletteOverride);
+		outSprites[i].tileId = RequestTileForDrawing(pMetasprite->chrBankHandle, outSprites[i].tileId, TILE_DRAW_TYPE_FG);
     }
 
     return true;
 }
 
-void Game::Rendering::CopyBankTiles(ChrBankHandle bankHandle, u32 bankOffset, u32 sheetIndex, u32 sheetOffset, u32 count) {
-	ChrSheet* pBank = AssetManager::GetAsset(bankHandle);
-	if (!pBank) {
-		DEBUG_ERROR("Failed to load bank %llu\n", bankHandle);
+void Game::Rendering::DrawBackgroundTile(ChrBankHandle bankHandle, const BgTile& tile, const glm::ivec2& pos) {
+	s16 physicalTileIndex = RequestTileForDrawing(bankHandle, tile.tileId, TILE_DRAW_TYPE_BG);
+	if (physicalTileIndex < 0) {
+		DEBUG_ERROR("Failed to request tile %u from bank %llu\n", tile.tileId, bankHandle.id);
 		return;
 	}
 
-	const ChrTile* pBankTiles = pBank->tiles + bankOffset;
-	ChrTile* pSheetTiles = ::Rendering::GetChrPtr(sheetIndex)->tiles + sheetOffset;
+	BgTile physicalTile = tile;
+    physicalTile.tileId = physicalTileIndex;
 
-    memcpy(pSheetTiles, pBankTiles, sizeof(ChrTile) * count);
+    const u32 nametableIndex = ::Rendering::Util::GetNametableIndexFromTilePos(pos);
+	Nametable* pNametable = ::Rendering::GetNametablePtr(nametableIndex);
+    const glm::ivec2 nametableOffset = ::Rendering::Util::GetNametableOffsetFromTilePos(pos);
+	::Rendering::Util::SetNametableTile(pNametable, nametableOffset, physicalTile);
+}
+
+void Game::Rendering::DrawBackgroundMetatile(ChrBankHandle bankHandle, const Metatile& metatile, const glm::ivec2& pos) {
+	Metatile physicalMetatile = metatile;
+	for (u32 i = 0; i < METATILE_TILE_COUNT; i++) {
+		s16 physicalTileIndex = RequestTileForDrawing(bankHandle, metatile.tiles[i].tileId, TILE_DRAW_TYPE_BG);
+		if (physicalTileIndex < 0) {
+			DEBUG_ERROR("Failed to request tile %u from bank %llu\n", metatile.tiles[i].tileId, bankHandle.id);
+			return;
+		}
+		physicalMetatile.tiles[i].tileId = physicalTileIndex;
+	}
+
+	const u32 nametableIndex = ::Rendering::Util::GetNametableIndexFromMetatilePos(pos);
+	Nametable* pNametable = ::Rendering::GetNametablePtr(nametableIndex);
+	const glm::ivec2 nametableOffset = ::Rendering::Util::GetNametableOffsetFromMetatilePos(pos);
+
+	::Rendering::Util::SetNametableMetatile(pNametable, nametableOffset, physicalMetatile);
+}
+
+void Game::Rendering::ClearBackgroundTile(const glm::ivec2& pos) {
+	static constexpr BgTile emptyTile = {};
+    const u32 nametableIndex = ::Rendering::Util::GetNametableIndexFromTilePos(pos);
+    Nametable* pNametable = ::Rendering::GetNametablePtr(nametableIndex);
+    const glm::ivec2 nametableOffset = ::Rendering::Util::GetNametableOffsetFromTilePos(pos);
+    ::Rendering::Util::SetNametableTile(pNametable, nametableOffset, emptyTile);
+}
+
+void Game::Rendering::ClearBackgroundMetatile(const glm::ivec2& pos) {
+	Nametable* pNametables = ::Rendering::GetNametablePtr(0);
+	const u32 nametableIndex = ::Rendering::Util::GetNametableIndexFromMetatilePos(pos);
+	const glm::ivec2 nametableOffset = ::Rendering::Util::GetNametableOffsetFromMetatilePos(pos);
+	const u32 firstTileIndex = ::Rendering::Util::GetNametableTileIndexFromMetatileOffset(nametableOffset);
+
+    static constexpr BgTile emptyTile = {};
+	pNametables[nametableIndex].tiles[firstTileIndex] = emptyTile;
+	pNametables[nametableIndex].tiles[firstTileIndex + 1] = emptyTile;
+	pNametables[nametableIndex].tiles[firstTileIndex + NAMETABLE_DIM_TILES] = emptyTile;
+	pNametables[nametableIndex].tiles[firstTileIndex + NAMETABLE_DIM_TILES + 1] = emptyTile;
+}
+
+void Game::Rendering::CopyLevelTileToNametable(const Tilemap* pTilemap, const glm::ivec2& worldPos) {
+    const Tileset* pTileset = AssetManager::GetAsset(pTilemap->tilesetHandle);
+
+    const s32 tilesetIndex = Tiles::GetTilesetTileIndex(pTilemap, worldPos);
+    const TilesetTile& tile = pTileset->tiles[tilesetIndex];
+
+    const Metatile& metatile = tile.metatile;
+	DrawBackgroundMetatile(pTileset->chrBankHandle, metatile, worldPos);
+}
+
+void Game::Rendering::FlushBackgroundTiles() {
+    // Clear nametables
+	Nametable* pNametables = ::Rendering::GetNametablePtr(0);
+	memset(pNametables, 0, sizeof(Nametable) * NAMETABLE_COUNT);
+	// Clear physical tile usage flags
+	ClearPhysicalTileUsageFlags(TILE_DRAW_TYPE_BG);
 }
 
 bool Game::Rendering::GetPalettePresetColors(PaletteHandle paletteHandle, u8* pOutColors) {

@@ -102,6 +102,7 @@ struct Metatile {
 };
 
 struct Metasprite {
+	ChrBankHandle chrBankHandle;
 	u32 spriteCount;
 	// Sprite positions are relative to the metasprite origin
 	u32 spritesOffset;
@@ -166,6 +167,7 @@ struct TilesetTile {
 };
 
 struct Tileset {
+	ChrBankHandle chrBankHandle;
 	TilesetTile tiles[TILESET_SIZE];
 };
 
@@ -315,6 +317,7 @@ struct RoomActor {
 struct RoomTemplate {
 	u8 width;
 	u8 height;
+	ChrBankHandle mapChrBankHandle;
 	u32 mapTileOffset;
 	Tilemap tilemap;
 	u32 actorCount;

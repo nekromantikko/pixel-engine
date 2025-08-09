@@ -188,13 +188,22 @@ void EditorBlitPalette(uint2 dti: SV_DispatchThreadID, uint2 gi: SV_GroupID, uin
     outputTexture[dti] = float4(finalColor, 1.0f);
 }
 
+struct ChrPushConstants {
+    uint sheetOffset;
+    uint paletteOffset;
+}
+
+[[vk_push_constant]] ChrPushConstants chrPushConstants;
+
 [shader("compute")] [numthreads(8, 8, 1)]
 void EditorBlitChr(uint2 dti: SV_DispatchThreadID, uint2 gi: SV_GroupID, uint2 gti: SV_GroupThreadID) {
     uint sheetIndex = gi.y / 16;
+    sheetIndex += chrPushConstants.sheetOffset;
     uint setIndex = sheetIndex / 4;
     uint2 tileCoord = gi % 16;
     uint tileIndex = tileCoord.x + tileCoord.y * 16;
     uint palette = gi.x / 16 + setIndex * 8;
+    palette += chrPushConstants.paletteOffset;
     uint pixelOffset = gti.x + gti.y * 8;
     uint8_t colorIndex = ReadChrTile(sheetIndex, tileIndex, pixelOffset, false, false);
     float3 finalColor = ReadPaletteColor(palette, colorIndex);

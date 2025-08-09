@@ -1,3 +1,4 @@
+#include "game.h"
 #include "game_ui.h"
 #include "game_rendering.h"
 #include <cstdio>
@@ -101,19 +102,19 @@ static void DrawBar(const glm::i16vec2 pixelPos, const BarState& bar, s16 maxVal
 
         u8 tileId;
         if (i < fullRedSegments) {
-            tileId = 0xd4;
+            tileId = 0x84;
         }
         else if (i < fullYellowSegments) {
-            tileId = 0xd5 + redRemainder;
+            tileId = 0x85 + redRemainder;
         }
         else {
             // Only red left to draw
             if (redRemainder >= yellowRemainder) {
-                tileId = 0xd0 + redRemainder;
+                tileId = 0x80 + redRemainder;
             }
             else {
                 const u8 offset = redRemainder != 0 ? redRemainder + 1 : 0;
-                tileId = 0xd8 + yellowRemainder + offset;
+                tileId = 0x88 + yellowRemainder + offset;
             }
         }
 
@@ -122,7 +123,7 @@ static void DrawBar(const glm::i16vec2 pixelPos, const BarState& bar, s16 maxVal
         sprite.palette = palette;
         sprite.x = x;
         sprite.y = y;
-        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
 
         x += 8;
     }
@@ -147,22 +148,22 @@ void Game::UI::DrawExpCounter() {
     // Draw halo indicator
     {
         Sprite sprite{};
-        sprite.tileId = 0x68;
+        sprite.tileId = 0x08;
         sprite.palette = 0x0;
         sprite.x = xStart - 8;
         sprite.y = y;
-        Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+        Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
     }
 
     // Draw counter
     u16 x = xStart;
     for (u8 i = 0; i < length; i++) {
         Sprite sprite{};
-        sprite.tileId = 0xc6 + buffer[i] - '0';
+        sprite.tileId = buffer[i];
         sprite.palette = 0x1;
         sprite.x = x;
         sprite.y = y;
-        Rendering::DrawSprite(SPRITE_LAYER_UI, sprite);
+        Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
 
         x += 8;
     }

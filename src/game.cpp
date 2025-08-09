@@ -3,9 +3,9 @@
 #include "game_state.h"
 #include "game_rendering.h"
 #include "nes_timing.h"
+#include "asset_manager.h"
 
-// TEMP
-constexpr DungeonHandle testDungeon(4648186456448694858);
+static GameConfig g_config;
 
 namespace Game {
     r64 secondsElapsed = 0.0f;
@@ -33,13 +33,27 @@ namespace Game {
     void Initialize() {
         Rendering::Init();
 
+		g_config = {
+			.uiBankHandle = AssetManager::GetAssetHandle<ChrBankHandle>("chr_sheets/ui.bmp"),
+			.mapBankHandle = AssetManager::GetAssetHandle<ChrBankHandle>("chr_sheets/map_tiles.bmp"),
+			.playerPrototypeHandle = AssetManager::GetAssetHandle<ActorPrototypeHandle>("actor_prototypes/freya.actor"),
+			.playerOverworldPrototypeHandle = AssetManager::GetAssetHandle<ActorPrototypeHandle>("actor_prototypes/freya_overworld.actor"),
+			.xpRemnantPrototypeHandle = AssetManager::GetAssetHandle<ActorPrototypeHandle>("actor_prototypes/exp_remnant.actor"),
+			.overworldHandle = AssetManager::GetAssetHandle<OverworldHandle>("overworlds/default.ow")
+		};
+
 		InitGameData();
         InitGameState(GAME_STATE_DUNGEON);
 
+        DungeonHandle testDungeon = AssetManager::GetAssetHandle<DungeonHandle>("dungeons/test_cave.dung");
         LoadRoom(testDungeon, { 14, 14 });
     }
 
     void Free() {}
+
+	const GameConfig& GetConfig() {
+		return g_config;
+	}
 
     void Update(r64 dt) {
         secondsElapsed += dt;

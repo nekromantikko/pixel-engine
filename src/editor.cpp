@@ -59,20 +59,19 @@ enum OverworldEditMode {
 	OW_EDIT_MODE_AREAS
 };
 
-struct EditedAssetRenderData {
-	EditorRenderTexture* pTexture;
-	EditorRenderBuffer* pBuffer;
-};
-
 struct EditorContext {
 	EditorRenderTexture* pChrTexture;
 	EditorRenderTexture* pPaletteTexture;
 	EditorRenderTexture* pColorTexture;
 
 	std::unordered_map<u64, EditorRenderBuffer*> assetRenderBuffers;
-	std::vector<u64> bufferEraseList;
-	std::unordered_set<EditedAssetRenderData*> tempRenderData;
-	std::vector<EditedAssetRenderData*> tempEraseList;
+	std::unordered_map<u64, EditorRenderTexture*> assetRenderTextures;
+	std::vector<u64> assetEraseList;
+
+	std::unordered_set<EditorRenderBuffer*> tempRenderBuffers;
+	std::vector<EditorRenderBuffer*> tempBufferEraseList;
+	std::unordered_set<EditorRenderTexture*> tempRenderTextures;
+	std::vector<EditorRenderTexture*> tempTextureEraseList;
 
 	// Timing
 	r64 secondsElapsed;
@@ -104,25 +103,81 @@ struct EditorContext {
 
 static EditorContext* pContext;
 
+#pragma region Rendering resources
+static EditorRenderBuffer* CreateRenderBuffer(u64 id, size_t size, const void* data) {
+	EditorRenderBuffer* pBuffer = (EditorRenderBuffer*)calloc(1, Rendering::GetEditorBufferSize());
+	Rendering::InitEditorBuffer(pBuffer, size, data);
+	pContext->assetRenderBuffers.emplace(id, pBuffer);
+	return pBuffer;
+}
+
+static EditorRenderBuffer* GetRenderBuffer(u64 id, AssetType type, size_t dataSize) {
+	if (id == UUID_NULL) {
+		return nullptr;
+	}
+
+	EditorRenderBuffer* pBuffer = nullptr;
+	if (pContext->assetRenderBuffers.contains(id)) {
+		pBuffer = pContext->assetRenderBuffers.at(id);
+	}
+	else {
+		const void* pData = AssetManager::GetAsset(id, type);
+		if (!pData) {
+			return nullptr;
+		}
+		pBuffer = CreateRenderBuffer(id, CHR_SIZE_BYTES, pData);
+	}
+	return pBuffer;
+}
+
+static EditorRenderBuffer* GetChrRenderBuffer(u64 id) {
+	return GetRenderBuffer(id, ASSET_TYPE_CHR_BANK, CHR_SIZE_BYTES);
+}
+
+static EditorRenderBuffer* GetPaletteRenderBuffer(u64 id) {
+	return GetRenderBuffer(id, ASSET_TYPE_PALETTE, PALETTE_COLOR_COUNT);
+}
+
+static void UpdateRenderBuffer(u64 id, AssetType type, size_t dataSize, const void* data) {
+	if (type != ASSET_TYPE_CHR_BANK && type != ASSET_TYPE_PALETTE) {
+		return;
+	}
+
+	EditorRenderBuffer* pBuffer = GetRenderBuffer(id, type, dataSize);
+	Rendering::UpdateEditorBuffer(pBuffer, data);
+}
+
+// CHR sheet drawn with all the current palettes
+static EditorRenderTexture* CreateChrSheetTexture(ChrBankHandle handle) {
+	const EditorRenderBuffer* pChrBuffer = GetChrRenderBuffer(handle.id);
+	EditorRenderTexture* pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+	Rendering::InitEditorTexture(pTexture, CHR_DIM_PIXELS * PALETTE_COUNT, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, pChrBuffer);
+	pContext->assetRenderTextures.emplace(handle.id, pTexture);
+	return pTexture;
+}
+
+static EditorRenderTexture* GetChrSheetTexture(ChrBankHandle handle) {
+	if (handle == ChrBankHandle::Null()) {
+		return nullptr;
+	}
+
+	EditorRenderTexture* pTexture = nullptr;
+	if (pContext->assetRenderTextures.contains(handle.id)) {
+		pTexture = pContext->assetRenderTextures.at(handle.id);
+	}
+	else {
+		pTexture = CreateChrSheetTexture(handle);
+	}
+	return pTexture;
+}
+#pragma endregion
+
 #pragma region Utils
 static ImTextureID GetTextureID(const EditorRenderTexture* pTexture) {
 	return (ImTextureID)Rendering::GetEditorTextureData(pTexture);
 }
 
-static inline glm::vec4 NormalizedToChrTexCoord(const glm::vec4& normalized, u8 chrIndex, u8 palette) {
-	constexpr r32 INV_CHR_COUNT = 1.0f / CHR_COUNT;
-	constexpr r32 INV_SHEET_PALETTE_COUNT = (1.0f / (PALETTE_COUNT / 2));
-	
-	// Apply palette and sheet index offsets to normalized coordinates
-	return glm::vec4(
-		(normalized.x + palette) * INV_SHEET_PALETTE_COUNT,
-		(normalized.y + chrIndex) * INV_CHR_COUNT,
-		(normalized.z + palette) * INV_SHEET_PALETTE_COUNT,
-		(normalized.w + chrIndex) * INV_CHR_COUNT
-	);
-}
-
-static glm::vec4 ChrTileToTexCoord(u8 tileIndex, u8 chrIndex, u8 palette) {
+static glm::vec4 GetNormalizedChrCoords(u8 tileIndex) {
 	constexpr r32 INV_CHR_DIM_TILES = 1.0f / CHR_DIM_TILES;
 	constexpr u32 CHR_DIM_TILES_BITS = 0xf;
 	constexpr u32 CHR_DIM_TILES_LOG2 = 4;
@@ -139,7 +194,24 @@ static glm::vec4 ChrTileToTexCoord(u8 tileIndex, u8 chrIndex, u8 palette) {
 		(tileY + 1) * INV_CHR_DIM_TILES
 	);
 
-	return NormalizedToChrTexCoord(normalized, chrIndex, palette);
+	return normalized;
+}
+
+static inline glm::vec4 NormalizedToChrTexCoord(const glm::vec4& normalized, u8 chrIndex, u8 palette, u32 chrCount = CHR_COUNT, u32 sheetPaletteCount = PALETTE_COUNT / 2) {
+	r32 INV_CHR_COUNT = 1.0f / chrCount;
+	r32 INV_SHEET_PALETTE_COUNT = (1.0f / sheetPaletteCount);
+	
+	// Apply palette and sheet index offsets to normalized coordinates
+	return glm::vec4(
+		(normalized.x + palette) * INV_SHEET_PALETTE_COUNT,
+		(normalized.y + chrIndex) * INV_CHR_COUNT,
+		(normalized.z + palette) * INV_SHEET_PALETTE_COUNT,
+		(normalized.w + chrIndex) * INV_CHR_COUNT
+	);
+}
+
+static glm::vec4 ChrTileToTexCoord(u8 tileIndex, u8 chrIndex, u8 palette, u32 chrCount = CHR_COUNT, u32 sheetPaletteCount = PALETTE_COUNT / 2) {
+	return NormalizedToChrTexCoord(GetNormalizedChrCoords(tileIndex), chrIndex, palette, chrCount, sheetPaletteCount);
 }
 
 static ImVec2 DrawTileGrid(ImVec2 size, r32 gridStep, s32* selection = nullptr, bool* focused = nullptr) {
@@ -197,13 +269,13 @@ static ImVec2 DrawColorGrid(ImVec2 size, s32* selection = nullptr, bool* focused
 }
 
 // See GetMetatileVertices for human-readable version
-static void GetMetatileVerticesAVX(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
+static void GetMetatileVerticesAVX(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV, u32 chrCount, u32 sheetPaletteCount) {
 	constexpr r32 TILE_SIZE = 1.0f / METATILE_DIM_TILES;
-	constexpr r32 INV_CHR_COUNT = 1.0f / CHR_COUNT;
 	constexpr r32 INV_CHR_DIM_TILES = 1.0f / CHR_DIM_TILES;
 	constexpr u32 CHR_DIM_TILES_BITS = 0xf;
 	constexpr u32 CHR_DIM_TILES_LOG2 = 4;
-	constexpr r32 INV_SHEET_PALETTE_COUNT = (1.0f / (PALETTE_COUNT / 2));
+	const r32 INV_CHR_COUNT = 1.0f / chrCount;
+	const r32 INV_SHEET_PALETTE_COUNT = (1.0f / sheetPaletteCount);
 
 	const __m256 xMask = _mm256_setr_ps(0, 1, 0, 1, 1, 0, 1, 0);
 	const __m256 yMask = _mm256_setr_ps(0, 0, 0, 0, 1, 1, 1, 1);
@@ -306,7 +378,7 @@ static void GetMetatileVerticesAVX(const Metatile& metatile, const ImVec2& pos, 
 	_mm256_store_ps((r32*)outUV + 24, _mm256_unpackhi_ps(u1, v1));
 }
 
-static void GetMetatileVertices(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
+static void GetMetatileVertices(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV, u32 chrCount, u32 sheetPaletteCount) {
 	constexpr r32 tileSize = 1.0f / METATILE_DIM_TILES;
 
 	for (u32 i = 0; i < METATILE_TILE_COUNT; i++) {
@@ -332,7 +404,7 @@ static void GetMetatileVertices(const Metatile& metatile, const ImVec2& pos, r32
 		const u16 tileId = metatile.tiles[i].tileId;
 		const u8 index = (u8)tileId;
 		const u8 pageIndex = (tileId >> 8) & 3;
-		const glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex, metatile.tiles[i].palette);
+		const glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex, metatile.tiles[i].palette, chrCount, sheetPaletteCount);
 
 		// Handle flipping by modifying UV coordinate assignment
 		const bool flipH = metatile.tiles[i].flipHorizontal;
@@ -355,9 +427,9 @@ static void GetMetatileVertices(const Metatile& metatile, const ImVec2& pos, r32
 	}
 }
 
-static inline void GetMetatileVerticesImpl(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV) {
+static inline void GetMetatileVerticesImpl(const Metatile& metatile, const ImVec2& pos, r32 scale, ImVec2* outVertices, ImVec2* outUV, u32 chrCount = CHR_COUNT, u32 sheetPaletteCount = PALETTE_COUNT / 2) {
 	// TODO: Check CPU capabilities and use AVX if available
-	GetMetatileVerticesAVX(metatile, pos, scale, outVertices, outUV);
+	GetMetatileVerticesAVX(metatile, pos, scale, outVertices, outUV, chrCount, sheetPaletteCount);
 }
 
 static void WriteMetatile(const ImVec2* verts, const ImVec2* uv, ImU32 color = IM_COL32(255, 255, 255, 255)) {
@@ -378,17 +450,17 @@ static void WriteMetatile(const ImVec2* verts, const ImVec2* uv, ImU32 color = I
 	}
 }
 
-static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, ImU32 color = IM_COL32(255, 255, 255, 255)) {
+static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, ImTextureID textureId, u32 chrCount = CHR_COUNT, u32 sheetPaletteCount = PALETTE_COUNT / 2, ImU32 color = IM_COL32(255, 255, 255, 255)) {
 	const r32 tileSize = size / METATILE_DIM_TILES;
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	drawList->PushTextureID(GetTextureID(pContext->pChrTexture));
+	drawList->PushTextureID(textureId);
 	drawList->PrimReserve(METATILE_TILE_COUNT * 6, METATILE_TILE_COUNT * 4);
 
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
 	ImVec2 uv[METATILE_TILE_COUNT * 4];
 
-	GetMetatileVerticesImpl(metatile, pos, size, verts, uv);
+	GetMetatileVerticesImpl(metatile, pos, size, verts, uv, chrCount, sheetPaletteCount);
 	WriteMetatile(verts, uv, color);
 
 	drawList->PopTextureID();
@@ -408,7 +480,7 @@ static void DrawNametable(ImVec2 size, const Nametable& nametable) {
 		ImVec2 pos = ImVec2(tablePos.x + (x * metatileDrawSize), tablePos.y + (y * metatileDrawSize));
 
 		const Metatile metatile = Rendering::Util::GetNametableMetatile(&nametable, i);
-		DrawMetatile(metatile, pos, metatileDrawSize);
+		DrawMetatile(metatile, pos, metatileDrawSize, GetTextureID(pContext->pChrTexture));
 	}
 }
 
@@ -427,11 +499,40 @@ static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
 	const ImVec2 gridSize = ImVec2(size, size);
 	const ImVec2 chrPos = DrawTileGrid(gridSize, gridStepPixels, selectedTile);
 	const glm::vec4 uvMinMax = NormalizedToChrTexCoord({ 0,0,1,1, }, index, palette);
-
 	drawList->AddImage(GetTextureID(pContext->pChrTexture), chrPos, ImVec2(chrPos.x + size, chrPos.y + size), ImVec2(uvMinMax.x, uvMinMax.y), ImVec2(uvMinMax.z, uvMinMax.w));
 	if (selectedTile != nullptr && *selectedTile >= 0) {
 		DrawTileGridSelection(chrPos, gridSize, gridStepPixels, *selectedTile);
 	}
+}
+
+static bool DrawCustomChrSheet(r32 size, ImTextureID chrTexture, s8 bgColorIndex, const glm::vec4& uvMinMax = { 0, 0, 1, 1 }, s32* selectedTile = nullptr) {
+	// Copypaska....
+	const s32 prevSelection = selectedTile ? *selectedTile : -1;
+	const s32 selectedPage = selectedTile ? *selectedTile >> 8 : -1;
+	constexpr s32 gridSizeTiles = CHR_DIM_TILES;
+
+	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
+	const r32 gridStepPixels = TILE_DIM_PIXELS * renderScale;
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	const ImVec2 gridSize = ImVec2(size, size);
+	const ImVec2 topLeft = DrawTileGrid(gridSize, gridStepPixels, selectedTile);
+	const ImVec2 btmRight(topLeft.x + size, topLeft.y + size);
+
+	// DrawTileGrid has a background but it needs to be drawn over with the correct color
+	if (bgColorIndex >= 0) {
+		const ImVec2 colorPos(bgColorIndex % 16, bgColorIndex / 16);
+		const ImVec2 bgUvMin(colorPos.x / 16, colorPos.y / 8);
+		const ImVec2 bgUvMax((colorPos.x + 1.0f) / 16, (colorPos.y + 1.0f) / 8);
+		drawList->AddImage(GetTextureID(pContext->pColorTexture), topLeft, btmRight, bgUvMin, bgUvMax);
+	}
+
+	drawList->AddImage(chrTexture, topLeft, btmRight, ImVec2(uvMinMax.x, uvMinMax.y), ImVec2(uvMinMax.z, uvMinMax.w));
+	if (selectedTile != nullptr && *selectedTile >= 0) {
+		DrawTileGridSelection(topLeft, gridSize, gridStepPixels, *selectedTile);
+	}
+
+	return selectedTile ? (*selectedTile != prevSelection) : false;
 }
 
 static bool DrawCHRPageSelector(r32 chrSize, u32 index, u8 palette, s32* selectedTile) {
@@ -476,9 +577,15 @@ static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, c
 		return;
 	}
 
+	const EditorRenderTexture* pTexture = pTileset->chrBankHandle.id != UUID_NULL ? GetChrSheetTexture(pTileset->chrBankHandle) : nullptr;
+	ImTextureID textureId = GetTextureID(pTexture);
+	if (textureId == NULL) {
+		return;
+	}
+
 	const u32 tileCount = metatileSize.x * metatileSize.y * METATILE_TILE_COUNT;
 
-	drawList->PushTextureID(GetTextureID(pContext->pChrTexture));
+	drawList->PushTextureID(textureId);
 	drawList->PrimReserve(tileCount * 6, tileCount * 4); // NOTE: Seems as if primitives for max. 4096 tiles can be reserved...
 
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
@@ -497,7 +604,7 @@ static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, c
 			const Metatile& metatile = tilesetTile.metatile;
 
 			const ImVec2 drawPos = ImVec2(pos.x + (x - xOffsetRemainder) * scale, pos.y + (y - yOffsetRemainder) * scale);
-			GetMetatileVerticesImpl(metatile, drawPos, scale, verts, uv);
+			GetMetatileVerticesImpl(metatile, drawPos, scale, verts, uv, 1, 16);
 			WriteMetatile(verts, uv);
 		}
 	}
@@ -517,7 +624,13 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 	const u32 tilesetTileDim = TILESET_DIM * METATILE_DIM_TILES;
 	const u32 tilesetTileCount = tilesetTileDim * tilesetTileDim;
 
-	drawList->PushTextureID(GetTextureID(pContext->pChrTexture));
+	const EditorRenderTexture* pTexture = pTileset->chrBankHandle.id != UUID_NULL ? GetChrSheetTexture(pTileset->chrBankHandle) : nullptr;
+	ImTextureID textureId = GetTextureID(pTexture);
+	if (textureId == NULL) {
+		return;
+	}
+
+	drawList->PushTextureID(textureId);
 	drawList->PrimReserve(tilesetTileCount * 6, tilesetTileCount * 4);
 
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
@@ -528,7 +641,7 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 		ImVec2 metatileOffset = ImVec2(chrPos.x + metatileCoord.x * gridStepPixels, chrPos.y + metatileCoord.y * gridStepPixels);
 
 		const Metatile& metatile = pTileset->tiles[i].metatile;
-		GetMetatileVerticesImpl(metatile, metatileOffset, renderScale * TILESET_DIM, verts, uv);
+		GetMetatileVerticesImpl(metatile, metatileOffset, renderScale * TILESET_DIM, verts, uv, 1, 16);
 		WriteMetatile(verts, uv);
 	}
 	drawList->PopTextureID();
@@ -538,7 +651,7 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 	}
 }
 
-static void DrawSprite(const Sprite& sprite, const ImVec2& pos, r32 renderScale, ImU32 color = IM_COL32(255, 255, 255, 255)) {
+static void DrawSprite(const Sprite& sprite, ChrBankHandle chrBankHandle, const ImVec2& pos, r32 renderScale, ImU32 color = IM_COL32(255, 255, 255, 255)) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	const r32 tileDrawSize = TILE_DIM_PIXELS * renderScale;
 
@@ -548,9 +661,13 @@ static void DrawSprite(const Sprite& sprite, const ImVec2& pos, r32 renderScale,
 	const u8 palette = sprite.palette;
 	const u8 pageIndex = (sprite.tileId >> 8) & 3;
 
-	glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex + CHR_PAGE_COUNT, palette);
+	glm::vec4 uvMinMax = ChrTileToTexCoord(index & 0xFF, 0, palette + 8, 1, 16);
 
-	drawList->AddImage(GetTextureID(pContext->pChrTexture), pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y), color);
+	const EditorRenderTexture* pTexture = GetChrSheetTexture(chrBankHandle);
+	if (pTexture != nullptr) {
+		drawList->AddImage(GetTextureID(pTexture), pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y), color);
+	}
+	else drawList->AddRectFilled(pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), IM_COL32(255, 0, 255, 255));
 }
 
 static void DrawMetasprite(const Metasprite* pMetasprite, const ImVec2& origin, r32 renderScale, ImU32 color = IM_COL32(255, 255, 255, 255)) {
@@ -559,7 +676,7 @@ static void DrawMetasprite(const Metasprite* pMetasprite, const ImVec2& origin, 
 	for (s32 i = pMetasprite->spriteCount - 1; i >= 0; i--) {
 		const Sprite& sprite = pMetasprite->GetSprites()[i];
 		const ImVec2 pos = ImVec2(origin.x + renderScale * sprite.x, origin.y + renderScale * sprite.y);
-		DrawSprite(sprite, pos, renderScale, color);
+		DrawSprite(sprite, pMetasprite->chrBankHandle, pos, renderScale, color);
 	}
 }
 
@@ -756,7 +873,7 @@ static bool SelectElement(ImVector<s32>& selection, bool selectionLocked, s32 in
 
 // TODO: This will cause awfulness if elements are added but there's no room in the array. Need to fix
 template <typename T>
-static void DrawGenericEditableList(ImVector<T>& elements, ImVector<s32>& selection, const char* labelPrefix, bool selectionLocked = false, void (*drawExtraStuff)(const T&) = nullptr) {
+static void DrawGenericEditableList(ImVector<T>& elements, ImVector<s32>& selection, const char* labelPrefix, bool selectionLocked = false, std::function<void(const T&)> drawExtraStuff = nullptr) {
 	ImGuiSelectableFlags selectableFlags = ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap;
 	for (u32 i = 0; i < elements.size(); i++) {
 		T& element = elements[i];
@@ -904,40 +1021,6 @@ typedef void (*AssetEditorFn)(EditedAsset&);
 typedef void (*PopulateAssetEditorDataFn)(EditedAsset&);
 typedef void (*ApplyAssetEditorDataFn)(EditedAsset&);
 typedef void (*DeleteAssetEditorDataFn)(EditedAsset&);
-
-static EditorRenderBuffer* CreateRenderBuffer(u64 id, size_t size, const void* data) {
-	EditorRenderBuffer* pBuffer = Rendering::CreateEditorBuffer(size, data);
-	pContext->assetRenderBuffers.emplace(id, pBuffer);
-	return pBuffer;
-}
-
-static EditorRenderBuffer* GetRenderBuffer(u64 id, AssetType type, size_t dataSize) {
-	if (id == UUID_NULL) {
-		return nullptr;
-	}
-
-	EditorRenderBuffer* pBuffer = nullptr;
-	if (pContext->assetRenderBuffers.contains(id)) {
-		pBuffer = pContext->assetRenderBuffers.at(id);
-	}
-	else {
-		const void* pData = AssetManager::GetAsset(id, type);
-		if (!pData) {
-			return nullptr;
-		}
-		pBuffer = CreateRenderBuffer(id, CHR_SIZE_BYTES, pData);
-	}
-	return pBuffer;
-}
-
-static void UpdateRenderBuffer(u64 id, AssetType type, size_t dataSize, const void* data) {
-	if (type != ASSET_TYPE_CHR_BANK && type != ASSET_TYPE_PALETTE) {
-		return;
-	}
-
-	EditorRenderBuffer* pBuffer = GetRenderBuffer(id, type, dataSize);
-	Rendering::UpdateEditorBuffer(pBuffer, data);
-}
 
 static EditedAsset CopyAssetForEditing(u64 id, PopulateAssetEditorDataFn populateFn) {
 	EditedAsset result{};
@@ -1249,8 +1332,8 @@ static u64 DrawAssetListWithFunctionality(AssetType type, ImGui::FileBrowser& fi
 		if (ImGui::BeginPopup("AssetPopup")) {
 			if (ImGui::MenuItem("Delete")) {
 				AssetManager::RemoveAsset(asset->id);
-				if (pContext->assetRenderBuffers.contains(asset->id)) {
-					pContext->bufferEraseList.push_back(asset->id);
+				if (pContext->assetRenderBuffers.contains(asset->id) || pContext->assetRenderTextures.contains(asset->id)) {
+					pContext->assetEraseList.push_back(asset->id);
 				}
 			}
 			if (ImGui::MenuItem("Duplicate")) {
@@ -1550,14 +1633,22 @@ static bool DrawTilemapEditor(Tilemap* pTilemap, ImVec2 topLeft, r32 renderScale
 					const u8 metatileIndex = clipboard.clipboard[clipboardIndex];
 
 					const Tileset* pTileset = AssetManager::GetAsset(pTilemap->tilesetHandle);
-					if (pTileset) {
-						const Metatile& metatile = pTileset->tiles[metatileIndex].metatile;
-						DrawMetatile(metatile, metatileInPixelCoords, tileDrawSize, IM_COL32(255, 255, 255, 127));
+					if (!pTileset) {
+						continue;
+					}
 
-						// Paint metatiles
-						if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
-							Tiles::SetTilesetTile(pTilemap, metatileWorldPos, metatileIndex);
-						}
+					const EditorRenderTexture* pTexture = pTileset->chrBankHandle.id != UUID_NULL ? GetChrSheetTexture(pTileset->chrBankHandle) : nullptr;
+					ImTextureID textureId = GetTextureID(pTexture);
+					if (textureId == NULL) {
+						continue;
+					}
+
+					const Metatile& metatile = pTileset->tiles[metatileIndex].metatile;
+					DrawMetatile(metatile, metatileInPixelCoords, tileDrawSize, textureId, 1, PALETTE_COUNT, IM_COL32(255, 255, 255, 127));
+
+					// Paint metatilesd
+					if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && active) {
+						Tiles::SetTilesetTile(pTilemap, metatileWorldPos, metatileIndex);
 					}
 				}
 			}
@@ -1805,17 +1896,22 @@ static void DrawDebugWindow() {
 #pragma region Sprites
 struct MetaspriteEditorData {
 	ImVector<Sprite> sprites;
+	EditorRenderTexture* pTexture = nullptr;
+	ImVector<s32> spriteSelection;
+	bool spriteSelectionLocked = false;
+	bool showColliderPreview = false;
 };
 
 static void PopulateMetaspriteEditorData(EditedAsset& editedAsset) {
-	if (editedAsset.userData) {
-		delete editedAsset.userData;
+	if (!editedAsset.userData) {
+		editedAsset.userData = new MetaspriteEditorData();
 	}
-
-	editedAsset.userData = new MetaspriteEditorData();
+	
 	MetaspriteEditorData* pEditorData = (MetaspriteEditorData*)editedAsset.userData;
-
 	const Metasprite* pMetasprite = (Metasprite*)editedAsset.data;
+	
+	pEditorData->pTexture = pMetasprite->chrBankHandle.id != UUID_NULL ? GetChrSheetTexture(pMetasprite->chrBankHandle) : nullptr;
+	
 	const Sprite* pSprites = pMetasprite->GetSprites();
 	for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
 		pEditorData->sprites.push_back(pSprites[i]);
@@ -1842,7 +1938,7 @@ static void DeleteMetaspriteEditorData(EditedAsset& editedAsset) {
 }
 
 
-static void DrawMetaspritePreview(MetaspriteEditorData* pEditorData, ImVector<s32>& spriteSelection, bool selectionLocked, r32 size) {
+static void DrawMetaspritePreview(MetaspriteEditorData* pEditorData, r32 size) {
 	constexpr s32 gridSizeTiles = 8;
 
 	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
@@ -1877,9 +1973,8 @@ static void DrawMetaspritePreview(MetaspriteEditorData* pEditorData, ImVector<s3
 		const bool flipX = sprite.flipHorizontal;
 		const bool flipY = sprite.flipVertical;
 		const u8 palette = sprite.palette;
-		const u8 pageIndex = (sprite.tileId >> 8) & 3;
 
-		glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex + CHR_PAGE_COUNT, palette);
+		glm::vec4 uvMinMax = ChrTileToTexCoord(index & 0xFF, 0, palette + 8, 1, 16);
 		ImVec2 pos = ImVec2(origin.x + renderScale * sprite.x, origin.y + renderScale * sprite.y);
 
 		// Select sprite by clicking (Topmost sprite gets selected)
@@ -1888,12 +1983,11 @@ static void DrawMetaspritePreview(MetaspriteEditorData* pEditorData, ImVector<s3
 			trySelect = i;
 		}
 
-		bool selected = spriteSelection.contains(i);
+		bool selected = pEditorData->spriteSelection.contains(i);
 		// Move sprite if dragged
 		ImVec2 posWithDrag = selected ? ImVec2(pos.x + dragDelta.x, pos.y + dragDelta.y) : pos;
 
-		drawList->AddImage(GetTextureID(pContext->pChrTexture), posWithDrag, ImVec2(posWithDrag.x + gridStepPixels, posWithDrag.y + gridStepPixels), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
-
+		drawList->AddImage(GetTextureID(pEditorData->pTexture), posWithDrag, ImVec2(posWithDrag.x + gridStepPixels, posWithDrag.y + gridStepPixels), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
 
 		// Commit drag
 		if (selected && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
@@ -1908,22 +2002,22 @@ static void DrawMetaspritePreview(MetaspriteEditorData* pEditorData, ImVector<s3
 		}
 	}
 
-	if (trySelect >= 0 && !selectionLocked && !dragging) {
+	if (trySelect >= 0 && !pEditorData->spriteSelectionLocked && !dragging) {
 		if (ImGui::IsKeyDown(ImGuiKey_ModCtrl))
 		{
-			if (spriteSelection.contains(trySelect))
-				spriteSelection.find_erase_unsorted(trySelect);
+			if (pEditorData->spriteSelection.contains(trySelect))
+				pEditorData->spriteSelection.find_erase_unsorted(trySelect);
 			else
-				spriteSelection.push_back(trySelect);
+				pEditorData->spriteSelection.push_back(trySelect);
 		}
-		else if (!spriteSelection.contains(trySelect))
+		else if (!pEditorData->spriteSelection.contains(trySelect))
 		{
-			spriteSelection.clear();
-			spriteSelection.push_back(trySelect);
+			pEditorData->spriteSelection.clear();
+			pEditorData->spriteSelection.push_back(trySelect);
 		}
 	}
-	else if (trySelect == -2 && !ImGui::IsKeyDown(ImGuiKey_ModCtrl) && !selectionLocked) {
-		spriteSelection.clear();
+	else if (trySelect == -2 && !ImGui::IsKeyDown(ImGuiKey_ModCtrl) && !pEditorData->spriteSelectionLocked) {
+		pEditorData->spriteSelection.clear();
 	}
 
 	// Reset drag delta when mouse released
@@ -1933,17 +2027,21 @@ static void DrawMetaspritePreview(MetaspriteEditorData* pEditorData, ImVector<s3
 	}
 }
 
-static void DrawSpriteEditor(MetaspriteEditorData* pEditorData, ImVector<s32>& spriteSelection, bool& dirty) {
+static void DrawSpriteEditor(MetaspriteEditorData* pEditorData, bool& dirty) {
 	ImGui::SeparatorText("Sprite editor");
 	
-	if (spriteSelection.empty()) {
+	if (pEditorData->spriteSelection.empty()) {
 		ImGui::TextUnformatted("No sprite selected");
 	}
-	else if (spriteSelection.size() > 1) {
+	else if (pEditorData->spriteSelection.size() > 1) {
 		ImGui::TextUnformatted("Multiple sprites selected");
 	}
 	else {
-		s32& spriteIndex = spriteSelection[0];
+		s32& spriteIndex = pEditorData->spriteSelection[0];
+		if (spriteIndex >= pEditorData->sprites.size() || spriteIndex < 0) {
+			pEditorData->spriteSelection.clear();;
+			return;
+		}
 		Sprite& sprite = pEditorData->sprites[spriteIndex];
 		s32 index = (s32)sprite.tileId;
 
@@ -1955,7 +2053,10 @@ static void DrawSpriteEditor(MetaspriteEditorData* pEditorData, ImVector<s32>& s
 
 		ImGuiStyle& style = ImGui::GetStyle();
 		ImGui::BeginChild("Tile selector", ImVec2(chrSheetSize, chrSheetSize + ImGui::GetItemRectSize().y + style.ItemSpacing.y));
-		DrawCHRPageSelector(chrSheetSize, 1, sprite.palette, &newId);
+		Palette* pPalette = Rendering::GetPalettePtr(sprite.palette + 8);
+		const s8 bgColorIndex = pPalette ? pPalette->colors[0] : -1;
+		glm::vec4 uvMinMax = NormalizedToChrTexCoord({ 0,0,1,1 }, 0, sprite.palette + 8, 1, PALETTE_COUNT);
+		DrawCustomChrSheet(chrSheetSize, GetTextureID(pEditorData->pTexture), bgColorIndex, uvMinMax, &newId);
 		ImGui::EndChild();
 
 		if (newId != sprite.tileId) {
@@ -1991,13 +2092,13 @@ static void DrawSpriteEditor(MetaspriteEditorData* pEditorData, ImVector<s32>& s
 	}
 }
 
-static void DrawSpriteListPreview(const Sprite& sprite) {
+static void DrawSpriteListPreview(const Sprite& sprite, const EditorRenderTexture* pTexture) {
 	// Draw a nice little preview of the sprite
 	u8 index = (u8)sprite.tileId;
 	const bool flipX = sprite.flipHorizontal;
 	const bool flipY = sprite.flipVertical;
-	const u8 pageIndex = (sprite.tileId >> 8) & 3;
-	glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex + CHR_PAGE_COUNT, sprite.palette);
+
+	glm::vec4 uvMinMax = ChrTileToTexCoord(index & 0xFF, 0, sprite.palette + 8, 1, 16);
 	ImGuiStyle& style = ImGui::GetStyle();
 	r32 itemHeight = ImGui::GetItemRectSize().y - style.FramePadding.y;
 
@@ -2005,7 +2106,7 @@ static void DrawSpriteListPreview(const Sprite& sprite) {
 	const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
 	const ImVec2 topLeft = ImVec2(ImGui::GetItemRectMin().x + 88, ImGui::GetItemRectMin().y + style.FramePadding.y);
 	const ImVec2 btmRight = ImVec2(topLeft.x + itemHeight, topLeft.y + itemHeight);
-	drawList->AddImage(GetTextureID(pContext->pChrTexture), topLeft, btmRight, ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
+	drawList->AddImage(GetTextureID(pTexture), topLeft, btmRight, ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
 }
 
 static void DrawMetaspriteEditor(EditedAsset& asset) {
@@ -2014,27 +2115,32 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 	Metasprite* pMetasprite = (Metasprite*)asset.data;
 	MetaspriteEditorData* pEditorData = (MetaspriteEditorData*)asset.userData;
 
-	static ImVector<s32> spriteSelection;
-	static bool selectionLocked = false;
-
-	static bool showColliderPreview = false;
-
 	ImGui::SeparatorText("Properties");
 	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
 		asset.dirty = true;
 	}
+	if (DrawAssetField("CHR Bank", ASSET_TYPE_CHR_BANK, pMetasprite->chrBankHandle.id)) {
+		asset.dirty = true;
+	}
+	pEditorData->pTexture = pMetasprite->chrBankHandle.id != UUID_NULL ? GetChrSheetTexture(pMetasprite->chrBankHandle) : nullptr;
 
 	ImGui::Separator();
 
+	if (pMetasprite->chrBankHandle.id == UUID_NULL) {
+		ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "No CHR Bank assigned! Please assign a CHR Bank to see the preview.");
+		ImGui::EndChild();
+		return;
+	}
+
 	constexpr r32 previewSize = 256;
 	ImGui::BeginChild("Metasprite preview", ImVec2(previewSize, previewSize));
-	DrawMetaspritePreview(pEditorData, spriteSelection, selectionLocked, previewSize);
+	DrawMetaspritePreview(pEditorData, previewSize);
 	ImGui::EndChild();
 
 	ImGui::Separator();
 
 	ImGui::BeginChild("Metasprite properties");
-	ImGui::Checkbox("Lock selection", &selectionLocked);
+	ImGui::Checkbox("Lock selection", &pEditorData->spriteSelectionLocked);
 
 	if (ImGui::Button("+")) {
 		pEditorData->sprites.push_back(Sprite{});
@@ -2050,14 +2156,16 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 
 	ImGui::BeginChild("Sprite list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 
-	DrawGenericEditableList<Sprite>(pEditorData->sprites, spriteSelection, "Sprite", selectionLocked, DrawSpriteListPreview);
+	DrawGenericEditableList<Sprite>(pEditorData->sprites, pEditorData->spriteSelection, "Sprite", pEditorData->spriteSelectionLocked, [pEditorData](const Sprite& sprite) {
+		DrawSpriteListPreview(sprite, pEditorData->pTexture);
+		});
 
 	ImGui::EndChild();
 
 	ImGui::SameLine();
 
 	ImGui::BeginChild("Sprite editor");
-	DrawSpriteEditor(pEditorData, spriteSelection, asset.dirty);
+	DrawSpriteEditor(pEditorData, asset.dirty);
 	ImGui::EndChild();
 	ImGui::EndChild();
 	ImGui::EndChild();
@@ -2093,6 +2201,17 @@ static void DrawTilesetEditor(EditedAsset& asset) {
 		if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
 			asset.dirty = true;
 		}
+		if (DrawAssetField("CHR Bank", ASSET_TYPE_CHR_BANK, pTileset->chrBankHandle.id)) {
+			asset.dirty = true;
+		}
+		const EditorRenderTexture* pTexture = pTileset->chrBankHandle.id != UUID_NULL ? GetChrSheetTexture(pTileset->chrBankHandle) : nullptr;
+
+		if (pTileset->chrBankHandle.id == UUID_NULL) {
+			ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "No CHR Bank assigned! Please assign a CHR Bank to see the preview.");
+			ImGui::EndChild();
+			ImGui::EndChild();
+			return;
+		}
 
 		ImGui::SeparatorText("Metatile editor");
 
@@ -2101,10 +2220,14 @@ static void DrawTilesetEditor(EditedAsset& asset) {
 
 		Metatile& metatile = pTileset->tiles[selectedMetatileIndex].metatile;
 		s32 tileId = metatile.tiles[selectedTileIndex].tileId;
+		tileId &= 0xFF; // Ensure tileId is within valid range
 
 		s32 palette = metatile.tiles[selectedTileIndex].palette;
 		r32 chrSheetSize = 256;
-		DrawCHRPageSelector(chrSheetSize, 0, palette, &tileId);
+		Palette* pPalette = Rendering::GetPalettePtr(palette);
+		const s8 bgColorIndex = pPalette ? pPalette->colors[0] : -1;
+		glm::vec4 uvMinMax = NormalizedToChrTexCoord({ 0,0,1,1 }, 0, palette, 1, PALETTE_COUNT);
+		DrawCustomChrSheet(chrSheetSize, GetTextureID(pTexture), bgColorIndex, uvMinMax, &tileId);
 		if (tileId != metatile.tiles[selectedTileIndex].tileId) {
 			metatile.tiles[selectedTileIndex].tileId = tileId;
 			asset.dirty = true;
@@ -2114,8 +2237,10 @@ static void DrawTilesetEditor(EditedAsset& asset) {
 
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		const ImVec2 gridSize = ImVec2(tilePreviewSize, tilePreviewSize);
+		ImGui::PushID("Tile grid");
 		const ImVec2 tilePos = DrawTileGrid(gridSize, gridStepPixels, &selectedTileIndex);
-		DrawMetatile(metatile, tilePos, tilePreviewSize);
+		ImGui::PopID();
+		DrawMetatile(metatile, tilePos, tilePreviewSize, GetTextureID(pTexture), 1, PALETTE_COUNT);
 		DrawTileGridSelection(tilePos, gridSize, gridStepPixels, selectedTileIndex);
 
 		s32& type = pTileset->tiles[selectedMetatileIndex].type;
@@ -2394,73 +2519,83 @@ static void DrawRoomTools(EditedAsset& asset) {
 
 			ImGui::SeparatorText("Map visuals");
 
-			static s32 selectedTile = 0;
-			if (selectedTile >= pTemplate->width * 2 * pTemplate->height) {
-				selectedTile = 0;
-			}
-			const s32 xTile = selectedTile % (pTemplate->width * 2);
-			const s32 yTile = selectedTile / (pTemplate->width * 2);
-			const s32 roomTileIndex = xTile + yTile * ROOM_MAX_DIM_SCREENS * 2;
-
-			BgTile* mapTiles = pTemplate->GetMapTiles();
-
-			s32 tileId = mapTiles[roomTileIndex].tileId;
-			s32 palette = mapTiles[roomTileIndex].palette;
-
-			constexpr r32 chrSheetSize = 256;
-			ImGuiStyle& style = ImGui::GetStyle();
-			ImGui::BeginChild("Tile selector", ImVec2(chrSheetSize, chrSheetSize + ImGui::GetItemRectSize().y + style.ItemSpacing.y));
-			if (DrawCHRPageSelector(chrSheetSize, 0, palette, &tileId)) {
-				mapTiles[roomTileIndex].tileId = tileId;
+			if (DrawAssetField("CHR Bank", ASSET_TYPE_CHR_BANK, pTemplate->mapChrBankHandle.id)) {
 				asset.dirty = true;
 			}
-			ImGui::EndChild();
 
-			ImDrawList* drawList = ImGui::GetWindowDrawList();
-			constexpr r32 previewTileSize = 32;
-			const ImVec2 gridSize(previewTileSize * pTemplate->width * 2, previewTileSize * pTemplate->height);
-
-			static bool gridFocused = false;
-			const ImVec2 gridPos = DrawTileGrid(gridSize, previewTileSize, &selectedTile, &gridFocused);
-
-			for (u32 y = 0; y < pTemplate->height; y++) {
-				for (u32 x = 0; x < pTemplate->width * 2; x++) {
-					const s32 tileIndex = x + y * ROOM_MAX_DIM_SCREENS * 2;
-					const BgTile& tile = mapTiles[tileIndex];
-
-					const u8 index = (u8)tile.tileId;
-					const bool flipX = tile.flipHorizontal;
-					const bool flipY = tile.flipVertical;
-					const u8 pageIndex = (tile.tileId >> 8) & 3;
-
-					glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex, tile.palette);
-
-					const ImVec2 pos(gridPos.x + x * previewTileSize, gridPos.y + y * previewTileSize);
-					drawList->AddImage(GetTextureID(pContext->pChrTexture), pos, ImVec2(pos.x + previewTileSize, pos.y + previewTileSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
+			if (pTemplate->mapChrBankHandle == ChrBankHandle::Null()) {
+				ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "No CHR Bank assigned! Please assign a CHR Bank to see the preview.");
+			}
+			else {
+				static s32 selectedTile = 0;
+				if (selectedTile >= pTemplate->width * 2 * pTemplate->height) {
+					selectedTile = 0;
 				}
-			}
+				const s32 xTile = selectedTile % (pTemplate->width * 2);
+				const s32 yTile = selectedTile / (pTemplate->width * 2);
+				const s32 roomTileIndex = xTile + yTile * ROOM_MAX_DIM_SCREENS * 2;
 
-			DrawTileGridSelection(gridPos, gridSize, previewTileSize, selectedTile);
+				BgTile* mapTiles = pTemplate->GetMapTiles();
 
-			ImGui::SeparatorText("Tile Settings");
+				s32 tileId = mapTiles[roomTileIndex].tileId;
+				s32 palette = mapTiles[roomTileIndex].palette;
 
-			ImGui::Text("Tile ID: 0x%02x", tileId);
+				constexpr r32 chrSheetSize = 256;
+				ImGuiStyle& style = ImGui::GetStyle();
+				ImGui::BeginChild("Tile selector", ImVec2(chrSheetSize, chrSheetSize + ImGui::GetItemRectSize().y + style.ItemSpacing.y));
+				EditorRenderTexture* pTexture = GetChrSheetTexture(pTemplate->mapChrBankHandle);
+				ImTextureID textureId = GetTextureID(pTexture);
+				if (DrawCustomChrSheet(chrSheetSize, textureId, -1, NormalizedToChrTexCoord({ 0,0,1,1 }, 0, palette, 1, PALETTE_COUNT), &tileId)) {
+					mapTiles[roomTileIndex].tileId = tileId;
+					asset.dirty = true;
+				}
+				ImGui::EndChild();
 
-			if (ImGui::SliderInt("Palette", &palette, 0, BG_PALETTE_COUNT - 1)) {
-				mapTiles[roomTileIndex].palette = palette;
-				asset.dirty = true;
-			}
+				ImDrawList* drawList = ImGui::GetWindowDrawList();
+				constexpr r32 previewTileSize = 32;
+				const ImVec2 gridSize(previewTileSize * pTemplate->width * 2, previewTileSize * pTemplate->height);
 
-			bool flipHorizontal = mapTiles[roomTileIndex].flipHorizontal;
-			if (ImGui::Checkbox("Flip Horizontal", &flipHorizontal)) {
-				mapTiles[roomTileIndex].flipHorizontal = flipHorizontal;
-				asset.dirty = true;
-			}
+				static bool gridFocused = false;
+				const ImVec2 gridPos = DrawTileGrid(gridSize, previewTileSize, &selectedTile, &gridFocused);
 
-			bool flipVertical = mapTiles[roomTileIndex].flipVertical;
-			if (ImGui::Checkbox("Flip Vertical", &flipVertical)) {
-				mapTiles[roomTileIndex].flipVertical = flipVertical;
-				asset.dirty = true;
+				for (u32 y = 0; y < pTemplate->height; y++) {
+					for (u32 x = 0; x < pTemplate->width * 2; x++) {
+						const s32 tileIndex = x + y * ROOM_MAX_DIM_SCREENS * 2;
+						const BgTile& tile = mapTiles[tileIndex];
+
+						const u8 index = (u8)tile.tileId & 0xFF;
+						const bool flipX = tile.flipHorizontal;
+						const bool flipY = tile.flipVertical;
+
+						glm::vec4 uvMinMax = ChrTileToTexCoord(index, 0, tile.palette, 1, 16);
+
+						const ImVec2 pos(gridPos.x + x * previewTileSize, gridPos.y + y * previewTileSize);
+						drawList->AddImage(textureId, pos, ImVec2(pos.x + previewTileSize, pos.y + previewTileSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
+					}
+				}
+
+				DrawTileGridSelection(gridPos, gridSize, previewTileSize, selectedTile);
+
+				ImGui::SeparatorText("Tile Settings");
+
+				ImGui::Text("Tile ID: 0x%02x", tileId);
+
+				if (ImGui::SliderInt("Palette", &palette, 0, BG_PALETTE_COUNT - 1)) {
+					mapTiles[roomTileIndex].palette = palette;
+					asset.dirty = true;
+				}
+
+				bool flipHorizontal = mapTiles[roomTileIndex].flipHorizontal;
+				if (ImGui::Checkbox("Flip Horizontal", &flipHorizontal)) {
+					mapTiles[roomTileIndex].flipHorizontal = flipHorizontal;
+					asset.dirty = true;
+				}
+
+				bool flipVertical = mapTiles[roomTileIndex].flipVertical;
+				if (ImGui::Checkbox("Flip Vertical", &flipVertical)) {
+					mapTiles[roomTileIndex].flipVertical = flipVertical;
+					asset.dirty = true;
+				}
 			}
 
 			ImGui::EndTabItem();
@@ -2547,9 +2682,10 @@ static void PopulateActorEditorData(EditedAsset& editedAsset) {
 
 	editedAsset.userData = new ActorPrototypeEditorData();
 	ActorPrototypeEditorData* pEditorData = (ActorPrototypeEditorData*)editedAsset.userData;
-	pEditorData->currentAnim = -1;
-
 	ActorPrototype* pPrototype = (ActorPrototype*)editedAsset.data;
+
+	pEditorData->currentAnim = pPrototype->animCount > 0 ? 0 : -1;
+
 	for (u32 i = 0; i < pPrototype->animCount; i++) {
 		pEditorData->animations.push_back(pPrototype->GetAnimations()[i]);
 	}
@@ -2691,14 +2827,14 @@ static void DrawActorEditor(EditedAsset& asset) {
 
 		if (ImGui::BeginTabBar("Actor editor tabs")) {
 			if (ImGui::BeginTabItem("Behaviour")) {
-				if (DrawTypeSelectionCombo("Type", ACTOR_TYPE_NAMES, ACTOR_TYPE_COUNT, pPrototype->type)) {
+				if (DrawTypeSelectionCombo("Type", ACTOR_TYPE_NAMES, ACTOR_TYPE_COUNT, pPrototype->type, false)) {
 					asset.dirty = true;
 				}
 				const auto& editorData = ACTOR_REFLECTION_DATA[pPrototype->type];
 
 				size_t subtypeCount = editorData.subtypeCount;
 				pPrototype->subtype = glm::clamp<TActorSubtype>(pPrototype->subtype, u16(0), u16(subtypeCount - 1));
-				if (DrawTypeSelectionCombo("Subtype", editorData.subtypeNames, subtypeCount, pPrototype->subtype)) {
+				if (DrawTypeSelectionCombo("Subtype", editorData.subtypeNames, subtypeCount, pPrototype->subtype, false)) {
 					asset.dirty = true;
 				}
 
@@ -4122,17 +4258,9 @@ static void DrawSoundWindow() {
 
 #pragma region Pattern editor
 struct ChrEditorData {
-	EditedAssetRenderData* pRenderData = nullptr;
+	EditorRenderTexture* pTexture = nullptr;
 	PaletteHandle selectedPalette = PaletteHandle::Null();
 };
-
-static EditorRenderBuffer* GetChrRenderBuffer(u64 id) {
-	return GetRenderBuffer(id, ASSET_TYPE_CHR_BANK, CHR_SIZE_BYTES);
-}
-
-static EditorRenderBuffer* GetPaletteRenderBuffer(u64 id) {
-	return GetRenderBuffer(id, ASSET_TYPE_PALETTE, PALETTE_COLOR_COUNT);
-}
 
 static void PopulateChrEditorData(EditedAsset& editedAsset) {
 	ChrEditorData*& pEditorData = (ChrEditorData*&)editedAsset.userData;
@@ -4140,47 +4268,20 @@ static void PopulateChrEditorData(EditedAsset& editedAsset) {
 	if (!pEditorData) {
 		pEditorData = new ChrEditorData();
 
-		pEditorData->pRenderData = new EditedAssetRenderData();
-		pEditorData->pRenderData->pBuffer = Rendering::CreateEditorBuffer(CHR_SIZE_BYTES, editedAsset.data);
-		pEditorData->pRenderData->pTexture = Rendering::CreateEditorTexture(CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, pEditorData->pRenderData->pBuffer);
-		pContext->tempRenderData.insert(pEditorData->pRenderData);
+		pEditorData->pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+		Rendering::InitEditorTexture(pEditorData->pTexture, CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, GetChrRenderBuffer(editedAsset.id));
+		pContext->tempRenderTextures.insert(pEditorData->pTexture);
 	}
-
-	Rendering::UpdateEditorBuffer(pEditorData->pRenderData->pBuffer, editedAsset.data);
 }
 
 static void DeleteChrEditorData(EditedAsset& editedAsset) {
 	ChrEditorData* pEditorData = (ChrEditorData*)editedAsset.userData;
 
-	pContext->tempEraseList.push_back(pEditorData->pRenderData);
+	pContext->tempTextureEraseList.push_back(pEditorData->pTexture);
 
 	// NOTE: This does not free the render data, so it's potentially leaky
 	// Render data should be freed later when iterating the erase list
 	delete editedAsset.userData;
-}
-
-static void DrawEditedChrSheet(r32 size, ImTextureID chrTexture, s8 bgColorIndex) {
-	// Copypaska....
-	constexpr s32 gridSizeTiles = CHR_DIM_TILES;
-
-	const r32 renderScale = size / (gridSizeTiles * TILE_DIM_PIXELS);
-	const r32 gridStepPixels = TILE_DIM_PIXELS * renderScale;
-
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	const ImVec2 gridSize = ImVec2(size, size);
-	const ImVec2 topLeft = DrawTileGrid(gridSize, gridStepPixels);
-	const ImVec2 btmRight(topLeft.x + size, topLeft.y + size);
-	const glm::vec4 uvMinMax = { 0,0,1,1 };
-
-	// DrawTileGrid has a background but it needs to be drawn over with the correct color
-	if (bgColorIndex >= 0) {
-		const ImVec2 colorPos(bgColorIndex % 16, bgColorIndex / 16);
-		const ImVec2 bgUvMin(colorPos.x / 16, colorPos.y / 8);
-		const ImVec2 bgUvMax((colorPos.x + 1.0f) / 16, (colorPos.y + 1.0f) / 8);
-		drawList->AddImage(GetTextureID(pContext->pColorTexture), topLeft, btmRight, bgUvMin, bgUvMax);
-	}
-
-	drawList->AddImage(chrTexture, topLeft, btmRight, ImVec2(uvMinMax.x, uvMinMax.y), ImVec2(uvMinMax.z, uvMinMax.w));
 }
 
 static void DrawChrEditor(EditedAsset& asset) {
@@ -4188,8 +4289,9 @@ static void DrawChrEditor(EditedAsset& asset) {
 
 	ChrEditorData* pEditorData = (ChrEditorData*)asset.userData;
 
+	EditorRenderBuffer* pChrBuffer = GetChrRenderBuffer(asset.id);
 	EditorRenderBuffer* pPaletteBuffer = GetPaletteRenderBuffer(pEditorData->selectedPalette.id);
-	Rendering::UpdateEditorTexture(pEditorData->pRenderData->pTexture, pEditorData->pRenderData->pBuffer, pPaletteBuffer);
+	Rendering::UpdateEditorTexture(pEditorData->pTexture, pChrBuffer, pPaletteBuffer);
 
 	ImGui::SeparatorText("Properties");
 	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
@@ -4201,7 +4303,7 @@ static void DrawChrEditor(EditedAsset& asset) {
 	constexpr r32 gridSizePixels = 512.0f;
 	const Palette* pPalette = AssetManager::GetAsset(PaletteHandle(pEditorData->selectedPalette.id));
 	const s8 bgColorIndex = pPalette ? pPalette->colors[0] : -1;
-	DrawEditedChrSheet(gridSizePixels, GetTextureID(pEditorData->pRenderData->pTexture), bgColorIndex);
+	DrawCustomChrSheet(gridSizePixels, GetTextureID(pEditorData->pTexture), bgColorIndex);
 	DrawAssetField("Palette", ASSET_TYPE_PALETTE, pEditorData->selectedPalette.id);
 
 	ImGui::EndChild();
@@ -4215,7 +4317,8 @@ static void DrawChrWindow() {
 
 #pragma region Palette editor
 struct PaletteEditorData {
-	EditedAssetRenderData* pRenderData = nullptr;
+	EditorRenderBuffer* pBuffer = nullptr;
+	EditorRenderTexture* pTexture = nullptr;
 	s32 selectedColor = -1;
 	ChrBankHandle selectedChrBank = ChrBankHandle::Null();
 };
@@ -4226,19 +4329,22 @@ static void PopulatePaletteEditorData(EditedAsset& editedAsset) {
 	if (!pEditorData) {
 		pEditorData = new PaletteEditorData();
 
-		pEditorData->pRenderData = new EditedAssetRenderData();
-		pEditorData->pRenderData->pBuffer = Rendering::CreateEditorBuffer(PALETTE_COLOR_COUNT, editedAsset.data);
-		pEditorData->pRenderData->pTexture = Rendering::CreateEditorTexture(CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, nullptr, pEditorData->pRenderData->pBuffer);
-		pContext->tempRenderData.insert(pEditorData->pRenderData);
+		pEditorData->pBuffer = (EditorRenderBuffer*)calloc(1, Rendering::GetEditorBufferSize());
+		Rendering::InitEditorBuffer(pEditorData->pBuffer, PALETTE_COLOR_COUNT, editedAsset.data);
+		pContext->tempRenderBuffers.insert(pEditorData->pBuffer);
+		pEditorData->pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+		Rendering::InitEditorTexture(pEditorData->pTexture, CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, nullptr, pEditorData->pBuffer);
+		pContext->tempRenderTextures.insert(pEditorData->pTexture);
 	}
 
-	Rendering::UpdateEditorBuffer(pEditorData->pRenderData->pBuffer, editedAsset.data);
+	Rendering::UpdateEditorBuffer(pEditorData->pBuffer, editedAsset.data);
 }
 
 static void DeletePaletteEditorData(EditedAsset& editedAsset) {
 	PaletteEditorData* pEditorData = (PaletteEditorData*)editedAsset.userData;
 
-	pContext->tempEraseList.push_back(pEditorData->pRenderData);
+	pContext->tempTextureEraseList.push_back(pEditorData->pTexture);
+	pContext->tempBufferEraseList.push_back(pEditorData->pBuffer);
 
 	// NOTE: This does not free the render data, so it's potentially leaky
 	// Render data should be freed later when iterating the erase list
@@ -4252,7 +4358,7 @@ static void DrawPaletteEditor(EditedAsset& asset) {
 	PaletteEditorData* pEditorData = (PaletteEditorData*)asset.userData;
 
 	EditorRenderBuffer* pChrBuffer = GetChrRenderBuffer(pEditorData->selectedChrBank.id);
-	Rendering::UpdateEditorTexture(pEditorData->pRenderData->pTexture, pChrBuffer, pEditorData->pRenderData->pBuffer);
+	Rendering::UpdateEditorTexture(pEditorData->pTexture, pChrBuffer, pEditorData->pBuffer);
 
 	ImGui::SeparatorText("Properties");
 	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
@@ -4272,7 +4378,7 @@ static void DrawPaletteEditor(EditedAsset& asset) {
 
 		if (newIndex != selectedColorIndex && newIndex >= 0) {
 			pPalette->colors[pEditorData->selectedColor] = newIndex;
-			Rendering::UpdateEditorBuffer(pEditorData->pRenderData->pBuffer, pPalette);
+			Rendering::UpdateEditorBuffer(pEditorData->pBuffer, pPalette);
 			asset.dirty = true;
 		}
 		ImGui::PopID();
@@ -4308,7 +4414,7 @@ static void DrawPaletteEditor(EditedAsset& asset) {
 	ImGui::SeparatorText("Preview");
 	{
 		constexpr r32 gridSizePixels = 256.0f;
-		DrawEditedChrSheet(gridSizePixels, GetTextureID(pEditorData->pRenderData->pTexture), pPalette->colors[0]);
+		DrawCustomChrSheet(gridSizePixels, GetTextureID(pEditorData->pTexture), pPalette->colors[0]);
 		DrawAssetField("Pattern", ASSET_TYPE_CHR_BANK, pEditorData->selectedChrBank.id);
 	}
 
@@ -4390,15 +4496,21 @@ void Editor::Init(SDL_Window *pWindow) {
 	Rendering::InitEditor(pWindow);
 
 	constexpr u32 sheetPaletteCount = PALETTE_COUNT / 2;
-	pContext->pChrTexture = Rendering::CreateEditorTexture(CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, EDITOR_TEXTURE_USAGE_CHR);
-	pContext->pPaletteTexture = Rendering::CreateEditorTexture(PALETTE_MEMORY_SIZE, 1, EDITOR_TEXTURE_USAGE_PALETTE);
-	pContext->pColorTexture = Rendering::CreateEditorTexture(16, 8, EDITOR_TEXTURE_USAGE_COLOR);
+	pContext->pChrTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+	Rendering::InitEditorTexture(pContext->pChrTexture, CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, EDITOR_TEXTURE_USAGE_CHR);
+	pContext->pPaletteTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+	Rendering::InitEditorTexture(pContext->pPaletteTexture, PALETTE_MEMORY_SIZE, 1, EDITOR_TEXTURE_USAGE_PALETTE);
+	pContext->pColorTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+	Rendering::InitEditorTexture(pContext->pColorTexture, 16, 8, EDITOR_TEXTURE_USAGE_COLOR);
 }
 
 void Editor::Free() {
 	Rendering::FreeEditorTexture(pContext->pChrTexture);
+	free(pContext->pChrTexture);
 	Rendering::FreeEditorTexture(pContext->pPaletteTexture);
+	free(pContext->pPaletteTexture);
 	Rendering::FreeEditorTexture(pContext->pColorTexture);
+	free(pContext->pColorTexture);
 
 	Rendering::ShutdownEditor();
 	ImGui::DestroyContext();
@@ -4438,20 +4550,36 @@ void Editor::Update(r64 dt) {
 	pContext->secondsElapsed += dt;
 
 	// Clean up deleted textures
-	for (auto pTempData : pContext->tempEraseList) {
-		pContext->tempRenderData.erase(pTempData);
-		Rendering::FreeEditorTexture(pTempData->pTexture);
-		Rendering::FreeEditorBuffer(pTempData->pBuffer);
-		free(pTempData);
+	for (auto pTempTexture : pContext->tempTextureEraseList) {
+		pContext->tempRenderTextures.erase(pTempTexture);
+		Rendering::FreeEditorTexture(pTempTexture);
+		free(pTempTexture);
 	}
-	pContext->tempEraseList.clear();
+	pContext->tempTextureEraseList.clear();
 
-	for (auto id : pContext->bufferEraseList) {
-		EditorRenderBuffer* pBuffer = pContext->assetRenderBuffers.at(id);
-		Rendering::FreeEditorBuffer(pBuffer);
-		pContext->assetRenderBuffers.at(id) = nullptr;
+	// Clean up deleted buffers
+	for (auto pTempBuffer : pContext->tempBufferEraseList) {
+		pContext->tempRenderBuffers.erase(pTempBuffer);
+		Rendering::FreeEditorBuffer(pTempBuffer);
+		free(pTempBuffer);
 	}
-	pContext->bufferEraseList.clear();
+	pContext->tempBufferEraseList.clear();
+
+	for (auto id : pContext->assetEraseList) {
+		if (auto it = pContext->assetRenderBuffers.find(id); it != pContext->assetRenderBuffers.end()) {
+			EditorRenderBuffer* pBuffer = it->second;
+			Rendering::FreeEditorBuffer(pBuffer);
+			free(pBuffer);
+			pContext->assetRenderBuffers.erase(it);
+		}
+		if (auto it = pContext->assetRenderTextures.find(id); it != pContext->assetRenderTextures.end()) {
+			EditorRenderTexture* pTexture = it->second;
+			Rendering::FreeEditorTexture(pTexture);
+			free(pTexture);
+			pContext->assetRenderTextures.erase(it);
+		}
+	}
+	pContext->assetEraseList.clear();
 
 	Rendering::BeginEditorFrame();
 	ImGui::NewFrame();
@@ -4523,8 +4651,12 @@ void Editor::SetupFrame() {
 	Rendering::RenderEditorTexture(pContext->pChrTexture);
 	Rendering::RenderEditorTexture(pContext->pPaletteTexture);
 
-	for (auto pTempData : pContext->tempRenderData) {
-		Rendering::RenderEditorTexture(pTempData->pTexture);
+	for (auto& kvp : pContext->assetRenderTextures) {
+		Rendering::RenderEditorTexture(kvp.second);
+	}
+
+	for (auto pTempTexture : pContext->tempRenderTextures) {
+		Rendering::RenderEditorTexture(pTempTexture);
 	}
 }
 

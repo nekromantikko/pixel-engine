@@ -88,12 +88,24 @@ static void to_json(nlohmann::json& j, const TilesetTile& tile) {
 }
 
 static void from_json(const nlohmann::json& j, Tileset& tileset) {
+	if (j.contains("chr_bank_id") && j["chr_bank_id"] != nullptr) {
+		j["chr_bank_id"].get_to<u64>(tileset.chrBankHandle.id);
+	} else {
+		tileset.chrBankHandle = ChrBankHandle::Null(); // Default to 0 if not specified
+	}
+
 	for (u32 i = 0; i < TILESET_SIZE; ++i) {
 		tileset.tiles[i] = j.at("tiles").at(i).get<TilesetTile>();
 	}
 }
 
 inline void to_json(nlohmann::json& j, const Tileset& tileset) {
+	if (tileset.chrBankHandle.id != 0) {
+		j["chr_bank_id"] = tileset.chrBankHandle.id;
+	} else {
+		j["chr_bank_id"] = nullptr; // Use null if ChrBankHandle is null
+	}
+
 	j["tiles"] = nlohmann::json::array();
 	for (u32 i = 0; i < TILESET_SIZE; ++i) {
 		j["tiles"].push_back(tileset.tiles[i]);
@@ -364,6 +376,13 @@ static SerializationResult LoadMetaspriteFromFile(FILE* pFile, const nlohmann::j
 	outData.resize(size);
 
 	Metasprite* pMetasprite = (Metasprite*)outData.data();
+	if (json.contains("chr_bank_id") && json["chr_bank_id"] != nullptr) {
+		json["chr_bank_id"].get_to<u64>(pMetasprite->chrBankHandle.id);
+	}
+	else {
+		pMetasprite->chrBankHandle = ChrBankHandle::Null(); // Default to 0 if not specified
+	}
+
 	pMetasprite->spriteCount = (u32)spriteCount;
 	pMetasprite->spritesOffset = sizeof(Metasprite);
 
@@ -379,6 +398,7 @@ static SerializationResult SaveMetaspriteToFile(FILE* pFile, nlohmann::json& met
 	const Metasprite* pMetasprite = (const Metasprite*)pData;
 	nlohmann::json json;
 
+	json["chr_bank_id"] = pMetasprite->chrBankHandle.id;
 	json["sprites"] = nlohmann::json::array();
 	const Sprite* pSprites = pMetasprite->GetSprites();
 	for (u32 i = 0; i < pMetasprite->spriteCount; i++) {
@@ -780,6 +800,13 @@ static SerializationResult LoadRoomTemplateFromFile(FILE* pFile, const nlohmann:
 	pRoom->height = height;
 	pRoom->mapTileOffset = mapTileOffset;
 
+	if (json.contains("map_chr_bank_id") && json["map_chr_bank_id"] != nullptr) {
+		json["map_chr_bank_id"].get_to<u64>(pRoom->mapChrBankHandle.id);
+	}
+	else {
+		pRoom->mapChrBankHandle = ChrBankHandle::Null(); // Default to 0 if not specified
+	}
+
 	Tilemap& tilemap = pRoom->tilemap;
 	tilemap.width = tilemapWidth;
 	tilemap.height = tilemapHeight;
@@ -817,6 +844,12 @@ static SerializationResult SaveRoomTemplateToFile(FILE* pFile, nlohmann::json& m
 
 	json["width"] = pRoom->width;
 	json["height"] = pRoom->height;
+
+	if (pRoom->mapChrBankHandle == ChrBankHandle::Null()) {
+		json["map_chr_bank_id"] = nullptr; // Use null if no bank is set
+	} else {
+		json["map_chr_bank_id"] = pRoom->mapChrBankHandle.id;
+	}
 
 	// Serialize map tiles
 	json["map_tiles"] = nlohmann::json::array();
