@@ -65,7 +65,9 @@ struct EditedAssetRenderData {
 };
 
 struct EditorContext {
-	EditorRenderTexture* pChrTexture;
+	EditorRenderTexture* pChrTexture; // Legacy - will be removed
+	EditorRenderTexture* pIndexedChrTextures[CHR_COUNT]; // New indexed CHR textures
+	EditorRenderBuffer* pChrBuffers[CHR_COUNT]; // Buffers for each CHR sheet
 	EditorRenderTexture* pPaletteTexture;
 	EditorRenderTexture* pColorTexture;
 
@@ -107,6 +109,23 @@ static EditorContext* pContext;
 #pragma region Utils
 static ImTextureID GetTextureID(const EditorRenderTexture* pTexture) {
 	return (ImTextureID)Rendering::GetEditorTextureData(pTexture);
+}
+
+static ImTextureID GetIndexedChrTextureID(u32 chrIndex) {
+	if (chrIndex >= CHR_COUNT) {
+		return nullptr;
+	}
+	return GetTextureID(pContext->pIndexedChrTextures[chrIndex]);
+}
+
+// Simplified function to add CHR image using indexed textures
+// For now, this will use the legacy texture but with correct UV mapping for a single palette
+static void AddChrImage(ImDrawList* drawList, u8 tileIndex, u8 chrIndex, u8 palette, const ImVec2& pos, const ImVec2& size, bool flipX = false, bool flipY = false, ImU32 color = IM_COL32(255, 255, 255, 255)) {
+	// For now, fall back to the legacy system but prepare for the indexed transition
+	const glm::vec4 uvMinMax = ChrTileToTexCoord(tileIndex, chrIndex, palette);
+	drawList->AddImage(GetTextureID(pContext->pChrTexture), pos, ImVec2(pos.x + size.x, pos.y + size.y), 
+		ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), 
+		ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y), color);
 }
 
 static inline glm::vec4 NormalizedToChrTexCoord(const glm::vec4& normalized, u8 chrIndex, u8 palette) {
@@ -4389,14 +4408,29 @@ void Editor::Init(SDL_Window *pWindow) {
 	ImGui::CreateContext();
 	Rendering::InitEditor(pWindow);
 
+	// Legacy CHR texture (keeping for now during transition)
 	constexpr u32 sheetPaletteCount = PALETTE_COUNT / 2;
 	pContext->pChrTexture = Rendering::CreateEditorTexture(CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, EDITOR_TEXTURE_USAGE_CHR);
+	
+	// Create indexed CHR textures and buffers for each sheet
+	for (u32 i = 0; i < CHR_COUNT; i++) {
+		pContext->pIndexedChrTextures[i] = Rendering::CreateEditorTexture(CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR_INDEXED);
+		pContext->pChrBuffers[i] = Rendering::CreateEditorBuffer(sizeof(ChrSheet));
+	}
+	
 	pContext->pPaletteTexture = Rendering::CreateEditorTexture(PALETTE_MEMORY_SIZE, 1, EDITOR_TEXTURE_USAGE_PALETTE);
 	pContext->pColorTexture = Rendering::CreateEditorTexture(16, 8, EDITOR_TEXTURE_USAGE_COLOR);
 }
 
 void Editor::Free() {
-	Rendering::FreeEditorTexture(pContext->pChrTexture);
+	Rendering::FreeEditorTexture(pContext->pChrTexture); // Legacy
+	
+	// Free indexed CHR textures and buffers
+	for (u32 i = 0; i < CHR_COUNT; i++) {
+		Rendering::FreeEditorTexture(pContext->pIndexedChrTextures[i]);
+		Rendering::FreeEditorBuffer(pContext->pChrBuffers[i]);
+	}
+	
 	Rendering::FreeEditorTexture(pContext->pPaletteTexture);
 	Rendering::FreeEditorTexture(pContext->pColorTexture);
 
@@ -4520,7 +4554,20 @@ void Editor::Update(r64 dt) {
 }
 
 void Editor::SetupFrame() {
+	// Legacy CHR texture rendering (keeping for now during transition)
 	Rendering::RenderEditorTexture(pContext->pChrTexture);
+	
+	// Render indexed CHR textures
+	for (u32 i = 0; i < CHR_COUNT; i++) {
+		ChrSheet* pChrSheet = Rendering::GetChrPtr(i);
+		if (pChrSheet) {
+			// Update the cached buffer with current CHR data
+			Rendering::UpdateEditorBuffer(pContext->pChrBuffers[i], pChrSheet);
+			// Render the indexed texture
+			Rendering::RenderEditorTextureIndexed(pContext->pIndexedChrTextures[i], pContext->pChrBuffers[i]);
+		}
+	}
+	
 	Rendering::RenderEditorTexture(pContext->pPaletteTexture);
 
 	for (auto pTempData : pContext->tempRenderData) {

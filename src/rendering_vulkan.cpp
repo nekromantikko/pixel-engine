@@ -2440,6 +2440,23 @@ void Rendering::ImGuiPaletteCallback(const ImDrawList* parent_list, const ImDraw
 	// For now, we can fall back to AddImage behavior or implement a simple version
 }
 
+EditorRenderTexture* Rendering::CreateIndexedChrTexture(u32 chrIndex) {
+	// Create a single CHR sheet sized texture in indexed format
+	EditorRenderTexture* pTexture = CreateEditorTexture(CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR_INDEXED);
+	return pTexture;
+}
+
+void Rendering::AddIndexedChrImageWithPalette(ImDrawList* drawList, u32 chrIndex, u8 palette, const ImVec2& pos, const ImVec2& size, const ImVec2& uvMin, const ImVec2& uvMax) {
+	// TODO: For now, this is a placeholder that would set up the callback data
+	// In a full implementation, this would:
+	// 1. Get or create the indexed CHR texture for this sheet
+	// 2. Render it with indexed data if needed
+	// 3. Set up PaletteCallbackData with the texture, palette index, and rendering info
+	// 4. Add a callback command to the draw list with ImGuiPaletteCallback
+	
+	// For now, we'll implement this later when we update the editor calls
+}
+
 void Rendering::RenderEditor() {
 	VkCommandBuffer commandBuffer = g_context.primaryCommandBuffers[g_context.currentCbIndex];
 
