@@ -138,6 +138,19 @@ struct RenderContext {
 	VkPipelineLayout palettePipelineLayout;
 	VkPipeline palettePipeline;
 	VkShaderModule paletteShaderModule;
+
+	// New indexed CHR and callback rendering
+	VkShaderModule chrIndexedShaderModule;
+	VkPipelineLayout chrIndexedPipelineLayout;
+	VkPipeline chrIndexedPipeline;
+
+	VkShaderModule paletteApplyShaderModule;
+	VkPipelineLayout paletteApplyPipelineLayout;
+	VkPipeline paletteApplyPipeline;
+	VkDescriptorSetLayout paletteApplyDescriptorSetLayout;
+	
+	ShaderHandle chrIndexedShaderHandle;
+	ShaderHandle paletteApplyShaderHandle;
 #endif
 };
 
@@ -1183,6 +1196,10 @@ void Rendering::Init(SDL_Window* sdlWindow) {
 
 	g_context.blitShaderHandle = AssetManager::GetAssetHandle<ShaderHandle>("shaders/blit.slang");
 	g_context.softwareShaderHandle = AssetManager::GetAssetHandle<ShaderHandle>("shaders/software.slang");
+#ifdef EDITOR
+	g_context.chrIndexedShaderHandle = AssetManager::GetAssetHandle<ShaderHandle>("shaders/editor_chr_indexed.slang");
+	g_context.paletteApplyShaderHandle = AssetManager::GetAssetHandle<ShaderHandle>("shaders/editor_palette_apply.slang");
+#endif
 
 	PhysicalDeviceFeatures deviceFeatures = PhysicalDeviceFeatures();
 	GetSuitablePhysicalDevice(deviceFeatures);
@@ -1729,6 +1746,180 @@ static void CreatePalettePipeline() {
 	err = vkCreateComputePipelines(g_context.device, VK_NULL_HANDLE, 1, &chrCreateInfo, nullptr, &g_context.palettePipeline);
 }
 
+static void CreateChrIndexedPipeline() {
+	g_context.chrIndexedShaderModule = CreateShaderModule(g_context.chrIndexedShaderHandle);
+
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutInfo.setLayoutCount = 1;
+	pipelineLayoutInfo.pSetLayouts = &g_context.debugDescriptorSetLayout;
+
+	vkCreatePipelineLayout(g_context.device, &pipelineLayoutInfo, nullptr, &g_context.chrIndexedPipelineLayout);
+
+	VkPipelineShaderStageCreateInfo shaderStageInfo{};
+	shaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	shaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+	shaderStageInfo.module = g_context.chrIndexedShaderModule;
+	shaderStageInfo.pName = "EditorBlitChrIndexed";
+
+	VkComputePipelineCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+	createInfo.flags = 0;
+	createInfo.stage = shaderStageInfo;
+	createInfo.layout = g_context.chrIndexedPipelineLayout;
+
+	vkCreateComputePipelines(g_context.device, VK_NULL_HANDLE, 1, &createInfo, nullptr, &g_context.chrIndexedPipeline);
+}
+
+static void CreatePaletteApplyPipeline() {
+	g_context.paletteApplyShaderModule = CreateShaderModule(g_context.paletteApplyShaderHandle);
+
+	// Create descriptor set layout for palette application
+	VkDescriptorSetLayoutBinding bindings[3];
+	
+	// Indexed texture binding
+	bindings[0].binding = 0;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+	bindings[0].descriptorCount = 1;
+	bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	bindings[0].pImmutableSamplers = nullptr;
+	
+	// Palette texture binding
+	bindings[1].binding = 1;
+	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	bindings[1].descriptorCount = 1;
+	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	bindings[1].pImmutableSamplers = nullptr;
+	
+	// Palette buffer binding
+	bindings[2].binding = 2;
+	bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	bindings[2].descriptorCount = 1;
+	bindings[2].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	bindings[2].pImmutableSamplers = nullptr;
+
+	VkDescriptorSetLayoutCreateInfo layoutInfo{};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfo.bindingCount = 3;
+	layoutInfo.pBindings = bindings;
+
+	vkCreateDescriptorSetLayout(g_context.device, &layoutInfo, nullptr, &g_context.paletteApplyDescriptorSetLayout);
+
+	// Create push constant range for palette index
+	VkPushConstantRange pushConstantRange{};
+	pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	pushConstantRange.offset = 0;
+	pushConstantRange.size = sizeof(u32); // palette index
+
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutInfo.setLayoutCount = 1;
+	pipelineLayoutInfo.pSetLayouts = &g_context.paletteApplyDescriptorSetLayout;
+	pipelineLayoutInfo.pushConstantRangeCount = 1;
+	pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+
+	vkCreatePipelineLayout(g_context.device, &pipelineLayoutInfo, nullptr, &g_context.paletteApplyPipelineLayout);
+
+	// Create graphics pipeline for palette application
+	VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+	vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+	vertShaderStageInfo.module = g_context.paletteApplyShaderModule;
+	vertShaderStageInfo.pName = "Vertex";
+
+	VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+	fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	fragShaderStageInfo.module = g_context.paletteApplyShaderModule;
+	fragShaderStageInfo.pName = "PaletteApply";
+
+	VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
+
+	// No vertex input needed (fullscreen quad generated in vertex shader)
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputInfo.vertexBindingDescriptionCount = 0;
+	vertexInputInfo.vertexAttributeDescriptionCount = 0;
+
+	VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+	inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+	inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+	VkViewport viewport{};
+	viewport.x = 0.0f;
+	viewport.y = 0.0f;
+	viewport.width = 1.0f;
+	viewport.height = 1.0f;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+	scissor.extent = { 1, 1 };
+
+	VkPipelineViewportStateCreateInfo viewportState{};
+	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportState.viewportCount = 1;
+	viewportState.pViewports = &viewport;
+	viewportState.scissorCount = 1;
+	viewportState.pScissors = &scissor;
+
+	VkPipelineRasterizationStateCreateInfo rasterizer{};
+	rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizer.depthClampEnable = VK_FALSE;
+	rasterizer.rasterizerDiscardEnable = VK_FALSE;
+	rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizer.lineWidth = 1.0f;
+	rasterizer.cullMode = VK_CULL_MODE_NONE;
+	rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	rasterizer.depthBiasEnable = VK_FALSE;
+
+	VkPipelineMultisampleStateCreateInfo multisampling{};
+	multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisampling.sampleShadingEnable = VK_FALSE;
+	multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	colorBlendAttachment.blendEnable = VK_TRUE;
+	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+	VkPipelineColorBlendStateCreateInfo colorBlending{};
+	colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlending.logicOpEnable = VK_FALSE;
+	colorBlending.attachmentCount = 1;
+	colorBlending.pAttachments = &colorBlendAttachment;
+
+	VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo dynamicState{};
+	dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicState.dynamicStateCount = 2;
+	dynamicState.pDynamicStates = dynamicStates;
+
+	VkGraphicsPipelineCreateInfo pipelineInfo{};
+	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineInfo.stageCount = 2;
+	pipelineInfo.pStages = shaderStages;
+	pipelineInfo.pVertexInputState = &vertexInputInfo;
+	pipelineInfo.pInputAssemblyState = &inputAssembly;
+	pipelineInfo.pViewportState = &viewportState;
+	pipelineInfo.pRasterizationState = &rasterizer;
+	pipelineInfo.pMultisampleState = &multisampling;
+	pipelineInfo.pColorBlendState = &colorBlending;
+	pipelineInfo.pDynamicState = &dynamicState;
+	pipelineInfo.layout = g_context.paletteApplyPipelineLayout;
+	pipelineInfo.renderPass = g_context.renderImagePass;
+	pipelineInfo.subpass = 0;
+
+	vkCreateGraphicsPipelines(g_context.device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &g_context.paletteApplyPipeline);
+}
+
 static void InitGlobalEditorData() {
 	// Create descriptor set layout
 	VkDescriptorSetLayoutBinding storageLayoutBinding{};
@@ -1770,6 +1961,8 @@ static void InitGlobalEditorData() {
 	// TODO: Should these be destroyed?
 	CreateChrPipeline();
 	CreatePalettePipeline();
+	CreateChrIndexedPipeline();
+	CreatePaletteApplyPipeline();
 }
 
 static void FreeGlobalEditorData() {
@@ -1780,6 +1973,15 @@ static void FreeGlobalEditorData() {
 	vkDestroyPipeline(g_context.device, g_context.palettePipeline, nullptr);
 	vkDestroyPipelineLayout(g_context.device, g_context.palettePipelineLayout, nullptr);
 	vkDestroyShaderModule(g_context.device, g_context.paletteShaderModule, nullptr);
+
+	vkDestroyPipeline(g_context.device, g_context.chrIndexedPipeline, nullptr);
+	vkDestroyPipelineLayout(g_context.device, g_context.chrIndexedPipelineLayout, nullptr);
+	vkDestroyShaderModule(g_context.device, g_context.chrIndexedShaderModule, nullptr);
+
+	vkDestroyPipeline(g_context.device, g_context.paletteApplyPipeline, nullptr);
+	vkDestroyPipelineLayout(g_context.device, g_context.paletteApplyPipelineLayout, nullptr);
+	vkDestroyShaderModule(g_context.device, g_context.paletteApplyShaderModule, nullptr);
+	vkDestroyDescriptorSetLayout(g_context.device, g_context.paletteApplyDescriptorSetLayout, nullptr);
 
 	vkDestroyDescriptorSetLayout(g_context.device, g_context.debugDescriptorSetLayout, nullptr);
 }
@@ -2049,6 +2251,11 @@ EditorRenderTexture* Rendering::CreateEditorTexture(u32 width, u32 height, u32 u
 	if (usage == EDITOR_TEXTURE_USAGE_COLOR) {
 		BlitEditorColorsTexture(pTexture);
 	}
+	else if (usage == EDITOR_TEXTURE_USAGE_CHR_INDEXED) {
+		// For indexed textures, we don't create descriptor sets yet
+		// They will be created when we need to render with specific CHR data
+		pTexture->srcSet = VK_NULL_HANDLE;
+	}
 	else {
 		VkDescriptorSetAllocateInfo chrDescriptorSetAllocInfo{};
 		chrDescriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -2108,6 +2315,11 @@ void Rendering::RenderEditorTexture(const EditorRenderTexture* pTexture) {
 		return;
 	}
 
+	if (pTexture->usage == EDITOR_TEXTURE_USAGE_CHR_INDEXED) {
+		DEBUG_ERROR("Use RenderEditorTextureIndexed for indexed CHR textures!\n");
+		return;
+	}
+
 	VkCommandBuffer cmd = g_context.primaryCommandBuffers[g_context.currentCbIndex];
 
 	VkImageMemoryBarrier barrier = GetImageBarrier(&pTexture->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
@@ -2142,6 +2354,90 @@ void Rendering::RenderEditorTexture(const EditorRenderTexture* pTexture) {
 		0, nullptr,
 		1, &barrier
 	);
+}
+
+void Rendering::RenderEditorTextureIndexed(const EditorRenderTexture* pTexture, const EditorRenderBuffer* pChrBuffer) {
+	if (!pTexture || !pChrBuffer) {
+		return;
+	}
+
+	if (pTexture->usage != EDITOR_TEXTURE_USAGE_CHR_INDEXED) {
+		DEBUG_ERROR("Texture is not indexed CHR type!\n");
+		return;
+	}
+
+	VkCommandBuffer cmd = g_context.primaryCommandBuffers[g_context.currentCbIndex];
+
+	// Allocate descriptor set if not already allocated
+	EditorRenderTexture* pMutableTexture = const_cast<EditorRenderTexture*>(pTexture);
+	if (pMutableTexture->srcSet == VK_NULL_HANDLE) {
+		VkDescriptorSetAllocateInfo chrDescriptorSetAllocInfo{};
+		chrDescriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		chrDescriptorSetAllocInfo.descriptorPool = g_context.descriptorPool;
+		chrDescriptorSetAllocInfo.descriptorSetCount = 1;
+		chrDescriptorSetAllocInfo.pSetLayouts = &g_context.debugDescriptorSetLayout;
+
+		vkAllocateDescriptorSets(g_context.device, &chrDescriptorSetAllocInfo, &pMutableTexture->srcSet);
+	}
+
+	VkImageMemoryBarrier barrier = GetImageBarrier(&pTexture->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+	vkCmdPipelineBarrier(
+		cmd,
+		VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &barrier
+	);
+
+	// Update descriptor set for indexed CHR rendering
+	UpdateEditorSrcDescriptorSet(pTexture, pChrBuffer, nullptr);
+
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, g_context.chrIndexedPipelineLayout, 0, 1, &pTexture->srcSet, 0, nullptr);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, g_context.chrIndexedPipeline);
+	vkCmdDispatch(cmd, pTexture->image.width / TILE_DIM_PIXELS, pTexture->image.height / TILE_DIM_PIXELS, 1);
+
+	barrier = GetImageBarrier(&pTexture->image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	vkCmdPipelineBarrier(
+		cmd,
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &barrier
+	);
+}
+
+// ImGui callback data structure for palette application
+struct PaletteCallbackData {
+	const EditorRenderTexture* pIndexedTexture;
+	const EditorRenderBuffer* pPaletteBuffer;
+	u32 paletteIndex;
+	ImVec2 pos;
+	ImVec2 size;
+	ImVec2 uvMin;
+	ImVec2 uvMax;
+};
+
+void Rendering::ImGuiPaletteCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
+	PaletteCallbackData* pData = (PaletteCallbackData*)cmd->UserCallbackData;
+	if (!pData || !pData->pIndexedTexture || !pData->pPaletteBuffer) {
+		return;
+	}
+
+	VkCommandBuffer commandBuffer = g_context.primaryCommandBuffers[g_context.currentCbIndex];
+	
+	// TODO: Implement palette application callback
+	// This would bind the palette apply pipeline, set up descriptors for:
+	// - The indexed texture
+	// - The palette texture 
+	// - The palette buffer
+	// Set the palette index as push constant
+	// Render a quad with the specified UV coordinates and position
+	
+	// For now, we can fall back to AddImage behavior or implement a simple version
 }
 
 void Rendering::RenderEditor() {

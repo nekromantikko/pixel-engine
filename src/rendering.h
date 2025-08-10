@@ -64,6 +64,14 @@ namespace Rendering
 
 	// Software
 	void RenderEditorTexture(const EditorRenderTexture* pTexture);
+	void RenderEditorTextureIndexed(const EditorRenderTexture* pTexture, const EditorRenderBuffer* pChrBuffer);
+
+	// ImGui callback for palette application
+	void ImGuiPaletteCallback(const ImDrawList* parent_list, const ImDrawCmd* cmd);
+	
+	// Helper functions for indexed CHR system
+	EditorRenderTexture* CreateIndexedChrTexture(u32 chrIndex);
+	void AddIndexedChrImageWithPalette(ImDrawList* drawList, u32 chrIndex, u8 palette, const ImVec2& pos, const ImVec2& size, const ImVec2& uvMin = ImVec2(0, 0), const ImVec2& uvMax = ImVec2(1, 1));
 
 	// Render pass
 	void RenderEditor();
