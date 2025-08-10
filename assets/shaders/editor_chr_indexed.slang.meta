@@ -1,0 +1,8 @@
+{
+    "entryPoints": [
+        {
+            "name": "EditorBlitChrIndexed",
+            "stage": "compute"
+        }
+    ]
+}

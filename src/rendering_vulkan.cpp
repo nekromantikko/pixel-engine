@@ -742,8 +742,10 @@ static void FreeBuffer(Buffer buffer) {
 	}
 }
 
-static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFlags usage, Image& outImage, bool srgb = false) {
-	const VkFormat format = srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFlags usage, Image& outImage, VkFormat format = VK_FORMAT_R8G8B8A8_UNORM, bool srgb = false) {
+	if (format == VK_FORMAT_R8G8B8A8_UNORM) {
+		format = srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+	}
 
 	VkImageCreateInfo imageInfo{};
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -2035,7 +2037,13 @@ EditorRenderTexture* Rendering::CreateEditorTexture(u32 width, u32 height, u32 u
 
 	pTexture->usage = usage;
 
-	CreateImage(width, height, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, pTexture->image);
+	// Use indexed format for CHR_INDEXED textures
+	VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
+	if (usage == EDITOR_TEXTURE_USAGE_CHR_INDEXED) {
+		format = VK_FORMAT_R8_UINT;
+	}
+
+	CreateImage(width, height, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, pTexture->image, format);
 	pTexture->dstSet = ImGui_ImplVulkan_AddTexture(g_context.defaultSampler, pTexture->image.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	if (usage == EDITOR_TEXTURE_USAGE_COLOR) {
