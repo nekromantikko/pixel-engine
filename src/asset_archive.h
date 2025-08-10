@@ -28,8 +28,8 @@ typedef Pool<AssetEntry, MAX_ASSETS> AssetIndex;
 // Self-contained asset archive class without dependencies on debug or random
 class AssetArchive {
 public:
-	AssetArchive();
-	~AssetArchive();
+	void Init();
+	void Free();
 
 	// Archive file operations
 	bool LoadFromFile(const std::filesystem::path& path);

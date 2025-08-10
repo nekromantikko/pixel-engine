@@ -142,6 +142,8 @@ int main(int argc, char** argv) {
 
     Audio::Free();
 
+    AssetManager::Free(); // Free AssetManager before ArenaAllocator
+
     SDL_DestroyWindow(pWindow);
     SDL_Quit();
 

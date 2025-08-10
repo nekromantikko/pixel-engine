@@ -14,6 +14,7 @@ namespace AssetManager {
 	bool LoadArchive(const std::filesystem::path& path);
 	bool SaveArchive(const std::filesystem::path& path);
 	bool RepackArchive();
+	void Free(); // Add Free function for proper cleanup
 
 	u64 CreateAsset(AssetType type, size_t size, const char* path, const char* name);
 	template <IsAssetHandle HandleType>

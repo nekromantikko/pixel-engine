@@ -11,6 +11,7 @@ static AssetArchive g_archive;
 
 #pragma region Public API
 bool AssetManager::LoadAssets() {
+	g_archive.Init(); // Initialize the archive
 #ifndef EDITOR
 	return LoadArchive(ASSETS_NPAK_OUTPUT);
 #else
@@ -168,5 +169,9 @@ size_t AssetManager::GetAssetCount() {
 
 const AssetIndex& AssetManager::GetIndex() {
 	return g_archive.GetIndex();
+}
+
+void AssetManager::Free() {
+	g_archive.Free();
 }
 #pragma endregion

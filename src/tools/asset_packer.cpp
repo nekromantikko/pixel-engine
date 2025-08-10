@@ -73,15 +73,20 @@ int main(int argc, char* argv[]) {
 	std::cout << "Asset Packer - Generating " << outputFile << " from " << assetsDir << std::endl;
 
 	AssetArchive archive;
+	archive.Init();
 	if (!PackAssetsFromDirectory(archive, assetsDir)) {
 		std::cerr << "Failed to pack assets from " << assetsDir << std::endl;
+		archive.Free();
 		return 1;
 	}
 	
 	if (!archive.SaveToFile(outputFile)) {
 		std::cerr << "Failed to save assets to " << outputFile << std::endl;
+		archive.Free();
 		return 1;
 	}
+
+	archive.Free();
 
 	std::cout << "Assets successfully packed into " << outputFile << std::endl;
 

@@ -11,11 +11,13 @@ static bool CompareAssetEntries(const AssetEntry& a, const AssetEntry& b) {
 	return a.id < b.id;
 }
 
-AssetArchive::AssetArchive() 
-	: m_capacity(0), m_size(0), m_data(nullptr) {
+void AssetArchive::Init() {
+	m_capacity = 0;
+	m_size = 0;
+	m_data = nullptr;
 }
 
-AssetArchive::~AssetArchive() {
+void AssetArchive::Free() {
 	Clear();
 }
 
