@@ -65,7 +65,6 @@ struct EditedAssetRenderData {
 };
 
 struct EditorContext {
-	EditorRenderTexture* pChrTexture; // Legacy - will be removed
 	EditorRenderTexture* pIndexedChrTextures[CHR_COUNT]; // New indexed CHR textures
 	EditorRenderBuffer* pChrBuffers[CHR_COUNT]; // Buffers for each CHR sheet
 	EditorRenderTexture* pPaletteTexture;
@@ -118,14 +117,42 @@ static ImTextureID GetIndexedChrTextureID(u32 chrIndex) {
 	return GetTextureID(pContext->pIndexedChrTextures[chrIndex]);
 }
 
+// Temporary fallback for legacy CHR texture calls - use first indexed texture
+static ImTextureID GetLegacyChrTextureID() {
+	return GetIndexedChrTextureID(0);
+}
+
 // Simplified function to add CHR image using indexed textures
-// For now, this will use the legacy texture but with correct UV mapping for a single palette
+// For now, this will use the indexed texture directly without palette application
 static void AddChrImage(ImDrawList* drawList, u8 tileIndex, u8 chrIndex, u8 palette, const ImVec2& pos, const ImVec2& size, bool flipX = false, bool flipY = false, ImU32 color = IM_COL32(255, 255, 255, 255)) {
-	// For now, fall back to the legacy system but prepare for the indexed transition
-	const glm::vec4 uvMinMax = ChrTileToTexCoord(tileIndex, chrIndex, palette);
-	drawList->AddImage(GetTextureID(pContext->pChrTexture), pos, ImVec2(pos.x + size.x, pos.y + size.y), 
-		ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), 
-		ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y), color);
+	// Calculate UV coordinates for the specific tile within the single CHR sheet
+	constexpr r32 INV_CHR_DIM_TILES = 1.0f / CHR_DIM_TILES;
+	const u8 tileX = tileIndex & 0xF; // tileIndex % 16
+	const u8 tileY = tileIndex >> 4;  // tileIndex / 16
+	
+	r32 uvMinX = tileX * INV_CHR_DIM_TILES;
+	r32 uvMinY = tileY * INV_CHR_DIM_TILES;
+	r32 uvMaxX = (tileX + 1) * INV_CHR_DIM_TILES;
+	r32 uvMaxY = (tileY + 1) * INV_CHR_DIM_TILES;
+	
+	// Apply flipping
+	if (flipX) {
+		r32 temp = uvMinX;
+		uvMinX = uvMaxX;
+		uvMaxX = temp;
+	}
+	if (flipY) {
+		r32 temp = uvMinY;
+		uvMinY = uvMaxY;
+		uvMaxY = temp;
+	}
+	
+	// Use the indexed CHR texture directly
+	ImTextureID textureID = GetIndexedChrTextureID(chrIndex);
+	if (textureID) {
+		drawList->AddImage(textureID, pos, ImVec2(pos.x + size.x, pos.y + size.y), 
+			ImVec2(uvMinX, uvMinY), ImVec2(uvMaxX, uvMaxY), color);
+	}
 }
 
 static inline glm::vec4 NormalizedToChrTexCoord(const glm::vec4& normalized, u8 chrIndex, u8 palette) {
@@ -401,7 +428,7 @@ static void DrawMetatile(const Metatile& metatile, ImVec2 pos, r32 size, ImU32 c
 	const r32 tileSize = size / METATILE_DIM_TILES;
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	drawList->PushTextureID(GetTextureID(pContext->pChrTexture));
+	drawList->PushTextureID(GetLegacyChrTextureID());
 	drawList->PrimReserve(METATILE_TILE_COUNT * 6, METATILE_TILE_COUNT * 4);
 
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
@@ -445,9 +472,13 @@ static void DrawCHRSheet(r32 size, u32 index, u8 palette, s32* selectedTile) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	const ImVec2 gridSize = ImVec2(size, size);
 	const ImVec2 chrPos = DrawTileGrid(gridSize, gridStepPixels, selectedTile);
-	const glm::vec4 uvMinMax = NormalizedToChrTexCoord({ 0,0,1,1, }, index, palette);
 
-	drawList->AddImage(GetTextureID(pContext->pChrTexture), chrPos, ImVec2(chrPos.x + size, chrPos.y + size), ImVec2(uvMinMax.x, uvMinMax.y), ImVec2(uvMinMax.z, uvMinMax.w));
+	// Use the indexed CHR texture directly (shows raw color indices for now)
+	ImTextureID textureID = GetIndexedChrTextureID(index);
+	if (textureID) {
+		drawList->AddImage(textureID, chrPos, ImVec2(chrPos.x + size, chrPos.y + size), ImVec2(0, 0), ImVec2(1, 1));
+	}
+	
 	if (selectedTile != nullptr && *selectedTile >= 0) {
 		DrawTileGridSelection(chrPos, gridSize, gridStepPixels, *selectedTile);
 	}
@@ -497,7 +528,7 @@ static void DrawTilemap(const Tilemap* pTilemap, const ImVec2& metatileOffset, c
 
 	const u32 tileCount = metatileSize.x * metatileSize.y * METATILE_TILE_COUNT;
 
-	drawList->PushTextureID(GetTextureID(pContext->pChrTexture));
+	drawList->PushTextureID(GetLegacyChrTextureID());
 	drawList->PrimReserve(tileCount * 6, tileCount * 4); // NOTE: Seems as if primitives for max. 4096 tiles can be reserved...
 
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
@@ -536,7 +567,7 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 	const u32 tilesetTileDim = TILESET_DIM * METATILE_DIM_TILES;
 	const u32 tilesetTileCount = tilesetTileDim * tilesetTileDim;
 
-	drawList->PushTextureID(GetTextureID(pContext->pChrTexture));
+	drawList->PushTextureID(GetLegacyChrTextureID());
 	drawList->PrimReserve(tilesetTileCount * 6, tilesetTileCount * 4);
 
 	ImVec2 verts[METATILE_TILE_COUNT * 4];
@@ -558,18 +589,17 @@ static void DrawTileset(const Tileset* pTileset, r32 size, s32* selectedMetatile
 }
 
 static void DrawSprite(const Sprite& sprite, const ImVec2& pos, r32 renderScale, ImU32 color = IM_COL32(255, 255, 255, 255)) {
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	const r32 tileDrawSize = TILE_DIM_PIXELS * renderScale;
-
 	const u8 index = (u8)sprite.tileId;
 	const bool flipX = sprite.flipHorizontal;
 	const bool flipY = sprite.flipVertical;
 	const u8 palette = sprite.palette;
 	const u8 pageIndex = (sprite.tileId >> 8) & 3;
+	const u8 chrIndex = pageIndex + CHR_PAGE_COUNT; // Sprite CHR pages
+	
+	const ImVec2 size = ImVec2(TILE_DIM_PIXELS * renderScale, TILE_DIM_PIXELS * renderScale);
 
-	glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex + CHR_PAGE_COUNT, palette);
-
-	drawList->AddImage(GetTextureID(pContext->pChrTexture), pos, ImVec2(pos.x + tileDrawSize, pos.y + tileDrawSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y), color);
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	AddChrImage(drawList, index, chrIndex, palette, pos, size, flipX, flipY, color);
 }
 
 static void DrawMetasprite(const Metasprite* pMetasprite, const ImVec2& origin, r32 renderScale, ImU32 color = IM_COL32(255, 255, 255, 255)) {
@@ -1911,7 +1941,7 @@ static void DrawMetaspritePreview(MetaspriteEditorData* pEditorData, ImVector<s3
 		// Move sprite if dragged
 		ImVec2 posWithDrag = selected ? ImVec2(pos.x + dragDelta.x, pos.y + dragDelta.y) : pos;
 
-		drawList->AddImage(GetTextureID(pContext->pChrTexture), posWithDrag, ImVec2(posWithDrag.x + gridStepPixels, posWithDrag.y + gridStepPixels), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
+		drawList->AddImage(GetLegacyChrTextureID(), posWithDrag, ImVec2(posWithDrag.x + gridStepPixels, posWithDrag.y + gridStepPixels), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
 
 
 		// Commit drag
@@ -2016,15 +2046,16 @@ static void DrawSpriteListPreview(const Sprite& sprite) {
 	const bool flipX = sprite.flipHorizontal;
 	const bool flipY = sprite.flipVertical;
 	const u8 pageIndex = (sprite.tileId >> 8) & 3;
-	glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex + CHR_PAGE_COUNT, sprite.palette);
+	const u8 chrIndex = pageIndex + CHR_PAGE_COUNT; // Sprite CHR pages
+	
 	ImGuiStyle& style = ImGui::GetStyle();
 	r32 itemHeight = ImGui::GetItemRectSize().y - style.FramePadding.y;
 
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	const ImVec2 cursorPos = ImGui::GetCursorScreenPos();
 	const ImVec2 topLeft = ImVec2(ImGui::GetItemRectMin().x + 88, ImGui::GetItemRectMin().y + style.FramePadding.y);
-	const ImVec2 btmRight = ImVec2(topLeft.x + itemHeight, topLeft.y + itemHeight);
-	drawList->AddImage(GetTextureID(pContext->pChrTexture), topLeft, btmRight, ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
+	const ImVec2 size = ImVec2(itemHeight, itemHeight);
+	
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	AddChrImage(drawList, index, chrIndex, sprite.palette, topLeft, size, flipX, flipY);
 }
 
 static void DrawMetaspriteEditor(EditedAsset& asset) {
@@ -2455,7 +2486,7 @@ static void DrawRoomTools(EditedAsset& asset) {
 					glm::vec4 uvMinMax = ChrTileToTexCoord(index, pageIndex, tile.palette);
 
 					const ImVec2 pos(gridPos.x + x * previewTileSize, gridPos.y + y * previewTileSize);
-					drawList->AddImage(GetTextureID(pContext->pChrTexture), pos, ImVec2(pos.x + previewTileSize, pos.y + previewTileSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
+					drawList->AddImage(GetLegacyChrTextureID(), pos, ImVec2(pos.x + previewTileSize, pos.y + previewTileSize), ImVec2(flipX ? uvMinMax.z : uvMinMax.x, flipY ? uvMinMax.w : uvMinMax.y), ImVec2(!flipX ? uvMinMax.z : uvMinMax.x, !flipY ? uvMinMax.w : uvMinMax.y));
 				}
 			}
 
@@ -4407,10 +4438,6 @@ void Editor::CreateContext() {
 void Editor::Init(SDL_Window *pWindow) {
 	ImGui::CreateContext();
 	Rendering::InitEditor(pWindow);
-
-	// Legacy CHR texture (keeping for now during transition)
-	constexpr u32 sheetPaletteCount = PALETTE_COUNT / 2;
-	pContext->pChrTexture = Rendering::CreateEditorTexture(CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, EDITOR_TEXTURE_USAGE_CHR);
 	
 	// Create indexed CHR textures and buffers for each sheet
 	for (u32 i = 0; i < CHR_COUNT; i++) {
@@ -4423,8 +4450,6 @@ void Editor::Init(SDL_Window *pWindow) {
 }
 
 void Editor::Free() {
-	Rendering::FreeEditorTexture(pContext->pChrTexture); // Legacy
-	
 	// Free indexed CHR textures and buffers
 	for (u32 i = 0; i < CHR_COUNT; i++) {
 		Rendering::FreeEditorTexture(pContext->pIndexedChrTextures[i]);
@@ -4554,9 +4579,6 @@ void Editor::Update(r64 dt) {
 }
 
 void Editor::SetupFrame() {
-	// Legacy CHR texture rendering (keeping for now during transition)
-	Rendering::RenderEditorTexture(pContext->pChrTexture);
-	
 	// Render indexed CHR textures
 	for (u32 i = 0; i < CHR_COUNT; i++) {
 		ChrSheet* pChrSheet = Rendering::GetChrPtr(i);
