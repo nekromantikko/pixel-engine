@@ -9,20 +9,20 @@ For the final image, I apply a CRT shader originally by Timothy Lottes (https://
 # Building
 ## Requirements
 - CMake 3.22.1 or higher
-- Vulkan 1.2 development libraries
-- SDL2 development libraries  
-- GLSL validator (glslangValidator)
+- Vulkan 1.3 (1.3.296.0)
+- SDL2 (2.28.5)
+- Slang for shader compilation (2025.13.2) (Only for editor & asset-packer)
 
 ## Windows
-- Copy SDL2.dll and assets.npak to build directory
+- Copy SDL2.dll and slang.dll to build directory (This should be made automatic later)
 
 ## Linux
 - Install dependencies: `sudo apt install libvulkan-dev libsdl2-dev glslang-tools`
-- Copy assets.npak to build directory
 
 ## Build Commands
 - Use cmake to configure and build
 - Use ENABLE_EDITOR option to disable/enable editor
+- BUILD_ASSETS to disable/enable asset building
 - Example: `cmake -DENABLE_EDITOR=ON ..` then `make`
 
 # Videos:
