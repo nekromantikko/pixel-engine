@@ -18,6 +18,10 @@ bool AssetManager::LoadAssets() {
 #endif
 }
 
+void AssetManager::Free() {
+	g_archive.Clear();
+}
+
 #ifdef EDITOR
 bool AssetManager::LoadAssetsFromDirectory(const std::filesystem::path& directory) {
 	if (!std::filesystem::exists(directory)) {

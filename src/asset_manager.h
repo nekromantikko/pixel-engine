@@ -7,6 +7,7 @@
 
 namespace AssetManager {
 	bool LoadAssets();
+	void Free();
 #ifdef EDITOR
 	bool LoadAssetsFromDirectory(const std::filesystem::path& directory);
 #endif

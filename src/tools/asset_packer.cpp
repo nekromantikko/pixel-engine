@@ -85,5 +85,8 @@ int main(int argc, char* argv[]) {
 
 	std::cout << "Assets successfully packed into " << outputFile << std::endl;
 
+	// This isn't necessary, but I suppose it doesn't hurt to explicity free the memory
+	archive.Clear();
+
 	return 0;
 }

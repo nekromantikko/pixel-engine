@@ -15,10 +15,6 @@ AssetArchive::AssetArchive()
 	: m_capacity(0), m_size(0), m_data(nullptr) {
 }
 
-AssetArchive::~AssetArchive() {
-	Clear();
-}
-
 constexpr size_t AssetArchive::GetNextPOT(size_t n) {
 	if (n == 0) {
 		return 1;

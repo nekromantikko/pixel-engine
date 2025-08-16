@@ -29,7 +29,6 @@ typedef Pool<AssetEntry, MAX_ASSETS> AssetIndex;
 class AssetArchive {
 public:
 	AssetArchive();
-	~AssetArchive();
 
 	// Archive file operations
 	bool LoadFromFile(const std::filesystem::path& path);
