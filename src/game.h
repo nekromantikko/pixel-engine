@@ -8,6 +8,9 @@ struct GameConfig {
 	ActorPrototypeHandle playerPrototypeHandle;
 	ActorPrototypeHandle playerOverworldPrototypeHandle;
 	ActorPrototypeHandle xpRemnantPrototypeHandle;
+	
+	// TODO: Add this for complete tile debris functionality
+	// ActorPrototypeHandle tileDebrisEffect;
 
 	OverworldHandle overworldHandle;
 };

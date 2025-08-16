@@ -1215,12 +1215,19 @@ void Game::DestroyTileAt(const glm::ivec2& tileCoord, const glm::vec2& impactPoi
         {  debrisSpeed,  debrisSpeed }  // Bottom-right
     };
     
-    // For now, just use a basic effect prototype - this would need to be configured with actual assets
-    // TODO: This needs to be hooked up to an actual tile debris effect prototype
+    // TODO: Replace with actual tile debris effect prototype handle
+    // This would need to be configured in game assets/config
+    // For example: ActorPrototypeHandle debrisPrototype = GetConfig().tileDebrisEffect;
+    
     for (u32 i = 0; i < 4; i++) {
-        // We'll spawn simple effects for now - in a real implementation this would need
-        // proper asset handles for the tile debris effect
-        // SpawnActor(debrisEffectPrototype, tileCenter, directions[i]);
+        // Example of how this would work with proper asset handles:
+        // SpawnActor(debrisPrototype, tileCenter, directions[i]);
+        
+        // For now, we could spawn a basic explosion effect as a placeholder
+        // if there's a generic effect available in the game config
     }
+    
+    // TODO: Optional - play destruction sound effect
+    // Audio::PlaySFX(destructionSoundHandle);
 }
 }
