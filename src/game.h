@@ -18,4 +18,8 @@ namespace Game {
 	const GameConfig& GetConfig();
 	
 	void Update(r64 dt);
+	
+	// Game control
+	bool ShouldExit();
+	void RequestExit();
 }

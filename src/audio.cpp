@@ -7,6 +7,8 @@
 #include <cassert>
 #include "nes_timing.h"
 #include "asset_manager.h"
+#define GLM_FORCE_RADIANS
+#include <glm.hpp>
 
 static constexpr u32 DEBUG_BUFFER_SIZE = 1024;
 
@@ -138,6 +140,9 @@ struct NoiseChannel {
 
 struct AudioContext {
     SDL_AudioDeviceID audioDevice;
+
+    // Settings
+    AudioSettings settings;
 
 #ifdef EDITOR
     u8 debugBuffer[DEBUG_BUFFER_SIZE];
@@ -614,6 +619,20 @@ static bool Clock(u8& outSample) {
     }
 
     r32 mix = pulseOut + tndOut;
+    
+    // Apply volume settings
+    r32 volumeMultiplier = g_context.settings.masterVolume;
+    // For now, apply the same volume to all audio - in a more sophisticated system,
+    // you'd track which channels are playing music vs SFX
+    if (g_context.music != SoundHandle::Null()) {
+        volumeMultiplier *= g_context.settings.musicVolume;
+    } else {
+        volumeMultiplier *= g_context.settings.sfxVolume;
+    }
+    
+    mix *= volumeMultiplier;
+    mix = glm::clamp(mix, 0.0f, 1.0f); // Prevent clipping
+    
     u8 sample = u8(mix * 127.0f + 128.0f);
 
     g_context.accumulator += CLOCK_PERIOD;
@@ -656,6 +675,9 @@ static void FillAudioBuffer(void* userdata, u8* stream, int len) {
 
 namespace Audio {
     void Init() {
+        // Initialize settings to defaults
+        g_context.settings = DEFAULT_AUDIO_SETTINGS;
+
 #ifdef EDITOR
         memset(g_context.debugBuffer, 0, DEBUG_BUFFER_SIZE);
         g_context.debugWriteOffset = 0;
@@ -755,6 +777,10 @@ namespace Audio {
 
         g_context.sfx[pSound->sfxChannel] = soundHandle;
         g_context.sfxPos[pSound->sfxChannel] = 0;
+    }
+
+    AudioSettings* GetSettingsPtr() {
+        return &g_context.settings;
     }
 
 #ifdef EDITOR
