@@ -10,6 +10,7 @@
 #include "debug.h"
 #include "actors.h"
 #include "rendering.h"
+#include "level_up.h"
 
 // TODO: Use g_ prefix for globals or combine into larger state struct
 
@@ -279,6 +280,9 @@ static void StepDungeonGameplayFrame() {
         ViewportFollowPlayer();
         Game::UI::Update();
 	}
+
+    // Update level up menu (handles its own input when active)
+    Game::LevelUp::UpdateLevelUpMenu();
 
     Game::Rendering::ClearSpriteLayers();
     Game::DrawActors();
@@ -766,6 +770,7 @@ void Game::InitGameData() {
     g_gameData.playerMaxStamina = 64;
     SetPlayerStamina(g_gameData.playerMaxStamina);
     SetPlayerExp(0);
+    SetPlayerLevel(1);
     SetPlayerWeapon(PLAYER_WEAPON_LAUNCHER);
 
 	// TODO: Initialize first checkpoint
@@ -799,6 +804,9 @@ void Game::SetPlayerHealth(s16 health) {
     g_gameData.playerCurrentHealth = glm::clamp(g_gameData.playerCurrentHealth, s16(0), g_gameData.playerMaxHealth);
 	Game::UI::SetPlayerDisplayHealth(g_gameData.playerCurrentHealth);
 }
+void Game::SetPlayerMaxHealth(s16 maxHealth) {
+    g_gameData.playerMaxHealth = maxHealth;
+}
 s16 Game::GetPlayerStamina() {
     return g_gameData.playerCurrentStamina;
 }
@@ -818,6 +826,9 @@ void Game::SetPlayerStamina(s16 stamina) {
     g_gameData.playerCurrentStamina = glm::clamp(g_gameData.playerCurrentStamina, s16(0), g_gameData.playerMaxStamina);
     Game::UI::SetPlayerDisplayStamina(g_gameData.playerCurrentStamina);
 }
+void Game::SetPlayerMaxStamina(s16 maxStamina) {
+    g_gameData.playerMaxStamina = maxStamina;
+}
 s16 Game::GetPlayerExp() {
     return g_gameData.playerExperience;
 }
@@ -829,6 +840,12 @@ void Game::AddPlayerExp(s16 exp) {
 void Game::SetPlayerExp(s16 exp) {
     g_gameData.playerExperience = exp;
 	Game::UI::SetPlayerDisplayExp(g_gameData.playerExperience);
+}
+s16 Game::GetPlayerLevel() {
+    return g_gameData.playerLevel;
+}
+void Game::SetPlayerLevel(s16 level) {
+    g_gameData.playerLevel = level;
 }
 u16 Game::GetPlayerWeapon() {
     return g_gameData.playerWeapon;
