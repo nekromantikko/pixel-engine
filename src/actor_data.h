@@ -345,6 +345,10 @@ struct NPCData {
 
 };
 
+struct NPCState {
+	bool interacted;
+};
+
 ACTOR_SUBTYPE_STRUCT_PROPERTIES(NPCData)
 ACTOR_SUBTYPE_REFLECTION_DATA(INTERACTABLE_TYPE_NPC, NPCData, "npc")
 
@@ -405,6 +409,7 @@ union ActorPrototypeData {
 	PickupData pickupData;
 	EffectData effectData;
 	CheckpointData checkpointData;
+	NPCData npcData;
 	ExpSpawnerData expSpawner;
 	LootSpawnerData lootSpawner;
 };
@@ -419,6 +424,7 @@ union ActorState {
 	EffectState effectState;
 	DamageNumberState dmgNumberState;
 	CheckpointState checkpointState;
+	NPCState npcState;
 	ExpSpawnerState expSpawner;
 };
 

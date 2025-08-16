@@ -268,6 +268,17 @@ static void TriggerInteraction(Actor* pPlayer, Actor* pInteractable) {
             Game::OpenDialog(lines, 1);
         }*/
     }
+    else if (pInteractablePrototype->subtype == INTERACTABLE_TYPE_NPC) {
+        pInteractable->state.npcState.interacted = true;
+        
+        // Show placeholder dialogue
+        if (!Game::IsDialogActive()) {
+            // Use a simple dialog box with placeholder text
+            const glm::ivec2 dialogOffset(2, 12);
+            const glm::ivec2 dialogSize(28, 6);
+            Game::OpenDialog(dialogOffset, dialogSize);
+        }
+    }
 }
 
 static void PlayerShoot(Actor* pPlayer, const PlayerData& data) {
