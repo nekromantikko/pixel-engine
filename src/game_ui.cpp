@@ -3,6 +3,8 @@
 #include "game_rendering.h"
 #include <cstdio>
 #include <cstring>
+#define GLM_FORCE_RADIANS
+#include <glm.hpp>
 
 constexpr u16 animDuration = 20;
 constexpr u16 barAnimDelay = 16;
@@ -183,4 +185,82 @@ void Game::UI::Update() {
     UpdateBar(playerHealthBarState);
     UpdateBar(playerStaminaBarState);
     UpdateExpCounter();
+}
+
+void Game::UI::DrawText(const char* text, const glm::ivec2& position, u8 palette) {
+    if (!text) return;
+    
+    u32 length = strlen(text);
+    s32 x = position.x;
+    s32 y = position.y;
+    
+    for (u32 i = 0; i < length; i++) {
+        char c = text[i];
+        if (c == '\0') break;
+        
+        // Convert ASCII to tile ID - assuming font starts at tile 0x20 (space)
+        u8 tileId = c;
+        
+        Sprite sprite{};
+        sprite.tileId = tileId;
+        sprite.palette = palette;
+        sprite.x = x;
+        sprite.y = y;
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
+        
+        x += 8; // Move to next character position
+    }
+}
+
+void Game::UI::DrawMenuItem(const char* text, const glm::ivec2& position, bool selected, u8 palette) {
+    // Draw selection indicator if selected
+    if (selected) {
+        Sprite sprite{};
+        sprite.tileId = 0x3e; // '>' character as selection indicator
+        sprite.palette = palette;
+        sprite.x = position.x - 16;
+        sprite.y = position.y;
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
+    }
+    
+    DrawText(text, position, palette);
+}
+
+void Game::UI::DrawSlider(const char* label, r32 value, const glm::ivec2& position, bool selected, u8 palette) {
+    // Draw label
+    DrawText(label, position, palette);
+    
+    // Calculate slider position
+    glm::ivec2 sliderPos = position;
+    sliderPos.x += strlen(label) * 8 + 16; // Add some spacing after label
+    
+    // Draw slider track (using dash characters)
+    constexpr s32 sliderWidth = 10; // Number of segments
+    for (s32 i = 0; i < sliderWidth; i++) {
+        Sprite sprite{};
+        sprite.tileId = 0x2d; // '-' character for track
+        sprite.palette = palette;
+        sprite.x = sliderPos.x + i * 8;
+        sprite.y = sliderPos.y;
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
+    }
+    
+    // Draw slider handle
+    s32 handlePos = s32(value * (sliderWidth - 1));
+    Sprite handleSprite{};
+    handleSprite.tileId = 0x7c; // '|' character for handle
+    handleSprite.palette = palette;
+    handleSprite.x = sliderPos.x + handlePos * 8;
+    handleSprite.y = sliderPos.y;
+    Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, handleSprite);
+    
+    // Draw selection indicator if selected
+    if (selected) {
+        Sprite sprite{};
+        sprite.tileId = 0x3e; // '>' character as selection indicator
+        sprite.palette = palette;
+        sprite.x = position.x - 16;
+        sprite.y = position.y;
+        Game::Rendering::DrawSprite(SPRITE_LAYER_UI, Game::GetConfig().uiBankHandle, sprite);
+    }
 }

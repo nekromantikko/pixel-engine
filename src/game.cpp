@@ -43,10 +43,10 @@ namespace Game {
 		};
 
 		InitGameData();
-        InitGameState(GAME_STATE_DUNGEON);
+        InitGameState(GAME_STATE_TITLE);
 
-        DungeonHandle testDungeon = AssetManager::GetAssetHandle<DungeonHandle>("dungeons/test_cave.dung");
-        LoadRoom(testDungeon, { 14, 14 });
+        // DungeonHandle testDungeon = AssetManager::GetAssetHandle<DungeonHandle>("dungeons/test_cave.dung");
+        // LoadRoom(testDungeon, { 14, 14 });
     }
 
     void Free() {}

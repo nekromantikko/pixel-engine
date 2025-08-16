@@ -10,6 +10,9 @@
 #include "debug.h"
 #include "actors.h"
 #include "rendering.h"
+#include "audio.h"
+#define GLM_FORCE_RADIANS
+#include <glm.hpp>
 
 // TODO: Use g_ prefix for globals or combine into larger state struct
 
@@ -46,6 +49,32 @@ static glm::ivec2 overworldAreaEnterDir;
 // 16ms Frames elapsed while not paused
 static u32 gameplayFramesElapsed = 0;
 static bool freezeGameplay = false;
+
+// Menu state
+enum MenuState {
+    MENU_MAIN,
+    MENU_SETTINGS
+};
+
+enum MainMenuItems {
+    MAIN_MENU_START_GAME,
+    MAIN_MENU_SETTINGS,
+    MAIN_MENU_EXIT,
+    MAIN_MENU_COUNT
+};
+
+enum SettingsMenuItems {
+    SETTINGS_MENU_CRT_FILTER,
+    SETTINGS_MENU_MASTER_VOLUME,
+    SETTINGS_MENU_MUSIC_VOLUME,
+    SETTINGS_MENU_SFX_VOLUME,
+    SETTINGS_MENU_BACK,
+    SETTINGS_MENU_COUNT
+};
+
+static MenuState g_menuState = MENU_MAIN;
+static s32 g_mainMenuSelection = 0;
+static s32 g_settingsMenuSelection = 0;
 
 #pragma region Callbacks
 static void ReviveDeadActor(u64 id, PersistedActorData& persistedData) {
@@ -1122,6 +1151,125 @@ u32 Game::GetFramesElapsed() {
 }
 #pragma endregion
 
+#pragma region Title Screen
+static void StepMainMenu() {
+    // Handle input
+    if (Game::Input::ButtonPressed(BUTTON_DPAD_UP)) {
+        g_mainMenuSelection = (g_mainMenuSelection - 1 + MAIN_MENU_COUNT) % MAIN_MENU_COUNT;
+    }
+    else if (Game::Input::ButtonPressed(BUTTON_DPAD_DOWN)) {
+        g_mainMenuSelection = (g_mainMenuSelection + 1) % MAIN_MENU_COUNT;
+    }
+    else if (Game::Input::ButtonPressed(BUTTON_A)) {
+        switch (g_mainMenuSelection) {
+        case MAIN_MENU_START_GAME:
+            // Start the game
+            DungeonHandle testDungeon = AssetManager::GetAssetHandle<DungeonHandle>("dungeons/test_cave.dung");
+            LoadRoom(testDungeon, { 14, 14 });
+            break;
+        case MAIN_MENU_SETTINGS:
+            g_menuState = MENU_SETTINGS;
+            g_settingsMenuSelection = 0;
+            break;
+        case MAIN_MENU_EXIT:
+            g_state = GAME_STATE_EXIT;
+            break;
+        }
+    }
+
+    // Draw menu
+    Game::Rendering::ClearSpriteLayers();
+    
+    // Draw title
+    Game::UI::DrawText("PIXEL ENGINE", { 120, 50 }, 0x1);
+    
+    // Draw menu items
+    constexpr s32 menuStartY = 120;
+    constexpr s32 menuSpacing = 24;
+    
+    Game::UI::DrawMenuItem("Start Game", { 120, menuStartY }, g_mainMenuSelection == MAIN_MENU_START_GAME);
+    Game::UI::DrawMenuItem("Settings", { 120, menuStartY + menuSpacing }, g_mainMenuSelection == MAIN_MENU_SETTINGS);
+    Game::UI::DrawMenuItem("Exit", { 120, menuStartY + menuSpacing * 2 }, g_mainMenuSelection == MAIN_MENU_EXIT);
+}
+
+static void StepSettingsMenu() {
+    RenderSettings* renderSettings = Rendering::GetSettingsPtr();
+    AudioSettings* audioSettings = Audio::GetSettingsPtr();
+    
+    // Handle input
+    if (Game::Input::ButtonPressed(BUTTON_DPAD_UP)) {
+        g_settingsMenuSelection = (g_settingsMenuSelection - 1 + SETTINGS_MENU_COUNT) % SETTINGS_MENU_COUNT;
+    }
+    else if (Game::Input::ButtonPressed(BUTTON_DPAD_DOWN)) {
+        g_settingsMenuSelection = (g_settingsMenuSelection + 1) % SETTINGS_MENU_COUNT;
+    }
+    else if (Game::Input::ButtonPressed(BUTTON_DPAD_LEFT) || Game::Input::ButtonPressed(BUTTON_DPAD_RIGHT)) {
+        r32 delta = Game::Input::ButtonPressed(BUTTON_DPAD_RIGHT) ? 0.1f : -0.1f;
+        
+        switch (g_settingsMenuSelection) {
+        case SETTINGS_MENU_CRT_FILTER:
+            renderSettings->useCRTFilter = !renderSettings->useCRTFilter;
+            break;
+        case SETTINGS_MENU_MASTER_VOLUME:
+            audioSettings->masterVolume = glm::clamp(audioSettings->masterVolume + delta, 0.0f, 1.0f);
+            break;
+        case SETTINGS_MENU_MUSIC_VOLUME:
+            audioSettings->musicVolume = glm::clamp(audioSettings->musicVolume + delta, 0.0f, 1.0f);
+            break;
+        case SETTINGS_MENU_SFX_VOLUME:
+            audioSettings->sfxVolume = glm::clamp(audioSettings->sfxVolume + delta, 0.0f, 1.0f);
+            break;
+        }
+    }
+    else if (Game::Input::ButtonPressed(BUTTON_A)) {
+        switch (g_settingsMenuSelection) {
+        case SETTINGS_MENU_CRT_FILTER:
+            renderSettings->useCRTFilter = !renderSettings->useCRTFilter;
+            break;
+        case SETTINGS_MENU_BACK:
+            g_menuState = MENU_MAIN;
+            break;
+        }
+    }
+    else if (Game::Input::ButtonPressed(BUTTON_B)) {
+        g_menuState = MENU_MAIN;
+    }
+
+    // Draw settings menu
+    Game::Rendering::ClearSpriteLayers();
+    
+    // Draw title
+    Game::UI::DrawText("SETTINGS", { 120, 50 }, 0x1);
+    
+    // Draw settings items
+    constexpr s32 menuStartY = 100;
+    constexpr s32 menuSpacing = 24;
+    
+    // CRT Filter
+    const char* crtText = renderSettings->useCRTFilter ? "CRT Filter: ON" : "CRT Filter: OFF";
+    Game::UI::DrawMenuItem(crtText, { 80, menuStartY }, g_settingsMenuSelection == SETTINGS_MENU_CRT_FILTER);
+    
+    // Volume sliders
+    Game::UI::DrawSlider("Master Volume", audioSettings->masterVolume, { 80, menuStartY + menuSpacing }, g_settingsMenuSelection == SETTINGS_MENU_MASTER_VOLUME);
+    Game::UI::DrawSlider("Music Volume", audioSettings->musicVolume, { 80, menuStartY + menuSpacing * 2 }, g_settingsMenuSelection == SETTINGS_MENU_MUSIC_VOLUME);
+    Game::UI::DrawSlider("SFX Volume", audioSettings->sfxVolume, { 80, menuStartY + menuSpacing * 3 }, g_settingsMenuSelection == SETTINGS_MENU_SFX_VOLUME);
+    
+    // Back button
+    Game::UI::DrawMenuItem("Back", { 80, menuStartY + menuSpacing * 4 }, g_settingsMenuSelection == SETTINGS_MENU_BACK);
+}
+
+static void StepTitleScreen() {
+    switch (g_menuState) {
+    case MENU_MAIN:
+        StepMainMenu();
+        break;
+    case MENU_SETTINGS:
+        StepSettingsMenu();
+        break;
+    }
+}
+#pragma endregion
+
 void Game::InitGameState(GameState initialState) {
     g_state = initialState;
 }
@@ -1132,6 +1280,7 @@ void Game::StepFrame() {
 
 	switch (g_state) {
 	case GAME_STATE_TITLE:
+		StepTitleScreen();
 		break;
     case GAME_STATE_OVERWORLD:
         StepOverworldGameplayFrame();
