@@ -138,9 +138,10 @@ int main(int argc, char** argv) {
     Editor::Free();
     Editor::DestroyContext();
 #endif
-    Rendering::Free();
 
+    Rendering::Free();
     Audio::Free();
+    AssetManager::Free();
 
     SDL_DestroyWindow(pWindow);
     SDL_Quit();
