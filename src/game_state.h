@@ -30,6 +30,7 @@ struct GameData {
     s16 playerMaxStamina;
 
     s16 playerExperience;
+    s16 playerLevel;
     s16 playerWeapon;
 
 	Checkpoint checkpoint;
@@ -64,13 +65,17 @@ namespace Game {
 	s16 GetPlayerMaxHealth();
 	void AddPlayerHealth(s16 health);
 	void SetPlayerHealth(s16 health);
+	void SetPlayerMaxHealth(s16 maxHealth);
     s16 GetPlayerStamina();
     s16 GetPlayerMaxStamina();
     void AddPlayerStamina(s16 stamina);
     void SetPlayerStamina(s16 stamina);
+    void SetPlayerMaxStamina(s16 maxStamina);
     s16 GetPlayerExp();
 	void AddPlayerExp(s16 exp);
 	void SetPlayerExp(s16 exp);
+    s16 GetPlayerLevel();
+	void SetPlayerLevel(s16 level);
     u16 GetPlayerWeapon();
     void SetPlayerWeapon(u16 weapon);
 

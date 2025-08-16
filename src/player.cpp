@@ -6,6 +6,8 @@
 #include "audio.h"
 #include "asset_manager.h"
 #include "tilemap.h"
+#include "level_up.h"
+#include <cstdio>
 
 enum PlayerAnimation : u8 {
     PLAYER_ANIM_IDLE = 0,
@@ -259,14 +261,17 @@ static void TriggerInteraction(Actor* pPlayer, Actor* pInteractable) {
         PlayerSitDown(pPlayer);
         Game::SetPlayerHealth(Game::GetPlayerMaxHealth());
 
-        // Add dialogue
-        /*static constexpr const char* lines[] = {
-            "I just put a regular dialogue box here, but it would\nnormally be a level up menu.",
-        };
+        // Add some experience for testing (can be removed later)
+        Game::AddPlayerExp(150);
+        printf("Checkpoint activated! Player exp: %d, level: %d\n", Game::GetPlayerExp(), Game::GetPlayerLevel());
 
-        if (!Game::IsDialogActive()) {
-            Game::OpenDialog(lines, 1);
-        }*/
+        // Open level up menu if player can level up
+        if (Game::LevelUp::CanLevelUp()) {
+            printf("Can level up! Opening menu...\n");
+            Game::LevelUp::OpenLevelUpMenu();
+        } else {
+            printf("Cannot level up yet.\n");
+        }
     }
 }
 
