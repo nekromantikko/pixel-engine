@@ -6,6 +6,7 @@
 #include "asset_manager.h"
 
 static GameConfig g_config;
+static bool g_shouldExit = false;
 
 namespace Game {
     r64 secondsElapsed = 0.0f;
@@ -67,6 +68,14 @@ namespace Game {
                 clockCounter = 0;
             }
         }
+    }
+
+    bool ShouldExit() {
+        return g_shouldExit;
+    }
+
+    void RequestExit() {
+        g_shouldExit = true;
     }
 #pragma endregion
 }

@@ -1164,15 +1164,17 @@ static void StepMainMenu() {
         switch (g_mainMenuSelection) {
         case MAIN_MENU_START_GAME:
             // Start the game
-            DungeonHandle testDungeon = AssetManager::GetAssetHandle<DungeonHandle>("dungeons/test_cave.dung");
-            LoadRoom(testDungeon, { 14, 14 });
+            {
+                DungeonHandle testDungeon = AssetManager::GetAssetHandle<DungeonHandle>("dungeons/test_cave.dung");
+                Game::LoadRoom(testDungeon, { 14, 14 });
+            }
             break;
         case MAIN_MENU_SETTINGS:
             g_menuState = MENU_SETTINGS;
             g_settingsMenuSelection = 0;
             break;
         case MAIN_MENU_EXIT:
-            g_state = GAME_STATE_EXIT;
+            Game::RequestExit();
             break;
         }
     }
@@ -1181,15 +1183,15 @@ static void StepMainMenu() {
     Game::Rendering::ClearSpriteLayers();
     
     // Draw title
-    Game::UI::DrawText("PIXEL ENGINE", { 120, 50 }, 0x1);
+    Game::UI::DrawText("PIXEL ENGINE", { 200, 40 }, 0x1);
     
     // Draw menu items
-    constexpr s32 menuStartY = 120;
-    constexpr s32 menuSpacing = 24;
+    constexpr s32 menuStartY = 80;
+    constexpr s32 menuSpacing = 20;
     
-    Game::UI::DrawMenuItem("Start Game", { 120, menuStartY }, g_mainMenuSelection == MAIN_MENU_START_GAME);
-    Game::UI::DrawMenuItem("Settings", { 120, menuStartY + menuSpacing }, g_mainMenuSelection == MAIN_MENU_SETTINGS);
-    Game::UI::DrawMenuItem("Exit", { 120, menuStartY + menuSpacing * 2 }, g_mainMenuSelection == MAIN_MENU_EXIT);
+    Game::UI::DrawMenuItem("Start Game", { 200, menuStartY }, g_mainMenuSelection == MAIN_MENU_START_GAME);
+    Game::UI::DrawMenuItem("Settings", { 200, menuStartY + menuSpacing }, g_mainMenuSelection == MAIN_MENU_SETTINGS);
+    Game::UI::DrawMenuItem("Exit", { 200, menuStartY + menuSpacing * 2 }, g_mainMenuSelection == MAIN_MENU_EXIT);
 }
 
 static void StepSettingsMenu() {
@@ -1239,11 +1241,11 @@ static void StepSettingsMenu() {
     Game::Rendering::ClearSpriteLayers();
     
     // Draw title
-    Game::UI::DrawText("SETTINGS", { 120, 50 }, 0x1);
+    Game::UI::DrawText("SETTINGS", { 200, 40 }, 0x1);
     
     // Draw settings items
-    constexpr s32 menuStartY = 100;
-    constexpr s32 menuSpacing = 24;
+    constexpr s32 menuStartY = 70;
+    constexpr s32 menuSpacing = 20;
     
     // CRT Filter
     const char* crtText = renderSettings->useCRTFilter ? "CRT Filter: ON" : "CRT Filter: OFF";

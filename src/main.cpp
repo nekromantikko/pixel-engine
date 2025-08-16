@@ -112,6 +112,11 @@ int main(int argc, char** argv) {
         }
         
         Game::Update(deltaTimeSeconds);
+        
+        // Check if game requested exit
+        if (Game::ShouldExit()) {
+            running = false;
+        }
 
         if (!minimized) {
             r64 averageFramerate = GetAverageFramerate(deltaTimeSeconds);
