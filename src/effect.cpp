@@ -100,6 +100,93 @@ static void UpdateFeather(Actor* pActor, const ActorPrototype* pPrototype) {
     pActor->position += pActor->velocity;
 }
 
+static void UpdateRain(Actor* pActor, const ActorPrototype* pPrototype) {
+    if (!Game::UpdateCounter(pActor->state.effectState.lifetimeCounter)) {
+        pActor->flags.pendingRemoval = true;
+    }
+
+    // Fast vertical fall with slight wind drift
+    constexpr r32 fallSpeed = 0.125f; // Much faster than feather
+    constexpr r32 windStrength = 0.02f;
+    constexpr r32 windFreq = 1 / 60.f;
+    
+    const u16 time = pActor->state.effectState.lifetimeCounter - pActor->state.effectState.initialLifetime;
+    const r32 windOffset = glm::sin(time * windFreq) * windStrength;
+    
+    pActor->velocity.y = fallSpeed;
+    pActor->velocity.x = pActor->initialVelocity.x + windOffset;
+    pActor->position += pActor->velocity;
+}
+
+static void UpdateSnow(Actor* pActor, const ActorPrototype* pPrototype) {
+    if (!Game::UpdateCounter(pActor->state.effectState.lifetimeCounter)) {
+        pActor->flags.pendingRemoval = true;
+    }
+
+    // Slow fall with wind drift and occasional spiraling  
+    constexpr r32 fallSpeed = 0.02f; // Very slow fall
+    constexpr r32 windStrength = 0.04f;
+    constexpr r32 windFreq = 1 / 90.f;
+    constexpr r32 spiralFreq = 1 / 120.f;
+    constexpr r32 spiralRadius = 0.5f;
+    
+    const u16 time = pActor->state.effectState.lifetimeCounter - pActor->state.effectState.initialLifetime;
+    const r32 windOffset = glm::sin(time * windFreq) * windStrength;
+    const r32 spiralX = glm::cos(time * spiralFreq) * spiralRadius * 0.01f;
+    
+    pActor->velocity.y = fallSpeed;
+    pActor->velocity.x = pActor->initialVelocity.x + windOffset + spiralX;
+    pActor->position += pActor->velocity;
+}
+
+static void UpdateAsh(Actor* pActor, const ActorPrototype* pPrototype) {
+    if (!Game::UpdateCounter(pActor->state.effectState.lifetimeCounter)) {
+        pActor->flags.pendingRemoval = true;
+    }
+
+    // Very slow rise/float with strong wind effects
+    constexpr r32 riseSpeed = -0.01f; // Negative for upward movement
+    constexpr r32 windStrength = 0.06f;
+    constexpr r32 windFreq = 1 / 45.f;
+    constexpr r32 turbulenceFreq = 1 / 30.f;
+    constexpr r32 turbulenceStrength = 0.03f;
+    
+    const u16 time = pActor->state.effectState.lifetimeCounter - pActor->state.effectState.initialLifetime;
+    const r32 windOffset = glm::sin(time * windFreq) * windStrength;
+    const r32 turbulence = glm::sin(time * turbulenceFreq) * turbulenceStrength;
+    
+    pActor->velocity.y = riseSpeed + turbulence;
+    pActor->velocity.x = pActor->initialVelocity.x + windOffset;
+    pActor->position += pActor->velocity;
+}
+
+static void UpdateFireflies(Actor* pActor, const ActorPrototype* pPrototype) {
+    if (!Game::UpdateCounter(pActor->state.effectState.lifetimeCounter)) {
+        pActor->flags.pendingRemoval = true;
+    }
+
+    // Floating with sine wave patterns and blinking effect
+    constexpr r32 floatSpeed = 0.005f;
+    constexpr r32 horizontalFreq = 1 / 120.f;
+    constexpr r32 verticalFreq = 1 / 80.f;
+    constexpr r32 horizontalAmplitude = 0.03f;
+    constexpr r32 verticalAmplitude = 0.02f;
+    constexpr u16 blinkInterval = 60; // Blink every 60 frames (1 second at 60fps)
+    
+    const u16 time = pActor->state.effectState.lifetimeCounter - pActor->state.effectState.initialLifetime;
+    const r32 horizontalSine = glm::sin(time * horizontalFreq) * horizontalAmplitude;
+    const r32 verticalSine = glm::sin(time * verticalFreq) * verticalAmplitude;
+    
+    pActor->velocity.x = pActor->initialVelocity.x + horizontalSine;
+    pActor->velocity.y = floatSpeed + verticalSine;
+    
+    // Blinking effect - toggle visibility based on time
+    const bool shouldBlink = (time / blinkInterval) % 2 == 0;
+    pActor->drawState.visible = shouldBlink || (time % blinkInterval) < (blinkInterval / 3);
+    
+    pActor->position += pActor->velocity;
+}
+
 static void InitEffectState(EffectState& state, const EffectData& data) {
     state.initialLifetime = data.lifetime;
     state.lifetimeCounter = data.lifetime;
@@ -120,15 +207,27 @@ static void InitBaseEffect(Actor* pActor, const ActorPrototype* pPrototype, cons
 constexpr ActorInitFn Game::effectInitTable[EFFECT_TYPE_COUNT] = {
     InitDmgNumbers,
     InitBaseEffect,
-    InitBaseEffect
+    InitBaseEffect,
+    InitBaseEffect, // Rain
+    InitBaseEffect, // Snow
+    InitBaseEffect, // Ash
+    InitBaseEffect  // Fireflies
 };
 constexpr ActorUpdateFn Game::effectUpdateTable[EFFECT_TYPE_COUNT] = {
     UpdateDmgNumbers,
     UpdateExplosion,
     UpdateFeather,
+    UpdateRain,
+    UpdateSnow,
+    UpdateAsh,
+    UpdateFireflies,
 };
 constexpr ActorDrawFn Game::effectDrawTable[EFFECT_TYPE_COUNT] = {
     DrawDmgNumbers,
     Game::DrawActorDefault,
     Game::DrawActorDefault,
+    Game::DrawActorDefault, // Rain
+    Game::DrawActorDefault, // Snow
+    Game::DrawActorDefault, // Ash
+    Game::DrawActorDefault, // Fireflies
 };
