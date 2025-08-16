@@ -23,7 +23,8 @@ static void InitCheckpoint(Actor* pActor, const ActorPrototype* pPrototype, cons
 }
 
 static void InitNPC(Actor* pActor, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
-
+	pActor->state.npcState.interacted = false;
+	pActor->drawState.layer = SPRITE_LAYER_BG;
 }
 
 constexpr ActorInitFn Game::interactableInitTable[INTERACTABLE_TYPE_COUNT] = {
