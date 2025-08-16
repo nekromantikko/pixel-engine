@@ -37,18 +37,17 @@ static constexpr s16 EXP_TABLE[] = {
 static constexpr s16 MAX_LEVEL = 20;
 
 static void DrawLevelUpMenu() {
-    if (g_menuState != Game::LevelUp::MENU_OPEN) {
-        return;
-    }
-
-    // Simple text display using the dialog system's text rendering approach
-    // For now, we'll just ensure the dialog box is drawn and handle text separately
+    // For now, just ensure the dialog renders correctly
+    // The actual text drawing can be enhanced later
 }
 
 bool Game::LevelUp::OpenLevelUpMenu() {
     if (g_menuState != MENU_CLOSED || !CanLevelUp()) {
         return false;
     }
+
+    // Debug: Confirm level up is triggered
+    printf("Opening level up menu - Level: %d, Exp: %d\n", Game::GetPlayerLevel(), Game::GetPlayerExp());
 
     // Open dialog box for the menu
     if (!Game::OpenDialog({4, 2}, {16, 12})) {
@@ -98,6 +97,8 @@ bool Game::LevelUp::UpdateLevelUpMenu() {
         if (Game::Input::ButtonPressed(BUTTON_A)) {
             ApplyUpgrade(g_selectedOption);
             CloseLevelUpMenu();
+            // Debug: Output level up result to console (can be removed)
+            printf("Level up applied! New level: %d\n", Game::GetPlayerLevel());
         }
         
         // Cancel
