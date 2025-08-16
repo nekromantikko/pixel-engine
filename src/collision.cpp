@@ -54,7 +54,7 @@ namespace Collision {
 
 				const TilesetTile& tile = pTileset->tiles[tileIndex];
 
-				if (tile.type == TILE_SOLID) {
+				if (tile.type == TILE_SOLID || tile.type == TILE_DESTRUCTIBLE) {
 					outHit.blockingHit = true;
 					outHit.startPenetrating = IsNearlyZero(dist);
 					outHit.distance = dist;
@@ -63,6 +63,7 @@ namespace Collision {
 					outHit.location = glm::vec2{ pos.x + glm::sign(dx) * dist, pos.y };
 					outHit.normal = glm::vec2{ glm::sign(dx), 0 };
 					outHit.tileType = tile.type;
+					outHit.tileCoord = metatileCoord;
 
 					break;
 				}
@@ -117,7 +118,7 @@ namespace Collision {
 
 				const TilesetTile& tile = pTileset->tiles[tileIndex];
 				
-				if (tile.type == TILE_SOLID) {
+				if (tile.type == TILE_SOLID || tile.type == TILE_DESTRUCTIBLE) {
 					outHit.blockingHit = true;
 					outHit.startPenetrating = IsNearlyZero(dist);
 					outHit.distance = dist;
@@ -126,6 +127,7 @@ namespace Collision {
 					outHit.location = glm::vec2{ pos.x, pos.y + glm::sign(dy) * dist };
 					outHit.normal = glm::vec2{ 0, glm::sign(dy) };
 					outHit.tileType = tile.type;
+					outHit.tileCoord = metatileCoord;
 
 					break;
 				}

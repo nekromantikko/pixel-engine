@@ -99,6 +99,8 @@ namespace Game {
 
     glm::ivec2 GetCurrentPlayAreaSize();
     const Tilemap* GetCurrentTilemap();
+    
+    void DestroyTileAt(const glm::ivec2& tileCoord, const glm::vec2& impactPoint);
 
 	u32 GetFramesElapsed();
 

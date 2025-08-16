@@ -10,6 +10,7 @@
 #include "debug.h"
 #include "actors.h"
 #include "rendering.h"
+#include "tilemap.h"
 
 // TODO: Use g_ prefix for globals or combine into larger state struct
 
@@ -1175,4 +1176,51 @@ void Game::TriggerLevelTransition(DungeonHandle targetDungeon, glm::i8vec2 targe
     };
     StartCoroutine(LevelTransitionCoroutine, state, callback);
     freezeGameplay = true;
+}
+
+void Game::DestroyTileAt(const glm::ivec2& tileCoord, const glm::vec2& impactPoint) {
+    const Tilemap* pTilemap = GetCurrentTilemap();
+    if (!pTilemap) {
+        return;
+    }
+    
+    // Check if tile is destructible
+    const s32 tilesetTileIndex = Tiles::GetTilesetTileIndex(pTilemap, tileCoord);
+    if (tilesetTileIndex < 0) {
+        return;
+    }
+    
+    const Tileset* pTileset = AssetManager::GetAsset(pTilemap->tilesetHandle);
+    if (!pTileset) {
+        return;
+    }
+    
+    const TilesetTile& tile = pTileset->tiles[tilesetTileIndex];
+    if (tile.type != TILE_DESTRUCTIBLE) {
+        return; // Only destroy destructible tiles
+    }
+    
+    // Remove the tile by setting it to empty
+    Tiles::SetTilesetTile(pTilemap, tileCoord, 0); // TILE_EMPTY = 0
+    
+    // Calculate tile center in world coordinates
+    const glm::vec2 tileCenter = glm::vec2(tileCoord) + glm::vec2(0.5f, 0.5f);
+    
+    // Spawn 4 debris particles flying outward like Super Mario Bros
+    constexpr r32 debrisSpeed = 0.15f;
+    constexpr glm::vec2 directions[4] = {
+        { -debrisSpeed, -debrisSpeed }, // Top-left
+        {  debrisSpeed, -debrisSpeed }, // Top-right  
+        { -debrisSpeed,  debrisSpeed }, // Bottom-left
+        {  debrisSpeed,  debrisSpeed }  // Bottom-right
+    };
+    
+    // For now, just use a basic effect prototype - this would need to be configured with actual assets
+    // TODO: This needs to be hooked up to an actual tile debris effect prototype
+    for (u32 i = 0; i < 4; i++) {
+        // We'll spawn simple effects for now - in a real implementation this would need
+        // proper asset handles for the tile debris effect
+        // SpawnActor(debrisEffectPrototype, tileCenter, directions[i]);
+    }
+}
 }

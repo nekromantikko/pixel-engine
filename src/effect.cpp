@@ -100,6 +100,22 @@ static void UpdateFeather(Actor* pActor, const ActorPrototype* pPrototype) {
     pActor->position += pActor->velocity;
 }
 
+static void UpdateTileDebris(Actor* pActor, const ActorPrototype* pPrototype) {
+    if (!Game::UpdateCounter(pActor->state.effectState.lifetimeCounter)) {
+        pActor->flags.pendingRemoval = true;
+        return;
+    }
+
+    // Apply gravity to make debris fall down
+    Game::ApplyGravity(pActor, 0.01f);
+    
+    // Move the debris particle
+    pActor->position += pActor->velocity;
+    
+    // Slow down horizontal movement over time for more realistic physics
+    pActor->velocity.x *= 0.98f;
+}
+
 static void InitEffectState(EffectState& state, const EffectData& data) {
     state.initialLifetime = data.lifetime;
     state.lifetimeCounter = data.lifetime;
@@ -120,15 +136,18 @@ static void InitBaseEffect(Actor* pActor, const ActorPrototype* pPrototype, cons
 constexpr ActorInitFn Game::effectInitTable[EFFECT_TYPE_COUNT] = {
     InitDmgNumbers,
     InitBaseEffect,
+    InitBaseEffect,
     InitBaseEffect
 };
 constexpr ActorUpdateFn Game::effectUpdateTable[EFFECT_TYPE_COUNT] = {
     UpdateDmgNumbers,
     UpdateExplosion,
     UpdateFeather,
+    UpdateTileDebris,
 };
 constexpr ActorDrawFn Game::effectDrawTable[EFFECT_TYPE_COUNT] = {
     DrawDmgNumbers,
+    Game::DrawActorDefault,
     Game::DrawActorDefault,
     Game::DrawActorDefault,
 };

@@ -8,6 +8,16 @@ static void BulletDie(Actor* pBullet, const ActorPrototype* pPrototype, const gl
     Game::SpawnActor(pPrototype->data.bulletData.deathEffect, effectPos);
 }
 
+static void HandleBulletTileCollision(Actor* pBullet, const ActorPrototype* pPrototype, const HitResult& hit) {
+    // Check if we hit a destructible tile
+    if (hit.tileType == TILE_DESTRUCTIBLE) {
+        Game::DestroyTileAt(hit.tileCoord, hit.impactPoint);
+    }
+    
+    // Bullet dies on any tile collision (solid or destructible)
+    BulletDie(pBullet, pPrototype, hit.impactPoint);
+}
+
 static void HandleBulletEnemyCollision(Actor* pBullet, const ActorPrototype* pPrototype, Actor* pEnemy) {
     const ActorPrototype* pEnemyPrototype = Game::GetActorPrototype(pEnemy);
 
@@ -36,12 +46,12 @@ static void UpdateDefaultBullet(Actor* pActor, const ActorPrototype* pPrototype)
 
     HitResult hit{};
     if (Game::ActorMoveHorizontal(pActor, pPrototype, hit)) {
-        BulletDie(pActor, pPrototype, hit.impactPoint);
+        HandleBulletTileCollision(pActor, pPrototype, hit);
         return;
     }
 
     if (Game::ActorMoveVertical(pActor, pPrototype, hit)) {
-        BulletDie(pActor, pPrototype, hit.impactPoint);
+        HandleBulletTileCollision(pActor, pPrototype, hit);
         return;
     }
 
@@ -68,10 +78,16 @@ static void UpdateGrenade(Actor* pActor, const ActorPrototype* pPrototype) {
 
     HitResult hit{};
     if (Game::ActorMoveHorizontal(pActor, pPrototype, hit)) {
+        if (hit.tileType == TILE_DESTRUCTIBLE) {
+            Game::DestroyTileAt(hit.tileCoord, hit.impactPoint);
+        }
         BulletRicochet(pActor->velocity, hit.impactNormal);
     }
 
     if (Game::ActorMoveVertical(pActor, pPrototype, hit)) {
+        if (hit.tileType == TILE_DESTRUCTIBLE) {
+            Game::DestroyTileAt(hit.tileCoord, hit.impactPoint);
+        }
         BulletRicochet(pActor->velocity, hit.impactNormal);
     }
 

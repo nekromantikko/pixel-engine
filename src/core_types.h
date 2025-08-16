@@ -156,10 +156,11 @@ static_assert(TILESET_DIM == (1 << TILESET_DIM_LOG2));
 enum TilesetTileType : s32 {
 	TILE_EMPTY = 0,
 	TILE_SOLID = 1,
+	TILE_DESTRUCTIBLE = 2,
 	TILE_TYPE_COUNT
 };
 
-constexpr const char* METATILE_TYPE_NAMES[TILE_TYPE_COUNT] = { "Empty", "Solid" };
+constexpr const char* METATILE_TYPE_NAMES[TILE_TYPE_COUNT] = { "Empty", "Solid", "Destructible" };
 
 struct TilesetTile {
 	s32 type;
@@ -213,6 +214,7 @@ struct HitResult {
 	glm::vec2 location;
 	glm::vec2 normal;
 	u32 tileType;
+	glm::ivec2 tileCoord;
 };
 #pragma endregion
 
