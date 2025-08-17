@@ -6,12 +6,7 @@
 #include <filesystem>
 
 namespace AssetManager {
-	bool LoadAssets();
 	void Free();
-#ifdef EDITOR
-	bool LoadAssetsFromDirectory(const std::filesystem::path& directory);
-#endif
-
 	bool LoadArchive(const std::filesystem::path& path);
 	bool SaveArchive(const std::filesystem::path& path);
 	bool RepackArchive();
