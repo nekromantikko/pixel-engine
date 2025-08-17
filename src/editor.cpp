@@ -1031,8 +1031,6 @@ struct AssetEditorState {
 	std::unordered_map<u64, EditedAsset> editedAssets;
 	u64 currentAsset = UUID_NULL;
 
-	ImGui::FileBrowser fileBrowser{ ImGuiFileBrowserFlags_EnterNewFilename };
-
 	AssetListActionState listActionState = {};
 };
 
@@ -1778,36 +1776,10 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, Asset
 	DeleteAssetEditorDataFn deleteFn = nullptr) {
 	ImGui::Begin(title, &open, ImGuiWindowFlags_MenuBar);
 
-	state.fileBrowser.Display();
-	if (state.fileBrowser.HasSelected()) {
-		const std::filesystem::path relativePath = std::filesystem::relative(state.fileBrowser.GetSelected(), ASSETS_SRC_DIR);
-		const u32 newSize = Editor::Assets::GetAssetSize(type, nullptr);
-		const u64 id = AssetManager::CreateAsset(type, newSize, relativePath.string().c_str());
-		void* data = AssetManager::GetAsset(id, type);
-		Editor::Assets::InitializeAsset(type, data);
-
-		if (!SaveAssetToFile(type, relativePath, data, id)) {
-			// Failed to save asset, remove it
-			AssetManager::RemoveAsset(id);
-		}
-		else {
-			state.editedAssets.try_emplace(id, CopyAssetForEditing(id, populateFn));
-		}
-		
-		state.fileBrowser.ClearSelected();
-	}
-
 	if (ImGui::BeginMenuBar())
 	{
 		if (ImGui::BeginMenu("Asset"))
 		{
-			if (ImGui::MenuItem("New")) {
-				state.fileBrowser.SetDirectory(ASSETS_SRC_DIR);
-				state.fileBrowser.SetTitle("Create new asset");
-				state.fileBrowser.SetTypeFilters({ ASSET_TYPE_FILE_EXTENSIONS[type] });
-				state.fileBrowser.Open();
-			}
-			ImGui::Separator();
 			ImGui::BeginDisabled(!state.editedAssets.contains(state.currentAsset));
 			if (ImGui::MenuItem("Save")) {
 				EditedAsset& asset = state.editedAssets.at(state.currentAsset);
