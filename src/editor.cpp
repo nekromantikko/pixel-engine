@@ -1395,6 +1395,11 @@ static u64 DrawAssetHierarchyRecursive(AssetType type, AssetListActionState* pAc
 					ImGui::OpenPopup("AssetPopup");
 				}
 				if (ImGui::BeginPopup("AssetPopup")) {
+					if (ImGui::MenuItem("Rename")) {
+						pActionState->actionStarted = true;
+						pActionState->actionType = ASSET_LIST_ACTION_RENAME;
+						pActionState->targetPath = entry.path();
+					}
 					if (ImGui::MenuItem("Duplicate")) {
 						pActionState->actionStarted = true;
 						pActionState->actionType = ASSET_LIST_ACTION_DUPLICATE_ASSET;
@@ -1456,6 +1461,13 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 		if (!targetIsDirectory) {
 			std::filesystem::path relativePath = std::filesystem::relative(pActionState->targetPath, ASSETS_SRC_DIR);
 			pAssetInfo = AssetManager::GetAssetInfoFromPath(relativePath);
+
+			if (!pAssetInfo || pAssetInfo->flags.deleted) {
+				DEBUG_ERROR("Asset not found (Or marked as deleted): %s", pActionState->targetPath.string().c_str());
+				pActionState->targetPath.clear();
+				pActionState->actionStarted = false;
+				return result;
+			}
 		}
 
 		if (ImGui::BeginPopup("Delete")) {
@@ -1465,26 +1477,20 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 					// TODO: Delete the directory and all its contents
 				}
 				else {
-					if (!pAssetInfo) {
-						DEBUG_ERROR("Asset not found: %s", pActionState->targetPath.string().c_str());
-					}
-					else if (pAssetInfo->flags.deleted) {
-						DEBUG_WARN("Asset %llu is already deleted, skipping", pAssetInfo->id);
-					}
-					else {
-						DEBUG_LOG("Deleting asset: %s", pActionState->targetPath.string().c_str());
-						DeleteAssetSourceFiles(pAssetInfo);
-						AssetManager::RemoveAsset(pAssetInfo->id);
-						if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
-							pContext->assetEraseList.push_back(pAssetInfo->id);
-						}
+					DEBUG_LOG("Deleting asset: %s", pActionState->targetPath.string().c_str());
+					DeleteAssetSourceFiles(pAssetInfo);
+					AssetManager::RemoveAsset(pAssetInfo->id);
+					if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
+						pContext->assetEraseList.push_back(pAssetInfo->id);
 					}
 				}
 				ImGui::CloseCurrentPopup();
+				pActionState->targetPath.clear();
 			}
 			ImGui::SameLine();
 			if (ImGui::Button("No")) {
 				ImGui::CloseCurrentPopup();
+				pActionState->targetPath.clear();
 			}
 			ImGui::EndPopup();
 		} else if (ImGui::BeginPopup("Duplicate Asset")) {
@@ -1492,32 +1498,62 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 				DEBUG_ERROR("Invalid operation: Cannot duplicate a directory");
 			}
 			else {
-				if (!pAssetInfo) {
-					DEBUG_ERROR("Asset not found: %s", pActionState->targetPath.string().c_str());
-				}
-				else if (pAssetInfo->flags.deleted) {
-					DEBUG_WARN("Asset %llu is deleted, skipping", pAssetInfo->id);
-				}
-				else {
-					std::string assetName = GetAssetName(pActionState->targetPath);
-					sprintf(pActionState->nameBuffer, "%s_copy", assetName.c_str());
+				std::string assetName = GetAssetName(pActionState->targetPath);
+				sprintf(pActionState->nameBuffer, "%s_copy", assetName.c_str());
 
-					if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
-						if (!pActionState->nameBuffer[0]) {
-							DEBUG_ERROR("Asset name cannot be empty");
-						}
-						else {
-							const char* extension = ASSET_TYPE_FILE_EXTENSIONS[pAssetInfo->flags.type];
-							std::filesystem::path newAssetPath = pActionState->targetPath.parent_path() / (pActionState->nameBuffer + std::string(extension));
-							if (!DuplicateAsset(pAssetInfo->id, newAssetPath)) {
-								DEBUG_ERROR("Failed to duplicate asset");
-							}
-						}
-						ImGui::CloseCurrentPopup();
+				if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
+					if (!pActionState->nameBuffer[0]) {
+						DEBUG_ERROR("Asset name cannot be empty");
 					}
-					if (pActionState->actionStarted) {
-						ImGui::SetKeyboardFocusHere(-1);
+					else {
+						const char* extension = ASSET_TYPE_FILE_EXTENSIONS[pAssetInfo->flags.type];
+						std::filesystem::path newAssetPath = pActionState->targetPath.parent_path() / (pActionState->nameBuffer + std::string(extension));
+						if (!DuplicateAsset(pAssetInfo->id, newAssetPath)) {
+							DEBUG_ERROR("Failed to duplicate asset");
+						}
 					}
+					ImGui::CloseCurrentPopup();
+					pActionState->targetPath.clear();
+				}
+				if (pActionState->actionStarted) {
+					ImGui::SetKeyboardFocusHere(-1);
+				}
+			}
+
+			ImGui::EndPopup();
+		} else if (ImGui::BeginPopup("Rename")) {
+			if (targetIsDirectory) {
+				// TODO
+			}
+			else {
+				std::string assetName = GetAssetName(pActionState->targetPath);
+				sprintf(pActionState->nameBuffer, "%s", assetName.c_str());
+
+				if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
+					const char* extension = ASSET_TYPE_FILE_EXTENSIONS[pAssetInfo->flags.type];
+					std::filesystem::path newAssetPath = pActionState->targetPath.parent_path() / (pActionState->nameBuffer + std::string(extension));
+
+					if (!pActionState->nameBuffer[0]) {
+						DEBUG_ERROR("Asset name cannot be empty");
+					}
+					else if (strcmp(pActionState->nameBuffer, assetName.c_str()) == 0) {
+						DEBUG_LOG("Asset name is unchanged, not renaming");
+					}
+					else if (std::filesystem::exists(newAssetPath)) {
+						DEBUG_ERROR("Asset with name %s already exists", pActionState->nameBuffer);
+					}
+					else {
+						std::filesystem::rename(pActionState->targetPath, newAssetPath);
+						std::filesystem::rename(pActionState->targetPath.string() + ".meta", newAssetPath.string() + ".meta");
+						std::filesystem::path newRelativePath = std::filesystem::relative(newAssetPath, ASSETS_SRC_DIR);
+						// TODO: Buffer may overflow here if the name is long enough...
+						strcpy(pAssetInfo->relativePath, newRelativePath.string().c_str());
+					}
+					ImGui::CloseCurrentPopup();
+					pActionState->targetPath.clear();
+				}
+				if (pActionState->actionStarted) {
+					ImGui::SetKeyboardFocusHere(-1);
 				}
 			}
 
