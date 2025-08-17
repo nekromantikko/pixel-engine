@@ -1015,6 +1015,9 @@ struct EditedAsset {
 struct AssetEditorState {
 	std::unordered_map<u64, EditedAsset> editedAssets;
 	u64 currentAsset = UUID_NULL;
+
+	ImGui::FileBrowser fileBrowser{ ImGuiFileBrowserFlags_EnterNewFilename };
+	u64 duplicateAssetId = UUID_NULL;
 };
 
 typedef void (*AssetEditorFn)(EditedAsset&);
@@ -1367,16 +1370,13 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 	DeleteAssetEditorDataFn deleteFn = nullptr) {
 	ImGui::Begin(title, &open, ImGuiWindowFlags_MenuBar);
 
-	static ImGui::FileBrowser fileBrowser(ImGuiFileBrowserFlags_EnterNewFilename);
-	static u64 duplicateAssetId = UUID_NULL;
-
-	fileBrowser.Display();
-	if (fileBrowser.HasSelected()) {
-		if (duplicateAssetId != UUID_NULL) {
-			DuplicateAsset(duplicateAssetId, fileBrowser.GetSelected());
+	state.fileBrowser.Display();
+	if (state.fileBrowser.HasSelected()) {
+		if (state.duplicateAssetId != UUID_NULL) {
+			DuplicateAsset(state.duplicateAssetId, state.fileBrowser.GetSelected());
 		}
 		else {
-			const std::filesystem::path relativePath = std::filesystem::relative(fileBrowser.GetSelected(), ASSETS_SRC_DIR);
+			const std::filesystem::path relativePath = std::filesystem::relative(state.fileBrowser.GetSelected(), ASSETS_SRC_DIR);
 			const u32 newSize = Editor::Assets::GetAssetSize(type, nullptr);
 			const u64 id = AssetManager::CreateAsset(type, newSize, relativePath.string().c_str(), newName);
 			void* data = AssetManager::GetAsset(id, type);
@@ -1391,8 +1391,8 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 			}
 		}
 		
-		fileBrowser.ClearSelected();
-		duplicateAssetId = UUID_NULL;
+		state.fileBrowser.ClearSelected();
+		state.duplicateAssetId = UUID_NULL;
 	}
 
 	if (ImGui::BeginMenuBar())
@@ -1400,11 +1400,11 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 		if (ImGui::BeginMenu("Asset"))
 		{
 			if (ImGui::MenuItem("New")) {
-				duplicateAssetId = UUID_NULL;
-				fileBrowser.SetDirectory(ASSETS_SRC_DIR);
-				fileBrowser.SetTitle("Create new asset");
-				fileBrowser.SetTypeFilters({ ASSET_TYPE_FILE_EXTENSIONS[type] });
-				fileBrowser.Open();
+				state.duplicateAssetId = UUID_NULL;
+				state.fileBrowser.SetDirectory(ASSETS_SRC_DIR);
+				state.fileBrowser.SetTitle("Create new asset");
+				state.fileBrowser.SetTypeFilters({ ASSET_TYPE_FILE_EXTENSIONS[type] });
+				state.fileBrowser.Open();
 			}
 			ImGui::Separator();
 			ImGui::BeginDisabled(!state.editedAssets.contains(state.currentAsset));
@@ -1434,7 +1434,7 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 		ImGui::EndMenuBar();
 	}
 
-	const u64 openedAsset = DrawAssetListWithFunctionality(type, fileBrowser, duplicateAssetId);
+	const u64 openedAsset = DrawAssetListWithFunctionality(type, state.fileBrowser, state.duplicateAssetId);
 	if (openedAsset != UUID_NULL && !state.editedAssets.contains(openedAsset)) {
 		state.editedAssets.emplace(openedAsset, CopyAssetForEditing(openedAsset, populateFn));
 	}
