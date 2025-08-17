@@ -58,7 +58,20 @@ namespace AssetWatcher {
     }
 
     void Update(r64 currentTime) {
-        if (!s_isWatching || !s_initialized) {
+        if (!s_initialized) {
+            return;
+        }
+
+        // If not watching but directory exists, restart watching
+        if (!s_isWatching && std::filesystem::exists(s_watchDirectory)) {
+            DEBUG_LOG("Asset watcher: Restarting watching for directory: %s", s_watchDirectory.string().c_str());
+            s_isWatching = true;
+            s_fileMap.clear(); // Clear old state
+            ScanDirectory();   // Rebuild file map
+            return; // Skip processing changes on restart
+        }
+
+        if (!s_isWatching) {
             return;
         }
 
@@ -81,6 +94,15 @@ namespace AssetWatcher {
     }
 
     void ScanDirectory() {
+        // Check if watch directory still exists
+        if (!std::filesystem::exists(s_watchDirectory)) {
+            if (s_isWatching) {
+                DEBUG_WARN("Asset watcher: Watch directory no longer exists: %s", s_watchDirectory.string().c_str());
+                s_isWatching = false;
+            }
+            return;
+        }
+
         std::unordered_map<std::string, FileInfo> newFileMap;
 
         try {
