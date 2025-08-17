@@ -1348,6 +1348,51 @@ static bool DirectoryHasAssetsOfType(const std::filesystem::path& dir, AssetType
 	return false;
 }
 
+// Helper function to collect all assets recursively in a directory
+static std::vector<AssetEntry*> CollectAssetsInDirectory(const std::filesystem::path& dir) {
+	std::vector<AssetEntry*> assets;
+	
+	try {
+		for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
+			if (entry.is_regular_file() && entry.path().extension() != ".meta") {
+				std::filesystem::path relativePath = std::filesystem::relative(entry.path(), ASSETS_SRC_DIR);
+				AssetEntry* pAssetInfo = AssetManager::GetAssetInfoFromPath(relativePath);
+				if (pAssetInfo && !pAssetInfo->flags.deleted) {
+					assets.push_back(pAssetInfo);
+				}
+			}
+		}
+	} catch (const std::filesystem::filesystem_error& ex) {
+		DEBUG_ERROR("Error iterating directory %s: %s", dir.string().c_str(), ex.what());
+	}
+	
+	return assets;
+}
+
+// Helper function to update asset relative paths after directory rename
+static void UpdateAssetPathsAfterDirectoryRename(const std::filesystem::path& oldDirPath, const std::filesystem::path& newDirPath) {
+	std::vector<AssetEntry*> assetsToUpdate = CollectAssetsInDirectory(newDirPath);
+	
+	std::filesystem::path oldRelativeDir = std::filesystem::relative(oldDirPath, ASSETS_SRC_DIR);
+	std::filesystem::path newRelativeDir = std::filesystem::relative(newDirPath, ASSETS_SRC_DIR);
+	
+	for (AssetEntry* pAsset : assetsToUpdate) {
+		std::filesystem::path oldAssetPath(pAsset->relativePath);
+		
+		// Replace the old directory part with the new directory part
+		std::filesystem::path newAssetPath = newRelativeDir / std::filesystem::relative(oldAssetPath, oldRelativeDir);
+		
+		// Update the asset's relative path - careful about buffer overflow
+		std::string newPathStr = newAssetPath.generic_string();
+		if (newPathStr.length() < MAX_ASSET_PATH_LENGTH) {
+			strcpy(pAsset->relativePath, newPathStr.c_str());
+			DEBUG_LOG("Updated asset path from %s to %s", oldAssetPath.generic_string().c_str(), newPathStr.c_str());
+		} else {
+			DEBUG_ERROR("New asset path too long, skipping update: %s", newPathStr.c_str());
+		}
+	}
+}
+
 static u64 DrawAssetHierarchyRecursive(AssetType type, AssetListActionState* pActionState, const std::filesystem::path& dir = ASSETS_SRC_DIR) {
 	u64 result = UUID_NULL;
 
@@ -1514,7 +1559,30 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 			ImGui::Text("Are you sure?");
 			if (ImGui::Button("Yes")) {
 				if (targetIsDirectory) {
-					// TODO: Delete the directory and all its contents
+					DEBUG_LOG("Deleting directory and all contents: %s", pActionState->targetPath.string().c_str());
+					
+					// Collect all assets in the directory first
+					std::vector<AssetEntry*> assetsToDelete = CollectAssetsInDirectory(pActionState->targetPath);
+					
+					// Delete each asset from the asset manager and remove source files
+					for (AssetEntry* pAsset : assetsToDelete) {
+						DEBUG_LOG("Deleting asset in directory: %s", pAsset->relativePath);
+						DeleteAssetSourceFiles(pAsset);
+						AssetManager::RemoveAsset(pAsset->id);
+						
+						// Clean up render resources
+						if (pContext->assetRenderBuffers.contains(pAsset->id) || pContext->assetRenderTextures.contains(pAsset->id)) {
+							pContext->assetEraseList.push_back(pAsset->id);
+						}
+					}
+					
+					// Finally, delete the directory itself
+					std::error_code ec;
+					if (std::filesystem::remove_all(pActionState->targetPath, ec)) {
+						DEBUG_LOG("Successfully deleted directory: %s", pActionState->targetPath.string().c_str());
+					} else {
+						DEBUG_ERROR("Failed to delete directory: %s, error: %s", pActionState->targetPath.string().c_str(), ec.message().c_str());
+					}
 				}
 				else {
 					DEBUG_LOG("Deleting asset: %s", pActionState->targetPath.string().c_str());
@@ -1563,7 +1631,41 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 			ImGui::EndPopup();
 		} else if (ImGui::BeginPopup("Rename")) {
 			if (targetIsDirectory) {
-				// TODO: Rename directory and update all assets inside it
+				std::string dirName = pActionState->targetPath.filename().string();
+				sprintf(pActionState->nameBuffer, "%s", dirName.c_str());
+
+				if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
+					std::filesystem::path newDirPath = pActionState->targetPath.parent_path() / pActionState->nameBuffer;
+
+					if (!pActionState->nameBuffer[0]) {
+						DEBUG_ERROR("Directory name cannot be empty");
+					}
+					else if (strcmp(pActionState->nameBuffer, dirName.c_str()) == 0) {
+						DEBUG_LOG("Directory name is unchanged, not renaming");
+					}
+					else if (std::filesystem::exists(newDirPath)) {
+						DEBUG_ERROR("Directory with name %s already exists", pActionState->nameBuffer);
+					}
+					else {
+						DEBUG_LOG("Renaming directory from %s to %s", pActionState->targetPath.string().c_str(), newDirPath.string().c_str());
+						
+						// Rename the directory first
+						std::error_code ec;
+						if (std::filesystem::rename(pActionState->targetPath, newDirPath, ec)) {
+							DEBUG_LOG("Successfully renamed directory to: %s", newDirPath.string().c_str());
+							
+							// Update all asset paths that were in this directory
+							UpdateAssetPathsAfterDirectoryRename(pActionState->targetPath, newDirPath);
+						} else {
+							DEBUG_ERROR("Failed to rename directory: %s", ec.message().c_str());
+						}
+					}
+					ImGui::CloseCurrentPopup();
+					pActionState->targetPath.clear();
+				}
+				if (pActionState->actionStarted) {
+					ImGui::SetKeyboardFocusHere(-1);
+				}
 			}
 			else {
 				std::string assetName = GetAssetName(pActionState->targetPath);
