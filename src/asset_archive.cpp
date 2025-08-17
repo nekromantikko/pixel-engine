@@ -147,7 +147,7 @@ bool AssetArchive::SaveToFile(const std::filesystem::path& path) {
 	return true;
 }
 
-void* AssetArchive::AddAsset(u64 id, AssetType type, size_t size, const char* path, const char* name, const void* data) {
+void* AssetArchive::AddAsset(u64 id, AssetType type, size_t size, const char* path, const void* data) {
 	const AssetEntry* existing = FindAssetByIdBinary(id);
 	if (existing != nullptr) {
 		return nullptr; // Asset already exists
@@ -159,8 +159,6 @@ void* AssetArchive::AddAsset(u64 id, AssetType type, size_t size, const char* pa
 
 	AssetEntry newEntry{};
 	newEntry.id = id;
-	strncpy(newEntry.name, name, MAX_ASSET_NAME_LENGTH - 1);
-	newEntry.name[MAX_ASSET_NAME_LENGTH - 1] = '\0';
 	strncpy(newEntry.relativePath, path, MAX_ASSET_PATH_LENGTH - 1);
 	newEntry.relativePath[MAX_ASSET_PATH_LENGTH - 1] = '\0';
 	newEntry.offset = m_size;

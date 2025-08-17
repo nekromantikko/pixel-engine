@@ -1003,7 +1003,6 @@ static bool DrawTypeSelectionCombo(const char* label, const char* const* const t
 struct EditedAsset {
 	u64 id;
 	AssetType type;
-	char name[MAX_ASSET_NAME_LENGTH];
 	char relativePath[MAX_ASSET_PATH_LENGTH];
 	size_t size;
 	void* data;
@@ -1025,13 +1024,24 @@ typedef void (*PopulateAssetEditorDataFn)(EditedAsset&);
 typedef void (*ApplyAssetEditorDataFn)(EditedAsset&);
 typedef void (*DeleteAssetEditorDataFn)(EditedAsset&);
 
+static std::string GetAssetName(const std::filesystem::path& relativePath) {
+	return relativePath.filename().replace_extension("").string();
+}
+
+static std::string GetAssetName(u64 id) {
+	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(id);
+	if (!pAssetInfo) {
+		return "";
+	}
+	return GetAssetName(pAssetInfo->relativePath);
+}
+
 static EditedAsset CopyAssetForEditing(u64 id, PopulateAssetEditorDataFn populateFn) {
 	EditedAsset result{};
 	result.id = id;
 
 	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(id);
 	result.type = pAssetInfo->flags.type;
-	strcpy(result.name, pAssetInfo->name);
 	strcpy(result.relativePath, pAssetInfo->relativePath);
 	result.size = pAssetInfo->size;
 	result.data = malloc(pAssetInfo->size);
@@ -1060,7 +1070,7 @@ static bool ResizeEditedAsset(EditedAsset& asset, size_t newSize) {
 	return true;
 }
 
-static bool SaveAssetToFile(AssetType type, const std::filesystem::path& relativePath, const char* name, const void* pData, u64 id = UUID_NULL) {
+static bool SaveAssetToFile(AssetType type, const std::filesystem::path& relativePath, const void* pData, u64 id = UUID_NULL) {
 	std::filesystem::path fullPath = std::filesystem::path(ASSETS_SRC_DIR) / relativePath;
 
 	nlohmann::json metadata;
@@ -1083,7 +1093,7 @@ static bool SaveAssetToFile(AssetType type, const std::filesystem::path& relativ
 		}
 	}
 
-	if (AssetSerialization::SaveAssetToFile(fullPath, name, type, metadata, pData) != SERIALIZATION_SUCCESS) {
+	if (AssetSerialization::SaveAssetToFile(fullPath, type, metadata, pData) != SERIALIZATION_SUCCESS) {
 		DEBUG_ERROR("Failed to save asset to file: %s", fullPath.string().c_str());
 		return false;
 	}
@@ -1101,7 +1111,7 @@ static bool SaveEditedAsset(EditedAsset& asset, ApplyAssetEditorDataFn applyFn) 
 		applyFn(asset);
 	}
 	
-	if (!SaveAssetToFile(asset.type, asset.relativePath, asset.name, asset.data, asset.id)) {
+	if (!SaveAssetToFile(asset.type, asset.relativePath, asset.data, asset.id)) {
 		return false;
 	}
 
@@ -1112,7 +1122,6 @@ static bool SaveEditedAsset(EditedAsset& asset, ApplyAssetEditorDataFn applyFn) 
 		}
 	}
 
-	memcpy(pAssetInfo->name, asset.name, MAX_ASSET_NAME_LENGTH);
 	void* data = AssetManager::GetAsset(asset.id, pAssetInfo->flags.type);
 	memcpy(data, asset.data, asset.size);
 
@@ -1130,7 +1139,6 @@ static bool RevertEditedAsset(EditedAsset& asset, PopulateAssetEditorDataFn popu
 		}
 	}
 
-	memcpy(asset.name, pAssetInfo->name, MAX_ASSET_NAME_LENGTH);
 	const void* data = AssetManager::GetAsset(asset.id, pAssetInfo->flags.type);
 	memcpy(asset.data, data, asset.size);
 	asset.dirty = false;
@@ -1165,18 +1173,16 @@ static bool DuplicateAsset(u64 id, const std::filesystem::path& path) {
 		return false;
 	}
 
-	char newName[MAX_ASSET_NAME_LENGTH];
-	snprintf(newName, MAX_ASSET_NAME_LENGTH, "%s (Copy)", pAssetInfo->name);
 	const std::filesystem::path relativePath = std::filesystem::relative(path, ASSETS_SRC_DIR);
 
-	const u64 newId = AssetManager::CreateAsset(pAssetInfo->flags.type, pAssetInfo->size, relativePath.string().c_str(), newName);
+	const u64 newId = AssetManager::CreateAsset(pAssetInfo->flags.type, pAssetInfo->size, relativePath.string().c_str());
 	if (newId == UUID_NULL) {
 		return false;
 	}
 	void* newData = AssetManager::GetAsset(newId, pAssetInfo->flags.type);
 	memcpy(newData, assetData, pAssetInfo->size);
 
-	if (!SaveAssetToFile(pAssetInfo->flags.type, relativePath, newName, assetData, newId)) {
+	if (!SaveAssetToFile(pAssetInfo->flags.type, relativePath, assetData, newId)) {
 		AssetManager::RemoveAsset(newId);
 		return false;
 	}
@@ -1228,7 +1234,7 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 	const u64 oldId = selectedId;
 
 	std::vector<u64> ids;
-	std::vector<const char*> assetNames;
+	std::vector<std::string> assetNames;
 	s32 selectedIndex = -1;
 
 	const AssetIndex& assetIndex = AssetManager::GetIndex();
@@ -1246,7 +1252,7 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 		}
 
 		ids.push_back(asset->id);
-		assetNames.push_back(asset->name);
+		assetNames.push_back(GetAssetName(asset->relativePath));
 	}
 
 	if (selectedId != UUID_NULL && selectedIndex < 0) {
@@ -1255,7 +1261,13 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 		selectedIndex = -1;
 	}
 
-	if (DrawTypeSelectionCombo(label, assetNames.data(), assetNames.size(), selectedIndex)) {
+	// This is really stupid...
+	std::vector<const char*> assetNamesCStr;
+	for (const auto& name : assetNames) {
+		assetNamesCStr.push_back(name.c_str());
+	}
+
+	if (DrawTypeSelectionCombo(label, assetNamesCStr.data(), assetNamesCStr.size(), selectedIndex)) {
 		selectedId = selectedIndex >= 0 ? ids[selectedIndex] : UUID_NULL;
 	}
 
@@ -1313,7 +1325,8 @@ static bool DrawAssetEntry(const AssetEntry* pAssetInfo) {
 	bool selected = false;
 	ImGui::PushID(pAssetInfo->id);
 
-	ImGui::Selectable(pAssetInfo->name);
+	std::string assetName = GetAssetName(pAssetInfo->relativePath);
+	ImGui::Selectable(assetName.c_str());
 
 	if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
 		selected = true;
@@ -1322,7 +1335,7 @@ static bool DrawAssetEntry(const AssetEntry* pAssetInfo) {
 	if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
 	{
 		ImGui::SetDragDropPayload("dd_asset", &pAssetInfo->id, sizeof(u64));
-		ImGui::Text("%s", pAssetInfo->name);
+		ImGui::Text("%s", assetName.c_str());
 
 		ImGui::EndDragDropSource();
 	}
@@ -1335,7 +1348,8 @@ static bool DrawAssetEntryWithContextMenu(const AssetEntry* pAssetInfo, ImGui::F
 	bool selected = false;
 	ImGui::PushID(pAssetInfo->id);
 
-	ImGui::Selectable(pAssetInfo->name);
+	std::string assetName = GetAssetName(pAssetInfo->relativePath);
+	ImGui::Selectable(assetName.c_str());
 
 	if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
 		selected = true;
@@ -1365,7 +1379,7 @@ static bool DrawAssetEntryWithContextMenu(const AssetEntry* pAssetInfo, ImGui::F
 	if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
 	{
 		ImGui::SetDragDropPayload("dd_asset", &pAssetInfo->id, sizeof(u64));
-		ImGui::Text("%s", pAssetInfo->name);
+		ImGui::Text("%s", assetName.c_str());
 
 		ImGui::EndDragDropSource();
 	}
@@ -1414,7 +1428,7 @@ static u64 DrawAssetHierarchyRecursive(AssetType type, std::function<bool(const 
 			const AssetEntry* asset = AssetManager::GetAssetInfo(assetId);
 			if (asset->flags.deleted) {
 				// TODO: If an asset is marked deleted but the source file exists, we should probably delete the source file
-				DEBUG_WARN("Asset %s is deleted, skipping\n", asset->name);
+				DEBUG_WARN("Asset %llu is deleted, skipping\n", asset->id);
 				continue;
 			}
 
@@ -1439,7 +1453,7 @@ static u64 DrawAssetHierarchy(AssetType type, std::function<bool(const AssetEntr
 	return result;
 }
 
-static void DrawAssetEditor(const char* title, bool& open, AssetType type, const char* newName, AssetEditorFn drawEditor, AssetEditorState& state, 
+static void DrawAssetEditor(const char* title, bool& open, AssetType type, AssetEditorFn drawEditor, AssetEditorState& state, 
 	PopulateAssetEditorDataFn populateFn = nullptr, 
 	ApplyAssetEditorDataFn applyFn = nullptr, 
 	DeleteAssetEditorDataFn deleteFn = nullptr) {
@@ -1453,11 +1467,11 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 		else {
 			const std::filesystem::path relativePath = std::filesystem::relative(state.fileBrowser.GetSelected(), ASSETS_SRC_DIR);
 			const u32 newSize = Editor::Assets::GetAssetSize(type, nullptr);
-			const u64 id = AssetManager::CreateAsset(type, newSize, relativePath.string().c_str(), newName);
+			const u64 id = AssetManager::CreateAsset(type, newSize, relativePath.string().c_str());
 			void* data = AssetManager::GetAsset(id, type);
 			Editor::Assets::InitializeAsset(type, data);
 
-			if (!SaveAssetToFile(type, relativePath, newName, data, id)) {
+			if (!SaveAssetToFile(type, relativePath, data, id)) {
 				// Failed to save asset, remove it
 				AssetManager::RemoveAsset(id);
 			}
@@ -1534,12 +1548,13 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, const
 
 			bool assetOpen = true;
 
+			std::string assetName = GetAssetName(asset.relativePath);
 			char label[256];
 			if (asset.dirty) {
-				sprintf(label, "%s*###%lld", asset.name, kvp.first);
+				sprintf(label, "%s*###%lld", assetName.c_str(), kvp.first);
 			}
 			else {
-				sprintf(label, "%s###%lld", asset.name, kvp.first);
+				sprintf(label, "%s###%lld", assetName.c_str(), kvp.first);
 			}
 
 			if (ImGui::BeginTabItem(label, &assetOpen)) {
@@ -2194,9 +2209,6 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 	MetaspriteEditorData* pEditorData = (MetaspriteEditorData*)asset.userData;
 
 	ImGui::SeparatorText("Properties");
-	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
-		asset.dirty = true;
-	}
 	if (DrawAssetField("CHR Bank", ASSET_TYPE_CHR_BANK, pMetasprite->chrBankHandle.id)) {
 		asset.dirty = true;
 	}
@@ -2251,7 +2263,7 @@ static void DrawMetaspriteEditor(EditedAsset& asset) {
 
 static void DrawSpriteWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Metasprite editor", pContext->spriteWindowOpen, ASSET_TYPE_METASPRITE, "New Metasprite", DrawMetaspriteEditor, state, PopulateMetaspriteEditorData, ApplyMetaspriteEditorData, DeleteMetaspriteEditorData);
+	DrawAssetEditor("Metasprite editor", pContext->spriteWindowOpen, ASSET_TYPE_METASPRITE, DrawMetaspriteEditor, state, PopulateMetaspriteEditorData, ApplyMetaspriteEditorData, DeleteMetaspriteEditorData);
 }
 #pragma endregion
 
@@ -2276,9 +2288,6 @@ static void DrawTilesetEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Editor tools");
 	{
 		ImGui::SeparatorText("Properties");
-		if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
-			asset.dirty = true;
-		}
 		if (DrawAssetField("CHR Bank", ASSET_TYPE_CHR_BANK, pTileset->chrBankHandle.id)) {
 			asset.dirty = true;
 		}
@@ -2352,7 +2361,7 @@ static void DrawTilesetEditor(EditedAsset& asset) {
 
 static void DrawTilesetWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Tileset editor", pContext->tilesetWindowOpen, ASSET_TYPE_TILESET, "New Tileset", DrawTilesetEditor, state);
+	DrawAssetEditor("Tileset editor", pContext->tilesetWindowOpen, ASSET_TYPE_TILESET, DrawTilesetEditor, state);
 }
 #pragma endregion
 
@@ -2584,10 +2593,6 @@ static void DrawRoomTools(EditedAsset& asset) {
 		if (ImGui::BeginTabItem("Properties")) {
 			pEditorData->editMode = ROOM_EDIT_MODE_NONE;
 
-			if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
-				asset.dirty = true;
-			}
-
 			s32 size[2] = { pTemplate->width, pTemplate->height };
 			if (ImGui::InputInt2("Size", size)) {
 				pTemplate->width = glm::clamp(size[0], 1, s32(ROOM_MAX_DIM_SCREENS));
@@ -2742,7 +2747,7 @@ static void DrawRoomEditor(EditedAsset& asset) {
 
 static void DrawRoomWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Room editor", pContext->roomWindowOpen, ASSET_TYPE_ROOM_TEMPLATE, "New Room", DrawRoomEditor, state, PopulateRoomEditorData, ApplyRoomEditorData, DeleteRoomEditorData);
+	DrawAssetEditor("Room editor", pContext->roomWindowOpen, ASSET_TYPE_ROOM_TEMPLATE, DrawRoomEditor, state, PopulateRoomEditorData, ApplyRoomEditorData, DeleteRoomEditorData);
 }
 #pragma endregion
 
@@ -2876,10 +2881,6 @@ static void DrawActorEditor(EditedAsset& asset) {
 		ActorPrototypeEditorData* pEditorData = (ActorPrototypeEditorData*)asset.userData;
 
 		ImGui::SeparatorText("Properties");
-
-		if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
-			asset.dirty = true;
-		}
 
 		ImGui::Separator();
 
@@ -3016,7 +3017,7 @@ static void DrawActorEditor(EditedAsset& asset) {
 
 static void DrawActorWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Actor editor", pContext->actorWindowOpen, ASSET_TYPE_ACTOR_PROTOTYPE, "New actor prototype", DrawActorEditor, state, PopulateActorEditorData, ApplyActorEditorData, DeleteActorEditorData);
+	DrawAssetEditor("Actor editor", pContext->actorWindowOpen, ASSET_TYPE_ACTOR_PROTOTYPE, DrawActorEditor, state, PopulateActorEditorData, ApplyActorEditorData, DeleteActorEditorData);
 }
 #pragma endregion
 
@@ -3380,9 +3381,10 @@ static void DrawDungeonNode(const DungeonNode& node, const glm::mat3& gridToScre
 	if (node.type == DUNGEON_NODE_ROOM) {
 		RoomTemplate* pRoomTemplate = AssetManager::GetAsset(node.roomData.templateId);
 		if (pRoomTemplate) {
+			std::string roomName = GetAssetName(node.roomData.templateId.id);
 			DrawTilemap(&pRoomTemplate->tilemap, ImVec2(0,0), ImVec2(nodeSize.x * VIEWPORT_WIDTH_METATILES, nodeSize.y * VIEWPORT_HEIGHT_METATILES), nodeDrawMin, scale);
 			drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0, 0, 0, 0x80));
-			drawList->AddText(ImVec2(nodeDrawMin.x + 10, nodeDrawMin.y + 10), IM_COL32(255, 255, 255, 255), AssetManager::GetAssetName(node.roomData.templateId.id));
+			drawList->AddText(ImVec2(nodeDrawMin.x + 10, nodeDrawMin.y + 10), IM_COL32(255, 255, 255, 255), roomName.c_str());
 		}
 		else {
 			drawList->AddRectFilled(nodeDrawMin, nodeDrawMax, IM_COL32(0xc, 0xc, 0xc, 255));
@@ -3630,11 +3632,6 @@ static void DrawDungeonTools(EditedAsset& asset) {
 
 	if (ImGui::BeginTabBar("Dungeon tools")) {
 		if (ImGui::BeginTabItem("Properties")) {
-
-			if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
-				asset.dirty = true;
-			}
-
 			ImGui::EndTabItem();
 		}
 
@@ -3655,8 +3652,8 @@ static void DrawDungeonTools(EditedAsset& asset) {
 
 				if (node.type == DUNGEON_NODE_ROOM) {
 					ImGui::Text("Node Type: ROOM");
-
-					ImGui::Text("Room: %s", AssetManager::GetAssetName(node.roomData.templateId.id));
+					std::string roomName = GetAssetName(node.roomData.templateId.id);
+					ImGui::Text("Room: %s", roomName.c_str());
 				}
 				else {
 					ImGui::Text("Node Type: EXIT");
@@ -3706,7 +3703,7 @@ static void DrawDungeonEditor(EditedAsset& asset) {
 
 static void DrawDungeonWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Dungeon editor", pContext->dungeonWindowOpen, ASSET_TYPE_DUNGEON, "New Dungeon", DrawDungeonEditor, state, PopulateDungeonEditorData, ApplyDungeonEditorData, DeleteDungeonEditorData);
+	DrawAssetEditor("Dungeon editor", pContext->dungeonWindowOpen, ASSET_TYPE_DUNGEON, DrawDungeonEditor, state, PopulateDungeonEditorData, ApplyDungeonEditorData, DeleteDungeonEditorData);
 }
 #pragma endregion
 
@@ -3844,7 +3841,7 @@ static void DrawOverworldEditor(EditedAsset& asset) {
 
 static void DrawOverworldWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Overworld editor", pContext->overworldWindowOpen, ASSET_TYPE_OVERWORLD, "New Overworld", DrawOverworldEditor, state, PopulateOverworldEditorData, nullptr, DeleteOverworldEditorData);
+	DrawAssetEditor("Overworld editor", pContext->overworldWindowOpen, ASSET_TYPE_OVERWORLD, DrawOverworldEditor, state, PopulateOverworldEditorData, nullptr, DeleteOverworldEditorData);
 }
 #pragma endregion
 
@@ -3856,14 +3853,16 @@ static void SortAssets(std::vector<u64>& assetIds, ImGuiTableSortSpecs* pSortSpe
 		const ImGuiTableColumnSortSpecs* sortSpecs = pSortSpecs->Specs;
 
 		const AssetEntry& a = *AssetManager::GetAssetInfo(aId);
+		std::string aName = GetAssetName(a.relativePath);
 		const AssetEntry& b = *AssetManager::GetAssetInfo(bId);
+		std::string bName = GetAssetName(b.relativePath);
 
 		for (int i = 0; i < pSortSpecs->SpecsCount; i++) {
 			const ImGuiTableColumnSortSpecs& spec = sortSpecs[i];
 
 			switch (spec.ColumnIndex) {
 			case 0: { // Sort by Name
-				int cmp = strcmp(a.name, b.name);
+				int cmp = strcmp(aName.c_str(), bName.c_str());
 				if (cmp != 0) return spec.SortDirection == ImGuiSortDirection_Ascending ? (cmp < 0) : (cmp > 0);
 				break;
 			}
@@ -3900,7 +3899,6 @@ static void DumpAssetArchive() {
 	struct IntermediateAssetHeader {
 		u64 id;
 		AssetType type;
-		char name[MAX_ASSET_NAME_LENGTH];
 		size_t size;
 	};
 
@@ -3926,7 +3924,6 @@ static void DumpAssetArchive() {
 		IntermediateAssetHeader header{};
 		header.id = id;
 		header.type = pAsset->flags.type;
-		strncpy(header.name, pAsset->name, MAX_ASSET_NAME_LENGTH);
 		header.size = pAsset->size;
 
 		fwrite((const char*)&header, sizeof(IntermediateAssetHeader), 1, pFile);
@@ -4002,18 +3999,19 @@ static void DrawAssetBrowser() {
 			const bool selected = id == selectedAsset;
 
 			const AssetEntry* pAsset = AssetManager::GetAssetInfo(id);
+			std::string assetName = GetAssetName(pAsset->relativePath);
 
 			ImGui::PushID((s32)id);
 			ImGui::TableNextRow();
 			ImGui::BeginDisabled(pAsset->flags.deleted);
 			ImGui::TableNextColumn();
-			if (ImGui::Selectable(pAsset->name, selected, ImGuiSelectableFlags_SpanAllColumns)) {
+			if (ImGui::Selectable(assetName.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns)) {
 				selectedAsset = id;
 			}
 			if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
 			{
 				ImGui::SetDragDropPayload("dd_asset", &id, sizeof(u64));
-				ImGui::Text("%s", pAsset->name);
+				ImGui::Text("%s", assetName.c_str());
 
 				ImGui::EndDragDropSource();
 			}
@@ -4106,9 +4104,6 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 	AnimationEditorData* pEditorData = (AnimationEditorData*)asset.userData;
 
 	ImGui::SeparatorText("Properties");
-	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
-		asset.dirty = true;
-	}
 
 	static const s16 step = 1;
 	u16 frameCount = pEditorData->frames.size();
@@ -4270,7 +4265,7 @@ static void DrawAnimationEditor(EditedAsset& asset) {
 
 static void DrawAnimationWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Animation editor", pContext->animationWindowOpen, ASSET_TYPE_ANIMATION, "New Animation", DrawAnimationEditor, state, PopulateAnimationEditorData, ApplyAnimationEditorData, DeleteAnimationEditorData);
+	DrawAssetEditor("Animation editor", pContext->animationWindowOpen, ASSET_TYPE_ANIMATION, DrawAnimationEditor, state, PopulateAnimationEditorData, ApplyAnimationEditorData, DeleteAnimationEditorData);
 }
 #pragma endregion
 
@@ -4285,10 +4280,6 @@ static void DrawSoundEditor(EditedAsset& asset) {
 
 	ImGui::SeparatorText("Properties");
 	{
-		if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
-			asset.dirty = true;
-		}
-
 		if (DrawTypeSelectionCombo("Type", soundTypeNames, SOUND_TYPE_COUNT, pSound->type, false)) {
 			asset.dirty = true;
 		}
@@ -4329,7 +4320,7 @@ static void DrawSoundEditor(EditedAsset& asset) {
 
 static void DrawSoundWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Sound editor", pContext->soundWindowOpen, ASSET_TYPE_SOUND, "New Sound", DrawSoundEditor, state);
+	DrawAssetEditor("Sound editor", pContext->soundWindowOpen, ASSET_TYPE_SOUND, DrawSoundEditor, state);
 }
 
 #pragma endregion
@@ -4372,9 +4363,6 @@ static void DrawChrEditor(EditedAsset& asset) {
 	Rendering::UpdateEditorTexture(pEditorData->pTexture, pChrBuffer, pPaletteBuffer);
 
 	ImGui::SeparatorText("Properties");
-	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
-		asset.dirty = true;
-	}
 
 	ImGui::SeparatorText("Preview");
 
@@ -4389,7 +4377,7 @@ static void DrawChrEditor(EditedAsset& asset) {
 
 static void DrawChrWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Pattern editor", pContext->chrWindowOpen, ASSET_TYPE_CHR_BANK, "New pattern sheet", DrawChrEditor, state, PopulateChrEditorData, nullptr, DeleteChrEditorData);
+	DrawAssetEditor("Pattern editor", pContext->chrWindowOpen, ASSET_TYPE_CHR_BANK, DrawChrEditor, state, PopulateChrEditorData, nullptr, DeleteChrEditorData);
 }
 #pragma endregion
 
@@ -4439,9 +4427,6 @@ static void DrawPaletteEditor(EditedAsset& asset) {
 	Rendering::UpdateEditorTexture(pEditorData->pTexture, pChrBuffer, pEditorData->pBuffer);
 
 	ImGui::SeparatorText("Properties");
-	if (ImGui::InputText("Name", asset.name, MAX_ASSET_NAME_LENGTH)) {
-		asset.dirty = true;
-	}
 
 	ImGui::SeparatorText("Palette");
 
@@ -4501,7 +4486,7 @@ static void DrawPaletteEditor(EditedAsset& asset) {
 
 static void DrawPaletteWindow() {
 	static AssetEditorState state{};
-	DrawAssetEditor("Palette editor", pContext->paletteWindowOpen, ASSET_TYPE_PALETTE, "New palette", DrawPaletteEditor, state, PopulatePaletteEditorData, nullptr, DeletePaletteEditorData);
+	DrawAssetEditor("Palette editor", pContext->paletteWindowOpen, ASSET_TYPE_PALETTE, DrawPaletteEditor, state, PopulatePaletteEditorData, nullptr, DeletePaletteEditorData);
 }
 
 #pragma endregion

@@ -1182,7 +1182,7 @@ SerializationResult AssetSerialization::LoadAssetFromFile(const std::filesystem:
 	return result;
 }
 
-SerializationResult AssetSerialization::SaveAssetToFile(const std::filesystem::path& path, const char* name, AssetType type, nlohmann::json& metadata, const void* pData) {
+SerializationResult AssetSerialization::SaveAssetToFile(const std::filesystem::path& path, AssetType type, nlohmann::json& metadata, const void* pData) {
 	if (!pData) {
 		return SERIALIZATION_NULL_POINTER;
 	}
@@ -1192,8 +1192,6 @@ SerializationResult AssetSerialization::SaveAssetToFile(const std::filesystem::p
 	if (!pFile) {
 		return SERIALIZATION_FAILED_TO_OPEN_FILE;
 	}
-	
-	metadata["name"] = name;
 
 	SerializationResult saveResult = SERIALIZATION_UNKNOWN_ERROR;
 	switch (type) {

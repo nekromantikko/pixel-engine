@@ -11,15 +11,15 @@ namespace AssetManager {
 	bool SaveArchive(const std::filesystem::path& path);
 	bool RepackArchive();
 
-	u64 CreateAsset(AssetType type, size_t size, const char* path, const char* name);
+	u64 CreateAsset(AssetType type, size_t size, const char* path);
 	template <IsAssetHandle HandleType>
-	HandleType CreateAsset(u32 size, const char* path, const char* name) {
+	HandleType CreateAsset(u32 size, const char* path) {
 		constexpr AssetType assetType = AssetHandleTraits<HandleType>::asset_type::value;
-		const u64 id = CreateAsset(assetType, size, path, name);
+		const u64 id = CreateAsset(assetType, size, path);
 		return HandleType{ id };
 	}
 
-	void* AddAsset(u64 id, AssetType type, size_t size, const char* path, const char* name, void* data = nullptr);
+	void* AddAsset(u64 id, AssetType type, size_t size, const char* path, void* data = nullptr);
 	bool RemoveAsset(u64 id);
 
 	bool ResizeAsset(u64 id, size_t newSize);
@@ -40,7 +40,6 @@ namespace AssetManager {
 	}
 
 	AssetEntry* GetAssetInfo(u64 id);
-	const char* GetAssetName(u64 id);
 
 	void GetAllAssetInfosByType(AssetType type, size_t& count, const AssetEntry** ppOutEntries);
 

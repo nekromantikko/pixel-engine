@@ -4,7 +4,6 @@
 #include "memory_pool.h"
 #include <filesystem>
 
-constexpr u32 MAX_ASSET_NAME_LENGTH = 56;
 constexpr u32 MAX_ASSET_PATH_LENGTH = 256;
 constexpr u32 MAX_ASSETS = 1024;
 
@@ -16,7 +15,6 @@ struct AssetFlags {
 
 struct AssetEntry {
 	u64 id;
-	char name[MAX_ASSET_NAME_LENGTH];
 	char relativePath[MAX_ASSET_PATH_LENGTH];
 	size_t offset;
 	size_t size;
@@ -36,7 +34,7 @@ public:
 	bool CreateEmpty();
 
 	// Asset operations
-	void* AddAsset(u64 id, AssetType type, size_t size, const char* path, const char* name, const void* data = nullptr);
+	void* AddAsset(u64 id, AssetType type, size_t size, const char* path, const void* data = nullptr);
 	bool RemoveAsset(u64 id);
 	bool ResizeAsset(u64 id, size_t newSize);
 	

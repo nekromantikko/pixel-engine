@@ -30,5 +30,5 @@ namespace AssetSerialization {
 	SerializationResult CreateAssetMetadataFile(const std::filesystem::path& path, u64 guid, nlohmann::json& outMetadata);
 
 	SerializationResult LoadAssetFromFile(const std::filesystem::path& path, AssetType type, const nlohmann::json& metadata, std::vector<u8>& outData);
-	SerializationResult SaveAssetToFile(const std::filesystem::path& path, const char* name, AssetType type, nlohmann::json& metadata, const void* pData);
+	SerializationResult SaveAssetToFile(const std::filesystem::path& path, AssetType type, nlohmann::json& metadata, const void* pData);
 }
