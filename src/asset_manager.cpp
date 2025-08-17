@@ -61,14 +61,21 @@ bool AssetManager::ResizeAsset(u64 id, size_t newSize) {
 	return g_archive.ResizeAsset(id, newSize);
 }
 
-u64 AssetManager::GetAssetId(const std::filesystem::path& relativePath, AssetType type) {
-	AssetEntry* pAssetInfo = g_archive.GetAssetEntryByPath(relativePath);
+u64 AssetManager::GetAssetIdFromPath(const std::filesystem::path& relativePath) {
+	AssetEntry* pAssetInfo = GetAssetInfoFromPath(relativePath);
 	if (!pAssetInfo) {
-		DEBUG_ERROR("Asset with path '%s' not found\n", relativePath.string().c_str());
+		return UUID_NULL;
+	}
+	return pAssetInfo->id;
+}
+
+u64 AssetManager::GetAssetIdFromPath(const std::filesystem::path& relativePath, AssetType type) {
+	AssetEntry* pAssetInfo = GetAssetInfoFromPath(relativePath);
+	if (!pAssetInfo) {
 		return UUID_NULL;
 	}
 	if (pAssetInfo->flags.type != type) {
-		//DEBUG_ERROR("Asset with path '%s' is not of type %d\n", relativePath.string().c_str(), type);
+		DEBUG_ERROR("Asset with path '%s' is not of type %d\n", relativePath.string().c_str(), type);
 		return UUID_NULL;
 	}
 	return pAssetInfo->id;
@@ -80,6 +87,15 @@ void* AssetManager::GetAsset(u64 id, AssetType type) {
 
 AssetEntry* AssetManager::GetAssetInfo(u64 id) {
 	return g_archive.GetAssetEntry(id);
+}
+
+AssetEntry* AssetManager::GetAssetInfoFromPath(const std::filesystem::path& relativePath) {
+	AssetEntry* pAssetInfo = g_archive.GetAssetEntryByPath(relativePath);
+	if (!pAssetInfo) {
+		DEBUG_ERROR("Asset with path '%s' not found\n", relativePath.string().c_str());
+		return nullptr;
+	}
+	return pAssetInfo;
 }
 
 // If ppOutEntries is nullptr, returns the count of assets of that type

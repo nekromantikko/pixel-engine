@@ -1179,8 +1179,8 @@ void Rendering::Init(SDL_Window* sdlWindow) {
 	g_context.surface = VK_NULL_HANDLE;
 	SDL_Vulkan_CreateSurface(sdlWindow, g_context.instance, &g_context.surface);
 
-	g_context.blitShaderHandle = AssetManager::GetAssetHandle<ShaderHandle>("shaders/blit.slang");
-	g_context.softwareShaderHandle = AssetManager::GetAssetHandle<ShaderHandle>("shaders/software.slang");
+	g_context.blitShaderHandle = AssetManager::GetAssetHandleFromPath<ShaderHandle>("shaders/blit.slang");
+	g_context.softwareShaderHandle = AssetManager::GetAssetHandleFromPath<ShaderHandle>("shaders/software.slang");
 
 	PhysicalDeviceFeatures deviceFeatures = PhysicalDeviceFeatures();
 	GetSuitablePhysicalDevice(deviceFeatures);

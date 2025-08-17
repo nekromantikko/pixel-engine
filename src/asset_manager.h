@@ -24,11 +24,12 @@ namespace AssetManager {
 
 	bool ResizeAsset(u64 id, size_t newSize);
 
-	u64 GetAssetId(const std::filesystem::path& relativePath, AssetType type);
+	u64 GetAssetIdFromPath(const std::filesystem::path& relativePath);
+	u64 GetAssetIdFromPath(const std::filesystem::path& relativePath, AssetType type);
 	template <IsAssetHandle HandleType>
-	HandleType GetAssetHandle(const std::filesystem::path& relativePath) {
+	HandleType GetAssetHandleFromPath(const std::filesystem::path& relativePath) {
 		constexpr AssetType assetType = AssetHandleTraits<HandleType>::asset_type::value;
-		u64 id = GetAssetId(relativePath, assetType);
+		u64 id = GetAssetIdFromPath(relativePath, assetType);
 		return HandleType{ id };
 	}
 	void* GetAsset(u64 id, AssetType type);
@@ -40,6 +41,7 @@ namespace AssetManager {
 	}
 
 	AssetEntry* GetAssetInfo(u64 id);
+	AssetEntry* GetAssetInfoFromPath(const std::filesystem::path& relativePath);
 
 	void GetAllAssetInfosByType(AssetType type, size_t& count, const AssetEntry** ppOutEntries);
 
