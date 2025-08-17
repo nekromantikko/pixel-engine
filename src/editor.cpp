@@ -9,7 +9,6 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <imgui_impl_sdl2.h>
-#include <imfilebrowser.h>
 #include <immintrin.h>
 #include "tilemap.h"
 #include "rendering_util.h"

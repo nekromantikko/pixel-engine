@@ -116,7 +116,6 @@ endif()
 
 if(ENABLE_EDITOR)
 	message(STATUS "Editor functionality enabled")
-	set(EDITOR_INCLUDE_DIRS src/ext/imgui-filebrowser)
 	set(EDITOR_SOURCES 
 		src/editor.cpp 
 		src/editor_assets.cpp
@@ -151,7 +150,7 @@ if(ENABLE_EDITOR)
 	endif()
 
 	target_sources(${PROJECT_NAME} PRIVATE ${IMGUI_SOURCES} ${EDITOR_SOURCES})
-	target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends ${EDITOR_INCLUDE_DIRS})
+	target_include_directories(${PROJECT_NAME} PRIVATE ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
 	target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json slang::slang)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_SRC_DIR="${ASSETS_SRC_DIR}")
 
