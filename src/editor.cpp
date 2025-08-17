@@ -1393,6 +1393,276 @@ static void UpdateAssetPathsAfterDirectoryRename(const std::filesystem::path& ol
 	}
 }
 
+// Helper function to handle delete action popup
+static bool HandleDeleteAction(AssetListActionState* pActionState, bool targetIsDirectory, AssetEntry* pAssetInfo) {
+	if (!ImGui::BeginPopup("Delete")) {
+		return false;
+	}
+
+	ImGui::Text("Are you sure?");
+	bool actionCompleted = false;
+
+	if (ImGui::Button("Yes")) {
+		if (targetIsDirectory) {
+			DEBUG_LOG("Deleting directory and all contents: %s", pActionState->targetPath.string().c_str());
+			
+			// Collect all assets in the directory first
+			std::vector<AssetEntry*> assetsToDelete = CollectAssetsInDirectory(pActionState->targetPath);
+			
+			// Delete each asset from the asset manager and remove source files
+			for (AssetEntry* pAsset : assetsToDelete) {
+				DEBUG_LOG("Deleting asset in directory: %s", pAsset->relativePath);
+				DeleteAssetSourceFiles(pAsset);
+				AssetManager::RemoveAsset(pAsset->id);
+				
+				// Clean up render resources
+				if (pContext->assetRenderBuffers.contains(pAsset->id) || pContext->assetRenderTextures.contains(pAsset->id)) {
+					pContext->assetEraseList.push_back(pAsset->id);
+				}
+			}
+			
+			// Finally, delete the directory itself
+			std::error_code ec;
+			if (std::filesystem::remove_all(pActionState->targetPath, ec)) {
+				DEBUG_LOG("Successfully deleted directory: %s", pActionState->targetPath.string().c_str());
+			} else {
+				DEBUG_ERROR("Failed to delete directory: %s, error: %s", pActionState->targetPath.string().c_str(), ec.message().c_str());
+			}
+		}
+		else {
+			DEBUG_LOG("Deleting asset: %s", pActionState->targetPath.string().c_str());
+			DeleteAssetSourceFiles(pAssetInfo);
+			AssetManager::RemoveAsset(pAssetInfo->id);
+			if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
+				pContext->assetEraseList.push_back(pAssetInfo->id);
+			}
+		}
+		ImGui::CloseCurrentPopup();
+		actionCompleted = true;
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("No")) {
+		ImGui::CloseCurrentPopup();
+		actionCompleted = true;
+	}
+
+	ImGui::EndPopup();
+	return actionCompleted;
+}
+
+// Helper function to handle rename action popup
+static bool HandleRenameAction(AssetListActionState* pActionState, bool targetIsDirectory, AssetEntry* pAssetInfo) {
+	if (!ImGui::BeginPopup("Rename")) {
+		return false;
+	}
+
+	bool actionCompleted = false;
+
+	if (targetIsDirectory) {
+		std::string dirName = pActionState->targetPath.filename().string();
+		sprintf(pActionState->nameBuffer, "%s", dirName.c_str());
+
+		if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
+			std::filesystem::path newDirPath = pActionState->targetPath.parent_path() / pActionState->nameBuffer;
+
+			if (!pActionState->nameBuffer[0]) {
+				DEBUG_ERROR("Directory name cannot be empty");
+			}
+			else if (strcmp(pActionState->nameBuffer, dirName.c_str()) == 0) {
+				DEBUG_LOG("Directory name is unchanged, not renaming");
+			}
+			else if (std::filesystem::exists(newDirPath)) {
+				DEBUG_ERROR("Directory with name %s already exists", pActionState->nameBuffer);
+			}
+			else {
+				DEBUG_LOG("Renaming directory from %s to %s", pActionState->targetPath.string().c_str(), newDirPath.string().c_str());
+				
+				// Rename the directory first
+				std::error_code ec;
+				if (std::filesystem::rename(pActionState->targetPath, newDirPath, ec)) {
+					DEBUG_LOG("Successfully renamed directory to: %s", newDirPath.string().c_str());
+					
+					// Update all asset paths that were in this directory
+					UpdateAssetPathsAfterDirectoryRename(pActionState->targetPath, newDirPath);
+				} else {
+					DEBUG_ERROR("Failed to rename directory: %s", ec.message().c_str());
+				}
+			}
+			ImGui::CloseCurrentPopup();
+			actionCompleted = true;
+		}
+		if (pActionState->actionStarted) {
+			ImGui::SetKeyboardFocusHere(-1);
+		}
+	}
+	else {
+		std::string assetName = GetAssetName(pActionState->targetPath);
+		sprintf(pActionState->nameBuffer, "%s", assetName.c_str());
+
+		if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
+			const char* extension = ASSET_TYPE_FILE_EXTENSIONS[pAssetInfo->flags.type];
+			std::filesystem::path newAssetPath = pActionState->targetPath.parent_path() / (pActionState->nameBuffer + std::string(extension));
+
+			if (!pActionState->nameBuffer[0]) {
+				DEBUG_ERROR("Asset name cannot be empty");
+			}
+			else if (strcmp(pActionState->nameBuffer, assetName.c_str()) == 0) {
+				DEBUG_LOG("Asset name is unchanged, not renaming");
+			}
+			else if (std::filesystem::exists(newAssetPath)) {
+				DEBUG_ERROR("Asset with name %s already exists", pActionState->nameBuffer);
+			}
+			else {
+				std::filesystem::rename(pActionState->targetPath, newAssetPath);
+				std::filesystem::rename(pActionState->targetPath.string() + ".meta", newAssetPath.string() + ".meta");
+				std::filesystem::path newRelativePath = std::filesystem::relative(newAssetPath, ASSETS_SRC_DIR);
+				// TODO: Buffer may overflow here if the name is long enough...
+				strcpy(pAssetInfo->relativePath, newRelativePath.string().c_str());
+			}
+			ImGui::CloseCurrentPopup();
+			actionCompleted = true;
+		}
+		if (pActionState->actionStarted) {
+			ImGui::SetKeyboardFocusHere(-1);
+		}
+	}
+
+	ImGui::EndPopup();
+	return actionCompleted;
+}
+
+// Helper function to handle duplicate asset action popup
+static bool HandleDuplicateAssetAction(AssetListActionState* pActionState, bool targetIsDirectory, AssetEntry* pAssetInfo) {
+	if (!ImGui::BeginPopup("Duplicate Asset")) {
+		return false;
+	}
+
+	bool actionCompleted = false;
+
+	if (targetIsDirectory) {
+		DEBUG_ERROR("Invalid operation: Cannot duplicate a directory");
+	}
+	else {
+		std::string assetName = GetAssetName(pActionState->targetPath);
+		sprintf(pActionState->nameBuffer, "%s_copy", assetName.c_str());
+
+		if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
+			if (!pActionState->nameBuffer[0]) {
+				DEBUG_ERROR("Asset name cannot be empty");
+			}
+			else {
+				const char* extension = ASSET_TYPE_FILE_EXTENSIONS[pAssetInfo->flags.type];
+				std::filesystem::path newAssetPath = pActionState->targetPath.parent_path() / (pActionState->nameBuffer + std::string(extension));
+				if (!DuplicateAsset(pAssetInfo->id, newAssetPath)) {
+					DEBUG_ERROR("Failed to duplicate asset");
+				}
+			}
+			ImGui::CloseCurrentPopup();
+			actionCompleted = true;
+		}
+		if (pActionState->actionStarted) {
+			ImGui::SetKeyboardFocusHere(-1);
+		}
+	}
+
+	ImGui::EndPopup();
+	return actionCompleted;
+}
+
+// Helper function to handle new asset action popup
+static bool HandleNewAssetAction(AssetListActionState* pActionState, bool targetIsDirectory, AssetType type) {
+	if (!ImGui::BeginPopup("New Asset")) {
+		return false;
+	}
+
+	bool actionCompleted = false;
+
+	if (!targetIsDirectory) {
+		DEBUG_ERROR("Invalid operation: Cannot create a new asset in a file");
+	}
+	else {
+		sprintf(pActionState->nameBuffer, "new_asset");
+		if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
+			const char* extension = ASSET_TYPE_FILE_EXTENSIONS[type];
+			std::filesystem::path newAssetPath = pActionState->targetPath / (pActionState->nameBuffer + std::string(extension));
+
+			if (!pActionState->nameBuffer[0]) {
+				DEBUG_ERROR("Asset name cannot be empty");
+			}
+			else if (std::filesystem::exists(newAssetPath)) {
+				DEBUG_ERROR("Asset with name %s already exists", pActionState->nameBuffer);
+			}
+			else {
+				const std::filesystem::path relativePath = std::filesystem::relative(newAssetPath, ASSETS_SRC_DIR);
+				const u32 newSize = Editor::Assets::GetAssetSize(type, nullptr);
+				const u64 id = AssetManager::CreateAsset(type, newSize, relativePath.string().c_str());
+				void* data = AssetManager::GetAsset(id, type);
+				Editor::Assets::InitializeAsset(type, data);
+
+				if (!SaveAssetToFile(type, relativePath, data, id)) {
+					// Failed to save asset, remove it
+					DEBUG_ERROR("Failed to save new asset to file: %s", newAssetPath.string().c_str());
+					AssetManager::RemoveAsset(id);
+				}
+				else {
+					DEBUG_LOG("Created new asset: %s", newAssetPath.string().c_str());
+				}
+			}
+			ImGui::CloseCurrentPopup();
+			actionCompleted = true;
+		}
+		if (pActionState->actionStarted) {
+			ImGui::SetKeyboardFocusHere(-1);
+		}
+	}
+
+	ImGui::EndPopup();
+	return actionCompleted;
+}
+
+// Helper function to handle new folder action popup
+static bool HandleNewFolderAction(AssetListActionState* pActionState, bool targetIsDirectory) {
+	if (!ImGui::BeginPopup("New Folder")) {
+		return false;
+	}
+
+	bool actionCompleted = false;
+
+	if (!targetIsDirectory) {
+		DEBUG_ERROR("Invalid operation: Cannot create a new folder in a file");
+	}
+	else {
+		sprintf(pActionState->nameBuffer, "new_folder");
+		if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
+			std::filesystem::path newFolderPath = pActionState->targetPath / pActionState->nameBuffer;
+
+			if (!pActionState->nameBuffer[0]) {
+				DEBUG_ERROR("Folder name cannot be empty");
+			}
+			else if (std::filesystem::exists(newFolderPath)) {
+				DEBUG_ERROR("Folder with name %s already exists", pActionState->nameBuffer);
+			}
+			else {
+				std::error_code ec;
+				if (!std::filesystem::create_directory(newFolderPath, ec)) {
+					DEBUG_ERROR("Failed to create folder: %s, error: %s", newFolderPath.string().c_str(), ec.message().c_str());
+				}
+				else {
+					DEBUG_LOG("Created new folder: %s", newFolderPath.string().c_str());
+				}
+			}
+			ImGui::CloseCurrentPopup();
+			actionCompleted = true;
+		}
+		if (pActionState->actionStarted) {
+			ImGui::SetKeyboardFocusHere(-1);
+		}
+	}
+
+	ImGui::EndPopup();
+	return actionCompleted;
+}
+
 static u64 DrawAssetHierarchyRecursive(AssetType type, AssetListActionState* pActionState, const std::filesystem::path& dir = ASSETS_SRC_DIR) {
 	u64 result = UUID_NULL;
 
@@ -1555,230 +1825,15 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 			}
 		}
 
-		if (ImGui::BeginPopup("Delete")) {
-			ImGui::Text("Are you sure?");
-			if (ImGui::Button("Yes")) {
-				if (targetIsDirectory) {
-					DEBUG_LOG("Deleting directory and all contents: %s", pActionState->targetPath.string().c_str());
-					
-					// Collect all assets in the directory first
-					std::vector<AssetEntry*> assetsToDelete = CollectAssetsInDirectory(pActionState->targetPath);
-					
-					// Delete each asset from the asset manager and remove source files
-					for (AssetEntry* pAsset : assetsToDelete) {
-						DEBUG_LOG("Deleting asset in directory: %s", pAsset->relativePath);
-						DeleteAssetSourceFiles(pAsset);
-						AssetManager::RemoveAsset(pAsset->id);
-						
-						// Clean up render resources
-						if (pContext->assetRenderBuffers.contains(pAsset->id) || pContext->assetRenderTextures.contains(pAsset->id)) {
-							pContext->assetEraseList.push_back(pAsset->id);
-						}
-					}
-					
-					// Finally, delete the directory itself
-					std::error_code ec;
-					if (std::filesystem::remove_all(pActionState->targetPath, ec)) {
-						DEBUG_LOG("Successfully deleted directory: %s", pActionState->targetPath.string().c_str());
-					} else {
-						DEBUG_ERROR("Failed to delete directory: %s, error: %s", pActionState->targetPath.string().c_str(), ec.message().c_str());
-					}
-				}
-				else {
-					DEBUG_LOG("Deleting asset: %s", pActionState->targetPath.string().c_str());
-					DeleteAssetSourceFiles(pAssetInfo);
-					AssetManager::RemoveAsset(pAssetInfo->id);
-					if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
-						pContext->assetEraseList.push_back(pAssetInfo->id);
-					}
-				}
-				ImGui::CloseCurrentPopup();
-				pActionState->targetPath.clear();
-			}
-			ImGui::SameLine();
-			if (ImGui::Button("No")) {
-				ImGui::CloseCurrentPopup();
-				pActionState->targetPath.clear();
-			}
-			ImGui::EndPopup();
-		} else if (ImGui::BeginPopup("Duplicate Asset")) {
-			if (targetIsDirectory) {
-				DEBUG_ERROR("Invalid operation: Cannot duplicate a directory");
-			}
-			else {
-				std::string assetName = GetAssetName(pActionState->targetPath);
-				sprintf(pActionState->nameBuffer, "%s_copy", assetName.c_str());
+		// Handle popup actions using helper functions
+		bool actionCompleted = false;
+		actionCompleted = HandleDeleteAction(pActionState, targetIsDirectory, pAssetInfo) ||
+		                  HandleRenameAction(pActionState, targetIsDirectory, pAssetInfo) ||
+		                  HandleDuplicateAssetAction(pActionState, targetIsDirectory, pAssetInfo) ||
+		                  HandleNewAssetAction(pActionState, targetIsDirectory, type) ||
+		                  HandleNewFolderAction(pActionState, targetIsDirectory);
 
-				if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
-					if (!pActionState->nameBuffer[0]) {
-						DEBUG_ERROR("Asset name cannot be empty");
-					}
-					else {
-						const char* extension = ASSET_TYPE_FILE_EXTENSIONS[pAssetInfo->flags.type];
-						std::filesystem::path newAssetPath = pActionState->targetPath.parent_path() / (pActionState->nameBuffer + std::string(extension));
-						if (!DuplicateAsset(pAssetInfo->id, newAssetPath)) {
-							DEBUG_ERROR("Failed to duplicate asset");
-						}
-					}
-					ImGui::CloseCurrentPopup();
-					pActionState->targetPath.clear();
-				}
-				if (pActionState->actionStarted) {
-					ImGui::SetKeyboardFocusHere(-1);
-				}
-			}
-
-			ImGui::EndPopup();
-		} else if (ImGui::BeginPopup("Rename")) {
-			if (targetIsDirectory) {
-				std::string dirName = pActionState->targetPath.filename().string();
-				sprintf(pActionState->nameBuffer, "%s", dirName.c_str());
-
-				if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
-					std::filesystem::path newDirPath = pActionState->targetPath.parent_path() / pActionState->nameBuffer;
-
-					if (!pActionState->nameBuffer[0]) {
-						DEBUG_ERROR("Directory name cannot be empty");
-					}
-					else if (strcmp(pActionState->nameBuffer, dirName.c_str()) == 0) {
-						DEBUG_LOG("Directory name is unchanged, not renaming");
-					}
-					else if (std::filesystem::exists(newDirPath)) {
-						DEBUG_ERROR("Directory with name %s already exists", pActionState->nameBuffer);
-					}
-					else {
-						DEBUG_LOG("Renaming directory from %s to %s", pActionState->targetPath.string().c_str(), newDirPath.string().c_str());
-						
-						// Rename the directory first
-						std::error_code ec;
-						if (std::filesystem::rename(pActionState->targetPath, newDirPath, ec)) {
-							DEBUG_LOG("Successfully renamed directory to: %s", newDirPath.string().c_str());
-							
-							// Update all asset paths that were in this directory
-							UpdateAssetPathsAfterDirectoryRename(pActionState->targetPath, newDirPath);
-						} else {
-							DEBUG_ERROR("Failed to rename directory: %s", ec.message().c_str());
-						}
-					}
-					ImGui::CloseCurrentPopup();
-					pActionState->targetPath.clear();
-				}
-				if (pActionState->actionStarted) {
-					ImGui::SetKeyboardFocusHere(-1);
-				}
-			}
-			else {
-				std::string assetName = GetAssetName(pActionState->targetPath);
-				sprintf(pActionState->nameBuffer, "%s", assetName.c_str());
-
-				if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
-					const char* extension = ASSET_TYPE_FILE_EXTENSIONS[pAssetInfo->flags.type];
-					std::filesystem::path newAssetPath = pActionState->targetPath.parent_path() / (pActionState->nameBuffer + std::string(extension));
-
-					if (!pActionState->nameBuffer[0]) {
-						DEBUG_ERROR("Asset name cannot be empty");
-					}
-					else if (strcmp(pActionState->nameBuffer, assetName.c_str()) == 0) {
-						DEBUG_LOG("Asset name is unchanged, not renaming");
-					}
-					else if (std::filesystem::exists(newAssetPath)) {
-						DEBUG_ERROR("Asset with name %s already exists", pActionState->nameBuffer);
-					}
-					else {
-						std::filesystem::rename(pActionState->targetPath, newAssetPath);
-						std::filesystem::rename(pActionState->targetPath.string() + ".meta", newAssetPath.string() + ".meta");
-						std::filesystem::path newRelativePath = std::filesystem::relative(newAssetPath, ASSETS_SRC_DIR);
-						// TODO: Buffer may overflow here if the name is long enough...
-						strcpy(pAssetInfo->relativePath, newRelativePath.string().c_str());
-					}
-					ImGui::CloseCurrentPopup();
-					pActionState->targetPath.clear();
-				}
-				if (pActionState->actionStarted) {
-					ImGui::SetKeyboardFocusHere(-1);
-				}
-			}
-
-			ImGui::EndPopup();
-		}
-		else if (ImGui::BeginPopup("New Asset")) {
-			if (!targetIsDirectory) {
-				DEBUG_ERROR("Invalid operation: Cannot create a new asset in a file");
-			}
-			else {
-				sprintf(pActionState->nameBuffer, "new_asset");
-				if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
-					const char* extension = ASSET_TYPE_FILE_EXTENSIONS[type];
-					std::filesystem::path newAssetPath = pActionState->targetPath / (pActionState->nameBuffer + std::string(extension));
-
-					if (!pActionState->nameBuffer[0]) {
-						DEBUG_ERROR("Asset name cannot be empty");
-					}
-					else if (std::filesystem::exists(newAssetPath)) {
-						DEBUG_ERROR("Asset with name %s already exists", pActionState->nameBuffer);
-					}
-					else {
-						const std::filesystem::path relativePath = std::filesystem::relative(newAssetPath, ASSETS_SRC_DIR);
-						const u32 newSize = Editor::Assets::GetAssetSize(type, nullptr);
-						const u64 id = AssetManager::CreateAsset(type, newSize, relativePath.string().c_str());
-						void* data = AssetManager::GetAsset(id, type);
-						Editor::Assets::InitializeAsset(type, data);
-
-						if (!SaveAssetToFile(type, relativePath, data, id)) {
-							// Failed to save asset, remove it
-							DEBUG_ERROR("Failed to save new asset to file: %s", newAssetPath.string().c_str());
-							AssetManager::RemoveAsset(id);
-						}
-						else {
-							DEBUG_LOG("Created new asset: %s", newAssetPath.string().c_str());
-						}
-						
-					}
-					ImGui::CloseCurrentPopup();
-					pActionState->targetPath.clear();
-				}
-				if (pActionState->actionStarted) {
-					ImGui::SetKeyboardFocusHere(-1);
-				}
-			}
-
-			ImGui::EndPopup();
-		}
-		else if (ImGui::BeginPopup("New Folder")) {
-			if (!targetIsDirectory) {
-				DEBUG_ERROR("Invalid operation: Cannot create a new folder in a file");
-			}
-			else {
-				sprintf(pActionState->nameBuffer, "new_folder");
-				if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
-					std::filesystem::path newFolderPath = pActionState->targetPath / pActionState->nameBuffer;
-
-					if (!pActionState->nameBuffer[0]) {
-						DEBUG_ERROR("Folder name cannot be empty");
-					}
-					else if (std::filesystem::exists(newFolderPath)) {
-						DEBUG_ERROR("Folder with name %s already exists", pActionState->nameBuffer);
-					}
-					else {
-						std::error_code ec;
-						if (!std::filesystem::create_directory(newFolderPath, ec)) {
-							DEBUG_ERROR("Failed to create folder: %s, error: %s", newFolderPath.string().c_str(), ec.message().c_str());
-						}
-						else {
-							DEBUG_LOG("Created new folder: %s", newFolderPath.string().c_str());
-						}
-					}
-					ImGui::CloseCurrentPopup();
-					pActionState->targetPath.clear();
-				}
-				if (pActionState->actionStarted) {
-					ImGui::SetKeyboardFocusHere(-1);
-				}
-			}
-
-			ImGui::EndPopup();
-		}
-		else {
+		if (actionCompleted) {
 			pActionState->targetPath.clear();
 		}
 
