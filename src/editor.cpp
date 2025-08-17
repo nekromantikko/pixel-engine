@@ -1449,14 +1449,14 @@ static u64 DrawAssetHierarchyRecursive(AssetType type, AssetListActionState* pAc
 					}
 					ImGui::EndPopup();
 				}
+			}
 
-				if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
-				{
-					ImGui::SetDragDropPayload("dd_asset", &pAssetInfo->id, sizeof(u64));
-					ImGui::Text("%s", assetName.c_str());
+			if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+			{
+				ImGui::SetDragDropPayload("dd_asset", &pAssetInfo->id, sizeof(u64));
+				ImGui::Text("%s", assetName.c_str());
 
-					ImGui::EndDragDropSource();
-				}
+				ImGui::EndDragDropSource();
 			}
 
 			ImGui::PopID();
