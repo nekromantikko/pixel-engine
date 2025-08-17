@@ -36,7 +36,7 @@ namespace AssetWatcher {
     void Free();
 
     // Check for file changes and process them (call from editor update loop)
-    void Update();
+    void Update(r64 currentTime);
 
     // Get the current watch directory
     const std::filesystem::path& GetWatchDirectory();

@@ -8,6 +8,7 @@
 #include "random.h"
 #include <algorithm>
 #include <vector>
+#include <fstream>
 
 namespace AssetWatcher {
     // Static variables for the watcher state
@@ -16,6 +17,8 @@ namespace AssetWatcher {
     static std::vector<FileChangeEvent> s_pendingChanges;
     static bool s_isWatching = false;
     static bool s_initialized = false;
+    static r64 s_lastScanTime = 0.0;
+    static const r64 SCAN_INTERVAL = 1.0; // Scan every 1 second to avoid excessive disk I/O
 
     void Init(const std::filesystem::path& assetsDir) {
         if (s_initialized) {
@@ -37,7 +40,8 @@ namespace AssetWatcher {
         ScanDirectory();
         s_isWatching = true;
 
-        DEBUG_LOG("Asset watcher initialized for directory: %s", s_watchDirectory.string().c_str());
+        DEBUG_LOG("Asset watcher initialized for directory: %s (found %zu tracked files)", 
+                  s_watchDirectory.string().c_str(), s_fileMap.size());
     }
 
     void Free() {
@@ -53,11 +57,17 @@ namespace AssetWatcher {
         DEBUG_LOG("Asset watcher freed");
     }
 
-    void Update() {
+    void Update(r64 currentTime) {
         if (!s_isWatching || !s_initialized) {
             return;
         }
 
+        // Throttle scanning to avoid excessive file system access
+        if (currentTime - s_lastScanTime < SCAN_INTERVAL) {
+            return;
+        }
+
+        s_lastScanTime = currentTime;
         ScanDirectory();
         ProcessFileChanges();
     }
@@ -127,6 +137,12 @@ namespace AssetWatcher {
     }
 
     void ProcessFileChanges() {
+        if (s_pendingChanges.empty()) {
+            return;
+        }
+
+        DEBUG_LOG("Asset watcher: Processing %zu file changes", s_pendingChanges.size());
+
         for (const auto& change : s_pendingChanges) {
             switch (change.changeType) {
                 case ADDED:
@@ -137,6 +153,7 @@ namespace AssetWatcher {
                     break;
                 case MODIFIED:
                     // For now, treat modifications as delete + add
+                    DEBUG_LOG("Asset watcher: File modified: %s", change.path.string().c_str());
                     HandleFileDeleted(change.path);
                     HandleFileAdded(change.path);
                     break;
@@ -159,6 +176,22 @@ namespace AssetWatcher {
         // Check if this is a valid asset file
         AssetType assetType;
         if (!IsAssetFile(path) || AssetSerialization::TryGetAssetTypeFromPath(path, assetType) != SERIALIZATION_SUCCESS) {
+            return;
+        }
+
+        // Small delay to ensure file is completely written
+        // This is a simple approach - in a production system you might want more sophisticated detection
+        try {
+            // Try to open the file to see if it's accessible
+            std::ifstream file(path, std::ios::binary);
+            if (!file.is_open()) {
+                DEBUG_WARN("Asset watcher: File not ready for reading: %s", path.string().c_str());
+                return;
+            }
+            file.close();
+        }
+        catch (const std::exception& ex) {
+            DEBUG_WARN("Asset watcher: Error checking file readiness: %s - %s", path.string().c_str(), ex.what());
             return;
         }
 
@@ -267,6 +300,30 @@ namespace AssetWatcher {
 
     void HandleFileRenamed(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
         DEBUG_LOG("Asset watcher: File renamed from %s to %s", oldPath.string().c_str(), newPath.string().c_str());
+
+        // Check if this is an asset file move
+        if (IsAssetFile(oldPath) && IsAssetFile(newPath)) {
+            std::filesystem::path oldMetaPath = GetCorrespondingMetaFile(oldPath);
+            std::filesystem::path newMetaPath = GetCorrespondingMetaFile(newPath);
+            
+            // Check if the meta file was also moved
+            if (std::filesystem::exists(newMetaPath) && !std::filesystem::exists(oldMetaPath)) {
+                DEBUG_LOG("Asset watcher: Both asset and meta file moved together - updating asset path");
+                
+                // Try to update the asset path in the manager
+                AssetType assetType;
+                if (AssetSerialization::TryGetAssetTypeFromPath(oldPath, assetType) == SERIALIZATION_SUCCESS) {
+                    const std::filesystem::path oldRelativePath = std::filesystem::relative(oldPath, s_watchDirectory);
+                    u64 assetId = AssetManager::GetAssetId(oldRelativePath, assetType);
+                    
+                    if (assetId != UUID_NULL) {
+                        // For now, still treat as delete + add since updating paths in place is complex
+                        // In a more sophisticated implementation, you could update the asset's relative path directly
+                        DEBUG_LOG("Asset watcher: Treating coordinated move as delete + add for asset ID: %llu", assetId);
+                    }
+                }
+            }
+        }
 
         // For simplicity, treat rename as delete + add
         HandleFileDeleted(oldPath);

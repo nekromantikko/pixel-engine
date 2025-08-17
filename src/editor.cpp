@@ -4635,7 +4635,7 @@ void Editor::Update(r64 dt) {
 	pContext->secondsElapsed += dt;
 
 	// Update asset watcher
-	AssetWatcher::Update();
+	AssetWatcher::Update(pContext->secondsElapsed);
 
 	// Clean up deleted textures
 	for (auto pTempTexture : pContext->tempTextureEraseList) {
