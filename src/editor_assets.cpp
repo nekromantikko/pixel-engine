@@ -273,15 +273,9 @@ bool Editor::Assets::LoadAssetsFromDirectory(const std::filesystem::path& direct
 				DEBUG_ERROR("Failed to load asset %s\n", pathCStr);
 				continue;
 			}
-			const std::string filenameWithoutExt = entry.path().filename().replace_extension("").string();
-			std::string name = filenameWithoutExt;
-			if (metadata.contains("name") && !metadata["name"].is_null())
-			{
-				name = metadata["name"].get<std::string>();
-			}
 
 			const std::filesystem::path relativePath = std::filesystem::relative(entry.path(), ASSETS_SRC_DIR);
-			if (!AssetManager::AddAsset(guid, assetType, data.size(), relativePath.string().c_str(), name.c_str(), data.data())) {
+			if (!AssetManager::AddAsset(guid, assetType, data.size(), relativePath.string().c_str(), data.data())) {
 				DEBUG_ERROR("Failed to add asset %s to manager\n", pathCStr);
 				continue;
 			}

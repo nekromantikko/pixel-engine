@@ -23,11 +23,11 @@ bool AssetManager::RepackArchive() {
 	return true;
 }
 
-u64 AssetManager::CreateAsset(AssetType type, size_t size, const char* path, const char* name) {
-	DEBUG_LOG("Creating new asset of size %d with name %s\n", size, name);
+u64 AssetManager::CreateAsset(AssetType type, size_t size, const char* path) {
+	DEBUG_LOG("Creating new asset of size %d with path %s\n", size, path);
 
 	const u64 id = Random::GenerateUUID();
-	void* data = g_archive.AddAsset(id, type, size, path, name, nullptr);
+	void* data = g_archive.AddAsset(id, type, size, path, nullptr);
 	if (!data) {
 		return UUID_NULL;
 	}
@@ -35,8 +35,8 @@ u64 AssetManager::CreateAsset(AssetType type, size_t size, const char* path, con
 	return id;
 }
 
-void* AssetManager::AddAsset(u64 id, AssetType type, size_t size, const char* path, const char* name, void* data) {
-	return g_archive.AddAsset(id, type, size, path, name, data);
+void* AssetManager::AddAsset(u64 id, AssetType type, size_t size, const char* path, void* data) {
+	return g_archive.AddAsset(id, type, size, path, data);
 }
 
 bool AssetManager::RemoveAsset(u64 id) {
@@ -80,14 +80,6 @@ void* AssetManager::GetAsset(u64 id, AssetType type) {
 
 AssetEntry* AssetManager::GetAssetInfo(u64 id) {
 	return g_archive.GetAssetEntry(id);
-}
-
-const char* AssetManager::GetAssetName(u64 id) {
-	const AssetEntry* pAssetInfo = GetAssetInfo(id);
-	if (!pAssetInfo) {
-		return nullptr;
-	}
-	return pAssetInfo->name;
 }
 
 // If ppOutEntries is nullptr, returns the count of assets of that type

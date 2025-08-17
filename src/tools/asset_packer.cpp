@@ -42,15 +42,9 @@ bool PackAssetsFromDirectory(AssetArchive& archive, const fs::path& directory) {
 				std::cerr << "Failed to load asset data from " << pathCStr << std::endl;
 				continue;
 			}
-			const std::string filenameWithoutExt = entry.path().filename().replace_extension("").string();
-			std::string name = filenameWithoutExt;
-			if (metadata.contains("name") && !metadata["name"].is_null())
-			{
-				name = metadata["name"].get<std::string>();
-			}
 
 			const std::filesystem::path relativePath = std::filesystem::relative(entry.path(), directory);
-			if (!archive.AddAsset(guid, assetType, data.size(), relativePath.string().c_str(), name.c_str(), data.data())) {
+			if (!archive.AddAsset(guid, assetType, data.size(), relativePath.string().c_str(),  data.data())) {
 				std::cerr << "Failed to add asset " << pathCStr << " to archive" << std::endl;
 				continue;
 			}

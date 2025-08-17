@@ -171,7 +171,7 @@ static void InitVirtualCHR() {
     for (size_t i = 0; i < chrBankCount; i++) {
         g_bankAddressMapping[i].bankId = ppChrEntries[i]->id;
         g_bankAddressMapping[i].virtualIndex = i << 8; // Each virtual bank can hold 256 tiles, so shift by 8 bits
-        DEBUG_LOG("Virtual CHR bank %zu: %s, Virtual Index = %u\n", i, ppChrEntries[i]->name, g_bankAddressMapping[i].virtualIndex);
+        DEBUG_LOG("Virtual CHR bank %zu: %s, Virtual Index = %u\n", i, ppChrEntries[i]->relativePath, g_bankAddressMapping[i].virtualIndex);
     }
 
     for (u32 i = 0; i < CHR_COUNT * CHR_SIZE_TILES; i++) {
