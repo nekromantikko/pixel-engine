@@ -34,18 +34,18 @@ namespace Game {
         Rendering::Init();
 
 		g_config = {
-			.uiBankHandle = AssetManager::GetAssetHandle<ChrBankHandle>("chr_sheets/ui.bmp"),
-			.mapBankHandle = AssetManager::GetAssetHandle<ChrBankHandle>("chr_sheets/map_tiles.bmp"),
-			.playerPrototypeHandle = AssetManager::GetAssetHandle<ActorPrototypeHandle>("actor_prototypes/freya.actor"),
-			.playerOverworldPrototypeHandle = AssetManager::GetAssetHandle<ActorPrototypeHandle>("actor_prototypes/freya_overworld.actor"),
-			.xpRemnantPrototypeHandle = AssetManager::GetAssetHandle<ActorPrototypeHandle>("actor_prototypes/exp_remnant.actor"),
-			.overworldHandle = AssetManager::GetAssetHandle<OverworldHandle>("overworlds/default.ow")
+			.uiBankHandle = AssetManager::GetAssetHandleFromPath<ChrBankHandle>("chr_sheets/ui.bmp"),
+			.mapBankHandle = AssetManager::GetAssetHandleFromPath<ChrBankHandle>("chr_sheets/map_tiles.bmp"),
+			.playerPrototypeHandle = AssetManager::GetAssetHandleFromPath<ActorPrototypeHandle>("actor_prototypes/freya.actor"),
+			.playerOverworldPrototypeHandle = AssetManager::GetAssetHandleFromPath<ActorPrototypeHandle>("actor_prototypes/freya_overworld.actor"),
+			.xpRemnantPrototypeHandle = AssetManager::GetAssetHandleFromPath<ActorPrototypeHandle>("actor_prototypes/exp_remnant.actor"),
+			.overworldHandle = AssetManager::GetAssetHandleFromPath<OverworldHandle>("overworlds/default.ow")
 		};
 
 		InitGameData();
         InitGameState(GAME_STATE_DUNGEON);
 
-        DungeonHandle testDungeon = AssetManager::GetAssetHandle<DungeonHandle>("dungeons/test_cave.dung");
+        DungeonHandle testDungeon = AssetManager::GetAssetHandleFromPath<DungeonHandle>("dungeons/test_cave.dung");
         LoadRoom(testDungeon, { 14, 14 });
     }
 

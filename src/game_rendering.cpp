@@ -328,15 +328,15 @@ void Game::Rendering::Init() {
     ClearSpriteLayers(true);
 	InitVirtualCHR();
 
-	const PaletteHandle debug0PaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/debug_0.dat");
-	const PaletteHandle debug1PaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/debug_1.dat");
-	const PaletteHandle worldMapPaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/world_map.dat");
-	const PaletteHandle dungeonMapPaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/dungeon_map.dat");
-	const PaletteHandle freyaPaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/freya.dat");
-	const PaletteHandle freyaDarkPaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/freya_dark.dat");
-	const PaletteHandle checkpointPaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/checkpoint.dat");
-	const PaletteHandle goldBluePaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/gold_blue.dat");
-	const PaletteHandle greenRedPaletteHandle = AssetManager::GetAssetHandle<PaletteHandle>("palettes/green_red.dat");
+	const PaletteHandle debug0PaletteHandle = AssetManager::GetAssetHandleFromPath<PaletteHandle>("palettes/debug_0.dat");
+	const PaletteHandle debug1PaletteHandle = AssetManager::GetAssetHandleFromPath<PaletteHandle>("palettes/debug_1.dat");
+	const PaletteHandle worldMapPaletteHandle = AssetManager::GetAssetHandleFromPath<PaletteHandle>("palettes/world_map.dat");
+	const PaletteHandle dungeonMapPaletteHandle = AssetManager::GetAssetHandleFromPath<PaletteHandle>("palettes/dungeon_map.dat");
+	const PaletteHandle freyaPaletteHandle = AssetManager::GetAssetHandleFromPath<PaletteHandle>("palettes/freya.dat");
+	const PaletteHandle freyaDarkPaletteHandle = AssetManager::GetAssetHandleFromPath<PaletteHandle>("palettes/freya_dark.dat");
+	const PaletteHandle checkpointPaletteHandle = AssetManager::GetAssetHandleFromPath<PaletteHandle>("palettes/checkpoint.dat");
+	const PaletteHandle goldBluePaletteHandle = AssetManager::GetAssetHandleFromPath<PaletteHandle>("palettes/gold_blue.dat");
+	const PaletteHandle greenRedPaletteHandle = AssetManager::GetAssetHandleFromPath<PaletteHandle>("palettes/green_red.dat");
 
 	CopyPaletteColors(debug0PaletteHandle, 0);
 	CopyPaletteColors(worldMapPaletteHandle, 1);

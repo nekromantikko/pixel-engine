@@ -1011,12 +1011,28 @@ struct EditedAsset {
 	void* userData;
 };
 
+enum AssetListActionType {
+	ASSET_LIST_ACTION_NONE,
+	ASSET_LIST_ACTION_RENAME,
+	ASSET_LIST_ACTION_DELETE,
+	ASSET_LIST_ACTION_NEW_ASSET,
+	ASSET_LIST_ACTION_DUPLICATE_ASSET,
+};
+
+struct AssetListActionState {
+	AssetListActionType actionType = ASSET_LIST_ACTION_NONE;
+	bool actionStarted = false;
+	std::filesystem::path targetPath;
+	char nameBuffer[1024] = { 0 };
+};
+
 struct AssetEditorState {
 	std::unordered_map<u64, EditedAsset> editedAssets;
 	u64 currentAsset = UUID_NULL;
 
 	ImGui::FileBrowser fileBrowser{ ImGuiFileBrowserFlags_EnterNewFilename };
-	u64 duplicateAssetId = UUID_NULL;
+
+	AssetListActionState listActionState = {};
 };
 
 typedef void (*AssetEditorFn)(EditedAsset&);
@@ -1321,73 +1337,6 @@ static bool DrawAssetFieldN(const char* label, AssetType type, u64* pSelectedIds
 	return valueChanged;
 }
 
-static bool DrawAssetEntry(const AssetEntry* pAssetInfo) {
-	bool selected = false;
-	ImGui::PushID(pAssetInfo->id);
-
-	std::string assetName = GetAssetName(pAssetInfo->relativePath);
-	ImGui::Selectable(assetName.c_str());
-
-	if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-		selected = true;
-	}
-
-	if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
-	{
-		ImGui::SetDragDropPayload("dd_asset", &pAssetInfo->id, sizeof(u64));
-		ImGui::Text("%s", assetName.c_str());
-
-		ImGui::EndDragDropSource();
-	}
-
-	ImGui::PopID();
-	return selected;
-}
-
-static bool DrawAssetEntryWithContextMenu(const AssetEntry* pAssetInfo, ImGui::FileBrowser& fileBrowser, u64& duplicateAssetId) {
-	bool selected = false;
-	ImGui::PushID(pAssetInfo->id);
-
-	std::string assetName = GetAssetName(pAssetInfo->relativePath);
-	ImGui::Selectable(assetName.c_str());
-
-	if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-		selected = true;
-	}
-
-	if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-		ImGui::OpenPopup("AssetPopup");
-	}
-	if (ImGui::BeginPopup("AssetPopup")) {
-		if (ImGui::MenuItem("Delete")) {
-			DeleteAssetSourceFiles(pAssetInfo);
-			AssetManager::RemoveAsset(pAssetInfo->id);
-			if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
-				pContext->assetEraseList.push_back(pAssetInfo->id);
-			}
-		}
-		if (ImGui::MenuItem("Duplicate")) {
-			duplicateAssetId = pAssetInfo->id;
-			fileBrowser.SetDirectory(ASSETS_SRC_DIR);
-			fileBrowser.SetTitle("Create new asset");
-			fileBrowser.SetTypeFilters({ ASSET_TYPE_FILE_EXTENSIONS[pAssetInfo->flags.type] });
-			fileBrowser.Open();
-		}
-		ImGui::EndPopup();
-	}
-
-	if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
-	{
-		ImGui::SetDragDropPayload("dd_asset", &pAssetInfo->id, sizeof(u64));
-		ImGui::Text("%s", assetName.c_str());
-
-		ImGui::EndDragDropSource();
-	}
-
-	ImGui::PopID();
-	return selected;
-}
-
 // TODO: This result could be cached, but using the naive approach for now
 static bool DirectoryHasAssetsOfType(const std::filesystem::path& dir, AssetType type) {
 	for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
@@ -1398,7 +1347,7 @@ static bool DirectoryHasAssetsOfType(const std::filesystem::path& dir, AssetType
 	return false;
 }
 
-static u64 DrawAssetHierarchyRecursive(AssetType type, std::function<bool(const AssetEntry*)> customDrawFn = nullptr, const std::filesystem::path& dir = ASSETS_SRC_DIR) {
+static u64 DrawAssetHierarchyRecursive(AssetType type, AssetListActionState* pActionState, const std::filesystem::path& dir = ASSETS_SRC_DIR) {
 	u64 result = UUID_NULL;
 
 	for (const auto& entry : std::filesystem::directory_iterator(dir)) {
@@ -1408,7 +1357,7 @@ static u64 DrawAssetHierarchyRecursive(AssetType type, std::function<bool(const 
 			}
 
 			if (ImGui::TreeNode(entry.path().filename().string().c_str())) {
-				u64 selectedId = DrawAssetHierarchyRecursive(type, customDrawFn, entry.path());
+				u64 selectedId = DrawAssetHierarchyRecursive(type, pActionState, entry.path());
 				if (selectedId != UUID_NULL) {
 					result = selectedId;
 				}
@@ -1421,35 +1370,167 @@ static u64 DrawAssetHierarchyRecursive(AssetType type, std::function<bool(const 
 			if (relativePath.extension() == ".meta") {
 				continue;
 			}
-			u64 assetId = AssetManager::GetAssetId(relativePath, type);
-			if (assetId == UUID_NULL) {
-				continue;
+			const AssetEntry* pAssetInfo = AssetManager::GetAssetInfoFromPath(relativePath);
+			if (!pAssetInfo || pAssetInfo->flags.type != type) {
+				continue; // Skip assets that are not of the specified type
 			}
-			const AssetEntry* asset = AssetManager::GetAssetInfo(assetId);
-			if (asset->flags.deleted) {
+
+			if (pAssetInfo->flags.deleted) {
 				// TODO: If an asset is marked deleted but the source file exists, we should probably delete the source file
-				DEBUG_WARN("Asset %llu is deleted, skipping\n", asset->id);
+				DEBUG_WARN("Asset %llu is deleted, skipping\n", pAssetInfo->id);
 				continue;
 			}
 
-			if (customDrawFn) {
-				if (customDrawFn(asset)) {
-					result = assetId;
+			ImGui::PushID(pAssetInfo->id);
+
+			std::string assetName = GetAssetName(pAssetInfo->relativePath);
+			ImGui::Selectable(assetName.c_str());
+
+			if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+				result = pAssetInfo->id;
+			}
+
+			if (pActionState) {
+				if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+					ImGui::OpenPopup("AssetPopup");
+				}
+				if (ImGui::BeginPopup("AssetPopup")) {
+					if (ImGui::MenuItem("Duplicate")) {
+						pActionState->actionStarted = true;
+						pActionState->actionType = ASSET_LIST_ACTION_DUPLICATE_ASSET;
+						pActionState->targetPath = entry.path();
+					}
+					if (ImGui::MenuItem("Delete")) {
+						pActionState->actionStarted = true;
+						pActionState->actionType = ASSET_LIST_ACTION_DELETE;
+						pActionState->targetPath = entry.path();
+					}
+					ImGui::EndPopup();
+				}
+
+				if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+				{
+					ImGui::SetDragDropPayload("dd_asset", &pAssetInfo->id, sizeof(u64));
+					ImGui::Text("%s", assetName.c_str());
+
+					ImGui::EndDragDropSource();
 				}
 			}
-			else if (DrawAssetEntry(asset)) {
-				result = assetId;
-			}
+
+			ImGui::PopID();
 		}
 	}
 
 	return result;
 }
 
-static u64 DrawAssetHierarchy(AssetType type, std::function<bool(const AssetEntry*)> customDrawFn = nullptr) {
+// This function can be called without the action state for no functionality
+static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState = nullptr) {
 	ImGui::BeginChild("Asset Hierarchy", ImVec2(200, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
-	u64 result = DrawAssetHierarchyRecursive(type, customDrawFn);
+	u64 result = DrawAssetHierarchyRecursive(type, pActionState);
 	ImGui::EndChild();
+
+	if (pActionState && !pActionState->targetPath.empty()) {
+		if (pActionState->actionStarted) {
+			switch (pActionState->actionType) {
+			case ASSET_LIST_ACTION_RENAME:
+				ImGui::OpenPopup("Rename");
+				break;
+			case ASSET_LIST_ACTION_DELETE:
+				ImGui::OpenPopup("Delete");
+				break;
+			case ASSET_LIST_ACTION_NEW_ASSET:
+				ImGui::OpenPopup("New Asset");
+				break;
+			case ASSET_LIST_ACTION_DUPLICATE_ASSET:
+				ImGui::OpenPopup("Duplicate Asset");
+				break;
+			default:
+				DEBUG_WARN("Unknown asset list action type: %d", pActionState->actionType);
+				break;
+			}
+		}
+
+		bool targetIsDirectory = std::filesystem::is_directory(pActionState->targetPath);
+		AssetEntry* pAssetInfo = nullptr;
+		if (!targetIsDirectory) {
+			std::filesystem::path relativePath = std::filesystem::relative(pActionState->targetPath, ASSETS_SRC_DIR);
+			pAssetInfo = AssetManager::GetAssetInfoFromPath(relativePath);
+		}
+
+		if (ImGui::BeginPopup("Delete")) {
+			ImGui::Text("Are you sure?");
+			if (ImGui::Button("Yes")) {
+				if (targetIsDirectory) {
+					// TODO: Delete the directory and all its contents
+				}
+				else {
+					if (!pAssetInfo) {
+						DEBUG_ERROR("Asset not found: %s", pActionState->targetPath.string().c_str());
+					}
+					else if (pAssetInfo->flags.deleted) {
+						DEBUG_WARN("Asset %llu is already deleted, skipping", pAssetInfo->id);
+					}
+					else {
+						DEBUG_LOG("Deleting asset: %s", pActionState->targetPath.string().c_str());
+						DeleteAssetSourceFiles(pAssetInfo);
+						AssetManager::RemoveAsset(pAssetInfo->id);
+						if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
+							pContext->assetEraseList.push_back(pAssetInfo->id);
+						}
+					}
+				}
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("No")) {
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::EndPopup();
+		} else if (ImGui::BeginPopup("Duplicate Asset")) {
+			if (targetIsDirectory) {
+				DEBUG_ERROR("Invalid operation: Cannot duplicate a directory");
+			}
+			else {
+				if (!pAssetInfo) {
+					DEBUG_ERROR("Asset not found: %s", pActionState->targetPath.string().c_str());
+				}
+				else if (pAssetInfo->flags.deleted) {
+					DEBUG_WARN("Asset %llu is deleted, skipping", pAssetInfo->id);
+				}
+				else {
+					std::string assetName = GetAssetName(pActionState->targetPath);
+					sprintf(pActionState->nameBuffer, "%s_copy", assetName.c_str());
+
+					if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
+						if (!pActionState->nameBuffer[0]) {
+							DEBUG_ERROR("Asset name cannot be empty");
+						}
+						else {
+							const char* extension = ASSET_TYPE_FILE_EXTENSIONS[pAssetInfo->flags.type];
+							std::filesystem::path newAssetPath = pActionState->targetPath.parent_path() / (pActionState->nameBuffer + std::string(extension));
+							if (!DuplicateAsset(pAssetInfo->id, newAssetPath)) {
+								DEBUG_ERROR("Failed to duplicate asset");
+							}
+						}
+						ImGui::CloseCurrentPopup();
+					}
+					if (pActionState->actionStarted) {
+						ImGui::SetKeyboardFocusHere(-1);
+					}
+				}
+			}
+
+			ImGui::EndPopup();
+		}
+		else {
+			pActionState->targetPath.clear();
+		}
+
+		pActionState->actionStarted = false;
+	}
+
+
 	return result;
 }
 
@@ -1461,27 +1542,21 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, Asset
 
 	state.fileBrowser.Display();
 	if (state.fileBrowser.HasSelected()) {
-		if (state.duplicateAssetId != UUID_NULL) {
-			DuplicateAsset(state.duplicateAssetId, state.fileBrowser.GetSelected());
+		const std::filesystem::path relativePath = std::filesystem::relative(state.fileBrowser.GetSelected(), ASSETS_SRC_DIR);
+		const u32 newSize = Editor::Assets::GetAssetSize(type, nullptr);
+		const u64 id = AssetManager::CreateAsset(type, newSize, relativePath.string().c_str());
+		void* data = AssetManager::GetAsset(id, type);
+		Editor::Assets::InitializeAsset(type, data);
+
+		if (!SaveAssetToFile(type, relativePath, data, id)) {
+			// Failed to save asset, remove it
+			AssetManager::RemoveAsset(id);
 		}
 		else {
-			const std::filesystem::path relativePath = std::filesystem::relative(state.fileBrowser.GetSelected(), ASSETS_SRC_DIR);
-			const u32 newSize = Editor::Assets::GetAssetSize(type, nullptr);
-			const u64 id = AssetManager::CreateAsset(type, newSize, relativePath.string().c_str());
-			void* data = AssetManager::GetAsset(id, type);
-			Editor::Assets::InitializeAsset(type, data);
-
-			if (!SaveAssetToFile(type, relativePath, data, id)) {
-				// Failed to save asset, remove it
-				AssetManager::RemoveAsset(id);
-			}
-			else {
-				state.editedAssets.try_emplace(id, CopyAssetForEditing(id, populateFn));
-			}
+			state.editedAssets.try_emplace(id, CopyAssetForEditing(id, populateFn));
 		}
 		
 		state.fileBrowser.ClearSelected();
-		state.duplicateAssetId = UUID_NULL;
 	}
 
 	if (ImGui::BeginMenuBar())
@@ -1489,7 +1564,6 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, Asset
 		if (ImGui::BeginMenu("Asset"))
 		{
 			if (ImGui::MenuItem("New")) {
-				state.duplicateAssetId = UUID_NULL;
 				state.fileBrowser.SetDirectory(ASSETS_SRC_DIR);
 				state.fileBrowser.SetTitle("Create new asset");
 				state.fileBrowser.SetTypeFilters({ ASSET_TYPE_FILE_EXTENSIONS[type] });
@@ -1523,9 +1597,7 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, Asset
 		ImGui::EndMenuBar();
 	}
 
-	const u64 openedAsset = DrawAssetHierarchy(type, [&state](const AssetEntry* pEntry) {
-		return DrawAssetEntryWithContextMenu(pEntry, state.fileBrowser, state.duplicateAssetId);
-		});
+	const u64 openedAsset = DrawAssetHierarchy(type, &state.listActionState);
 
 	if (openedAsset != UUID_NULL && !state.editedAssets.contains(openedAsset)) {
 		state.editedAssets.emplace(openedAsset, CopyAssetForEditing(openedAsset, populateFn));
