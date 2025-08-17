@@ -1331,6 +1331,9 @@ static u64 DrawAssetListWithFunctionality(AssetType type, ImGui::FileBrowser& fi
 		}
 		if (ImGui::BeginPopup("AssetPopup")) {
 			if (ImGui::MenuItem("Delete")) {
+#ifdef EDITOR
+				AssetManager::DeleteAssetSourceFiles(asset->id);
+#endif
 				AssetManager::RemoveAsset(asset->id);
 				if (pContext->assetRenderBuffers.contains(asset->id) || pContext->assetRenderTextures.contains(asset->id)) {
 					pContext->assetEraseList.push_back(asset->id);

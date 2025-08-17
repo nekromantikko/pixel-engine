@@ -125,6 +125,48 @@ bool AssetManager::RemoveAsset(u64 id) {
 	return true;
 }
 
+#ifdef EDITOR
+bool AssetManager::DeleteAssetSourceFiles(u64 id) {
+	AssetEntry* asset = g_archive.GetAssetEntry(id);
+	if (!asset) {
+		DEBUG_ERROR("Asset with ID %llu does not exist\n", id);
+		return false;
+	}
+
+	// Construct full path to asset file
+	std::filesystem::path assetPath = std::filesystem::path(ASSETS_SRC_DIR) / asset->relativePath;
+	
+	// Construct path to metadata file
+	std::filesystem::path metaPath = AssetSerialization::GetAssetMetadataPath(assetPath);
+
+	bool success = true;
+
+	// Delete the main asset file
+	if (std::filesystem::exists(assetPath)) {
+		std::error_code ec;
+		if (!std::filesystem::remove(assetPath, ec)) {
+			DEBUG_ERROR("Failed to delete asset file %s: %s\n", assetPath.string().c_str(), ec.message().c_str());
+			success = false;
+		} else {
+			DEBUG_LOG("Deleted asset file %s\n", assetPath.string().c_str());
+		}
+	}
+
+	// Delete the metadata file
+	if (std::filesystem::exists(metaPath)) {
+		std::error_code ec;
+		if (!std::filesystem::remove(metaPath, ec)) {
+			DEBUG_ERROR("Failed to delete metadata file %s: %s\n", metaPath.string().c_str(), ec.message().c_str());
+			success = false;
+		} else {
+			DEBUG_LOG("Deleted metadata file %s\n", metaPath.string().c_str());
+		}
+	}
+
+	return success;
+}
+#endif
+
 bool AssetManager::ResizeAsset(u64 id, size_t newSize) {
 	AssetEntry* asset = g_archive.GetAssetEntry(id);
 	if (!asset) {

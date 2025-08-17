@@ -26,6 +26,9 @@ namespace AssetManager {
 
 	void* AddAsset(u64 id, AssetType type, size_t size, const char* path, const char* name, void* data = nullptr);
 	bool RemoveAsset(u64 id);
+#ifdef EDITOR
+	bool DeleteAssetSourceFiles(u64 id);
+#endif
 
 	bool ResizeAsset(u64 id, size_t newSize);
 
