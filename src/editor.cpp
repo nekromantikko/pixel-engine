@@ -1089,31 +1089,31 @@ static bool SaveAssetToFile(AssetType type, const std::filesystem::path& relativ
 
 	nlohmann::json metadata;
 	if (!AssetSerialization::HasMetadata(fullPath)) {
-		DEBUG_LOG("Creating metadata file for asset: %s", fullPath.string().c_str());
+		DEBUG_LOG("Creating metadata file for asset: %s\n", fullPath.string().c_str());
 		if (id == UUID_NULL) {
 			id = Random::GenerateUUID();
 		}
 
 		if (AssetSerialization::CreateAssetMetadataFile(fullPath, id, metadata) != SERIALIZATION_SUCCESS) {
-			DEBUG_ERROR("Failed to create metadata file for asset: %s", fullPath.string().c_str());
+			DEBUG_ERROR("Failed to create metadata file for asset: %s\n", fullPath.string().c_str());
 			return false;
 		}
 	}
 	else {
-		DEBUG_LOG("Updating metadata file for asset: %s", fullPath.string().c_str());
+		DEBUG_LOG("Updating metadata file for asset: %s\n", fullPath.string().c_str());
 		if (AssetSerialization::LoadAssetMetadataFromFile(fullPath, metadata) != SERIALIZATION_SUCCESS) {
-			DEBUG_ERROR("Failed to load metadata file for asset: %s", fullPath.string().c_str());
+			DEBUG_ERROR("Failed to load metadata file for asset: %s\n", fullPath.string().c_str());
 			return false;
 		}
 	}
 
 	if (AssetSerialization::SaveAssetToFile(fullPath, type, metadata, pData) != SERIALIZATION_SUCCESS) {
-		DEBUG_ERROR("Failed to save asset to file: %s", fullPath.string().c_str());
+		DEBUG_ERROR("Failed to save asset to file: %s\n", fullPath.string().c_str());
 		return false;
 	}
 
 	if (AssetSerialization::SaveAssetMetadataToFile(fullPath, metadata) != SERIALIZATION_SUCCESS) {
-		DEBUG_ERROR("Failed to save asset metadata to file: %s", fullPath.string().c_str());
+		DEBUG_ERROR("Failed to save asset metadata to file: %s\n", fullPath.string().c_str());
 		return false;
 	}
 
@@ -1206,7 +1206,7 @@ static bool DuplicateAsset(u64 id, const std::filesystem::path& path) {
 
 static bool DeleteAssetSourceFiles(const AssetEntry* pAssetInfo) {
 	if (!pAssetInfo) {
-		DEBUG_ERROR("Cannot delete asset source files: Asset info is null");
+		DEBUG_ERROR("Cannot delete asset source files: Asset info is null\n");
 		return false;
 	}
 
@@ -1218,27 +1218,27 @@ static bool DeleteAssetSourceFiles(const AssetEntry* pAssetInfo) {
 	if (std::filesystem::exists(fullPath)) {
 		std::error_code ec;
 		if (!std::filesystem::remove(fullPath, ec)) {
-			DEBUG_ERROR("Failed to delete asset file: %s, error: %s", fullPath.string().c_str(), ec.message().c_str());
+			DEBUG_ERROR("Failed to delete asset file: %s, error: %s\n", fullPath.string().c_str(), ec.message().c_str());
 			result = false;
 		}
 		else {
-			DEBUG_LOG("Deleted asset file: %s", fullPath.string().c_str());
+			DEBUG_LOG("Deleted asset file: %s\n", fullPath.string().c_str());
 		}
 	} else {
-		DEBUG_WARN("Asset file does not exist: %s", fullPath.string().c_str());
+		DEBUG_WARN("Asset file does not exist: %s\n", fullPath.string().c_str());
 	}
 
 	if (std::filesystem::exists(metaFilePath)) {
 		std::error_code ec;
 		if (!std::filesystem::remove(metaFilePath, ec)) {
-			DEBUG_ERROR("Failed to delete asset metadata file: %s, error: %s", metaFilePath.string().c_str(), ec.message().c_str());
+			DEBUG_ERROR("Failed to delete asset metadata file: %s, error: %s\n", metaFilePath.string().c_str(), ec.message().c_str());
 			result = false;
 		}
 		else {
-			DEBUG_LOG("Deleted asset metadata file: %s", metaFilePath.string().c_str());
+			DEBUG_LOG("Deleted asset metadata file: %s\n", metaFilePath.string().c_str());
 		}
 	} else {
-		DEBUG_WARN("Asset metadata file does not exist: %s", metaFilePath.string().c_str());
+		DEBUG_WARN("Asset metadata file does not exist: %s\n", metaFilePath.string().c_str());
 	}
 
 	return result;
@@ -1769,36 +1769,73 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 	return result;
 }
 
+static void SaveCurrentAsset(AssetEditorState& state, ApplyAssetEditorDataFn applyFn = nullptr) {
+	EditedAsset& asset = state.editedAssets.at(state.currentAsset);
+	SaveEditedAsset(asset, applyFn);
+}
+
+static void SaveAllAssets(AssetEditorState& state, ApplyAssetEditorDataFn applyFn = nullptr) {
+	for (auto& kvp : state.editedAssets) {
+		EditedAsset& asset = kvp.second;
+		SaveEditedAsset(asset, applyFn);
+	}
+}
+
+static void RevertCurrentAsset(AssetEditorState& state, PopulateAssetEditorDataFn populateFn = nullptr) {
+	EditedAsset& asset = state.editedAssets.at(state.currentAsset);
+	RevertEditedAsset(asset, populateFn);
+}
+
+static void RevertAllAssets(AssetEditorState& state, PopulateAssetEditorDataFn populateFn = nullptr) {
+	for (auto& kvp : state.editedAssets) {
+		EditedAsset& asset = kvp.second;
+		RevertEditedAsset(asset, populateFn);
+	}
+}
+
 static void DrawAssetEditor(const char* title, bool& open, AssetType type, AssetEditorFn drawEditor, AssetEditorState& state, 
 	PopulateAssetEditorDataFn populateFn = nullptr, 
 	ApplyAssetEditorDataFn applyFn = nullptr, 
 	DeleteAssetEditorDataFn deleteFn = nullptr) {
 	ImGui::Begin(title, &open, ImGuiWindowFlags_MenuBar);
 
+	bool allowOperations = state.editedAssets.contains(state.currentAsset);
+
+	if (allowOperations) {
+		if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S)) {
+			SaveCurrentAsset(state, applyFn);
+		}
+		if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Alt | ImGuiKey_S)) {
+			SaveAllAssets(state, applyFn);
+		}
+		if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_R)) {
+			RevertCurrentAsset(state, populateFn);
+		}
+		if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Alt | ImGuiKey_R)) {
+			RevertAllAssets(state, populateFn);
+		}
+	}
+
 	if (ImGui::BeginMenuBar())
 	{
 		if (ImGui::BeginMenu("Asset"))
 		{
-			ImGui::BeginDisabled(!state.editedAssets.contains(state.currentAsset));
+			ImGui::BeginDisabled(!allowOperations);
+			ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_Tooltip);
 			if (ImGui::MenuItem("Save")) {
-				EditedAsset& asset = state.editedAssets.at(state.currentAsset);
-				SaveEditedAsset(asset, applyFn);
+				SaveCurrentAsset(state, applyFn);
 			}
+			ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiMod_Alt | ImGuiKey_S, ImGuiInputFlags_Tooltip);
 			if (ImGui::MenuItem("Save all")) {
-				for (auto& kvp : state.editedAssets) {
-					EditedAsset& asset = kvp.second;
-					SaveEditedAsset(asset, applyFn);
-				}
+				SaveAllAssets(state, applyFn);
 			}
+			ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiKey_R, ImGuiInputFlags_Tooltip);
 			if (ImGui::MenuItem("Revert changes")) {
-				EditedAsset& asset = state.editedAssets.at(state.currentAsset);
-				RevertEditedAsset(asset, populateFn);
+				RevertCurrentAsset(state, populateFn);
 			}
+			ImGui::SetNextItemShortcut(ImGuiMod_Ctrl | ImGuiMod_Alt | ImGuiKey_R, ImGuiInputFlags_Tooltip);
 			if (ImGui::MenuItem("Revert all")) {
-				for (auto& kvp : state.editedAssets) {
-					EditedAsset& asset = kvp.second;
-					RevertEditedAsset(asset, populateFn);
-				}
+				RevertAllAssets(state, populateFn);
 			}
 			ImGui::EndDisabled();
 			ImGui::EndMenu();
