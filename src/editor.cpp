@@ -1184,6 +1184,46 @@ static bool DuplicateAsset(u64 id, const std::filesystem::path& path) {
 	return true;
 }
 
+static bool DeleteAssetSourceFiles(const AssetEntry* pAssetInfo) {
+	if (!pAssetInfo) {
+		DEBUG_ERROR("Cannot delete asset source files: Asset info is null");
+		return false;
+	}
+
+	const std::filesystem::path fullPath = std::filesystem::path(ASSETS_SRC_DIR) / pAssetInfo->relativePath;
+	const std::filesystem::path metaFilePath = fullPath.string() + ".meta";
+
+	bool result = true;
+
+	if (std::filesystem::exists(fullPath)) {
+		std::error_code ec;
+		if (!std::filesystem::remove(fullPath, ec)) {
+			DEBUG_ERROR("Failed to delete asset file: %s, error: %s", fullPath.string().c_str(), ec.message().c_str());
+			result = false;
+		}
+		else {
+			DEBUG_LOG("Deleted asset file: %s", fullPath.string().c_str());
+		}
+	} else {
+		DEBUG_WARN("Asset file does not exist: %s", fullPath.string().c_str());
+	}
+
+	if (std::filesystem::exists(metaFilePath)) {
+		std::error_code ec;
+		if (!std::filesystem::remove(metaFilePath, ec)) {
+			DEBUG_ERROR("Failed to delete asset metadata file: %s, error: %s", metaFilePath.string().c_str(), ec.message().c_str());
+			result = false;
+		}
+		else {
+			DEBUG_LOG("Deleted asset metadata file: %s", metaFilePath.string().c_str());
+		}
+	} else {
+		DEBUG_WARN("Asset metadata file does not exist: %s", metaFilePath.string().c_str());
+	}
+
+	return result;
+}
+
 static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 	const u64 oldId = selectedId;
 
@@ -1334,6 +1374,7 @@ static u64 DrawAssetListWithFunctionality(AssetType type, ImGui::FileBrowser& fi
 		}
 		if (ImGui::BeginPopup("AssetPopup")) {
 			if (ImGui::MenuItem("Delete")) {
+				DeleteAssetSourceFiles(asset);
 				AssetManager::RemoveAsset(asset->id);
 				if (pContext->assetRenderBuffers.contains(asset->id) || pContext->assetRenderTextures.contains(asset->id)) {
 					pContext->assetEraseList.push_back(asset->id);
