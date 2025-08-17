@@ -1348,6 +1348,46 @@ static bool DirectoryHasAssetsOfType(const std::filesystem::path& dir, AssetType
 	return false;
 }
 
+static std::vector<AssetEntry*> CollectAssetsInDirectory(const std::filesystem::path& dir) {
+	std::vector<AssetEntry*> assets;
+
+	for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
+		if (!entry.is_regular_file() || entry.path().extension() == ".meta") {
+			continue;
+		}
+		std::filesystem::path relativePath = std::filesystem::relative(entry.path(), ASSETS_SRC_DIR);
+		AssetEntry* pAssetInfo = AssetManager::GetAssetInfoFromPath(relativePath);
+		if (pAssetInfo&& !pAssetInfo->flags.deleted) {
+			assets.push_back(pAssetInfo);
+		}
+	}
+
+	return assets;
+}
+
+static void UpdateAssetPathsWithNewDirectory(const std::filesystem::path& oldDirPath, const std::filesystem::path& newDirPath) {
+	std::vector<AssetEntry*> assets = CollectAssetsInDirectory(oldDirPath);
+
+	std::filesystem::path oldRelativePath = std::filesystem::relative(oldDirPath, ASSETS_SRC_DIR);
+	std::filesystem::path newRelativePath = std::filesystem::relative(newDirPath, ASSETS_SRC_DIR);
+
+	for (AssetEntry* pAssetInfo : assets) {
+		std::filesystem::path oldAssetPath = pAssetInfo->relativePath;
+
+		// Replace the old directory part with the new directory part
+		std::filesystem::path newAssetPath = newRelativePath / std::filesystem::relative(oldAssetPath, oldRelativePath);
+
+		// Update the asset's relative path
+		std::string newPathStr = newAssetPath.string();
+		if (newPathStr.length() < MAX_ASSET_PATH_LENGTH) {
+			strcpy(pAssetInfo->relativePath, newPathStr.c_str());
+			DEBUG_LOG("Updated asset path from '%s' to '%s'\n", oldAssetPath.string().c_str(), newAssetPath.string().c_str());
+		} else {
+			DEBUG_ERROR("New asset path '%s' exceeds maximum length (%d characters)\n", newPathStr.c_str(), MAX_ASSET_PATH_LENGTH);
+		}
+	}
+}
+
 static u64 DrawAssetHierarchyRecursive(AssetType type, AssetListActionState* pActionState, const std::filesystem::path& dir = ASSETS_SRC_DIR) {
 	u64 result = UUID_NULL;
 
@@ -1491,7 +1531,7 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 				ImGui::OpenPopup("New Folder");
 				break;
 			default:
-				DEBUG_WARN("Unknown asset list action type: %d", pActionState->actionType);
+				DEBUG_WARN("Unknown asset list action type: %d\n", pActionState->actionType);
 				break;
 			}
 		}
@@ -1503,7 +1543,7 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 			pAssetInfo = AssetManager::GetAssetInfoFromPath(relativePath);
 
 			if (!pAssetInfo || pAssetInfo->flags.deleted) {
-				DEBUG_ERROR("Asset not found (Or marked as deleted): %s", pActionState->targetPath.string().c_str());
+				DEBUG_ERROR("Asset not found (Or marked as deleted): %s\n", pActionState->targetPath.string().c_str());
 				pActionState->targetPath.clear();
 				pActionState->actionStarted = false;
 				return result;
@@ -1514,7 +1554,26 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 			ImGui::Text("Are you sure?");
 			if (ImGui::Button("Yes")) {
 				if (targetIsDirectory) {
-					// TODO: Delete the directory and all its contents
+					DEBUG_LOG("Deleting directory: %s\n", pActionState->targetPath.string().c_str());
+
+					std::vector<AssetEntry*> assets = CollectAssetsInDirectory(pActionState->targetPath);
+
+					for (AssetEntry* pAssetInfo : assets) {
+						DEBUG_LOG("Deleting asset: %s", pAssetInfo->relativePath);
+						DeleteAssetSourceFiles(pAssetInfo);
+						AssetManager::RemoveAsset(pAssetInfo->id);
+						if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
+							pContext->assetEraseList.push_back(pAssetInfo->id);
+						}
+					}
+
+					std::error_code ec;
+					u32 removedCount = std::filesystem::remove_all(pActionState->targetPath, ec);
+					if (removedCount != assets.size()) {
+						DEBUG_ERROR("Failed to delete all files in directory: %s, removed %u out of %zu\n", pActionState->targetPath.string().c_str(), removedCount, assets.size());
+					} else {
+						DEBUG_LOG("Deleted %u files from directory: %s\n", removedCount, pActionState->targetPath.string().c_str());
+					}
 				}
 				else {
 					DEBUG_LOG("Deleting asset: %s", pActionState->targetPath.string().c_str());
@@ -1535,7 +1594,7 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 			ImGui::EndPopup();
 		} else if (ImGui::BeginPopup("Duplicate Asset")) {
 			if (targetIsDirectory) {
-				DEBUG_ERROR("Invalid operation: Cannot duplicate a directory");
+				DEBUG_ERROR("Invalid operation: Cannot duplicate a directory\n");
 			}
 			else {
 				std::string assetName = GetAssetName(pActionState->targetPath);
@@ -1543,13 +1602,13 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 
 				if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
 					if (!pActionState->nameBuffer[0]) {
-						DEBUG_ERROR("Asset name cannot be empty");
+						DEBUG_ERROR("Asset name cannot be empty\n");
 					}
 					else {
 						const char* extension = ASSET_TYPE_FILE_EXTENSIONS[pAssetInfo->flags.type];
 						std::filesystem::path newAssetPath = pActionState->targetPath.parent_path() / (pActionState->nameBuffer + std::string(extension));
 						if (!DuplicateAsset(pAssetInfo->id, newAssetPath)) {
-							DEBUG_ERROR("Failed to duplicate asset");
+							DEBUG_ERROR("Failed to duplicate asset\n");
 						}
 					}
 					ImGui::CloseCurrentPopup();
@@ -1563,7 +1622,33 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 			ImGui::EndPopup();
 		} else if (ImGui::BeginPopup("Rename")) {
 			if (targetIsDirectory) {
-				// TODO: Rename directory and update all assets inside it
+				std::string dirName = pActionState->targetPath.filename().string();
+				sprintf(pActionState->nameBuffer, "%s", dirName.c_str());
+
+				if (ImGui::InputText("###Name", pActionState->nameBuffer, sizeof(pActionState->nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue)) {
+					std::filesystem::path newDirPath = pActionState->targetPath.parent_path() / pActionState->nameBuffer;
+
+					if (!pActionState->nameBuffer[0]) {
+						DEBUG_ERROR("Folder name cannot be empty\n");
+					}
+					else if (strcmp(pActionState->nameBuffer, dirName.c_str()) == 0) {
+						DEBUG_LOG("Folder name is unchanged, not renaming\n");
+					}
+					else if (std::filesystem::exists(newDirPath)) {
+						DEBUG_ERROR("Folder with name %s already exists\n", pActionState->nameBuffer);
+					}
+					else {
+						DEBUG_LOG("Renaming folder from %s to %s\n", pActionState->targetPath.string().c_str(), newDirPath.string().c_str());
+
+						UpdateAssetPathsWithNewDirectory(pActionState->targetPath, newDirPath);
+						std::filesystem::rename(pActionState->targetPath, newDirPath);
+					}
+					ImGui::CloseCurrentPopup();
+					pActionState->targetPath.clear();
+				}
+				if (pActionState->actionStarted) {
+					ImGui::SetKeyboardFocusHere(-1);
+				}
 			}
 			else {
 				std::string assetName = GetAssetName(pActionState->targetPath);
@@ -1574,13 +1659,13 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 					std::filesystem::path newAssetPath = pActionState->targetPath.parent_path() / (pActionState->nameBuffer + std::string(extension));
 
 					if (!pActionState->nameBuffer[0]) {
-						DEBUG_ERROR("Asset name cannot be empty");
+						DEBUG_ERROR("Asset name cannot be empty\n");
 					}
 					else if (strcmp(pActionState->nameBuffer, assetName.c_str()) == 0) {
-						DEBUG_LOG("Asset name is unchanged, not renaming");
+						DEBUG_LOG("Asset name is unchanged, not renaming\n");
 					}
 					else if (std::filesystem::exists(newAssetPath)) {
-						DEBUG_ERROR("Asset with name %s already exists", pActionState->nameBuffer);
+						DEBUG_ERROR("Asset with name %s already exists\n", pActionState->nameBuffer);
 					}
 					else {
 						std::filesystem::rename(pActionState->targetPath, newAssetPath);
@@ -1601,7 +1686,7 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 		}
 		else if (ImGui::BeginPopup("New Asset")) {
 			if (!targetIsDirectory) {
-				DEBUG_ERROR("Invalid operation: Cannot create a new asset in a file");
+				DEBUG_ERROR("Invalid operation: Cannot create a new asset in a file\n");
 			}
 			else {
 				sprintf(pActionState->nameBuffer, "new_asset");
@@ -1610,10 +1695,10 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 					std::filesystem::path newAssetPath = pActionState->targetPath / (pActionState->nameBuffer + std::string(extension));
 
 					if (!pActionState->nameBuffer[0]) {
-						DEBUG_ERROR("Asset name cannot be empty");
+						DEBUG_ERROR("Asset name cannot be empty\n");
 					}
 					else if (std::filesystem::exists(newAssetPath)) {
-						DEBUG_ERROR("Asset with name %s already exists", pActionState->nameBuffer);
+						DEBUG_ERROR("Asset with name %s already exists\n", pActionState->nameBuffer);
 					}
 					else {
 						const std::filesystem::path relativePath = std::filesystem::relative(newAssetPath, ASSETS_SRC_DIR);
@@ -1624,11 +1709,11 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 
 						if (!SaveAssetToFile(type, relativePath, data, id)) {
 							// Failed to save asset, remove it
-							DEBUG_ERROR("Failed to save new asset to file: %s", newAssetPath.string().c_str());
+							DEBUG_ERROR("Failed to save new asset to file: %s\n", newAssetPath.string().c_str());
 							AssetManager::RemoveAsset(id);
 						}
 						else {
-							DEBUG_LOG("Created new asset: %s", newAssetPath.string().c_str());
+							DEBUG_LOG("Created new asset: %s\n", newAssetPath.string().c_str());
 						}
 						
 					}
@@ -1644,7 +1729,7 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 		}
 		else if (ImGui::BeginPopup("New Folder")) {
 			if (!targetIsDirectory) {
-				DEBUG_ERROR("Invalid operation: Cannot create a new folder in a file");
+				DEBUG_ERROR("Invalid operation: Cannot create a new folder in a file\n");
 			}
 			else {
 				sprintf(pActionState->nameBuffer, "new_folder");
@@ -1652,18 +1737,18 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 					std::filesystem::path newFolderPath = pActionState->targetPath / pActionState->nameBuffer;
 
 					if (!pActionState->nameBuffer[0]) {
-						DEBUG_ERROR("Folder name cannot be empty");
+						DEBUG_ERROR("Folder name cannot be empty\n");
 					}
 					else if (std::filesystem::exists(newFolderPath)) {
-						DEBUG_ERROR("Folder with name %s already exists", pActionState->nameBuffer);
+						DEBUG_ERROR("Folder with name %s already exists\n", pActionState->nameBuffer);
 					}
 					else {
 						std::error_code ec;
 						if (!std::filesystem::create_directory(newFolderPath, ec)) {
-							DEBUG_ERROR("Failed to create folder: %s, error: %s", newFolderPath.string().c_str(), ec.message().c_str());
+							DEBUG_ERROR("Failed to create folder: %s, error: %s\n", newFolderPath.string().c_str(), ec.message().c_str());
 						}
 						else {
-							DEBUG_LOG("Created new folder: %s", newFolderPath.string().c_str());
+							DEBUG_LOG("Created new folder: %s\n", newFolderPath.string().c_str());
 						}
 					}
 					ImGui::CloseCurrentPopup();
