@@ -68,7 +68,7 @@ u64 AssetManager::GetAssetId(const std::filesystem::path& relativePath, AssetTyp
 		return UUID_NULL;
 	}
 	if (pAssetInfo->flags.type != type) {
-		DEBUG_ERROR("Asset with path '%s' is not of type %d\n", relativePath.string().c_str(), type);
+		//DEBUG_ERROR("Asset with path '%s' is not of type %d\n", relativePath.string().c_str(), type);
 		return UUID_NULL;
 	}
 	return pAssetInfo->id;
