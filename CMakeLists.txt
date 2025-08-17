@@ -121,6 +121,7 @@ if(ENABLE_EDITOR)
 		src/editor.cpp 
 		src/editor_assets.cpp
 		src/asset_serialization.cpp
+		src/asset_watcher.cpp
 		src/shader_compiler.cpp)
 
 	FetchContent_Declare(

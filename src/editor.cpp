@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "editor_assets.h"
+#include "asset_watcher.h"
 #include "rendering.h"
 #include "debug.h"
 #include <cassert>
@@ -4580,9 +4581,15 @@ void Editor::Init(SDL_Window *pWindow) {
 	Rendering::InitEditorTexture(pContext->pPaletteTexture, PALETTE_MEMORY_SIZE, 1, EDITOR_TEXTURE_USAGE_PALETTE);
 	pContext->pColorTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
 	Rendering::InitEditorTexture(pContext->pColorTexture, 16, 8, EDITOR_TEXTURE_USAGE_COLOR);
+
+	// Initialize asset watcher
+	AssetWatcher::Init(ASSETS_SRC_DIR);
 }
 
 void Editor::Free() {
+	// Free asset watcher first
+	AssetWatcher::Free();
+
 	Rendering::FreeEditorTexture(pContext->pChrTexture);
 	free(pContext->pChrTexture);
 	Rendering::FreeEditorTexture(pContext->pPaletteTexture);
@@ -4626,6 +4633,9 @@ void Editor::ProcessEvent(const SDL_Event* event) {
 
 void Editor::Update(r64 dt) {
 	pContext->secondsElapsed += dt;
+
+	// Update asset watcher
+	AssetWatcher::Update();
 
 	// Clean up deleted textures
 	for (auto pTempTexture : pContext->tempTextureEraseList) {
