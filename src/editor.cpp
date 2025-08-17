@@ -1353,12 +1353,15 @@ static u64 DrawAssetHierarchyRecursive(AssetType type, AssetListActionState* pAc
 
 	for (const auto& entry : std::filesystem::directory_iterator(dir)) {
 		if (entry.is_directory()) {
+			ImVec4 folderColor = ImGui::GetStyleColorVec4(ImGuiCol_Text);
 			if (!DirectoryHasAssetsOfType(entry.path(), type)) {
-				continue; // Skip directories that don't contain assets of the specified type
+				folderColor = ImVec4(0.5f, 0.5f, 0.5f, 1.0f); // Dim color for empty folders
 			}
 
 			ImGui::PushID(entry.path().filename().string().c_str());
+			ImGui::PushStyleColor(ImGuiCol_Text, folderColor);
 			bool nodeOpen = ImGui::TreeNode(entry.path().filename().string().c_str());
+			ImGui::PopStyleColor();
 
 			if (pActionState) {
 				if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
