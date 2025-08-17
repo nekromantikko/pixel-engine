@@ -1270,15 +1270,12 @@ static u64 DrawAssetList(AssetType type) {
 	u64 result = UUID_NULL;
 	ImGui::BeginChild("Asset list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 
-	const AssetIndex& assetIndex = AssetManager::GetIndex();
-	for (u32 i = 0; i < assetIndex.Count(); i++) {
-		PoolHandle<AssetEntry> handle = assetIndex.GetHandle(i);
-		const AssetEntry* asset = assetIndex.Get(handle);
+	// Get sorted assets for this type
+	const std::vector<u64> sortedAssets = GetSortedAssetsOfType(type);
+	
+	for (u64 assetId : sortedAssets) {
+		const AssetEntry* asset = AssetManager::GetAssetInfo(assetId);
 		if (!asset) continue;
-
-		if (asset->flags.type != type || asset->flags.deleted) {
-			continue;
-		}
 
 		ImGui::PushID(asset->id);
 
@@ -1308,15 +1305,12 @@ static u64 DrawAssetListWithFunctionality(AssetType type, ImGui::FileBrowser& fi
 	u64 result = UUID_NULL;
 	ImGui::BeginChild("Asset list", ImVec2(150, 0), ImGuiChildFlags_Border | ImGuiChildFlags_ResizeX);
 
-	const AssetIndex& assetIndex = AssetManager::GetIndex();
-	for (u32 i = 0; i < assetIndex.Count(); i++) {
-		PoolHandle<AssetEntry> handle = assetIndex.GetHandle(i);
-		const AssetEntry* asset = assetIndex.Get(handle);
+	// Get sorted assets for this type
+	const std::vector<u64> sortedAssets = GetSortedAssetsOfType(type);
+	
+	for (u64 assetId : sortedAssets) {
+		const AssetEntry* asset = AssetManager::GetAssetInfo(assetId);
 		if (!asset) continue;
-
-		if (asset->flags.type != type || asset->flags.deleted) {
-			continue;
-		}
 
 		ImGui::PushID(asset->id);
 
@@ -3771,6 +3765,104 @@ static void DrawOverworldWindow() {
 #pragma endregion
 
 #pragma region Asset browser
+// Asset directory tree structure for organized display
+struct AssetDirectoryNode {
+	std::string name;
+	std::string fullPath;
+	bool isDirectory;
+	bool expanded;
+	std::vector<u64> assetIds;
+	std::vector<std::unique_ptr<AssetDirectoryNode>> children;
+	
+	AssetDirectoryNode(const std::string& nodeName, const std::string& path, bool isDir)
+		: name(nodeName), fullPath(path), isDirectory(isDir), expanded(false) {}
+};
+
+// Global asset tree cache
+static std::unique_ptr<AssetDirectoryNode> g_assetTree = nullptr;
+static size_t g_lastAssetCount = 0;
+
+static AssetDirectoryNode* FindOrCreateDirectoryNode(AssetDirectoryNode* parent, const std::string& dirName, const std::string& fullPath) {
+	// Check if directory already exists
+	for (auto& child : parent->children) {
+		if (child->isDirectory && child->name == dirName) {
+			return child.get();
+		}
+	}
+	
+	// Create new directory node
+	auto newDir = std::make_unique<AssetDirectoryNode>(dirName, fullPath, true);
+	AssetDirectoryNode* result = newDir.get();
+	parent->children.push_back(std::move(newDir));
+	return result;
+}
+
+static void SortDirectoryChildren(AssetDirectoryNode* node) {
+	if (!node) return;
+	
+	// Sort children: directories first, then files, both alphabetically
+	std::sort(node->children.begin(), node->children.end(), 
+		[](const std::unique_ptr<AssetDirectoryNode>& a, const std::unique_ptr<AssetDirectoryNode>& b) {
+			if (a->isDirectory != b->isDirectory) {
+				return a->isDirectory; // directories first
+			}
+			return a->name < b->name; // alphabetical within each group
+		});
+	
+	// Sort assets within this node alphabetically
+	std::sort(node->assetIds.begin(), node->assetIds.end(), 
+		[](u64 aId, u64 bId) {
+			const AssetEntry* a = AssetManager::GetAssetInfo(aId);
+			const AssetEntry* b = AssetManager::GetAssetInfo(bId);
+			if (!a || !b) return false;
+			return strcmp(a->name, b->name) < 0;
+		});
+	
+	// Recursively sort children
+	for (auto& child : node->children) {
+		SortDirectoryChildren(child.get());
+	}
+}
+
+static void BuildAssetTree() {
+	g_assetTree = std::make_unique<AssetDirectoryNode>("", "", true);
+	g_assetTree->expanded = true; // Root always expanded
+	
+	const AssetIndex& index = AssetManager::GetIndex();
+	for (u32 i = 0; i < index.Count(); i++) {
+		PoolHandle<AssetEntry> handle = index.GetHandle(i);
+		const AssetEntry* asset = index.Get(handle);
+		if (!asset || asset->flags.deleted) continue;
+		
+		std::filesystem::path assetPath(asset->relativePath);
+		AssetDirectoryNode* currentNode = g_assetTree.get();
+		std::string currentPath = "";
+		
+		// Navigate/create directory structure
+		for (const auto& part : assetPath.parent_path()) {
+			std::string partStr = part.string();
+			if (!currentPath.empty()) currentPath += "/";
+			currentPath += partStr;
+			
+			currentNode = FindOrCreateDirectoryNode(currentNode, partStr, currentPath);
+		}
+		
+		// Add asset to the final directory
+		currentNode->assetIds.push_back(asset->id);
+	}
+	
+	// Sort the entire tree
+	SortDirectoryChildren(g_assetTree.get());
+	g_lastAssetCount = AssetManager::GetAssetCount();
+}
+
+static void EnsureAssetTreeBuilt() {
+	const size_t currentAssetCount = AssetManager::GetAssetCount();
+	if (!g_assetTree || g_lastAssetCount != currentAssetCount) {
+		BuildAssetTree();
+	}
+}
+
 static void SortAssets(std::vector<u64>& assetIds, ImGuiTableSortSpecs* pSortSpecs) {
 	if (!pSortSpecs || pSortSpecs->SpecsCount == 0) return; // No sorting requested
 
@@ -3814,6 +3906,95 @@ static void SortAssets(std::vector<u64>& assetIds, ImGuiTableSortSpecs* pSortSpe
 		});
 
 	pSortSpecs->SpecsDirty = false; // Mark sorting as done
+}
+
+// Helper to get alphabetically sorted assets of a specific type
+static std::vector<u64> GetSortedAssetsOfType(AssetType type) {
+	std::vector<u64> assets;
+	const AssetIndex& assetIndex = AssetManager::GetIndex();
+	
+	for (u32 i = 0; i < assetIndex.Count(); i++) {
+		PoolHandle<AssetEntry> handle = assetIndex.GetHandle(i);
+		const AssetEntry* asset = assetIndex.Get(handle);
+		if (!asset) continue;
+
+		if (asset->flags.type == type && !asset->flags.deleted) {
+			assets.push_back(asset->id);
+		}
+	}
+	
+	// Sort alphabetically by name
+	std::sort(assets.begin(), assets.end(), 
+		[](u64 aId, u64 bId) {
+			const AssetEntry* a = AssetManager::GetAssetInfo(aId);
+			const AssetEntry* b = AssetManager::GetAssetInfo(bId);
+			if (!a || !b) return false;
+			return strcmp(a->name, b->name) < 0;
+		});
+	
+	return assets;
+}
+
+static void DrawAssetTreeNode(AssetDirectoryNode* node, u64& selectedAsset, int depth = 0) {
+	if (!node) return;
+	
+	if (node->isDirectory) {
+		// Draw directory
+		ImGuiTreeNodeFlags treeFlags = ImGuiTreeNodeFlags_None;
+		if (node->children.empty() && node->assetIds.empty()) {
+			treeFlags |= ImGuiTreeNodeFlags_Leaf;
+		}
+		if (node->expanded) {
+			treeFlags |= ImGuiTreeNodeFlags_DefaultOpen;
+		}
+		
+		bool nodeOpen = false;
+		if (depth == 0) {
+			// Root node - don't draw, just render children
+			nodeOpen = true;
+		} else {
+			nodeOpen = ImGui::TreeNodeEx(node->name.c_str(), treeFlags);
+		}
+		
+		if (nodeOpen) {
+			node->expanded = true;
+			
+			// Draw child directories first
+			for (auto& child : node->children) {
+				DrawAssetTreeNode(child.get(), selectedAsset, depth + 1);
+			}
+			
+			// Draw assets in this directory
+			for (u64 assetId : node->assetIds) {
+				const AssetEntry* asset = AssetManager::GetAssetInfo(assetId);
+				if (!asset || asset->flags.deleted) continue;
+				
+				ImGui::PushID((s32)assetId);
+				
+				const bool selected = assetId == selectedAsset;
+				ImGuiSelectableFlags selectableFlags = ImGuiSelectableFlags_Leaf;
+				
+				if (ImGui::Selectable(asset->name, selected, selectableFlags)) {
+					selectedAsset = assetId;
+				}
+				
+				// Add drag and drop functionality
+				if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+					ImGui::SetDragDropPayload("dd_asset", &assetId, sizeof(u64));
+					ImGui::Text("%s", asset->name);
+					ImGui::EndDragDropSource();
+				}
+				
+				ImGui::PopID();
+			}
+			
+			if (depth > 0) {
+				ImGui::TreePop();
+			}
+		} else {
+			node->expanded = false;
+		}
+	}
 }
 
 static void DumpAssetArchive() {
@@ -3869,6 +4050,9 @@ static void DrawAssetBrowser() {
 			}
 			if (ImGui::MenuItem("Reload archive")) {
 				AssetManager::LoadArchive(ASSETS_NPAK_OUTPUT);
+				// Invalidate tree cache on reload
+				g_assetTree.reset();
+				g_lastAssetCount = 0;
 			}
 			if (ImGui::MenuItem("Repack archive")) {
 				AssetManager::RepackArchive();
@@ -3878,80 +4062,103 @@ static void DrawAssetBrowser() {
 			}
 			ImGui::EndMenu();
 		}
+		if (ImGui::BeginMenu("View")) {
+			static bool useTreeView = true;
+			if (ImGui::MenuItem("Tree View", nullptr, useTreeView)) {
+				useTreeView = true;
+			}
+			if (ImGui::MenuItem("Table View", nullptr, !useTreeView)) {
+				useTreeView = false;
+			}
+			ImGui::EndMenu();
+		}
 		ImGui::EndMenuBar();
 	}
 
 	static u64 selectedAsset = UUID_NULL;
-	static size_t assetCount = 0;
-	static std::vector<u64> assetIds;
+	static bool useTreeView = true;
+	
+	if (useTreeView) {
+		// Tree view implementation
+		EnsureAssetTreeBuilt();
+		
+		if (ImGui::BeginChild("AssetTree", ImVec2(0, 0), ImGuiChildFlags_Border)) {
+			DrawAssetTreeNode(g_assetTree.get(), selectedAsset);
+		}
+		ImGui::EndChild();
+	} else {
+		// Original table view
+		static size_t assetCount = 0;
+		static std::vector<u64> assetIds;
 
-	ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_Sortable;
-	if (ImGui::BeginTable("Assets", 5, flags)) {
-		ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_DefaultSort);
-		ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_DefaultSort);
-		ImGui::TableSetupColumn("UUID", ImGuiTableColumnFlags_DefaultSort);
-		ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_DefaultSort);
-		ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_DefaultSort);
-		ImGui::TableSetupScrollFreeze(0, 1); // Make row always visible
-		ImGui::TableHeadersRow();
+		ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_Sortable;
+		if (ImGui::BeginTable("Assets", 5, flags)) {
+			ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_DefaultSort);
+			ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_DefaultSort);
+			ImGui::TableSetupColumn("UUID", ImGuiTableColumnFlags_DefaultSort);
+			ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_DefaultSort);
+			ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_DefaultSort);
+			ImGui::TableSetupScrollFreeze(0, 1); // Make row always visible
+			ImGui::TableHeadersRow();
 
-		ImGuiTableSortSpecs* pSortSpecs = ImGui::TableGetSortSpecs();
+			ImGuiTableSortSpecs* pSortSpecs = ImGui::TableGetSortSpecs();
 
-		const AssetIndex& index = AssetManager::GetIndex();
-		const size_t newAssetCount = AssetManager::GetAssetCount();
+			const AssetIndex& index = AssetManager::GetIndex();
+			const size_t newAssetCount = AssetManager::GetAssetCount();
 
-		if (assetCount != newAssetCount) {
-			assetIds.clear();
-			assetIds.reserve(newAssetCount);
-			for (u32 i = 0; i < index.Count(); i++) {
-				PoolHandle<AssetEntry> handle = index.GetHandle(i);
-				const AssetEntry* asset = index.Get(handle);
-				if (asset) {
-					assetIds.emplace_back(asset->id);
+			if (assetCount != newAssetCount) {
+				assetIds.clear();
+				assetIds.reserve(newAssetCount);
+				for (u32 i = 0; i < index.Count(); i++) {
+					PoolHandle<AssetEntry> handle = index.GetHandle(i);
+					const AssetEntry* asset = index.Get(handle);
+					if (asset) {
+						assetIds.emplace_back(asset->id);
+					}
+				}
+				assetCount = newAssetCount;
+				if (pSortSpecs) {
+					pSortSpecs->SpecsDirty = true;
 				}
 			}
-			assetCount = newAssetCount;
-			if (pSortSpecs) {
-				pSortSpecs->SpecsDirty = true;
+
+			if (pSortSpecs && pSortSpecs->SpecsDirty) {
+				SortAssets(assetIds, pSortSpecs);
 			}
-		}
 
-		if (pSortSpecs && pSortSpecs->SpecsDirty) {
-			SortAssets(assetIds, pSortSpecs);
-		}
+			for (const auto& id : assetIds) {
+				const bool selected = id == selectedAsset;
 
-		for (const auto& id : assetIds) {
-			const bool selected = id == selectedAsset;
+				const AssetEntry* pAsset = AssetManager::GetAssetInfo(id);
 
-			const AssetEntry* pAsset = AssetManager::GetAssetInfo(id);
+				ImGui::PushID((s32)id);
+				ImGui::TableNextRow();
+				ImGui::BeginDisabled(pAsset->flags.deleted);
+				ImGui::TableNextColumn();
+				if (ImGui::Selectable(pAsset->name, selected, ImGuiSelectableFlags_SpanAllColumns)) {
+					selectedAsset = id;
+				}
+				if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
+				{
+					ImGui::SetDragDropPayload("dd_asset", &id, sizeof(u64));
+					ImGui::Text("%s", pAsset->name);
 
-			ImGui::PushID((s32)id);
-			ImGui::TableNextRow();
-			ImGui::BeginDisabled(pAsset->flags.deleted);
-			ImGui::TableNextColumn();
-			if (ImGui::Selectable(pAsset->name, selected, ImGuiSelectableFlags_SpanAllColumns)) {
-				selectedAsset = id;
+					ImGui::EndDragDropSource();
+				}
+				ImGui::TableNextColumn();
+				ImGui::Text("%s", pAsset->relativePath);
+				ImGui::TableNextColumn();
+				ImGui::Text("%llu", id);
+				ImGui::TableNextColumn();
+				ImGui::Text("%s", ASSET_TYPE_NAMES[pAsset->flags.type]);
+				ImGui::TableNextColumn();
+				ImGui::Text("%u bytes", pAsset->size);
+				ImGui::EndDisabled();
+				ImGui::PopID();
 			}
-			if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None))
-			{
-				ImGui::SetDragDropPayload("dd_asset", &id, sizeof(u64));
-				ImGui::Text("%s", pAsset->name);
 
-				ImGui::EndDragDropSource();
-			}
-			ImGui::TableNextColumn();
-			ImGui::Text("%s", pAsset->relativePath);
-			ImGui::TableNextColumn();
-			ImGui::Text("%llu", id);
-			ImGui::TableNextColumn();
-			ImGui::Text("%s", ASSET_TYPE_NAMES[pAsset->flags.type]);
-			ImGui::TableNextColumn();
-			ImGui::Text("%u bytes", pAsset->size);
-			ImGui::EndDisabled();
-			ImGui::PopID();
+			ImGui::EndTable();
 		}
-
-		ImGui::EndTable();
 	}
 
 	ImGui::End();
