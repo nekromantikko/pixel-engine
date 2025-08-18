@@ -1385,6 +1385,73 @@ static void UpdateAssetPathsWithNewDirectory(const std::filesystem::path& oldDir
 	}
 }
 
+static bool MoveAssetToDirectory(u64 assetId, const std::filesystem::path& targetDir) {
+	const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(assetId);
+	if (!pAssetInfo) {
+		DEBUG_ERROR("Cannot move asset: Asset info not found for ID %llu\n", assetId);
+		return false;
+	}
+
+	// Get current asset paths
+	const std::filesystem::path currentFullPath = std::filesystem::path(ASSETS_SRC_DIR) / pAssetInfo->relativePath;
+	const std::filesystem::path currentMetaPath = currentFullPath.string() + ".meta";
+	
+	// Calculate new paths
+	const std::filesystem::path filename = currentFullPath.filename();
+	const std::filesystem::path newFullPath = targetDir / filename;
+	const std::filesystem::path newMetaPath = newFullPath.string() + ".meta";
+	const std::filesystem::path newRelativePath = std::filesystem::relative(newFullPath, ASSETS_SRC_DIR);
+
+	// Check if target already exists  
+	if (std::filesystem::exists(newFullPath)) {
+		DEBUG_ERROR("Cannot move asset: Target file already exists: %s\n", newFullPath.string().c_str());
+		return false;
+	}
+
+	// Check path length
+	std::string newPathStr = newRelativePath.string();
+	if (newPathStr.length() >= MAX_ASSET_PATH_LENGTH) {
+		DEBUG_ERROR("Cannot move asset: New path exceeds maximum length (%d characters): %s\n", MAX_ASSET_PATH_LENGTH, newPathStr.c_str());
+		return false;
+	}
+
+	std::error_code ec;
+	
+	// Move the main asset file
+	if (std::filesystem::exists(currentFullPath)) {
+		std::filesystem::rename(currentFullPath, newFullPath, ec);
+		if (ec) {
+			DEBUG_ERROR("Failed to move asset file from '%s' to '%s': %s\n", 
+				currentFullPath.string().c_str(), newFullPath.string().c_str(), ec.message().c_str());
+			return false;
+		}
+		DEBUG_LOG("Moved asset file from '%s' to '%s'\n", currentFullPath.string().c_str(), newFullPath.string().c_str());
+	}
+
+	// Move the .meta file
+	if (std::filesystem::exists(currentMetaPath)) {
+		std::filesystem::rename(currentMetaPath, newMetaPath, ec);
+		if (ec) {
+			DEBUG_ERROR("Failed to move asset metadata file from '%s' to '%s': %s\n", 
+				currentMetaPath.string().c_str(), newMetaPath.string().c_str(), ec.message().c_str());
+			
+			// Try to revert the main file move
+			std::filesystem::rename(newFullPath, currentFullPath);
+			return false;
+		}
+		DEBUG_LOG("Moved asset metadata file from '%s' to '%s'\n", currentMetaPath.string().c_str(), newMetaPath.string().c_str());
+	}
+
+	// Update the asset's relative path in memory (non-const cast needed for modification)
+	AssetEntry* pMutableAssetInfo = AssetManager::GetAssetInfo(assetId);
+	if (pMutableAssetInfo) {
+		strcpy(pMutableAssetInfo->relativePath, newPathStr.c_str());
+		DEBUG_LOG("Updated asset relative path to '%s'\n", newPathStr.c_str());
+	}
+
+	return true;
+}
+
 static u64 DrawAssetHierarchyRecursive(AssetType type, AssetListActionState* pActionState, const std::filesystem::path& dir = ASSETS_SRC_DIR) {
 	u64 result = UUID_NULL;
 
@@ -1427,6 +1494,22 @@ static u64 DrawAssetHierarchyRecursive(AssetType type, AssetListActionState* pAc
 					}
 					ImGui::EndPopup();
 				}
+			}
+
+			// Add drag & drop target for moving assets to this directory
+			if (ImGui::BeginDragDropTarget()) {
+				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dd_asset", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
+					const u64 draggedAssetId = *(const u64*)payload->Data;
+					const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(draggedAssetId);
+					const bool isValidAsset = pAssetInfo && !pAssetInfo->flags.deleted;
+					
+					if (isValidAsset && payload->IsDelivery()) {
+						if (MoveAssetToDirectory(draggedAssetId, entry.path())) {
+							DEBUG_LOG("Successfully moved asset %llu to directory '%s'\n", draggedAssetId, entry.path().string().c_str());
+						}
+					}
+				}
+				ImGui::EndDragDropTarget();
 			}
 
 			if (nodeOpen) {
