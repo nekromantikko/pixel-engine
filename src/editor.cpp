@@ -136,7 +136,7 @@ static EditorContext* pContext;
 
 #pragma region Rendering resources
 static EditorRenderBuffer* CreateRenderBuffer(u64 id, size_t size, const void* data) {
-	EditorRenderBuffer* pBuffer = (EditorRenderBuffer*)calloc(1, Rendering::GetEditorBufferSize());
+	EditorRenderBuffer* pBuffer = ArenaAllocator::Push<EditorRenderBuffer>(ARENA_PERMANENT);
 	Rendering::InitEditorBuffer(pBuffer, size, data);
 	AssetRenderBuffersEmplace(id, pBuffer);
 	return pBuffer;
@@ -181,7 +181,7 @@ static void UpdateRenderBuffer(u64 id, AssetType type, size_t dataSize, const vo
 // CHR sheet drawn with all the current palettes
 static EditorRenderTexture* CreateChrSheetTexture(ChrBankHandle handle) {
 	const EditorRenderBuffer* pChrBuffer = GetChrRenderBuffer(handle.id);
-	EditorRenderTexture* pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+	EditorRenderTexture* pTexture = ArenaAllocator::Push<EditorRenderTexture>(ARENA_PERMANENT);
 	Rendering::InitEditorTexture(pTexture, CHR_DIM_PIXELS * PALETTE_COUNT, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, pChrBuffer);
 	AssetRenderTexturesEmplace(handle.id, pTexture);
 	return pTexture;
@@ -4782,7 +4782,7 @@ static void PopulateChrEditorData(EditedAsset& editedAsset) {
 	if (!pEditorData) {
 		pEditorData = new ChrEditorData();
 
-		pEditorData->pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+		pEditorData->pTexture = ArenaAllocator::Push<EditorRenderTexture>(ARENA_PERMANENT);
 		Rendering::InitEditorTexture(pEditorData->pTexture, CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, GetChrRenderBuffer(editedAsset.id));
 		InsertTempRenderTexture(pEditorData->pTexture);
 	}
@@ -4841,10 +4841,10 @@ static void PopulatePaletteEditorData(EditedAsset& editedAsset) {
 	if (!pEditorData) {
 		pEditorData = new PaletteEditorData();
 
-		pEditorData->pBuffer = (EditorRenderBuffer*)calloc(1, Rendering::GetEditorBufferSize());
+		pEditorData->pBuffer = ArenaAllocator::Push<EditorRenderBuffer>(ARENA_PERMANENT);
 		Rendering::InitEditorBuffer(pEditorData->pBuffer, PALETTE_COLOR_COUNT, editedAsset.data);
 		InsertTempRenderBuffer(pEditorData->pBuffer);
-		pEditorData->pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+		pEditorData->pTexture = ArenaAllocator::Push<EditorRenderTexture>(ARENA_PERMANENT);
 		Rendering::InitEditorTexture(pEditorData->pTexture, CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, nullptr, pEditorData->pBuffer);
 		InsertTempRenderTexture(pEditorData->pTexture);
 	}
@@ -5176,21 +5176,18 @@ void Editor::Init(SDL_Window *pWindow) {
 	Rendering::InitEditor(pWindow);
 
 	constexpr u32 sheetPaletteCount = PALETTE_COUNT / 2;
-	pContext->pChrTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+	pContext->pChrTexture = ArenaAllocator::Push<EditorRenderTexture>(ARENA_PERMANENT);
 	Rendering::InitEditorTexture(pContext->pChrTexture, CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, EDITOR_TEXTURE_USAGE_CHR);
-	pContext->pPaletteTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+	pContext->pPaletteTexture = ArenaAllocator::Push<EditorRenderTexture>(ARENA_PERMANENT);
 	Rendering::InitEditorTexture(pContext->pPaletteTexture, PALETTE_MEMORY_SIZE, 1, EDITOR_TEXTURE_USAGE_PALETTE);
-	pContext->pColorTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+	pContext->pColorTexture = ArenaAllocator::Push<EditorRenderTexture>(ARENA_PERMANENT);
 	Rendering::InitEditorTexture(pContext->pColorTexture, 16, 8, EDITOR_TEXTURE_USAGE_COLOR);
 }
 
 void Editor::Free() {
 	Rendering::FreeEditorTexture(pContext->pChrTexture);
-	free(pContext->pChrTexture);
 	Rendering::FreeEditorTexture(pContext->pPaletteTexture);
-	free(pContext->pPaletteTexture);
 	Rendering::FreeEditorTexture(pContext->pColorTexture);
-	free(pContext->pColorTexture);
 
 	Rendering::ShutdownEditor();
 	ImGui::DestroyContext();
@@ -5238,7 +5235,6 @@ void Editor::Update(r64 dt) {
 		EditorRenderTexture* pTempTexture = pContext->tempTextureEraseList[i];
 		EraseTempRenderTexture(pTempTexture);
 		Rendering::FreeEditorTexture(pTempTexture);
-		free(pTempTexture);
 	}
 	pContext->tempTextureEraseCount = 0;
 
@@ -5247,7 +5243,6 @@ void Editor::Update(r64 dt) {
 		EditorRenderBuffer* pTempBuffer = pContext->tempBufferEraseList[i];
 		EraseTempRenderBuffer(pTempBuffer);
 		Rendering::FreeEditorBuffer(pTempBuffer);
-		free(pTempBuffer);
 	}
 	pContext->tempBufferEraseCount = 0;
 
@@ -5256,13 +5251,11 @@ void Editor::Update(r64 dt) {
 		EditorRenderBuffer* pBuffer = AssetRenderBuffersFind(id);
 		if (pBuffer) {
 			Rendering::FreeEditorBuffer(pBuffer);
-			free(pBuffer);
 			AssetRenderBuffersErase(id);
 		}
 		EditorRenderTexture* pTexture = AssetRenderTexturesFind(id);
 		if (pTexture) {
 			Rendering::FreeEditorTexture(pTexture);
-			free(pTexture);
 			AssetRenderTexturesErase(id);
 		}
 	}
