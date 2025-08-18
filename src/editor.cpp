@@ -72,12 +72,16 @@ struct EditorContext {
 	u32 assetEraseCount;
 	u32 assetEraseCapacity;
 
-	std::unordered_set<EditorRenderBuffer*> tempRenderBuffers;
+	EditorRenderBuffer** tempRenderBuffers;
+	u32 tempRenderBuffersCount;
+	u32 tempRenderBuffersCapacity;
 	EditorRenderBuffer** tempBufferEraseList;
 	u32 tempBufferEraseCount;
 	u32 tempBufferEraseCapacity;
 	
-	std::unordered_set<EditorRenderTexture*> tempRenderTextures;
+	EditorRenderTexture** tempRenderTextures;
+	u32 tempRenderTexturesCount;
+	u32 tempRenderTexturesCapacity;
 	EditorRenderTexture** tempTextureEraseList;
 	u32 tempTextureEraseCount;
 	u32 tempTextureEraseCapacity;
@@ -4764,7 +4768,7 @@ static void PopulateChrEditorData(EditedAsset& editedAsset) {
 
 		pEditorData->pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
 		Rendering::InitEditorTexture(pEditorData->pTexture, CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, GetChrRenderBuffer(editedAsset.id));
-		pContext->tempRenderTextures.insert(pEditorData->pTexture);
+		InsertTempRenderTexture(pEditorData->pTexture);
 	}
 }
 
@@ -4823,10 +4827,10 @@ static void PopulatePaletteEditorData(EditedAsset& editedAsset) {
 
 		pEditorData->pBuffer = (EditorRenderBuffer*)calloc(1, Rendering::GetEditorBufferSize());
 		Rendering::InitEditorBuffer(pEditorData->pBuffer, PALETTE_COLOR_COUNT, editedAsset.data);
-		pContext->tempRenderBuffers.insert(pEditorData->pBuffer);
+		InsertTempRenderBuffer(pEditorData->pBuffer);
 		pEditorData->pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
 		Rendering::InitEditorTexture(pEditorData->pTexture, CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, nullptr, pEditorData->pBuffer);
-		pContext->tempRenderTextures.insert(pEditorData->pTexture);
+		InsertTempRenderTexture(pEditorData->pTexture);
 	}
 
 	Rendering::UpdateEditorBuffer(pEditorData->pBuffer, editedAsset.data);
@@ -4996,11 +5000,64 @@ void Editor::CreateContext() {
 	pContext->tempTextureEraseCount = 0;
 	pContext->tempTextureEraseCapacity = maxTempEraseCount;
 	
+	// Initialize temporary render resource arrays
+	constexpr u32 maxTempRenderCount = 256; // Active temporary render resources
+	pContext->tempRenderBuffers = ArenaAllocator::PushArray<EditorRenderBuffer*>(ARENA_PERMANENT, maxTempRenderCount);
+	pContext->tempRenderBuffersCount = 0;
+	pContext->tempRenderBuffersCapacity = maxTempRenderCount;
+	
+	pContext->tempRenderTextures = ArenaAllocator::PushArray<EditorRenderTexture*>(ARENA_PERMANENT, maxTempRenderCount);
+	pContext->tempRenderTexturesCount = 0;
+	pContext->tempRenderTexturesCapacity = maxTempRenderCount;
+	
 	// Initialize console log
 	constexpr u32 maxConsoleLogCount = 2048; // Max console messages
 	pContext->consoleLogMessages = ArenaAllocator::PushArray<char*>(ARENA_PERMANENT, maxConsoleLogCount);
 	pContext->consoleLogCount = 0;
 	pContext->consoleLogCapacity = maxConsoleLogCount;
+}
+
+// Helper functions for temp render resource management
+static void InsertTempRenderBuffer(EditorRenderBuffer* pBuffer) {
+	assert(pContext->tempRenderBuffersCount < pContext->tempRenderBuffersCapacity && "Temp render buffers overflow");
+	// Check if already exists (linear search)
+	for (u32 i = 0; i < pContext->tempRenderBuffersCount; i++) {
+		if (pContext->tempRenderBuffers[i] == pBuffer) {
+			return; // Already exists
+		}
+	}
+	pContext->tempRenderBuffers[pContext->tempRenderBuffersCount++] = pBuffer;
+}
+
+static void EraseTempRenderBuffer(EditorRenderBuffer* pBuffer) {
+	for (u32 i = 0; i < pContext->tempRenderBuffersCount; i++) {
+		if (pContext->tempRenderBuffers[i] == pBuffer) {
+			// Move last element to this position and decrement count
+			pContext->tempRenderBuffers[i] = pContext->tempRenderBuffers[--pContext->tempRenderBuffersCount];
+			return;
+		}
+	}
+}
+
+static void InsertTempRenderTexture(EditorRenderTexture* pTexture) {
+	assert(pContext->tempRenderTexturesCount < pContext->tempRenderTexturesCapacity && "Temp render textures overflow");
+	// Check if already exists (linear search)
+	for (u32 i = 0; i < pContext->tempRenderTexturesCount; i++) {
+		if (pContext->tempRenderTextures[i] == pTexture) {
+			return; // Already exists
+		}
+	}
+	pContext->tempRenderTextures[pContext->tempRenderTexturesCount++] = pTexture;
+}
+
+static void EraseTempRenderTexture(EditorRenderTexture* pTexture) {
+	for (u32 i = 0; i < pContext->tempRenderTexturesCount; i++) {
+		if (pContext->tempRenderTextures[i] == pTexture) {
+			// Move last element to this position and decrement count
+			pContext->tempRenderTextures[i] = pContext->tempRenderTextures[--pContext->tempRenderTexturesCount];
+			return;
+		}
+	}
 }
 
 void Editor::Init(SDL_Window *pWindow) {
@@ -5068,7 +5125,7 @@ void Editor::Update(r64 dt) {
 	// Clean up deleted textures
 	for (u32 i = 0; i < pContext->tempTextureEraseCount; i++) {
 		EditorRenderTexture* pTempTexture = pContext->tempTextureEraseList[i];
-		pContext->tempRenderTextures.erase(pTempTexture);
+		EraseTempRenderTexture(pTempTexture);
 		Rendering::FreeEditorTexture(pTempTexture);
 		free(pTempTexture);
 	}
@@ -5077,7 +5134,7 @@ void Editor::Update(r64 dt) {
 	// Clean up deleted buffers
 	for (u32 i = 0; i < pContext->tempBufferEraseCount; i++) {
 		EditorRenderBuffer* pTempBuffer = pContext->tempBufferEraseList[i];
-		pContext->tempRenderBuffers.erase(pTempBuffer);
+		EraseTempRenderBuffer(pTempBuffer);
 		Rendering::FreeEditorBuffer(pTempBuffer);
 		free(pTempBuffer);
 	}
@@ -5174,8 +5231,8 @@ void Editor::SetupFrame() {
 		Rendering::RenderEditorTexture(kvp.second);
 	}
 
-	for (auto pTempTexture : pContext->tempRenderTextures) {
-		Rendering::RenderEditorTexture(pTempTexture);
+	for (u32 i = 0; i < pContext->tempRenderTexturesCount; i++) {
+		Rendering::RenderEditorTexture(pContext->tempRenderTextures[i]);
 	}
 }
 
