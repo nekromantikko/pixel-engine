@@ -73,9 +73,14 @@ struct EditorContext {
 	u32 assetEraseCapacity;
 
 	std::unordered_set<EditorRenderBuffer*> tempRenderBuffers;
-	std::vector<EditorRenderBuffer*> tempBufferEraseList;
+	EditorRenderBuffer** tempBufferEraseList;
+	u32 tempBufferEraseCount;
+	u32 tempBufferEraseCapacity;
+	
 	std::unordered_set<EditorRenderTexture*> tempRenderTextures;
-	std::vector<EditorRenderTexture*> tempTextureEraseList;
+	EditorRenderTexture** tempTextureEraseList;
+	u32 tempTextureEraseCount;
+	u32 tempTextureEraseCapacity;
 
 	// Timing
 	r64 secondsElapsed;
@@ -4763,7 +4768,8 @@ static void PopulateChrEditorData(EditedAsset& editedAsset) {
 static void DeleteChrEditorData(EditedAsset& editedAsset) {
 	ChrEditorData* pEditorData = (ChrEditorData*)editedAsset.userData;
 
-	pContext->tempTextureEraseList.push_back(pEditorData->pTexture);
+	assert(pContext->tempTextureEraseCount < pContext->tempTextureEraseCapacity && "Temp texture erase list overflow");
+	pContext->tempTextureEraseList[pContext->tempTextureEraseCount++] = pEditorData->pTexture;
 
 	// NOTE: This does not free the render data, so it's potentially leaky
 	// Render data should be freed later when iterating the erase list
@@ -4826,8 +4832,10 @@ static void PopulatePaletteEditorData(EditedAsset& editedAsset) {
 static void DeletePaletteEditorData(EditedAsset& editedAsset) {
 	PaletteEditorData* pEditorData = (PaletteEditorData*)editedAsset.userData;
 
-	pContext->tempTextureEraseList.push_back(pEditorData->pTexture);
-	pContext->tempBufferEraseList.push_back(pEditorData->pBuffer);
+	assert(pContext->tempTextureEraseCount < pContext->tempTextureEraseCapacity && "Temp texture erase list overflow");
+	pContext->tempTextureEraseList[pContext->tempTextureEraseCount++] = pEditorData->pTexture;
+	assert(pContext->tempBufferEraseCount < pContext->tempBufferEraseCapacity && "Temp buffer erase list overflow");
+	pContext->tempBufferEraseList[pContext->tempBufferEraseCount++] = pEditorData->pBuffer;
 
 	// NOTE: This does not free the render data, so it's potentially leaky
 	// Render data should be freed later when iterating the erase list
@@ -4975,6 +4983,15 @@ void Editor::CreateContext() {
 	pContext->assetEraseList = ArenaAllocator::PushArray<u64>(ARENA_PERMANENT, maxAssetEraseCount);
 	pContext->assetEraseCount = 0;
 	pContext->assetEraseCapacity = maxAssetEraseCount;
+	
+	constexpr u32 maxTempEraseCount = 512; // For temporary render resources
+	pContext->tempBufferEraseList = ArenaAllocator::PushArray<EditorRenderBuffer*>(ARENA_PERMANENT, maxTempEraseCount);
+	pContext->tempBufferEraseCount = 0;
+	pContext->tempBufferEraseCapacity = maxTempEraseCount;
+	
+	pContext->tempTextureEraseList = ArenaAllocator::PushArray<EditorRenderTexture*>(ARENA_PERMANENT, maxTempEraseCount);
+	pContext->tempTextureEraseCount = 0;
+	pContext->tempTextureEraseCapacity = maxTempEraseCount;
 }
 
 void Editor::Init(SDL_Window *pWindow) {
@@ -5036,20 +5053,22 @@ void Editor::Update(r64 dt) {
 	pContext->secondsElapsed += dt;
 
 	// Clean up deleted textures
-	for (auto pTempTexture : pContext->tempTextureEraseList) {
+	for (u32 i = 0; i < pContext->tempTextureEraseCount; i++) {
+		EditorRenderTexture* pTempTexture = pContext->tempTextureEraseList[i];
 		pContext->tempRenderTextures.erase(pTempTexture);
 		Rendering::FreeEditorTexture(pTempTexture);
 		free(pTempTexture);
 	}
-	pContext->tempTextureEraseList.clear();
+	pContext->tempTextureEraseCount = 0;
 
 	// Clean up deleted buffers
-	for (auto pTempBuffer : pContext->tempBufferEraseList) {
+	for (u32 i = 0; i < pContext->tempBufferEraseCount; i++) {
+		EditorRenderBuffer* pTempBuffer = pContext->tempBufferEraseList[i];
 		pContext->tempRenderBuffers.erase(pTempBuffer);
 		Rendering::FreeEditorBuffer(pTempBuffer);
 		free(pTempBuffer);
 	}
-	pContext->tempBufferEraseList.clear();
+	pContext->tempBufferEraseCount = 0;
 
 	for (u32 i = 0; i < pContext->assetEraseCount; i++) {
 		u64 id = pContext->assetEraseList[i];
