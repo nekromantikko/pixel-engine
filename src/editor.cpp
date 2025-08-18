@@ -21,6 +21,7 @@
 #include "random.h"
 #include "asset_manager.h"
 #include "asset_serialization.h"
+#include "memory_arena.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include <gtx/matrix_transform_2d.hpp>
 #include <vector>
@@ -1248,11 +1249,15 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 	const u64 oldId = selectedId;
 
 	std::vector<u64> ids;
-	std::vector<std::string> assetNames;
+	std::vector<const char*> assetNames;
 	s32 selectedIndex = -1;
 
 	const AssetIndex& assetIndex = AssetManager::GetIndex();
-	for (u32 i = 0; i < assetIndex.Count(); i++) {
+	const u32 assetCount = assetIndex.Count();
+
+	ArenaMarker scratchMarker = ArenaAllocator::GetMarker(ARENA_SCRATCH);
+
+	for (u32 i = 0; i < assetCount; i++) {
 		PoolHandle<AssetEntry> handle = assetIndex.GetHandle(i);
 		const AssetEntry* asset = assetIndex.Get(handle);
 		if (!asset) continue;
@@ -1266,7 +1271,11 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 		}
 
 		ids.push_back(asset->id);
-		assetNames.push_back(GetAssetName(asset->relativePath));
+		std::string assetName = GetAssetName(asset->relativePath);
+		const char* strData = ArenaAllocator::PushArray<char>(ARENA_SCRATCH, assetName.length() + 1);
+		memset((void*)strData, 0, assetName.length() + 1); // Clear buffer to avoid garbage data
+		strcpy((char*)strData, assetName.c_str());
+		assetNames.push_back(strData);
 	}
 
 	if (selectedId != UUID_NULL && selectedIndex < 0) {
@@ -1275,13 +1284,7 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 		selectedIndex = -1;
 	}
 
-	// This is really stupid...
-	std::vector<const char*> assetNamesCStr;
-	for (const auto& name : assetNames) {
-		assetNamesCStr.push_back(name.c_str());
-	}
-
-	if (DrawTypeSelectionCombo(label, assetNamesCStr.data(), assetNamesCStr.size(), selectedIndex)) {
+	if (DrawTypeSelectionCombo(label, assetNames.data(), assetNames.size(), selectedIndex)) {
 		selectedId = selectedIndex >= 0 ? ids[selectedIndex] : UUID_NULL;
 	}
 
@@ -1300,6 +1303,7 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 		ImGui::EndDragDropTarget();
 	}
 
+	ArenaAllocator::PopToMarker(ARENA_SCRATCH, scratchMarker);
 	return oldId != selectedId;
 }
 
@@ -1639,7 +1643,7 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 					std::vector<AssetEntry*> assets = CollectAssetsInDirectory(pActionState->targetPath);
 
 					for (AssetEntry* pAssetInfo : assets) {
-						DEBUG_LOG("Deleting asset: %s", pAssetInfo->relativePath);
+						DEBUG_LOG("Deleting asset: %s\n", pAssetInfo->relativePath);
 						DeleteAssetSourceFiles(pAssetInfo);
 						AssetManager::RemoveAsset(pAssetInfo->id);
 						if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
@@ -1656,7 +1660,7 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 					}
 				}
 				else {
-					DEBUG_LOG("Deleting asset: %s", pActionState->targetPath.string().c_str());
+					DEBUG_LOG("Deleting asset: %s\n", pActionState->targetPath.string().c_str());
 					DeleteAssetSourceFiles(pAssetInfo);
 					AssetManager::RemoveAsset(pAssetInfo->id);
 					if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
@@ -1750,9 +1754,15 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 					else {
 						std::filesystem::rename(pActionState->targetPath, newAssetPath);
 						std::filesystem::rename(pActionState->targetPath.string() + ".meta", newAssetPath.string() + ".meta");
-						std::filesystem::path newRelativePath = std::filesystem::relative(newAssetPath, ASSETS_SRC_DIR);
-						// TODO: Buffer may overflow here if the name is long enough...
-						strcpy(pAssetInfo->relativePath, newRelativePath.string().c_str());
+						std::string newRelativePath = std::filesystem::relative(newAssetPath, ASSETS_SRC_DIR).string();
+
+						if (newRelativePath.length() < MAX_ASSET_PATH_LENGTH) {
+							strcpy(pAssetInfo->relativePath, newRelativePath.c_str());
+							DEBUG_LOG("Updated asset path to '%s'\n", newAssetPath.string().c_str());
+						}
+						else {
+							DEBUG_ERROR("New asset path '%s' exceeds maximum length (%d characters)\n", newRelativePath.c_str(), MAX_ASSET_PATH_LENGTH);
+						}
 					}
 					ImGui::CloseCurrentPopup();
 					pActionState->targetPath.clear();
