@@ -6,7 +6,7 @@
 static void OnPickup(Actor* pActor, const PickupData& data) {
     pActor->flags.pendingRemoval = true;
     if (data.pickupSound != SoundHandle::Null()) {
-        Audio::PlaySFX(data.pickupSound);
+        Audio::PlaySFX(data.pickupSound, 0);
     }
 }
 

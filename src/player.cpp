@@ -306,7 +306,7 @@ static void PlayerShoot(Actor* pPlayer, const PlayerData& data) {
         if (playerWeapon == PLAYER_WEAPON_LAUNCHER) {
             pBullet->velocity = pBullet->velocity * 0.75f;
             if (data.gunSound != SoundHandle::Null()) {
-                Audio::PlaySFX(data.gunSound);
+                Audio::PlaySFX(data.gunSound, 1);
             }
         }
 

@@ -7,6 +7,7 @@
 #include <cassert>
 #include "nes_timing.h"
 #include "asset_manager.h"
+#include "random.h"
 
 static constexpr u32 DEBUG_BUFFER_SIZE = 1024;
 
@@ -27,6 +28,12 @@ static constexpr u8 LENGTH_TABLE[0x20] = {
 
 static constexpr u16 NOISE_PERIOD_TABLE[0x10] = {
     4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
+};
+
+static constexpr s8 MAX_SEMITONE_SHIFT = 12; // Max semitone shift for pitch
+static constexpr u32 SEMITONE_SHIFT_TABLE_SIZE = MAX_SEMITONE_SHIFT * 2 + 1; // -12 to +12 semitones
+static constexpr r32 SEMITONE_SHIFT_TABLE[SEMITONE_SHIFT_TABLE_SIZE] = {
+    2.0f, 1.88775f, 1.7818f, 1.68179f, 1.5874f, 1.49831f, 1.41421f, 1.33484f, 1.25992f, 1.18921f, 1.12246f, 1.05946f, 1.0f, 0.943874f, 0.890899f, 0.840896f, 0.793701f, 0.749154f, 0.707107f, 0.66742f, 0.629961f, 0.594604f, 0.561231f, 0.529732f, 0.5f
 };
 
 enum SoundOpCode : uint8_t {
@@ -73,6 +80,9 @@ struct PulseChannel {
 
     u8 lengthCounter : 5;
     bool muted;
+
+    // Effects
+	s8 shiftSemitones = 0; // Pitch shift in semitones
 };
 
 struct TriangleRegister {
@@ -101,6 +111,9 @@ struct TriangleChannel {
     bool halt;
 
     u8 lengthCounter : 5;
+
+    // Effects
+    s8 shiftSemitones = 0; // Pitch shift in semitones
 };
 
 struct NoiseRegister {
@@ -134,6 +147,9 @@ struct NoiseChannel {
     u16 shiftRegister : 15;
 
     u8 lengthCounter : 5;
+
+    // Effects
+    s8 shiftSemitones = 0; // Pitch shift in semitones
 };
 
 struct AudioContext {
@@ -449,6 +465,14 @@ static u8 ClockPulse(PulseChannel& pulse, bool quarterFrame, bool halfFrame, int
     }
 
     u16 period = pulse.reg.periodLow + (pulse.reg.periodHigh << 8);
+    
+	// Apply pitch shift if needed
+	if (pulse.shiftSemitones != 0) {
+        const r32 multiplier = SEMITONE_SHIFT_TABLE[pulse.shiftSemitones + MAX_SEMITONE_SHIFT];
+        period = u16(r32(period) * multiplier);
+        period &= 0x7ffu; // Mask to valid period range
+	}
+
     pulse.muted |= (period < 0x08);
 
     if (halfFrame) {
@@ -490,7 +514,14 @@ static u8 ClockPulse(PulseChannel& pulse, bool quarterFrame, bool halfFrame, int
 }
 
 static u8 ClockTriangle(TriangleChannel& triangle, bool quarterFrame, bool halfFrame) {
-    const u16 period = triangle.reg.periodLow + (triangle.reg.periodHigh << 8);
+    u16 period = triangle.reg.periodLow + (triangle.reg.periodHigh << 8);
+
+    // Apply pitch shift if needed
+    if (triangle.shiftSemitones != 0) {
+        const r32 multiplier = SEMITONE_SHIFT_TABLE[triangle.shiftSemitones + MAX_SEMITONE_SHIFT];
+        period = u16(r32(period) * multiplier);
+        period &= 0x7ffu; // Mask to valid period range
+    }
 
     if (quarterFrame) {
         if (triangle.halt) {
@@ -560,6 +591,12 @@ static u8 ClockNoise(NoiseChannel& noise, bool quarterFrame, bool halfFrame) {
         noise.shiftRegister |= (feedbackBit << 14);
 
         noise.counter = NOISE_PERIOD_TABLE[noise.reg.period];
+
+        // Apply pitch shift if needed
+        if (noise.shiftSemitones != 0) {
+			const r32 multiplier = SEMITONE_SHIFT_TABLE[noise.shiftSemitones + MAX_SEMITONE_SHIFT];
+            noise.counter = u16(r32(noise.counter) * multiplier);
+        }
     }
 
     bool muted = (noise.lengthCounter == 0) || (noise.shiftRegister & 1);
@@ -723,7 +760,7 @@ namespace Audio {
         ClearRegisters();
     }
 
-    void PlaySFX(SoundHandle soundHandle) {
+    void PlaySFX(SoundHandle soundHandle, s8 maxPitchShift) {
         const Sound* pSound = AssetManager::GetAsset(soundHandle);
         if (!pSound || pSound->type != SOUND_TYPE_SFX || pSound->length == 0) {
             return;
@@ -755,6 +792,29 @@ namespace Audio {
 
         g_context.sfx[pSound->sfxChannel] = soundHandle;
         g_context.sfxPos[pSound->sfxChannel] = 0;
+
+        if (pSound->sfxChannel <= CHAN_ID_NOISE) {
+            if (maxPitchShift > MAX_SEMITONE_SHIFT) {
+				maxPitchShift = MAX_SEMITONE_SHIFT;
+            }
+            else if (maxPitchShift < -MAX_SEMITONE_SHIFT) {
+				maxPitchShift = -MAX_SEMITONE_SHIFT;
+            }
+			const s8 pitchShift = maxPitchShift != 0 ? (s8)Random::GenerateInt(-maxPitchShift, maxPitchShift) : 0;
+
+			if (pSound->sfxChannel == CHAN_ID_PULSE0) {
+                g_context.pulse[0].shiftSemitones = pitchShift;
+			}
+            else if (pSound->sfxChannel == CHAN_ID_PULSE1) {
+				g_context.pulse[1].shiftSemitones = pitchShift;
+			}
+            else if (pSound->sfxChannel == CHAN_ID_TRIANGLE) {
+				g_context.triangle.shiftSemitones = pitchShift;
+			}
+            else if (pSound->sfxChannel == CHAN_ID_NOISE) {
+				g_context.noise.shiftSemitones = pitchShift;
+            }
+        }
     }
 
 #ifdef EDITOR

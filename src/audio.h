@@ -9,7 +9,7 @@ namespace Audio {
 
     void PlayMusic(SoundHandle musicHandle, bool loop);
     void StopMusic();
-    void PlaySFX(SoundHandle soundHandle);
+    void PlaySFX(SoundHandle soundHandle, s8 maxPitchShift = 2);
 
 #ifdef EDITOR
     void ReadChannel(u32 channel, void* outData);
