@@ -4317,49 +4317,78 @@ static void DrawOverworldWindow() {
 #pragma endregion
 
 #pragma region Asset browser
-static void SortAssets(std::vector<u64>& assetIds, ImGuiTableSortSpecs* pSortSpecs) {
+static void SortAssets(u64* assetIds, u32 assetCount, ImGuiTableSortSpecs* pSortSpecs) {
 	if (!pSortSpecs || pSortSpecs->SpecsCount == 0) return; // No sorting requested
 
-	std::sort(assetIds.begin(), assetIds.end(), [pSortSpecs](u64 aId, u64 bId) {
+	// Simple insertion sort for editor use (performance not critical)
+	for (u32 i = 1; i < assetCount; i++) {
+		u64 key = assetIds[i];
+		s32 j = i - 1;
+		
+		bool shouldSwap = false;
+		
 		const ImGuiTableColumnSortSpecs* sortSpecs = pSortSpecs->Specs;
+		const AssetEntry& keyAsset = *AssetManager::GetAssetInfo(key);
+		std::string keyName = GetAssetName(keyAsset.relativePath);
+		
+		while (j >= 0) {
+			u64 compareId = assetIds[j];
+			const AssetEntry& compareAsset = *AssetManager::GetAssetInfo(compareId);
+			std::string compareName = GetAssetName(compareAsset.relativePath);
+			
+			shouldSwap = false;
+			for (int k = 0; k < pSortSpecs->SpecsCount; k++) {
+				const ImGuiTableColumnSortSpecs& spec = sortSpecs[k];
 
-		const AssetEntry& a = *AssetManager::GetAssetInfo(aId);
-		std::string aName = GetAssetName(a.relativePath);
-		const AssetEntry& b = *AssetManager::GetAssetInfo(bId);
-		std::string bName = GetAssetName(b.relativePath);
-
-		for (int i = 0; i < pSortSpecs->SpecsCount; i++) {
-			const ImGuiTableColumnSortSpecs& spec = sortSpecs[i];
-
-			switch (spec.ColumnIndex) {
-			case 0: { // Sort by Name
-				int cmp = strcmp(aName.c_str(), bName.c_str());
-				if (cmp != 0) return spec.SortDirection == ImGuiSortDirection_Ascending ? (cmp < 0) : (cmp > 0);
-				break;
+				switch (spec.ColumnIndex) {
+				case 0: { // Sort by Name
+					int cmp = strcmp(keyName.c_str(), compareName.c_str());
+					if (cmp != 0) {
+						shouldSwap = spec.SortDirection == ImGuiSortDirection_Ascending ? (cmp < 0) : (cmp > 0);
+						break;
+					}
+					break;
+				}
+				case 1: { // Sort by Path
+					int cmp = strcmp(keyAsset.relativePath, compareAsset.relativePath);
+					if (cmp != 0) {
+						shouldSwap = spec.SortDirection == ImGuiSortDirection_Ascending ? (cmp < 0) : (cmp > 0);
+						break;
+					}
+					break;
+				}
+				case 2: { // Sort by UUID
+					if (keyAsset.id != compareAsset.id) {
+						shouldSwap = spec.SortDirection == ImGuiSortDirection_Ascending ? (keyAsset.id < compareAsset.id) : (keyAsset.id > compareAsset.id);
+						break;
+					}
+					break;
+				}
+				case 3: { // Sort by Type
+					if (keyAsset.flags.type != compareAsset.flags.type) {
+						shouldSwap = spec.SortDirection == ImGuiSortDirection_Ascending ? (keyAsset.flags.type < compareAsset.flags.type) : (keyAsset.flags.type > compareAsset.flags.type);
+						break;
+					}
+					break;
+				}
+				case 4: { // Sort by Size
+					if (keyAsset.size != compareAsset.size) {
+						shouldSwap = spec.SortDirection == ImGuiSortDirection_Ascending ? (keyAsset.size < compareAsset.size) : (keyAsset.size > compareAsset.size);
+						break;
+					}
+					break;
+				}
+				default:
+					break;
+				}
 			}
-			case 1: { // Sort by Path
-				int cmp = strcmp(a.relativePath, b.relativePath);
-				if (cmp != 0) return spec.SortDirection == ImGuiSortDirection_Ascending ? (cmp < 0) : (cmp > 0);
-				break;
-			}
-			case 2: { // Sort by UUID
-				if (a.id != b.id) return spec.SortDirection == ImGuiSortDirection_Ascending ? (a.id < b.id) : (a.id > b.id);
-				break;
-			}
-			case 3: { // Sort by Type
-				if (a.flags.type != b.flags.type) return spec.SortDirection == ImGuiSortDirection_Ascending ? (a.flags.type < b.flags.type) : (a.flags.type > b.flags.type);
-				break;
-			}
-			case 4: { // Sort by Size
-				if (a.size != b.size) return spec.SortDirection == ImGuiSortDirection_Ascending ? (a.size < b.size) : (a.size > b.size);
-				break;
-			}
-			default:
-				break;
-			}
+			
+			if (!shouldSwap) break;
+			assetIds[j + 1] = assetIds[j];
+			j--;
 		}
-		return false; // Default (should never happen)
-		});
+		assetIds[j + 1] = key;
+	}
 
 	pSortSpecs->SpecsDirty = false; // Mark sorting as done
 }
@@ -4429,7 +4458,9 @@ static void DrawAssetBrowser() {
 
 	static u64 selectedAsset = UUID_NULL;
 	static size_t assetCount = 0;
-	static std::vector<u64> assetIds;
+	static u64* assetIds = nullptr;
+	static u32 assetIdsCapacity = 0;
+	constexpr u32 maxAssets = 8192; // Should be enough for any project
 
 	ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_Sortable;
 	if (ImGui::BeginTable("Assets", 5, flags)) {
@@ -4447,26 +4478,32 @@ static void DrawAssetBrowser() {
 		const size_t newAssetCount = AssetManager::GetAssetCount();
 
 		if (assetCount != newAssetCount) {
-			assetIds.clear();
-			assetIds.reserve(newAssetCount);
-			for (u32 i = 0; i < index.Count(); i++) {
+			// Initialize or reallocate arena array if needed
+			if (!assetIds || assetIdsCapacity < newAssetCount) {
+				assetIds = ArenaAllocator::PushArray<u64>(ARENA_PERMANENT, maxAssets);
+				assetIdsCapacity = maxAssets;
+			}
+			
+			u32 validAssetCount = 0;
+			for (u32 i = 0; i < index.Count() && validAssetCount < assetIdsCapacity; i++) {
 				PoolHandle<AssetEntry> handle = index.GetHandle(i);
 				const AssetEntry* asset = index.Get(handle);
 				if (asset) {
-					assetIds.emplace_back(asset->id);
+					assetIds[validAssetCount++] = asset->id;
 				}
 			}
-			assetCount = newAssetCount;
+			assetCount = validAssetCount;
 			if (pSortSpecs) {
 				pSortSpecs->SpecsDirty = true;
 			}
 		}
 
 		if (pSortSpecs && pSortSpecs->SpecsDirty) {
-			SortAssets(assetIds, pSortSpecs);
+			SortAssets(assetIds, (u32)assetCount, pSortSpecs);
 		}
 
-		for (const auto& id : assetIds) {
+		for (u32 i = 0; i < assetCount; i++) {
+			u64 id = assetIds[i];
 			const bool selected = id == selectedAsset;
 
 			const AssetEntry* pAsset = AssetManager::GetAssetInfo(id);
