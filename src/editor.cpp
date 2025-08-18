@@ -66,7 +66,11 @@ struct EditorContext {
 
 	std::unordered_map<u64, EditorRenderBuffer*> assetRenderBuffers;
 	std::unordered_map<u64, EditorRenderTexture*> assetRenderTextures;
-	std::vector<u64> assetEraseList;
+	
+	// Arena-allocated erase list
+	u64* assetEraseList;
+	u32 assetEraseCount;
+	u32 assetEraseCapacity;
 
 	std::unordered_set<EditorRenderBuffer*> tempRenderBuffers;
 	std::vector<EditorRenderBuffer*> tempBufferEraseList;
@@ -1647,7 +1651,8 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 						DeleteAssetSourceFiles(pAssetInfo);
 						AssetManager::RemoveAsset(pAssetInfo->id);
 						if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
-							pContext->assetEraseList.push_back(pAssetInfo->id);
+							assert(pContext->assetEraseCount < pContext->assetEraseCapacity && "Asset erase list overflow");
+							pContext->assetEraseList[pContext->assetEraseCount++] = pAssetInfo->id;
 						}
 					}
 
@@ -1664,7 +1669,8 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 					DeleteAssetSourceFiles(pAssetInfo);
 					AssetManager::RemoveAsset(pAssetInfo->id);
 					if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
-						pContext->assetEraseList.push_back(pAssetInfo->id);
+						assert(pContext->assetEraseCount < pContext->assetEraseCapacity && "Asset erase list overflow");
+						pContext->assetEraseList[pContext->assetEraseCount++] = pAssetInfo->id;
 					}
 				}
 				ImGui::CloseCurrentPopup();
@@ -4963,6 +4969,12 @@ void Editor::CreateContext() {
 	pContext = new EditorContext{};
 	Debug::HookEditorDebugLog(ConsoleLog);
 	assert(pContext != nullptr);
+	
+	// Initialize arena-allocated erase lists
+	constexpr u32 maxAssetEraseCount = 1024; // Should be more than enough for editor use
+	pContext->assetEraseList = ArenaAllocator::PushArray<u64>(ARENA_PERMANENT, maxAssetEraseCount);
+	pContext->assetEraseCount = 0;
+	pContext->assetEraseCapacity = maxAssetEraseCount;
 }
 
 void Editor::Init(SDL_Window *pWindow) {
@@ -5039,7 +5051,8 @@ void Editor::Update(r64 dt) {
 	}
 	pContext->tempBufferEraseList.clear();
 
-	for (auto id : pContext->assetEraseList) {
+	for (u32 i = 0; i < pContext->assetEraseCount; i++) {
+		u64 id = pContext->assetEraseList[i];
 		if (auto it = pContext->assetRenderBuffers.find(id); it != pContext->assetRenderBuffers.end()) {
 			EditorRenderBuffer* pBuffer = it->second;
 			Rendering::FreeEditorBuffer(pBuffer);
@@ -5053,7 +5066,7 @@ void Editor::Update(r64 dt) {
 			pContext->assetRenderTextures.erase(it);
 		}
 	}
-	pContext->assetEraseList.clear();
+	pContext->assetEraseCount = 0;
 
 	Rendering::BeginEditorFrame();
 	ImGui::NewFrame();
