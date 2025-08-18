@@ -1090,7 +1090,7 @@ static EditedAsset CopyAssetForEditing(u64 id, PopulateAssetEditorDataFn populat
 	result.type = pAssetInfo->flags.type;
 	strcpy(result.relativePath, pAssetInfo->relativePath);
 	result.size = pAssetInfo->size;
-	result.data = malloc(pAssetInfo->size);
+	result.data = ArenaAllocator::PushArray<u8>(ARENA_PERMANENT, pAssetInfo->size);
 	memcpy(result.data, AssetManager::GetAsset(id, pAssetInfo->flags.type), pAssetInfo->size);
 	result.dirty = false;
 
@@ -1104,12 +1104,12 @@ static EditedAsset CopyAssetForEditing(u64 id, PopulateAssetEditorDataFn populat
 
 static bool ResizeEditedAsset(EditedAsset& asset, size_t newSize) {
 	if (newSize > asset.size) {
-		void* newData = malloc(newSize);
+		void* newData = ArenaAllocator::PushArray<u8>(ARENA_PERMANENT, newSize);
 		if (!newData) {
 			return false;
 		}
 		memcpy(newData, asset.data, asset.size);
-		free(asset.data);
+		// Note: old arena data is left behind (can't be freed individually), but this is acceptable for editor use
 		asset.data = newData;
 	}
 	asset.size = newSize;
@@ -1199,7 +1199,7 @@ static bool RevertEditedAsset(EditedAsset& asset, PopulateAssetEditorDataFn popu
 }
 
 static void FreeEditedAsset(EditedAsset& asset, DeleteAssetEditorDataFn deleteFn) {
-	free(asset.data);
+	// Note: asset.data is arena-allocated, so no need to free individually
 	asset.data = nullptr;
 
 	if (deleteFn) {
@@ -2442,7 +2442,7 @@ struct MetaspriteEditorData {
 
 static void PopulateMetaspriteEditorData(EditedAsset& editedAsset) {
 	if (!editedAsset.userData) {
-		editedAsset.userData = new MetaspriteEditorData();
+		editedAsset.userData = ArenaAllocator::Push<MetaspriteEditorData>(ARENA_PERMANENT);
 	}
 	
 	MetaspriteEditorData* pEditorData = (MetaspriteEditorData*)editedAsset.userData;
@@ -2472,7 +2472,7 @@ static void ApplyMetaspriteEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteMetaspriteEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 
@@ -2823,10 +2823,10 @@ struct RoomEditorData {
 
 static void PopulateRoomEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		// Note: userData is arena-allocated, so no need to delete individually
 	}
 
-	editedAsset.userData = new RoomEditorData();
+	editedAsset.userData = ArenaAllocator::Push<RoomEditorData>(ARENA_PERMANENT);
 	RoomEditorData* pEditorData = (RoomEditorData*)editedAsset.userData;
 
 	const RoomTemplate* pTemplate = (RoomTemplate*)editedAsset.data;
@@ -2852,7 +2852,7 @@ static void ApplyRoomEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteRoomEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 static void DrawScreenBorders(u32 index, ImVec2 pMin, ImVec2 pMax, r32 renderScale) {
@@ -3205,10 +3205,10 @@ struct ActorPrototypeEditorData {
 
 static void PopulateActorEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		// Note: userData is arena-allocated, so no need to delete individually
 	}
 
-	editedAsset.userData = new ActorPrototypeEditorData();
+	editedAsset.userData = ArenaAllocator::Push<ActorPrototypeEditorData>(ARENA_PERMANENT);
 	ActorPrototypeEditorData* pEditorData = (ActorPrototypeEditorData*)editedAsset.userData;
 	ActorPrototype* pPrototype = (ActorPrototype*)editedAsset.data;
 
@@ -3235,7 +3235,7 @@ static void ApplyActorEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteActorEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 static ImVec2 DrawActorPreview(const ActorPrototypeEditorData* pEditorData, s32 animIndex, s32 frameIndex, r32 size) {
@@ -3755,10 +3755,10 @@ static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon)
 
 static void PopulateDungeonEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		// Note: userData is arena-allocated, so no need to delete individually
 	}
 
-	editedAsset.userData = new DungeonEditorData();
+	editedAsset.userData = ArenaAllocator::Push<DungeonEditorData>(ARENA_PERMANENT);
 	DungeonEditorData* pEditorData = (DungeonEditorData*)editedAsset.userData;
 	Dungeon* pDungeon = (Dungeon*)editedAsset.data;
 	pEditorData->dungeon = ConvertFromDungeon(pDungeon);
@@ -3772,7 +3772,7 @@ static void ApplyDungeonEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteDungeonEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 static u32 GetRoomCount(const EditorDungeon& dungeon) {
@@ -4161,14 +4161,14 @@ struct OverworldEditorData {
 
 static void PopulateOverworldEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		// Note: userData is arena-allocated, so no need to delete individually
 	}
 
-	editedAsset.userData = new OverworldEditorData();
+	editedAsset.userData = ArenaAllocator::Push<OverworldEditorData>(ARENA_PERMANENT);
 }
 
 static void DeleteOverworldEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 static void DrawOverworldEditor(EditedAsset& asset) {
@@ -4486,10 +4486,10 @@ struct AnimationEditorData {
 
 static void PopulateAnimationEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		// Note: userData is arena-allocated, so no need to delete individually
 	}
 
-	editedAsset.userData = new AnimationEditorData();
+	editedAsset.userData = ArenaAllocator::Push<AnimationEditorData>(ARENA_PERMANENT);
 	AnimationEditorData* pEditorData = (AnimationEditorData*)editedAsset.userData;
 
 	Animation* pAnimation = (Animation*)editedAsset.data;
@@ -4514,7 +4514,7 @@ static void ApplyAnimationEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteAnimationEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 static void DrawAnimationPreview(const AnimationEditorData* pEditorData, s32 frameIndex, r32 size) {
@@ -4780,7 +4780,7 @@ static void PopulateChrEditorData(EditedAsset& editedAsset) {
 	ChrEditorData*& pEditorData = (ChrEditorData*&)editedAsset.userData;
 	
 	if (!pEditorData) {
-		pEditorData = new ChrEditorData();
+		pEditorData = ArenaAllocator::Push<ChrEditorData>(ARENA_PERMANENT);
 
 		pEditorData->pTexture = ArenaAllocator::Push<EditorRenderTexture>(ARENA_PERMANENT);
 		Rendering::InitEditorTexture(pEditorData->pTexture, CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, GetChrRenderBuffer(editedAsset.id));
@@ -4796,7 +4796,7 @@ static void DeleteChrEditorData(EditedAsset& editedAsset) {
 
 	// NOTE: This does not free the render data, so it's potentially leaky
 	// Render data should be freed later when iterating the erase list
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 static void DrawChrEditor(EditedAsset& asset) {
@@ -4839,7 +4839,7 @@ static void PopulatePaletteEditorData(EditedAsset& editedAsset) {
 	PaletteEditorData*& pEditorData = (PaletteEditorData*&)editedAsset.userData;
 
 	if (!pEditorData) {
-		pEditorData = new PaletteEditorData();
+		pEditorData = ArenaAllocator::Push<PaletteEditorData>(ARENA_PERMANENT);
 
 		pEditorData->pBuffer = ArenaAllocator::Push<EditorRenderBuffer>(ARENA_PERMANENT);
 		Rendering::InitEditorBuffer(pEditorData->pBuffer, PALETTE_COLOR_COUNT, editedAsset.data);
@@ -4862,7 +4862,7 @@ static void DeletePaletteEditorData(EditedAsset& editedAsset) {
 
 	// NOTE: This does not free the render data, so it's potentially leaky
 	// Render data should be freed later when iterating the erase list
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 static void DrawPaletteEditor(EditedAsset& asset) {
@@ -4997,7 +4997,7 @@ static void DrawMainMenu() {
 
 #pragma region Public API
 void Editor::CreateContext() {
-	pContext = new EditorContext{};
+	pContext = ArenaAllocator::Push<EditorContext>(ARENA_PERMANENT);
 	Debug::HookEditorDebugLog(ConsoleLog);
 	assert(pContext != nullptr);
 	
@@ -5194,7 +5194,7 @@ void Editor::Free() {
 }
 
 void Editor::DestroyContext() {
-	delete pContext;
+	// Note: pContext is arena-allocated, so no need to delete individually
 	pContext = nullptr;
 }
 
