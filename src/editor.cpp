@@ -1279,14 +1279,17 @@ static bool DeleteAssetSourceFiles(const AssetEntry* pAssetInfo) {
 static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 	const u64 oldId = selectedId;
 
-	std::vector<u64> ids;
-	std::vector<const char*> assetNames;
 	s32 selectedIndex = -1;
 
 	const AssetIndex& assetIndex = AssetManager::GetIndex();
 	const u32 assetCount = assetIndex.Count();
 
 	ArenaMarker scratchMarker = ArenaAllocator::GetMarker(ARENA_SCRATCH);
+	
+	// Arena-allocate arrays for temporary data
+	u64* ids = ArenaAllocator::PushArray<u64>(ARENA_SCRATCH, assetCount);
+	const char** assetNames = ArenaAllocator::PushArray<const char*>(ARENA_SCRATCH, assetCount);
+	u32 validAssetCount = 0;
 
 	for (u32 i = 0; i < assetCount; i++) {
 		PoolHandle<AssetEntry> handle = assetIndex.GetHandle(i);
@@ -1298,15 +1301,16 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 		}
 
 		if (asset->id == selectedId) {
-			selectedIndex = (s32)ids.size();
+			selectedIndex = (s32)validAssetCount;
 		}
 
-		ids.push_back(asset->id);
+		ids[validAssetCount] = asset->id;
 		std::string assetName = GetAssetName(asset->relativePath);
 		const char* strData = ArenaAllocator::PushArray<char>(ARENA_SCRATCH, assetName.length() + 1);
 		memset((void*)strData, 0, assetName.length() + 1); // Clear buffer to avoid garbage data
 		strcpy((char*)strData, assetName.c_str());
-		assetNames.push_back(strData);
+		assetNames[validAssetCount] = strData;
+		validAssetCount++;
 	}
 
 	if (selectedId != UUID_NULL && selectedIndex < 0) {
@@ -1315,7 +1319,7 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 		selectedIndex = -1;
 	}
 
-	if (DrawTypeSelectionCombo(label, assetNames.data(), assetNames.size(), selectedIndex)) {
+	if (DrawTypeSelectionCombo(label, assetNames, validAssetCount, selectedIndex)) {
 		selectedId = selectedIndex >= 0 ? ids[selectedIndex] : UUID_NULL;
 	}
 
@@ -1380,8 +1384,9 @@ static bool DirectoryHasAssetsOfType(const std::filesystem::path& dir, AssetType
 	return false;
 }
 
-static std::vector<AssetEntry*> CollectAssetsInDirectory(const std::filesystem::path& dir) {
-	std::vector<AssetEntry*> assets;
+// Returns asset count and fills the provided arena-allocated array
+static u32 CollectAssetsInDirectory(const std::filesystem::path& dir, AssetEntry** assets, u32 maxAssets) {
+	u32 assetCount = 0;
 
 	for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
 		if (!entry.is_regular_file() || entry.path().extension() == ".meta") {
@@ -1389,21 +1394,25 @@ static std::vector<AssetEntry*> CollectAssetsInDirectory(const std::filesystem::
 		}
 		std::filesystem::path relativePath = std::filesystem::relative(entry.path(), ASSETS_SRC_DIR);
 		AssetEntry* pAssetInfo = AssetManager::GetAssetInfoFromPath(relativePath);
-		if (pAssetInfo&& !pAssetInfo->flags.deleted) {
-			assets.push_back(pAssetInfo);
+		if (pAssetInfo && !pAssetInfo->flags.deleted && assetCount < maxAssets) {
+			assets[assetCount++] = pAssetInfo;
 		}
 	}
 
-	return assets;
+	return assetCount;
 }
 
 static void UpdateAssetPathsWithNewDirectory(const std::filesystem::path& oldDirPath, const std::filesystem::path& newDirPath) {
-	std::vector<AssetEntry*> assets = CollectAssetsInDirectory(oldDirPath);
+	constexpr u32 maxAssets = 1024; // Should be enough for any directory
+	ArenaMarker scratchMarker = ArenaAllocator::GetMarker(ARENA_SCRATCH);
+	AssetEntry** assets = ArenaAllocator::PushArray<AssetEntry*>(ARENA_SCRATCH, maxAssets);
+	u32 assetCount = CollectAssetsInDirectory(oldDirPath, assets, maxAssets);
 
 	std::filesystem::path oldRelativePath = std::filesystem::relative(oldDirPath, ASSETS_SRC_DIR);
 	std::filesystem::path newRelativePath = std::filesystem::relative(newDirPath, ASSETS_SRC_DIR);
 
-	for (AssetEntry* pAssetInfo : assets) {
+	for (u32 i = 0; i < assetCount; i++) {
+		AssetEntry* pAssetInfo = assets[i];
 		std::filesystem::path oldAssetPath = pAssetInfo->relativePath;
 
 		// Replace the old directory part with the new directory part
@@ -1418,6 +1427,8 @@ static void UpdateAssetPathsWithNewDirectory(const std::filesystem::path& oldDir
 			DEBUG_ERROR("New asset path '%s' exceeds maximum length (%d characters)\n", newPathStr.c_str(), MAX_ASSET_PATH_LENGTH);
 		}
 	}
+	
+	ArenaAllocator::PopToMarker(ARENA_SCRATCH, scratchMarker);
 }
 
 static bool MoveAssetToDirectory(u64 assetId, const std::filesystem::path& targetDir) {
@@ -1671,9 +1682,13 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 				if (targetIsDirectory) {
 					DEBUG_LOG("Deleting directory: %s\n", pActionState->targetPath.string().c_str());
 
-					std::vector<AssetEntry*> assets = CollectAssetsInDirectory(pActionState->targetPath);
+					constexpr u32 maxAssets = 1024; // Should be enough for any directory
+					ArenaMarker scratchMarker = ArenaAllocator::GetMarker(ARENA_SCRATCH);
+					AssetEntry** assets = ArenaAllocator::PushArray<AssetEntry*>(ARENA_SCRATCH, maxAssets);
+					u32 assetCount = CollectAssetsInDirectory(pActionState->targetPath, assets, maxAssets);
 
-					for (AssetEntry* pAssetInfo : assets) {
+					for (u32 i = 0; i < assetCount; i++) {
+						AssetEntry* pAssetInfo = assets[i];
 						DEBUG_LOG("Deleting asset: %s\n", pAssetInfo->relativePath);
 						DeleteAssetSourceFiles(pAssetInfo);
 						AssetManager::RemoveAsset(pAssetInfo->id);
@@ -1685,11 +1700,13 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 
 					std::error_code ec;
 					u32 removedCount = std::filesystem::remove_all(pActionState->targetPath, ec);
-					if (removedCount != assets.size()) {
-						DEBUG_ERROR("Failed to delete all files in directory: %s, removed %u out of %zu\n", pActionState->targetPath.string().c_str(), removedCount, assets.size());
+					if (removedCount != assetCount) {
+						DEBUG_ERROR("Failed to delete all files in directory: %s, removed %u out of %u\n", pActionState->targetPath.string().c_str(), removedCount, assetCount);
 					} else {
 						DEBUG_LOG("Deleted %u files from directory: %s\n", removedCount, pActionState->targetPath.string().c_str());
 					}
+					
+					ArenaAllocator::PopToMarker(ARENA_SCRATCH, scratchMarker);
 				}
 				else {
 					DEBUG_LOG("Deleting asset: %s\n", pActionState->targetPath.string().c_str());
@@ -1978,7 +1995,11 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, Asset
 
 	ImGui::BeginChild("Editor Area");
 	if (ImGui::BeginTabBar("Edited assets")) {
-		std::vector<u64> eraseList;
+		ArenaMarker scratchMarker = ArenaAllocator::GetMarker(ARENA_SCRATCH);
+		constexpr u32 maxEraseCount = 64; // Should be enough for edited assets
+		u64* eraseList = ArenaAllocator::PushArray<u64>(ARENA_SCRATCH, maxEraseCount);
+		u32 eraseCount = 0;
+		
 		for (auto& kvp : state.editedAssets) {
 			auto& asset = kvp.second;
 
@@ -1986,7 +2007,9 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, Asset
 			const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(kvp.first);
 			if (!pAssetInfo || pAssetInfo->flags.deleted) {
 				FreeEditedAsset(asset, deleteFn);
-				eraseList.push_back(kvp.first);
+				if (eraseCount < maxEraseCount) {
+					eraseList[eraseCount++] = kvp.first;
+				}
 				continue;
 			}
 
@@ -2010,13 +2033,16 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, Asset
 			if (!assetOpen) {
 				// TODO: Popup that asks if the user is sure they want to close this
 				FreeEditedAsset(asset, deleteFn);
-				eraseList.push_back(kvp.first);
+				if (eraseCount < maxEraseCount) {
+					eraseList[eraseCount++] = kvp.first;
+				}
 			}
 		}
-		for (u64 id : eraseList) {
-			state.editedAssets.erase(id);
+		for (u32 i = 0; i < eraseCount; i++) {
+			state.editedAssets.erase(eraseList[i]);
 		}
-		eraseList.clear();
+		
+		ArenaAllocator::PopToMarker(ARENA_SCRATCH, scratchMarker);
 		ImGui::EndTabBar();
 	}
 	ImGui::EndChild();
