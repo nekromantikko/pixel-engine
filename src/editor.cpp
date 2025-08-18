@@ -86,7 +86,9 @@ struct EditorContext {
 	r64 secondsElapsed;
 
 	// Console
-	std::vector<char*> consoleLog;
+	char** consoleLogMessages;
+	u32 consoleLogCount;
+	u32 consoleLogCapacity;
 
 	// Editor state
 	bool demoWindowOpen = false;
@@ -2258,7 +2260,7 @@ static void DrawDebugOverlay() {
 
 static void DrawDebugConsole() {
 	if (ImGui::SmallButton("Clear log")) {
-		pContext->consoleLog.clear();
+		pContext->consoleLogCount = 0;
 	}
 
 	ImGui::Separator();
@@ -2266,7 +2268,8 @@ static void DrawDebugConsole() {
 	if (ImGui::BeginChild("Output", ImVec2(0,0), 0, ImGuiWindowFlags_HorizontalScrollbar)) {
 		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 1)); // Tighten spacing
 
-		for (const char* msg : pContext->consoleLog) {
+		for (u32 i = 0; i < pContext->consoleLogCount; i++) {
+			const char* msg = pContext->consoleLogMessages[i];
 			ImVec4 color = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
 			if (strstr(msg, "[error]")) { 
 				color = ImVec4(1.0f, 0.4f, 0.4f, 1.0f);
@@ -4992,6 +4995,12 @@ void Editor::CreateContext() {
 	pContext->tempTextureEraseList = ArenaAllocator::PushArray<EditorRenderTexture*>(ARENA_PERMANENT, maxTempEraseCount);
 	pContext->tempTextureEraseCount = 0;
 	pContext->tempTextureEraseCapacity = maxTempEraseCount;
+	
+	// Initialize console log
+	constexpr u32 maxConsoleLogCount = 2048; // Max console messages
+	pContext->consoleLogMessages = ArenaAllocator::PushArray<char*>(ARENA_PERMANENT, maxConsoleLogCount);
+	pContext->consoleLogCount = 0;
+	pContext->consoleLogCapacity = maxConsoleLogCount;
 }
 
 void Editor::Init(SDL_Window *pWindow) {
@@ -5035,14 +5044,18 @@ void Editor::ConsoleLog(const char* fmt, va_list args) {
 #else
 	vsprintf(s, fmt, args);
 #endif
-	pContext->consoleLog.push_back(strdup(s));
+	
+	// Store message in arena if there's space
+	if (pContext->consoleLogCount < pContext->consoleLogCapacity) {
+		size_t len = strlen(s) + 1;
+		char* msgCopy = ArenaAllocator::PushArray<char>(ARENA_PERMANENT, len);
+		strcpy(msgCopy, s);
+		pContext->consoleLogMessages[pContext->consoleLogCount++] = msgCopy;
+	}
 }
 
 void Editor::ClearLog() {
-	for (char* msg : pContext->consoleLog) {
-		free(msg);
-	}
-	pContext->consoleLog.clear();
+	pContext->consoleLogCount = 0;
 }
 
 void Editor::ProcessEvent(const SDL_Event* event) {
