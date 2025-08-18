@@ -28,6 +28,17 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
+
+// Simple key-value pair for arena-allocated hash map replacement
+struct AssetRenderBufferEntry {
+	u64 id;
+	EditorRenderBuffer* pBuffer;
+};
+
+struct AssetRenderTextureEntry {
+	u64 id;
+	EditorRenderTexture* pTexture;
+};
 #include <span>
 #include <execution>
 #include <stack>
@@ -64,8 +75,13 @@ struct EditorContext {
 	EditorRenderTexture* pPaletteTexture;
 	EditorRenderTexture* pColorTexture;
 
-	std::unordered_map<u64, EditorRenderBuffer*> assetRenderBuffers;
-	std::unordered_map<u64, EditorRenderTexture*> assetRenderTextures;
+	AssetRenderBufferEntry* assetRenderBuffers;
+	u32 assetRenderBuffersCount;
+	u32 assetRenderBuffersCapacity;
+	
+	AssetRenderTextureEntry* assetRenderTextures;
+	u32 assetRenderTexturesCount;
+	u32 assetRenderTexturesCapacity;
 	
 	// Arena-allocated erase list
 	u64* assetEraseList;
@@ -122,7 +138,7 @@ static EditorContext* pContext;
 static EditorRenderBuffer* CreateRenderBuffer(u64 id, size_t size, const void* data) {
 	EditorRenderBuffer* pBuffer = (EditorRenderBuffer*)calloc(1, Rendering::GetEditorBufferSize());
 	Rendering::InitEditorBuffer(pBuffer, size, data);
-	pContext->assetRenderBuffers.emplace(id, pBuffer);
+	AssetRenderBuffersEmplace(id, pBuffer);
 	return pBuffer;
 }
 
@@ -132,8 +148,8 @@ static EditorRenderBuffer* GetRenderBuffer(u64 id, AssetType type, size_t dataSi
 	}
 
 	EditorRenderBuffer* pBuffer = nullptr;
-	if (pContext->assetRenderBuffers.contains(id)) {
-		pBuffer = pContext->assetRenderBuffers.at(id);
+	if (AssetRenderBuffersContains(id)) {
+		pBuffer = AssetRenderBuffersFind(id);
 	}
 	else {
 		const void* pData = AssetManager::GetAsset(id, type);
@@ -167,7 +183,7 @@ static EditorRenderTexture* CreateChrSheetTexture(ChrBankHandle handle) {
 	const EditorRenderBuffer* pChrBuffer = GetChrRenderBuffer(handle.id);
 	EditorRenderTexture* pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
 	Rendering::InitEditorTexture(pTexture, CHR_DIM_PIXELS * PALETTE_COUNT, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, pChrBuffer);
-	pContext->assetRenderTextures.emplace(handle.id, pTexture);
+	AssetRenderTexturesEmplace(handle.id, pTexture);
 	return pTexture;
 }
 
@@ -177,7 +193,7 @@ static EditorRenderTexture* GetChrSheetTexture(ChrBankHandle handle) {
 	}
 
 	EditorRenderTexture* pTexture = nullptr;
-	if (pContext->assetRenderTextures.contains(handle.id)) {
+	if (AssetRenderTexturesContains(handle.id)) {
 		pTexture = pContext->assetRenderTextures.at(handle.id);
 	}
 	else {
@@ -1661,7 +1677,7 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 						DEBUG_LOG("Deleting asset: %s\n", pAssetInfo->relativePath);
 						DeleteAssetSourceFiles(pAssetInfo);
 						AssetManager::RemoveAsset(pAssetInfo->id);
-						if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
+						if (AssetRenderBuffersContains(pAssetInfo->id) || AssetRenderTexturesContains(pAssetInfo->id)) {
 							assert(pContext->assetEraseCount < pContext->assetEraseCapacity && "Asset erase list overflow");
 							pContext->assetEraseList[pContext->assetEraseCount++] = pAssetInfo->id;
 						}
@@ -1679,7 +1695,7 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 					DEBUG_LOG("Deleting asset: %s\n", pActionState->targetPath.string().c_str());
 					DeleteAssetSourceFiles(pAssetInfo);
 					AssetManager::RemoveAsset(pAssetInfo->id);
-					if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
+					if (AssetRenderBuffersContains(pAssetInfo->id) || AssetRenderTexturesContains(pAssetInfo->id)) {
 						assert(pContext->assetEraseCount < pContext->assetEraseCapacity && "Asset erase list overflow");
 						pContext->assetEraseList[pContext->assetEraseCount++] = pAssetInfo->id;
 					}
@@ -4985,6 +5001,16 @@ void Editor::CreateContext() {
 	Debug::HookEditorDebugLog(ConsoleLog);
 	assert(pContext != nullptr);
 	
+	// Initialize arena-allocated hash map replacements
+	constexpr u32 maxAssetRenderCount = 512; // Should be enough for editor assets
+	pContext->assetRenderBuffers = ArenaAllocator::PushArray<AssetRenderBufferEntry>(ARENA_PERMANENT, maxAssetRenderCount);
+	pContext->assetRenderBuffersCount = 0;
+	pContext->assetRenderBuffersCapacity = maxAssetRenderCount;
+	
+	pContext->assetRenderTextures = ArenaAllocator::PushArray<AssetRenderTextureEntry>(ARENA_PERMANENT, maxAssetRenderCount);
+	pContext->assetRenderTexturesCount = 0;
+	pContext->assetRenderTexturesCapacity = maxAssetRenderCount;
+	
 	// Initialize arena-allocated erase lists
 	constexpr u32 maxAssetEraseCount = 1024; // Should be more than enough for editor use
 	pContext->assetEraseList = ArenaAllocator::PushArray<u64>(ARENA_PERMANENT, maxAssetEraseCount);
@@ -5058,6 +5084,91 @@ static void EraseTempRenderTexture(EditorRenderTexture* pTexture) {
 			return;
 		}
 	}
+}
+
+// Helper functions for asset render resource management (hash map replacement)
+static bool AssetRenderBuffersContains(u64 id) {
+	for (u32 i = 0; i < pContext->assetRenderBuffersCount; i++) {
+		if (pContext->assetRenderBuffers[i].id == id) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static EditorRenderBuffer* AssetRenderBuffersFind(u64 id) {
+	for (u32 i = 0; i < pContext->assetRenderBuffersCount; i++) {
+		if (pContext->assetRenderBuffers[i].id == id) {
+			return pContext->assetRenderBuffers[i].pBuffer;
+		}
+	}
+	return nullptr;
+}
+
+static void AssetRenderBuffersEmplace(u64 id, EditorRenderBuffer* pBuffer) {
+	assert(pContext->assetRenderBuffersCount < pContext->assetRenderBuffersCapacity && "Asset render buffers overflow");
+	// Check if already exists (shouldn't, but just in case)
+	for (u32 i = 0; i < pContext->assetRenderBuffersCount; i++) {
+		if (pContext->assetRenderBuffers[i].id == id) {
+			pContext->assetRenderBuffers[i].pBuffer = pBuffer;
+			return;
+		}
+	}
+	// Add new entry
+	pContext->assetRenderBuffers[pContext->assetRenderBuffersCount++] = {id, pBuffer};
+}
+
+static bool AssetRenderBuffersErase(u64 id) {
+	for (u32 i = 0; i < pContext->assetRenderBuffersCount; i++) {
+		if (pContext->assetRenderBuffers[i].id == id) {
+			// Move last element to this position and decrement count
+			pContext->assetRenderBuffers[i] = pContext->assetRenderBuffers[--pContext->assetRenderBuffersCount];
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool AssetRenderTexturesContains(u64 id) {
+	for (u32 i = 0; i < pContext->assetRenderTexturesCount; i++) {
+		if (pContext->assetRenderTextures[i].id == id) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static EditorRenderTexture* AssetRenderTexturesFind(u64 id) {
+	for (u32 i = 0; i < pContext->assetRenderTexturesCount; i++) {
+		if (pContext->assetRenderTextures[i].id == id) {
+			return pContext->assetRenderTextures[i].pTexture;
+		}
+	}
+	return nullptr;
+}
+
+static void AssetRenderTexturesEmplace(u64 id, EditorRenderTexture* pTexture) {
+	assert(pContext->assetRenderTexturesCount < pContext->assetRenderTexturesCapacity && "Asset render textures overflow");
+	// Check if already exists (shouldn't, but just in case)
+	for (u32 i = 0; i < pContext->assetRenderTexturesCount; i++) {
+		if (pContext->assetRenderTextures[i].id == id) {
+			pContext->assetRenderTextures[i].pTexture = pTexture;
+			return;
+		}
+	}
+	// Add new entry
+	pContext->assetRenderTextures[pContext->assetRenderTexturesCount++] = {id, pTexture};
+}
+
+static bool AssetRenderTexturesErase(u64 id) {
+	for (u32 i = 0; i < pContext->assetRenderTexturesCount; i++) {
+		if (pContext->assetRenderTextures[i].id == id) {
+			// Move last element to this position and decrement count
+			pContext->assetRenderTextures[i] = pContext->assetRenderTextures[--pContext->assetRenderTexturesCount];
+			return true;
+		}
+	}
+	return false;
 }
 
 void Editor::Init(SDL_Window *pWindow) {
@@ -5142,17 +5253,17 @@ void Editor::Update(r64 dt) {
 
 	for (u32 i = 0; i < pContext->assetEraseCount; i++) {
 		u64 id = pContext->assetEraseList[i];
-		if (auto it = pContext->assetRenderBuffers.find(id); it != pContext->assetRenderBuffers.end()) {
-			EditorRenderBuffer* pBuffer = it->second;
+		EditorRenderBuffer* pBuffer = AssetRenderBuffersFind(id);
+		if (pBuffer) {
 			Rendering::FreeEditorBuffer(pBuffer);
 			free(pBuffer);
-			pContext->assetRenderBuffers.erase(it);
+			AssetRenderBuffersErase(id);
 		}
-		if (auto it = pContext->assetRenderTextures.find(id); it != pContext->assetRenderTextures.end()) {
-			EditorRenderTexture* pTexture = it->second;
+		EditorRenderTexture* pTexture = AssetRenderTexturesFind(id);
+		if (pTexture) {
 			Rendering::FreeEditorTexture(pTexture);
 			free(pTexture);
-			pContext->assetRenderTextures.erase(it);
+			AssetRenderTexturesErase(id);
 		}
 	}
 	pContext->assetEraseCount = 0;
@@ -5227,8 +5338,8 @@ void Editor::SetupFrame() {
 	Rendering::RenderEditorTexture(pContext->pChrTexture);
 	Rendering::RenderEditorTexture(pContext->pPaletteTexture);
 
-	for (auto& kvp : pContext->assetRenderTextures) {
-		Rendering::RenderEditorTexture(kvp.second);
+	for (u32 i = 0; i < pContext->assetRenderTexturesCount; i++) {
+		Rendering::RenderEditorTexture(pContext->assetRenderTextures[i].pTexture);
 	}
 
 	for (u32 i = 0; i < pContext->tempRenderTexturesCount; i++) {
