@@ -28,6 +28,17 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
+
+// Simple key-value pair for arena-allocated hash map replacement
+struct AssetRenderBufferEntry {
+	u64 id;
+	EditorRenderBuffer* pBuffer;
+};
+
+struct AssetRenderTextureEntry {
+	u64 id;
+	EditorRenderTexture* pTexture;
+};
 #include <span>
 #include <execution>
 #include <stack>
@@ -64,20 +75,40 @@ struct EditorContext {
 	EditorRenderTexture* pPaletteTexture;
 	EditorRenderTexture* pColorTexture;
 
-	std::unordered_map<u64, EditorRenderBuffer*> assetRenderBuffers;
-	std::unordered_map<u64, EditorRenderTexture*> assetRenderTextures;
-	std::vector<u64> assetEraseList;
+	AssetRenderBufferEntry* assetRenderBuffers;
+	u32 assetRenderBuffersCount;
+	u32 assetRenderBuffersCapacity;
+	
+	AssetRenderTextureEntry* assetRenderTextures;
+	u32 assetRenderTexturesCount;
+	u32 assetRenderTexturesCapacity;
+	
+	// Arena-allocated erase list
+	u64* assetEraseList;
+	u32 assetEraseCount;
+	u32 assetEraseCapacity;
 
-	std::unordered_set<EditorRenderBuffer*> tempRenderBuffers;
-	std::vector<EditorRenderBuffer*> tempBufferEraseList;
-	std::unordered_set<EditorRenderTexture*> tempRenderTextures;
-	std::vector<EditorRenderTexture*> tempTextureEraseList;
+	EditorRenderBuffer** tempRenderBuffers;
+	u32 tempRenderBuffersCount;
+	u32 tempRenderBuffersCapacity;
+	EditorRenderBuffer** tempBufferEraseList;
+	u32 tempBufferEraseCount;
+	u32 tempBufferEraseCapacity;
+	
+	EditorRenderTexture** tempRenderTextures;
+	u32 tempRenderTexturesCount;
+	u32 tempRenderTexturesCapacity;
+	EditorRenderTexture** tempTextureEraseList;
+	u32 tempTextureEraseCount;
+	u32 tempTextureEraseCapacity;
 
 	// Timing
 	r64 secondsElapsed;
 
 	// Console
-	std::vector<char*> consoleLog;
+	char** consoleLogMessages;
+	u32 consoleLogCount;
+	u32 consoleLogCapacity;
 
 	// Editor state
 	bool demoWindowOpen = false;
@@ -105,9 +136,9 @@ static EditorContext* pContext;
 
 #pragma region Rendering resources
 static EditorRenderBuffer* CreateRenderBuffer(u64 id, size_t size, const void* data) {
-	EditorRenderBuffer* pBuffer = (EditorRenderBuffer*)calloc(1, Rendering::GetEditorBufferSize());
+	EditorRenderBuffer* pBuffer = ArenaAllocator::Push<EditorRenderBuffer>(ARENA_PERMANENT);
 	Rendering::InitEditorBuffer(pBuffer, size, data);
-	pContext->assetRenderBuffers.emplace(id, pBuffer);
+	AssetRenderBuffersEmplace(id, pBuffer);
 	return pBuffer;
 }
 
@@ -117,8 +148,8 @@ static EditorRenderBuffer* GetRenderBuffer(u64 id, AssetType type, size_t dataSi
 	}
 
 	EditorRenderBuffer* pBuffer = nullptr;
-	if (pContext->assetRenderBuffers.contains(id)) {
-		pBuffer = pContext->assetRenderBuffers.at(id);
+	if (AssetRenderBuffersContains(id)) {
+		pBuffer = AssetRenderBuffersFind(id);
 	}
 	else {
 		const void* pData = AssetManager::GetAsset(id, type);
@@ -150,9 +181,9 @@ static void UpdateRenderBuffer(u64 id, AssetType type, size_t dataSize, const vo
 // CHR sheet drawn with all the current palettes
 static EditorRenderTexture* CreateChrSheetTexture(ChrBankHandle handle) {
 	const EditorRenderBuffer* pChrBuffer = GetChrRenderBuffer(handle.id);
-	EditorRenderTexture* pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+	EditorRenderTexture* pTexture = ArenaAllocator::Push<EditorRenderTexture>(ARENA_PERMANENT);
 	Rendering::InitEditorTexture(pTexture, CHR_DIM_PIXELS * PALETTE_COUNT, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, pChrBuffer);
-	pContext->assetRenderTextures.emplace(handle.id, pTexture);
+	AssetRenderTexturesEmplace(handle.id, pTexture);
 	return pTexture;
 }
 
@@ -162,7 +193,7 @@ static EditorRenderTexture* GetChrSheetTexture(ChrBankHandle handle) {
 	}
 
 	EditorRenderTexture* pTexture = nullptr;
-	if (pContext->assetRenderTextures.contains(handle.id)) {
+	if (AssetRenderTexturesContains(handle.id)) {
 		pTexture = pContext->assetRenderTextures.at(handle.id);
 	}
 	else {
@@ -1059,7 +1090,7 @@ static EditedAsset CopyAssetForEditing(u64 id, PopulateAssetEditorDataFn populat
 	result.type = pAssetInfo->flags.type;
 	strcpy(result.relativePath, pAssetInfo->relativePath);
 	result.size = pAssetInfo->size;
-	result.data = malloc(pAssetInfo->size);
+	result.data = ArenaAllocator::PushArray<u8>(ARENA_PERMANENT, pAssetInfo->size);
 	memcpy(result.data, AssetManager::GetAsset(id, pAssetInfo->flags.type), pAssetInfo->size);
 	result.dirty = false;
 
@@ -1073,12 +1104,12 @@ static EditedAsset CopyAssetForEditing(u64 id, PopulateAssetEditorDataFn populat
 
 static bool ResizeEditedAsset(EditedAsset& asset, size_t newSize) {
 	if (newSize > asset.size) {
-		void* newData = malloc(newSize);
+		void* newData = ArenaAllocator::PushArray<u8>(ARENA_PERMANENT, newSize);
 		if (!newData) {
 			return false;
 		}
 		memcpy(newData, asset.data, asset.size);
-		free(asset.data);
+		// Note: old arena data is left behind (can't be freed individually), but this is acceptable for editor use
 		asset.data = newData;
 	}
 	asset.size = newSize;
@@ -1168,7 +1199,7 @@ static bool RevertEditedAsset(EditedAsset& asset, PopulateAssetEditorDataFn popu
 }
 
 static void FreeEditedAsset(EditedAsset& asset, DeleteAssetEditorDataFn deleteFn) {
-	free(asset.data);
+	// Note: asset.data is arena-allocated, so no need to free individually
 	asset.data = nullptr;
 
 	if (deleteFn) {
@@ -1248,14 +1279,17 @@ static bool DeleteAssetSourceFiles(const AssetEntry* pAssetInfo) {
 static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 	const u64 oldId = selectedId;
 
-	std::vector<u64> ids;
-	std::vector<const char*> assetNames;
 	s32 selectedIndex = -1;
 
 	const AssetIndex& assetIndex = AssetManager::GetIndex();
 	const u32 assetCount = assetIndex.Count();
 
 	ArenaMarker scratchMarker = ArenaAllocator::GetMarker(ARENA_SCRATCH);
+	
+	// Arena-allocate arrays for temporary data
+	u64* ids = ArenaAllocator::PushArray<u64>(ARENA_SCRATCH, assetCount);
+	const char** assetNames = ArenaAllocator::PushArray<const char*>(ARENA_SCRATCH, assetCount);
+	u32 validAssetCount = 0;
 
 	for (u32 i = 0; i < assetCount; i++) {
 		PoolHandle<AssetEntry> handle = assetIndex.GetHandle(i);
@@ -1267,15 +1301,16 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 		}
 
 		if (asset->id == selectedId) {
-			selectedIndex = (s32)ids.size();
+			selectedIndex = (s32)validAssetCount;
 		}
 
-		ids.push_back(asset->id);
+		ids[validAssetCount] = asset->id;
 		std::string assetName = GetAssetName(asset->relativePath);
 		const char* strData = ArenaAllocator::PushArray<char>(ARENA_SCRATCH, assetName.length() + 1);
 		memset((void*)strData, 0, assetName.length() + 1); // Clear buffer to avoid garbage data
 		strcpy((char*)strData, assetName.c_str());
-		assetNames.push_back(strData);
+		assetNames[validAssetCount] = strData;
+		validAssetCount++;
 	}
 
 	if (selectedId != UUID_NULL && selectedIndex < 0) {
@@ -1284,7 +1319,7 @@ static bool DrawAssetField(const char* label, AssetType type, u64& selectedId) {
 		selectedIndex = -1;
 	}
 
-	if (DrawTypeSelectionCombo(label, assetNames.data(), assetNames.size(), selectedIndex)) {
+	if (DrawTypeSelectionCombo(label, assetNames, validAssetCount, selectedIndex)) {
 		selectedId = selectedIndex >= 0 ? ids[selectedIndex] : UUID_NULL;
 	}
 
@@ -1349,8 +1384,9 @@ static bool DirectoryHasAssetsOfType(const std::filesystem::path& dir, AssetType
 	return false;
 }
 
-static std::vector<AssetEntry*> CollectAssetsInDirectory(const std::filesystem::path& dir) {
-	std::vector<AssetEntry*> assets;
+// Returns asset count and fills the provided arena-allocated array
+static u32 CollectAssetsInDirectory(const std::filesystem::path& dir, AssetEntry** assets, u32 maxAssets) {
+	u32 assetCount = 0;
 
 	for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
 		if (!entry.is_regular_file() || entry.path().extension() == ".meta") {
@@ -1358,21 +1394,25 @@ static std::vector<AssetEntry*> CollectAssetsInDirectory(const std::filesystem::
 		}
 		std::filesystem::path relativePath = std::filesystem::relative(entry.path(), ASSETS_SRC_DIR);
 		AssetEntry* pAssetInfo = AssetManager::GetAssetInfoFromPath(relativePath);
-		if (pAssetInfo&& !pAssetInfo->flags.deleted) {
-			assets.push_back(pAssetInfo);
+		if (pAssetInfo && !pAssetInfo->flags.deleted && assetCount < maxAssets) {
+			assets[assetCount++] = pAssetInfo;
 		}
 	}
 
-	return assets;
+	return assetCount;
 }
 
 static void UpdateAssetPathsWithNewDirectory(const std::filesystem::path& oldDirPath, const std::filesystem::path& newDirPath) {
-	std::vector<AssetEntry*> assets = CollectAssetsInDirectory(oldDirPath);
+	constexpr u32 maxAssets = 1024; // Should be enough for any directory
+	ArenaMarker scratchMarker = ArenaAllocator::GetMarker(ARENA_SCRATCH);
+	AssetEntry** assets = ArenaAllocator::PushArray<AssetEntry*>(ARENA_SCRATCH, maxAssets);
+	u32 assetCount = CollectAssetsInDirectory(oldDirPath, assets, maxAssets);
 
 	std::filesystem::path oldRelativePath = std::filesystem::relative(oldDirPath, ASSETS_SRC_DIR);
 	std::filesystem::path newRelativePath = std::filesystem::relative(newDirPath, ASSETS_SRC_DIR);
 
-	for (AssetEntry* pAssetInfo : assets) {
+	for (u32 i = 0; i < assetCount; i++) {
+		AssetEntry* pAssetInfo = assets[i];
 		std::filesystem::path oldAssetPath = pAssetInfo->relativePath;
 
 		// Replace the old directory part with the new directory part
@@ -1387,6 +1427,8 @@ static void UpdateAssetPathsWithNewDirectory(const std::filesystem::path& oldDir
 			DEBUG_ERROR("New asset path '%s' exceeds maximum length (%d characters)\n", newPathStr.c_str(), MAX_ASSET_PATH_LENGTH);
 		}
 	}
+	
+	ArenaAllocator::PopToMarker(ARENA_SCRATCH, scratchMarker);
 }
 
 static bool MoveAssetToDirectory(u64 assetId, const std::filesystem::path& targetDir) {
@@ -1640,31 +1682,39 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 				if (targetIsDirectory) {
 					DEBUG_LOG("Deleting directory: %s\n", pActionState->targetPath.string().c_str());
 
-					std::vector<AssetEntry*> assets = CollectAssetsInDirectory(pActionState->targetPath);
+					constexpr u32 maxAssets = 1024; // Should be enough for any directory
+					ArenaMarker scratchMarker = ArenaAllocator::GetMarker(ARENA_SCRATCH);
+					AssetEntry** assets = ArenaAllocator::PushArray<AssetEntry*>(ARENA_SCRATCH, maxAssets);
+					u32 assetCount = CollectAssetsInDirectory(pActionState->targetPath, assets, maxAssets);
 
-					for (AssetEntry* pAssetInfo : assets) {
+					for (u32 i = 0; i < assetCount; i++) {
+						AssetEntry* pAssetInfo = assets[i];
 						DEBUG_LOG("Deleting asset: %s\n", pAssetInfo->relativePath);
 						DeleteAssetSourceFiles(pAssetInfo);
 						AssetManager::RemoveAsset(pAssetInfo->id);
-						if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
-							pContext->assetEraseList.push_back(pAssetInfo->id);
+						if (AssetRenderBuffersContains(pAssetInfo->id) || AssetRenderTexturesContains(pAssetInfo->id)) {
+							assert(pContext->assetEraseCount < pContext->assetEraseCapacity && "Asset erase list overflow");
+							pContext->assetEraseList[pContext->assetEraseCount++] = pAssetInfo->id;
 						}
 					}
 
 					std::error_code ec;
 					u32 removedCount = std::filesystem::remove_all(pActionState->targetPath, ec);
-					if (removedCount != assets.size()) {
-						DEBUG_ERROR("Failed to delete all files in directory: %s, removed %u out of %zu\n", pActionState->targetPath.string().c_str(), removedCount, assets.size());
+					if (removedCount != assetCount) {
+						DEBUG_ERROR("Failed to delete all files in directory: %s, removed %u out of %u\n", pActionState->targetPath.string().c_str(), removedCount, assetCount);
 					} else {
 						DEBUG_LOG("Deleted %u files from directory: %s\n", removedCount, pActionState->targetPath.string().c_str());
 					}
+					
+					ArenaAllocator::PopToMarker(ARENA_SCRATCH, scratchMarker);
 				}
 				else {
 					DEBUG_LOG("Deleting asset: %s\n", pActionState->targetPath.string().c_str());
 					DeleteAssetSourceFiles(pAssetInfo);
 					AssetManager::RemoveAsset(pAssetInfo->id);
-					if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
-						pContext->assetEraseList.push_back(pAssetInfo->id);
+					if (AssetRenderBuffersContains(pAssetInfo->id) || AssetRenderTexturesContains(pAssetInfo->id)) {
+						assert(pContext->assetEraseCount < pContext->assetEraseCapacity && "Asset erase list overflow");
+						pContext->assetEraseList[pContext->assetEraseCount++] = pAssetInfo->id;
 					}
 				}
 				ImGui::CloseCurrentPopup();
@@ -1945,7 +1995,11 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, Asset
 
 	ImGui::BeginChild("Editor Area");
 	if (ImGui::BeginTabBar("Edited assets")) {
-		std::vector<u64> eraseList;
+		ArenaMarker scratchMarker = ArenaAllocator::GetMarker(ARENA_SCRATCH);
+		constexpr u32 maxEraseCount = 64; // Should be enough for edited assets
+		u64* eraseList = ArenaAllocator::PushArray<u64>(ARENA_SCRATCH, maxEraseCount);
+		u32 eraseCount = 0;
+		
 		for (auto& kvp : state.editedAssets) {
 			auto& asset = kvp.second;
 
@@ -1953,7 +2007,9 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, Asset
 			const AssetEntry* pAssetInfo = AssetManager::GetAssetInfo(kvp.first);
 			if (!pAssetInfo || pAssetInfo->flags.deleted) {
 				FreeEditedAsset(asset, deleteFn);
-				eraseList.push_back(kvp.first);
+				if (eraseCount < maxEraseCount) {
+					eraseList[eraseCount++] = kvp.first;
+				}
 				continue;
 			}
 
@@ -1977,13 +2033,16 @@ static void DrawAssetEditor(const char* title, bool& open, AssetType type, Asset
 			if (!assetOpen) {
 				// TODO: Popup that asks if the user is sure they want to close this
 				FreeEditedAsset(asset, deleteFn);
-				eraseList.push_back(kvp.first);
+				if (eraseCount < maxEraseCount) {
+					eraseList[eraseCount++] = kvp.first;
+				}
 			}
 		}
-		for (u64 id : eraseList) {
-			state.editedAssets.erase(id);
+		for (u32 i = 0; i < eraseCount; i++) {
+			state.editedAssets.erase(eraseList[i]);
 		}
-		eraseList.clear();
+		
+		ArenaAllocator::PopToMarker(ARENA_SCRATCH, scratchMarker);
 		ImGui::EndTabBar();
 	}
 	ImGui::EndChild();
@@ -2247,7 +2306,7 @@ static void DrawDebugOverlay() {
 
 static void DrawDebugConsole() {
 	if (ImGui::SmallButton("Clear log")) {
-		pContext->consoleLog.clear();
+		pContext->consoleLogCount = 0;
 	}
 
 	ImGui::Separator();
@@ -2255,7 +2314,8 @@ static void DrawDebugConsole() {
 	if (ImGui::BeginChild("Output", ImVec2(0,0), 0, ImGuiWindowFlags_HorizontalScrollbar)) {
 		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 1)); // Tighten spacing
 
-		for (const char* msg : pContext->consoleLog) {
+		for (u32 i = 0; i < pContext->consoleLogCount; i++) {
+			const char* msg = pContext->consoleLogMessages[i];
 			ImVec4 color = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
 			if (strstr(msg, "[error]")) { 
 				color = ImVec4(1.0f, 0.4f, 0.4f, 1.0f);
@@ -2408,7 +2468,7 @@ struct MetaspriteEditorData {
 
 static void PopulateMetaspriteEditorData(EditedAsset& editedAsset) {
 	if (!editedAsset.userData) {
-		editedAsset.userData = new MetaspriteEditorData();
+		editedAsset.userData = ArenaAllocator::Push<MetaspriteEditorData>(ARENA_PERMANENT);
 	}
 	
 	MetaspriteEditorData* pEditorData = (MetaspriteEditorData*)editedAsset.userData;
@@ -2438,7 +2498,7 @@ static void ApplyMetaspriteEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteMetaspriteEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 
@@ -2789,10 +2849,10 @@ struct RoomEditorData {
 
 static void PopulateRoomEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		// Note: userData is arena-allocated, so no need to delete individually
 	}
 
-	editedAsset.userData = new RoomEditorData();
+	editedAsset.userData = ArenaAllocator::Push<RoomEditorData>(ARENA_PERMANENT);
 	RoomEditorData* pEditorData = (RoomEditorData*)editedAsset.userData;
 
 	const RoomTemplate* pTemplate = (RoomTemplate*)editedAsset.data;
@@ -2818,7 +2878,7 @@ static void ApplyRoomEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteRoomEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 static void DrawScreenBorders(u32 index, ImVec2 pMin, ImVec2 pMax, r32 renderScale) {
@@ -3171,10 +3231,10 @@ struct ActorPrototypeEditorData {
 
 static void PopulateActorEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		// Note: userData is arena-allocated, so no need to delete individually
 	}
 
-	editedAsset.userData = new ActorPrototypeEditorData();
+	editedAsset.userData = ArenaAllocator::Push<ActorPrototypeEditorData>(ARENA_PERMANENT);
 	ActorPrototypeEditorData* pEditorData = (ActorPrototypeEditorData*)editedAsset.userData;
 	ActorPrototype* pPrototype = (ActorPrototype*)editedAsset.data;
 
@@ -3201,7 +3261,7 @@ static void ApplyActorEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteActorEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 static ImVec2 DrawActorPreview(const ActorPrototypeEditorData* pEditorData, s32 animIndex, s32 frameIndex, r32 size) {
@@ -3721,10 +3781,10 @@ static void ConvertToDungeon(const EditorDungeon& dungeon, Dungeon* pOutDungeon)
 
 static void PopulateDungeonEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		// Note: userData is arena-allocated, so no need to delete individually
 	}
 
-	editedAsset.userData = new DungeonEditorData();
+	editedAsset.userData = ArenaAllocator::Push<DungeonEditorData>(ARENA_PERMANENT);
 	DungeonEditorData* pEditorData = (DungeonEditorData*)editedAsset.userData;
 	Dungeon* pDungeon = (Dungeon*)editedAsset.data;
 	pEditorData->dungeon = ConvertFromDungeon(pDungeon);
@@ -3738,7 +3798,7 @@ static void ApplyDungeonEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteDungeonEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 static u32 GetRoomCount(const EditorDungeon& dungeon) {
@@ -4127,14 +4187,14 @@ struct OverworldEditorData {
 
 static void PopulateOverworldEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		// Note: userData is arena-allocated, so no need to delete individually
 	}
 
-	editedAsset.userData = new OverworldEditorData();
+	editedAsset.userData = ArenaAllocator::Push<OverworldEditorData>(ARENA_PERMANENT);
 }
 
 static void DeleteOverworldEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 static void DrawOverworldEditor(EditedAsset& asset) {
@@ -4257,49 +4317,78 @@ static void DrawOverworldWindow() {
 #pragma endregion
 
 #pragma region Asset browser
-static void SortAssets(std::vector<u64>& assetIds, ImGuiTableSortSpecs* pSortSpecs) {
+static void SortAssets(u64* assetIds, u32 assetCount, ImGuiTableSortSpecs* pSortSpecs) {
 	if (!pSortSpecs || pSortSpecs->SpecsCount == 0) return; // No sorting requested
 
-	std::sort(assetIds.begin(), assetIds.end(), [pSortSpecs](u64 aId, u64 bId) {
+	// Simple insertion sort for editor use (performance not critical)
+	for (u32 i = 1; i < assetCount; i++) {
+		u64 key = assetIds[i];
+		s32 j = i - 1;
+		
+		bool shouldSwap = false;
+		
 		const ImGuiTableColumnSortSpecs* sortSpecs = pSortSpecs->Specs;
+		const AssetEntry& keyAsset = *AssetManager::GetAssetInfo(key);
+		std::string keyName = GetAssetName(keyAsset.relativePath);
+		
+		while (j >= 0) {
+			u64 compareId = assetIds[j];
+			const AssetEntry& compareAsset = *AssetManager::GetAssetInfo(compareId);
+			std::string compareName = GetAssetName(compareAsset.relativePath);
+			
+			shouldSwap = false;
+			for (int k = 0; k < pSortSpecs->SpecsCount; k++) {
+				const ImGuiTableColumnSortSpecs& spec = sortSpecs[k];
 
-		const AssetEntry& a = *AssetManager::GetAssetInfo(aId);
-		std::string aName = GetAssetName(a.relativePath);
-		const AssetEntry& b = *AssetManager::GetAssetInfo(bId);
-		std::string bName = GetAssetName(b.relativePath);
-
-		for (int i = 0; i < pSortSpecs->SpecsCount; i++) {
-			const ImGuiTableColumnSortSpecs& spec = sortSpecs[i];
-
-			switch (spec.ColumnIndex) {
-			case 0: { // Sort by Name
-				int cmp = strcmp(aName.c_str(), bName.c_str());
-				if (cmp != 0) return spec.SortDirection == ImGuiSortDirection_Ascending ? (cmp < 0) : (cmp > 0);
-				break;
+				switch (spec.ColumnIndex) {
+				case 0: { // Sort by Name
+					int cmp = strcmp(keyName.c_str(), compareName.c_str());
+					if (cmp != 0) {
+						shouldSwap = spec.SortDirection == ImGuiSortDirection_Ascending ? (cmp < 0) : (cmp > 0);
+						break;
+					}
+					break;
+				}
+				case 1: { // Sort by Path
+					int cmp = strcmp(keyAsset.relativePath, compareAsset.relativePath);
+					if (cmp != 0) {
+						shouldSwap = spec.SortDirection == ImGuiSortDirection_Ascending ? (cmp < 0) : (cmp > 0);
+						break;
+					}
+					break;
+				}
+				case 2: { // Sort by UUID
+					if (keyAsset.id != compareAsset.id) {
+						shouldSwap = spec.SortDirection == ImGuiSortDirection_Ascending ? (keyAsset.id < compareAsset.id) : (keyAsset.id > compareAsset.id);
+						break;
+					}
+					break;
+				}
+				case 3: { // Sort by Type
+					if (keyAsset.flags.type != compareAsset.flags.type) {
+						shouldSwap = spec.SortDirection == ImGuiSortDirection_Ascending ? (keyAsset.flags.type < compareAsset.flags.type) : (keyAsset.flags.type > compareAsset.flags.type);
+						break;
+					}
+					break;
+				}
+				case 4: { // Sort by Size
+					if (keyAsset.size != compareAsset.size) {
+						shouldSwap = spec.SortDirection == ImGuiSortDirection_Ascending ? (keyAsset.size < compareAsset.size) : (keyAsset.size > compareAsset.size);
+						break;
+					}
+					break;
+				}
+				default:
+					break;
+				}
 			}
-			case 1: { // Sort by Path
-				int cmp = strcmp(a.relativePath, b.relativePath);
-				if (cmp != 0) return spec.SortDirection == ImGuiSortDirection_Ascending ? (cmp < 0) : (cmp > 0);
-				break;
-			}
-			case 2: { // Sort by UUID
-				if (a.id != b.id) return spec.SortDirection == ImGuiSortDirection_Ascending ? (a.id < b.id) : (a.id > b.id);
-				break;
-			}
-			case 3: { // Sort by Type
-				if (a.flags.type != b.flags.type) return spec.SortDirection == ImGuiSortDirection_Ascending ? (a.flags.type < b.flags.type) : (a.flags.type > b.flags.type);
-				break;
-			}
-			case 4: { // Sort by Size
-				if (a.size != b.size) return spec.SortDirection == ImGuiSortDirection_Ascending ? (a.size < b.size) : (a.size > b.size);
-				break;
-			}
-			default:
-				break;
-			}
+			
+			if (!shouldSwap) break;
+			assetIds[j + 1] = assetIds[j];
+			j--;
 		}
-		return false; // Default (should never happen)
-		});
+		assetIds[j + 1] = key;
+	}
 
 	pSortSpecs->SpecsDirty = false; // Mark sorting as done
 }
@@ -4369,7 +4458,9 @@ static void DrawAssetBrowser() {
 
 	static u64 selectedAsset = UUID_NULL;
 	static size_t assetCount = 0;
-	static std::vector<u64> assetIds;
+	static u64* assetIds = nullptr;
+	static u32 assetIdsCapacity = 0;
+	constexpr u32 maxAssets = 8192; // Should be enough for any project
 
 	ImGuiTableFlags flags = ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_BordersV | ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_Sortable;
 	if (ImGui::BeginTable("Assets", 5, flags)) {
@@ -4387,26 +4478,32 @@ static void DrawAssetBrowser() {
 		const size_t newAssetCount = AssetManager::GetAssetCount();
 
 		if (assetCount != newAssetCount) {
-			assetIds.clear();
-			assetIds.reserve(newAssetCount);
-			for (u32 i = 0; i < index.Count(); i++) {
+			// Initialize or reallocate arena array if needed
+			if (!assetIds || assetIdsCapacity < newAssetCount) {
+				assetIds = ArenaAllocator::PushArray<u64>(ARENA_PERMANENT, maxAssets);
+				assetIdsCapacity = maxAssets;
+			}
+			
+			u32 validAssetCount = 0;
+			for (u32 i = 0; i < index.Count() && validAssetCount < assetIdsCapacity; i++) {
 				PoolHandle<AssetEntry> handle = index.GetHandle(i);
 				const AssetEntry* asset = index.Get(handle);
 				if (asset) {
-					assetIds.emplace_back(asset->id);
+					assetIds[validAssetCount++] = asset->id;
 				}
 			}
-			assetCount = newAssetCount;
+			assetCount = validAssetCount;
 			if (pSortSpecs) {
 				pSortSpecs->SpecsDirty = true;
 			}
 		}
 
 		if (pSortSpecs && pSortSpecs->SpecsDirty) {
-			SortAssets(assetIds, pSortSpecs);
+			SortAssets(assetIds, (u32)assetCount, pSortSpecs);
 		}
 
-		for (const auto& id : assetIds) {
+		for (u32 i = 0; i < assetCount; i++) {
+			u64 id = assetIds[i];
 			const bool selected = id == selectedAsset;
 
 			const AssetEntry* pAsset = AssetManager::GetAssetInfo(id);
@@ -4452,10 +4549,10 @@ struct AnimationEditorData {
 
 static void PopulateAnimationEditorData(EditedAsset& editedAsset) {
 	if (editedAsset.userData) {
-		delete editedAsset.userData;
+		// Note: userData is arena-allocated, so no need to delete individually
 	}
 
-	editedAsset.userData = new AnimationEditorData();
+	editedAsset.userData = ArenaAllocator::Push<AnimationEditorData>(ARENA_PERMANENT);
 	AnimationEditorData* pEditorData = (AnimationEditorData*)editedAsset.userData;
 
 	Animation* pAnimation = (Animation*)editedAsset.data;
@@ -4480,7 +4577,7 @@ static void ApplyAnimationEditorData(EditedAsset& editedAsset) {
 }
 
 static void DeleteAnimationEditorData(EditedAsset& editedAsset) {
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 static void DrawAnimationPreview(const AnimationEditorData* pEditorData, s32 frameIndex, r32 size) {
@@ -4746,22 +4843,23 @@ static void PopulateChrEditorData(EditedAsset& editedAsset) {
 	ChrEditorData*& pEditorData = (ChrEditorData*&)editedAsset.userData;
 	
 	if (!pEditorData) {
-		pEditorData = new ChrEditorData();
+		pEditorData = ArenaAllocator::Push<ChrEditorData>(ARENA_PERMANENT);
 
-		pEditorData->pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+		pEditorData->pTexture = ArenaAllocator::Push<EditorRenderTexture>(ARENA_PERMANENT);
 		Rendering::InitEditorTexture(pEditorData->pTexture, CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, GetChrRenderBuffer(editedAsset.id));
-		pContext->tempRenderTextures.insert(pEditorData->pTexture);
+		InsertTempRenderTexture(pEditorData->pTexture);
 	}
 }
 
 static void DeleteChrEditorData(EditedAsset& editedAsset) {
 	ChrEditorData* pEditorData = (ChrEditorData*)editedAsset.userData;
 
-	pContext->tempTextureEraseList.push_back(pEditorData->pTexture);
+	assert(pContext->tempTextureEraseCount < pContext->tempTextureEraseCapacity && "Temp texture erase list overflow");
+	pContext->tempTextureEraseList[pContext->tempTextureEraseCount++] = pEditorData->pTexture;
 
 	// NOTE: This does not free the render data, so it's potentially leaky
 	// Render data should be freed later when iterating the erase list
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 static void DrawChrEditor(EditedAsset& asset) {
@@ -4804,14 +4902,14 @@ static void PopulatePaletteEditorData(EditedAsset& editedAsset) {
 	PaletteEditorData*& pEditorData = (PaletteEditorData*&)editedAsset.userData;
 
 	if (!pEditorData) {
-		pEditorData = new PaletteEditorData();
+		pEditorData = ArenaAllocator::Push<PaletteEditorData>(ARENA_PERMANENT);
 
-		pEditorData->pBuffer = (EditorRenderBuffer*)calloc(1, Rendering::GetEditorBufferSize());
+		pEditorData->pBuffer = ArenaAllocator::Push<EditorRenderBuffer>(ARENA_PERMANENT);
 		Rendering::InitEditorBuffer(pEditorData->pBuffer, PALETTE_COLOR_COUNT, editedAsset.data);
-		pContext->tempRenderBuffers.insert(pEditorData->pBuffer);
-		pEditorData->pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+		InsertTempRenderBuffer(pEditorData->pBuffer);
+		pEditorData->pTexture = ArenaAllocator::Push<EditorRenderTexture>(ARENA_PERMANENT);
 		Rendering::InitEditorTexture(pEditorData->pTexture, CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, nullptr, pEditorData->pBuffer);
-		pContext->tempRenderTextures.insert(pEditorData->pTexture);
+		InsertTempRenderTexture(pEditorData->pTexture);
 	}
 
 	Rendering::UpdateEditorBuffer(pEditorData->pBuffer, editedAsset.data);
@@ -4820,12 +4918,14 @@ static void PopulatePaletteEditorData(EditedAsset& editedAsset) {
 static void DeletePaletteEditorData(EditedAsset& editedAsset) {
 	PaletteEditorData* pEditorData = (PaletteEditorData*)editedAsset.userData;
 
-	pContext->tempTextureEraseList.push_back(pEditorData->pTexture);
-	pContext->tempBufferEraseList.push_back(pEditorData->pBuffer);
+	assert(pContext->tempTextureEraseCount < pContext->tempTextureEraseCapacity && "Temp texture erase list overflow");
+	pContext->tempTextureEraseList[pContext->tempTextureEraseCount++] = pEditorData->pTexture;
+	assert(pContext->tempBufferEraseCount < pContext->tempBufferEraseCapacity && "Temp buffer erase list overflow");
+	pContext->tempBufferEraseList[pContext->tempBufferEraseCount++] = pEditorData->pBuffer;
 
 	// NOTE: This does not free the render data, so it's potentially leaky
 	// Render data should be freed later when iterating the erase list
-	delete editedAsset.userData;
+	// Note: editedAsset.userData is arena-allocated, so no need to delete individually
 }
 
 static void DrawPaletteEditor(EditedAsset& asset) {
@@ -4960,9 +5060,178 @@ static void DrawMainMenu() {
 
 #pragma region Public API
 void Editor::CreateContext() {
-	pContext = new EditorContext{};
+	pContext = ArenaAllocator::Push<EditorContext>(ARENA_PERMANENT);
 	Debug::HookEditorDebugLog(ConsoleLog);
 	assert(pContext != nullptr);
+	
+	// Initialize arena-allocated hash map replacements
+	constexpr u32 maxAssetRenderCount = 512; // Should be enough for editor assets
+	pContext->assetRenderBuffers = ArenaAllocator::PushArray<AssetRenderBufferEntry>(ARENA_PERMANENT, maxAssetRenderCount);
+	pContext->assetRenderBuffersCount = 0;
+	pContext->assetRenderBuffersCapacity = maxAssetRenderCount;
+	
+	pContext->assetRenderTextures = ArenaAllocator::PushArray<AssetRenderTextureEntry>(ARENA_PERMANENT, maxAssetRenderCount);
+	pContext->assetRenderTexturesCount = 0;
+	pContext->assetRenderTexturesCapacity = maxAssetRenderCount;
+	
+	// Initialize arena-allocated erase lists
+	constexpr u32 maxAssetEraseCount = 1024; // Should be more than enough for editor use
+	pContext->assetEraseList = ArenaAllocator::PushArray<u64>(ARENA_PERMANENT, maxAssetEraseCount);
+	pContext->assetEraseCount = 0;
+	pContext->assetEraseCapacity = maxAssetEraseCount;
+	
+	constexpr u32 maxTempEraseCount = 512; // For temporary render resources
+	pContext->tempBufferEraseList = ArenaAllocator::PushArray<EditorRenderBuffer*>(ARENA_PERMANENT, maxTempEraseCount);
+	pContext->tempBufferEraseCount = 0;
+	pContext->tempBufferEraseCapacity = maxTempEraseCount;
+	
+	pContext->tempTextureEraseList = ArenaAllocator::PushArray<EditorRenderTexture*>(ARENA_PERMANENT, maxTempEraseCount);
+	pContext->tempTextureEraseCount = 0;
+	pContext->tempTextureEraseCapacity = maxTempEraseCount;
+	
+	// Initialize temporary render resource arrays
+	constexpr u32 maxTempRenderCount = 256; // Active temporary render resources
+	pContext->tempRenderBuffers = ArenaAllocator::PushArray<EditorRenderBuffer*>(ARENA_PERMANENT, maxTempRenderCount);
+	pContext->tempRenderBuffersCount = 0;
+	pContext->tempRenderBuffersCapacity = maxTempRenderCount;
+	
+	pContext->tempRenderTextures = ArenaAllocator::PushArray<EditorRenderTexture*>(ARENA_PERMANENT, maxTempRenderCount);
+	pContext->tempRenderTexturesCount = 0;
+	pContext->tempRenderTexturesCapacity = maxTempRenderCount;
+	
+	// Initialize console log
+	constexpr u32 maxConsoleLogCount = 2048; // Max console messages
+	pContext->consoleLogMessages = ArenaAllocator::PushArray<char*>(ARENA_PERMANENT, maxConsoleLogCount);
+	pContext->consoleLogCount = 0;
+	pContext->consoleLogCapacity = maxConsoleLogCount;
+}
+
+// Helper functions for temp render resource management
+static void InsertTempRenderBuffer(EditorRenderBuffer* pBuffer) {
+	assert(pContext->tempRenderBuffersCount < pContext->tempRenderBuffersCapacity && "Temp render buffers overflow");
+	// Check if already exists (linear search)
+	for (u32 i = 0; i < pContext->tempRenderBuffersCount; i++) {
+		if (pContext->tempRenderBuffers[i] == pBuffer) {
+			return; // Already exists
+		}
+	}
+	pContext->tempRenderBuffers[pContext->tempRenderBuffersCount++] = pBuffer;
+}
+
+static void EraseTempRenderBuffer(EditorRenderBuffer* pBuffer) {
+	for (u32 i = 0; i < pContext->tempRenderBuffersCount; i++) {
+		if (pContext->tempRenderBuffers[i] == pBuffer) {
+			// Move last element to this position and decrement count
+			pContext->tempRenderBuffers[i] = pContext->tempRenderBuffers[--pContext->tempRenderBuffersCount];
+			return;
+		}
+	}
+}
+
+static void InsertTempRenderTexture(EditorRenderTexture* pTexture) {
+	assert(pContext->tempRenderTexturesCount < pContext->tempRenderTexturesCapacity && "Temp render textures overflow");
+	// Check if already exists (linear search)
+	for (u32 i = 0; i < pContext->tempRenderTexturesCount; i++) {
+		if (pContext->tempRenderTextures[i] == pTexture) {
+			return; // Already exists
+		}
+	}
+	pContext->tempRenderTextures[pContext->tempRenderTexturesCount++] = pTexture;
+}
+
+static void EraseTempRenderTexture(EditorRenderTexture* pTexture) {
+	for (u32 i = 0; i < pContext->tempRenderTexturesCount; i++) {
+		if (pContext->tempRenderTextures[i] == pTexture) {
+			// Move last element to this position and decrement count
+			pContext->tempRenderTextures[i] = pContext->tempRenderTextures[--pContext->tempRenderTexturesCount];
+			return;
+		}
+	}
+}
+
+// Helper functions for asset render resource management (hash map replacement)
+static bool AssetRenderBuffersContains(u64 id) {
+	for (u32 i = 0; i < pContext->assetRenderBuffersCount; i++) {
+		if (pContext->assetRenderBuffers[i].id == id) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static EditorRenderBuffer* AssetRenderBuffersFind(u64 id) {
+	for (u32 i = 0; i < pContext->assetRenderBuffersCount; i++) {
+		if (pContext->assetRenderBuffers[i].id == id) {
+			return pContext->assetRenderBuffers[i].pBuffer;
+		}
+	}
+	return nullptr;
+}
+
+static void AssetRenderBuffersEmplace(u64 id, EditorRenderBuffer* pBuffer) {
+	assert(pContext->assetRenderBuffersCount < pContext->assetRenderBuffersCapacity && "Asset render buffers overflow");
+	// Check if already exists (shouldn't, but just in case)
+	for (u32 i = 0; i < pContext->assetRenderBuffersCount; i++) {
+		if (pContext->assetRenderBuffers[i].id == id) {
+			pContext->assetRenderBuffers[i].pBuffer = pBuffer;
+			return;
+		}
+	}
+	// Add new entry
+	pContext->assetRenderBuffers[pContext->assetRenderBuffersCount++] = {id, pBuffer};
+}
+
+static bool AssetRenderBuffersErase(u64 id) {
+	for (u32 i = 0; i < pContext->assetRenderBuffersCount; i++) {
+		if (pContext->assetRenderBuffers[i].id == id) {
+			// Move last element to this position and decrement count
+			pContext->assetRenderBuffers[i] = pContext->assetRenderBuffers[--pContext->assetRenderBuffersCount];
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool AssetRenderTexturesContains(u64 id) {
+	for (u32 i = 0; i < pContext->assetRenderTexturesCount; i++) {
+		if (pContext->assetRenderTextures[i].id == id) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static EditorRenderTexture* AssetRenderTexturesFind(u64 id) {
+	for (u32 i = 0; i < pContext->assetRenderTexturesCount; i++) {
+		if (pContext->assetRenderTextures[i].id == id) {
+			return pContext->assetRenderTextures[i].pTexture;
+		}
+	}
+	return nullptr;
+}
+
+static void AssetRenderTexturesEmplace(u64 id, EditorRenderTexture* pTexture) {
+	assert(pContext->assetRenderTexturesCount < pContext->assetRenderTexturesCapacity && "Asset render textures overflow");
+	// Check if already exists (shouldn't, but just in case)
+	for (u32 i = 0; i < pContext->assetRenderTexturesCount; i++) {
+		if (pContext->assetRenderTextures[i].id == id) {
+			pContext->assetRenderTextures[i].pTexture = pTexture;
+			return;
+		}
+	}
+	// Add new entry
+	pContext->assetRenderTextures[pContext->assetRenderTexturesCount++] = {id, pTexture};
+}
+
+static bool AssetRenderTexturesErase(u64 id) {
+	for (u32 i = 0; i < pContext->assetRenderTexturesCount; i++) {
+		if (pContext->assetRenderTextures[i].id == id) {
+			// Move last element to this position and decrement count
+			pContext->assetRenderTextures[i] = pContext->assetRenderTextures[--pContext->assetRenderTexturesCount];
+			return true;
+		}
+	}
+	return false;
 }
 
 void Editor::Init(SDL_Window *pWindow) {
@@ -4970,28 +5239,25 @@ void Editor::Init(SDL_Window *pWindow) {
 	Rendering::InitEditor(pWindow);
 
 	constexpr u32 sheetPaletteCount = PALETTE_COUNT / 2;
-	pContext->pChrTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+	pContext->pChrTexture = ArenaAllocator::Push<EditorRenderTexture>(ARENA_PERMANENT);
 	Rendering::InitEditorTexture(pContext->pChrTexture, CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, EDITOR_TEXTURE_USAGE_CHR);
-	pContext->pPaletteTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+	pContext->pPaletteTexture = ArenaAllocator::Push<EditorRenderTexture>(ARENA_PERMANENT);
 	Rendering::InitEditorTexture(pContext->pPaletteTexture, PALETTE_MEMORY_SIZE, 1, EDITOR_TEXTURE_USAGE_PALETTE);
-	pContext->pColorTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
+	pContext->pColorTexture = ArenaAllocator::Push<EditorRenderTexture>(ARENA_PERMANENT);
 	Rendering::InitEditorTexture(pContext->pColorTexture, 16, 8, EDITOR_TEXTURE_USAGE_COLOR);
 }
 
 void Editor::Free() {
 	Rendering::FreeEditorTexture(pContext->pChrTexture);
-	free(pContext->pChrTexture);
 	Rendering::FreeEditorTexture(pContext->pPaletteTexture);
-	free(pContext->pPaletteTexture);
 	Rendering::FreeEditorTexture(pContext->pColorTexture);
-	free(pContext->pColorTexture);
 
 	Rendering::ShutdownEditor();
 	ImGui::DestroyContext();
 }
 
 void Editor::DestroyContext() {
-	delete pContext;
+	// Note: pContext is arena-allocated, so no need to delete individually
 	pContext = nullptr;
 }
 
@@ -5006,14 +5272,18 @@ void Editor::ConsoleLog(const char* fmt, va_list args) {
 #else
 	vsprintf(s, fmt, args);
 #endif
-	pContext->consoleLog.push_back(strdup(s));
+	
+	// Store message in arena if there's space
+	if (pContext->consoleLogCount < pContext->consoleLogCapacity) {
+		size_t len = strlen(s) + 1;
+		char* msgCopy = ArenaAllocator::PushArray<char>(ARENA_PERMANENT, len);
+		strcpy(msgCopy, s);
+		pContext->consoleLogMessages[pContext->consoleLogCount++] = msgCopy;
+	}
 }
 
 void Editor::ClearLog() {
-	for (char* msg : pContext->consoleLog) {
-		free(msg);
-	}
-	pContext->consoleLog.clear();
+	pContext->consoleLogCount = 0;
 }
 
 void Editor::ProcessEvent(const SDL_Event* event) {
@@ -5024,36 +5294,35 @@ void Editor::Update(r64 dt) {
 	pContext->secondsElapsed += dt;
 
 	// Clean up deleted textures
-	for (auto pTempTexture : pContext->tempTextureEraseList) {
-		pContext->tempRenderTextures.erase(pTempTexture);
+	for (u32 i = 0; i < pContext->tempTextureEraseCount; i++) {
+		EditorRenderTexture* pTempTexture = pContext->tempTextureEraseList[i];
+		EraseTempRenderTexture(pTempTexture);
 		Rendering::FreeEditorTexture(pTempTexture);
-		free(pTempTexture);
 	}
-	pContext->tempTextureEraseList.clear();
+	pContext->tempTextureEraseCount = 0;
 
 	// Clean up deleted buffers
-	for (auto pTempBuffer : pContext->tempBufferEraseList) {
-		pContext->tempRenderBuffers.erase(pTempBuffer);
+	for (u32 i = 0; i < pContext->tempBufferEraseCount; i++) {
+		EditorRenderBuffer* pTempBuffer = pContext->tempBufferEraseList[i];
+		EraseTempRenderBuffer(pTempBuffer);
 		Rendering::FreeEditorBuffer(pTempBuffer);
-		free(pTempBuffer);
 	}
-	pContext->tempBufferEraseList.clear();
+	pContext->tempBufferEraseCount = 0;
 
-	for (auto id : pContext->assetEraseList) {
-		if (auto it = pContext->assetRenderBuffers.find(id); it != pContext->assetRenderBuffers.end()) {
-			EditorRenderBuffer* pBuffer = it->second;
+	for (u32 i = 0; i < pContext->assetEraseCount; i++) {
+		u64 id = pContext->assetEraseList[i];
+		EditorRenderBuffer* pBuffer = AssetRenderBuffersFind(id);
+		if (pBuffer) {
 			Rendering::FreeEditorBuffer(pBuffer);
-			free(pBuffer);
-			pContext->assetRenderBuffers.erase(it);
+			AssetRenderBuffersErase(id);
 		}
-		if (auto it = pContext->assetRenderTextures.find(id); it != pContext->assetRenderTextures.end()) {
-			EditorRenderTexture* pTexture = it->second;
+		EditorRenderTexture* pTexture = AssetRenderTexturesFind(id);
+		if (pTexture) {
 			Rendering::FreeEditorTexture(pTexture);
-			free(pTexture);
-			pContext->assetRenderTextures.erase(it);
+			AssetRenderTexturesErase(id);
 		}
 	}
-	pContext->assetEraseList.clear();
+	pContext->assetEraseCount = 0;
 
 	Rendering::BeginEditorFrame();
 	ImGui::NewFrame();
@@ -5125,12 +5394,12 @@ void Editor::SetupFrame() {
 	Rendering::RenderEditorTexture(pContext->pChrTexture);
 	Rendering::RenderEditorTexture(pContext->pPaletteTexture);
 
-	for (auto& kvp : pContext->assetRenderTextures) {
-		Rendering::RenderEditorTexture(kvp.second);
+	for (u32 i = 0; i < pContext->assetRenderTexturesCount; i++) {
+		Rendering::RenderEditorTexture(pContext->assetRenderTextures[i].pTexture);
 	}
 
-	for (auto pTempTexture : pContext->tempRenderTextures) {
-		Rendering::RenderEditorTexture(pTempTexture);
+	for (u32 i = 0; i < pContext->tempRenderTexturesCount; i++) {
+		Rendering::RenderEditorTexture(pContext->tempRenderTextures[i]);
 	}
 }
 

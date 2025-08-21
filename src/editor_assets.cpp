@@ -4,6 +4,7 @@
 #include "asset_serialization.h"
 #include "random.h"
 #include "asset_manager.h"
+#include "memory_arena.h"
 
 #pragma region Size calculation
 static u32 GetRoomTemplateSize(const RoomTemplate* pHeader) {
