@@ -8,6 +8,7 @@
 #include <sstream>
 #include <iomanip>
 #include <functional>
+#include <cstring>
 
 static Slang::ComPtr<slang::IGlobalSession> g_slangGlobalSession = nullptr;
 Slang::ComPtr<slang::ISession> g_slangSession = nullptr;
