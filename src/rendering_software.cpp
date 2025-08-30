@@ -18,6 +18,11 @@ struct ColorSample {
     u8 colorIndex;
 };
 
+struct ScanlineSpriteInfo {
+    u16 spriteCount;
+    u16 spriteIndices[MAX_SPRITES_PER_SCANLINE];
+};
+
 SDL_Window* g_SDLWindow = nullptr;
 SDL_Surface* g_WindowSurface = nullptr;
 
@@ -32,6 +37,9 @@ Scanline* g_Scanlines;
 
 u32* g_paletteColors;
 
+// Temporary storage
+ScanlineSpriteInfo* g_EvaluatedScanlines = nullptr;
+
 static void ClearFramebuffer(Framebuffer& framebuffer) {
     memset(framebuffer.pixels, 0, sizeof(framebuffer.pixels));
 }
@@ -44,12 +52,10 @@ static glm::uvec2 ScrollScreen(const Scanline& scanline, const glm::uvec2& pixel
     return scrolledPos % NAMETABLE_DIM_PIXELS;
 }
 
-static u8 SampleBackgroundTile(const BgTile& tile, u32 pixelOffset) {
-    if (tile.flipHorizontal) pixelOffset ^= 7;
-    if (tile.flipVertical) pixelOffset ^= 56;
+static u8 SampleChrTile(u8 chrPage, u8 chrTileIndex, u32 pixelOffset, bool flipX, bool flipY) {
+    if (flipX) pixelOffset ^= 7;
+    if (flipY) pixelOffset ^= 56;
 
-    const u32 chrPage = (tile.tileId >> 8) & 3;
-    const u32 chrTileIndex = tile.tileId & 0xFF;
     const ChrTile& chrTile = g_ChrSheets[chrPage].tiles[chrTileIndex];
 
     u8 colorIndex = ((chrTile.p0 >> pixelOffset) & 1);
@@ -65,13 +71,68 @@ static ColorSample SampleBackground(const glm::uvec2& scrolledPos, u32 nametable
     u32 pixelIndex = pixelPos.x + pixelPos.y * TILE_DIM_PIXELS;
     
     const BgTile& bgTile = g_Nametables[nametableIndex].tiles[tileIndex];
-    u8 colorIndex = SampleBackgroundTile(bgTile, pixelIndex);
+    const u8 chrPage = (bgTile.tileId >> 8) & 3;
+    const u8 chrTileIndex = bgTile.tileId & 0xFF;
+    u8 colorIndex = SampleChrTile(chrPage, chrTileIndex, pixelIndex, bgTile.flipHorizontal, bgTile.flipVertical);
 
     if (colorIndex == 0) {
         return { 0, 0 }; // Transparent
     }
 
     return { u8(bgTile.palette), colorIndex };
+}
+
+static void ProcessSprite(const Sprite& sprite, const glm::uvec2& pixelPos, ColorSample& outColorSample) {
+    if (pixelPos.x < sprite.x || pixelPos.x >= sprite.x + TILE_DIM_PIXELS) {
+        return;
+    }
+
+    const glm::uvec2 spritePixelPos = pixelPos - glm::uvec2(sprite.x, sprite.y);
+    const u32 spritePixelIndex = spritePixelPos.x + spritePixelPos.y * TILE_DIM_PIXELS;
+    
+    const u8 chrPage = (sprite.tileId >> 8) & 3;
+    const u8 chrTileIndex = sprite.tileId & 0xFF;
+    u8 colorIndex = SampleChrTile(chrPage + 4, chrTileIndex, spritePixelIndex, sprite.flipHorizontal, sprite.flipVertical);
+
+    if (colorIndex == 0) {
+        return;
+    }
+
+    if (sprite.priority == 0 || outColorSample.colorIndex == 0) {
+        outColorSample.paletteIndex = u8(sprite.palette + FG_PALETTE_COUNT);
+        outColorSample.colorIndex = colorIndex;
+    }
+}
+
+static void SampleSprites(const glm::uvec2& pixelPos, ColorSample& outColorSample) {
+    const ScanlineSpriteInfo& scanlineInfo = g_EvaluatedScanlines[pixelPos.y];
+
+    if (scanlineInfo.spriteCount == 0) {
+        return;
+    }
+
+    // Iterate backwards so that lower index sprites have priority
+    for (s32 i = scanlineInfo.spriteCount - 1; i >= 0; i--) {
+        const Sprite& sprite = g_Sprites[scanlineInfo.spriteIndices[i]];
+        ProcessSprite(sprite, pixelPos, outColorSample);
+    }
+}
+
+static void EvaluateScanlineSprites() {
+    memset(g_EvaluatedScanlines, 0, sizeof(ScanlineSpriteInfo) * SCANLINE_COUNT);
+    for (u32 i = 0; i < MAX_SPRITE_COUNT; i++) {
+        const Sprite& sprite = g_Sprites[i];
+        for (s32 y = sprite.y; y < sprite.y + TILE_DIM_PIXELS; y++) {
+            if (y < 0 || y >= SCANLINE_COUNT) {
+                continue;
+            }
+
+            ScanlineSpriteInfo& info = g_EvaluatedScanlines[y];
+            if (info.spriteCount < MAX_SPRITES_PER_SCANLINE) {
+                info.spriteIndices[info.spriteCount++] = i;
+            }
+        }
+    }
 }
 
 static void Draw(Framebuffer& framebuffer) {
@@ -81,10 +142,11 @@ static void Draw(Framebuffer& framebuffer) {
         for (u32 x = 0; x < FRAMEBUFFER_WIDTH; x++) {
             // Apply scroll
             u32 nametableIndex;
-            glm::uvec2 scrolledPos = ScrollScreen(scanline, glm::uvec2(x, y), nametableIndex);
+            glm::uvec2 pixelPos = glm::uvec2(x, y);
+            glm::uvec2 scrolledPos = ScrollScreen(scanline, pixelPos, nametableIndex);
 
-            // Sample background
             ColorSample colorSample = SampleBackground(scrolledPos, nametableIndex);
+            SampleSprites(pixelPos, colorSample);
 
             // Fetch color from palette
             u8 colorIndex = g_Palettes[colorSample.paletteIndex].colors[colorSample.colorIndex];
@@ -118,6 +180,8 @@ void Rendering::Init(SDL_Window* sdlWindow) {
 
     g_paletteColors = ArenaAllocator::PushArray<u32>(ARENA_PERMANENT, COLOR_COUNT);
     Rendering::Util::GeneratePaletteColors(g_paletteColors);
+
+    g_EvaluatedScanlines = ArenaAllocator::PushArray<ScanlineSpriteInfo>(ARENA_PERMANENT, SCANLINE_COUNT);
 }
 
 void Rendering::Free() {
@@ -136,6 +200,7 @@ void Rendering::BeginRenderPass() {
 
 void Rendering::EndFrame() {
     ClearFramebuffer(g_Framebuffers[0]);
+    EvaluateScanlineSprites();
     Draw(g_Framebuffers[0]);
     SDL_BlitScaled(g_FramebufferSurfaces[0], nullptr, g_WindowSurface, nullptr);
     SDL_UpdateWindowSurface(g_SDLWindow);
