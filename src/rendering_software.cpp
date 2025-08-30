@@ -12,6 +12,7 @@
 #include <chrono>
 #include <thread>
 #include <condition_variable>
+#include <immintrin.h>
 
 static constexpr u32 FRAMEBUFFER_WIDTH = VIEWPORT_WIDTH_PIXELS;
 static constexpr u32 FRAMEBUFFER_HEIGHT = VIEWPORT_HEIGHT_PIXELS;
@@ -20,11 +21,6 @@ static constexpr u32 FRAMEBUFFER_COUNT = 2;
 
 struct Framebuffer {
     u32 pixels[FRAMEBUFFER_SIZE_PIXELS];
-};
-
-struct ColorSample {
-    u8 paletteIndex;
-    u8 colorIndex;
 };
 
 struct ScanlineSpriteInfo {
@@ -48,6 +44,7 @@ u32* g_paletteColors;
 
 // Temporary storage
 ScanlineSpriteInfo* g_EvaluatedScanlines = nullptr;
+u8* g_SampledPixels = nullptr;
 
 // Threading
 constexpr u32 MAX_WORKER_TASK_COUNT = 64;
@@ -69,14 +66,6 @@ std::condition_variable g_AllWorkDoneCondition;
 std::mutex g_WorkerMutex;
 bool g_StopWorkers = false;
 
-static glm::uvec2 ScrollScreen(const Scanline& scanline, const glm::uvec2& pixelPos, u32& outNametableIndex) {
-    const glm::uvec2 scanlineScroll = glm::uvec2(scanline.scrollX, scanline.scrollY);
-    glm::uvec2 scrolledPos = pixelPos + scanlineScroll;
-    glm::uvec2 nametablePos = scrolledPos / NAMETABLE_DIM_PIXELS;
-    outNametableIndex = (nametablePos.x + nametablePos.y) % 2;
-    return scrolledPos % NAMETABLE_DIM_PIXELS;
-}
-
 static u8 SampleChrTile(u8 chrPage, u8 chrTileIndex, u32 pixelOffset, bool flipX, bool flipY) {
     if (flipX) pixelOffset ^= 7;
     if (flipY) pixelOffset ^= 56;
@@ -89,7 +78,7 @@ static u8 SampleChrTile(u8 chrPage, u8 chrTileIndex, u32 pixelOffset, bool flipX
     return colorIndex;
 }
 
-static ColorSample SampleBackground(const glm::uvec2& scrolledPos, u32 nametableIndex) {
+static u8 SampleBackground(const glm::uvec2& scrolledPos, u32 nametableIndex) {
     glm::uvec2 tilePos = scrolledPos / TILE_DIM_PIXELS;
     u32 tileIndex = tilePos.x + tilePos.y * NAMETABLE_DIM_TILES;
     glm::uvec2 pixelPos = scrolledPos % TILE_DIM_PIXELS;
@@ -101,13 +90,13 @@ static ColorSample SampleBackground(const glm::uvec2& scrolledPos, u32 nametable
     u8 colorIndex = SampleChrTile(chrPage, chrTileIndex, pixelIndex, bgTile.flipHorizontal, bgTile.flipVertical);
 
     if (colorIndex == 0) {
-        return { 0, 0 }; // Transparent
+        return 0; // Transparent
     }
 
-    return { u8(bgTile.palette), colorIndex };
+    return PALETTE_COLOR_COUNT * bgTile.palette + colorIndex;
 }
 
-static void ProcessSprite(const Sprite& sprite, const glm::uvec2& pixelPos, ColorSample& outColorSample) {
+static void ProcessSprite(const Sprite& sprite, const glm::uvec2& pixelPos, u8& outColorIndex) {
     if (pixelPos.x < sprite.x || pixelPos.x >= sprite.x + TILE_DIM_PIXELS) {
         return;
     }
@@ -120,16 +109,15 @@ static void ProcessSprite(const Sprite& sprite, const glm::uvec2& pixelPos, Colo
     u8 colorIndex = SampleChrTile(chrPage + 4, chrTileIndex, spritePixelIndex, sprite.flipHorizontal, sprite.flipVertical);
 
     if (colorIndex == 0) {
-        return;
+        return; // Transparent
     }
 
-    if (sprite.priority == 0 || outColorSample.colorIndex == 0) {
-        outColorSample.paletteIndex = u8(sprite.palette + FG_PALETTE_COUNT);
-        outColorSample.colorIndex = colorIndex;
+    if (sprite.priority == 0 || outColorIndex == 0) {
+        outColorIndex = PALETTE_COLOR_COUNT * (sprite.palette + FG_PALETTE_COUNT) + colorIndex;
     }
 }
 
-static void SampleSprites(const glm::uvec2& pixelPos, ColorSample& outColorSample) {
+static void SampleSprites(const glm::uvec2& pixelPos, u8& outColorIndex) {
     const ScanlineSpriteInfo& scanlineInfo = g_EvaluatedScanlines[pixelPos.y];
 
     if (scanlineInfo.spriteCount == 0) {
@@ -139,7 +127,7 @@ static void SampleSprites(const glm::uvec2& pixelPos, ColorSample& outColorSampl
     // Iterate backwards so that lower index sprites have priority
     for (s32 i = scanlineInfo.spriteCount - 1; i >= 0; i--) {
         const Sprite& sprite = g_Sprites[scanlineInfo.spriteIndices[i]];
-        ProcessSprite(sprite, pixelPos, outColorSample);
+        ProcessSprite(sprite, pixelPos, outColorIndex);
     }
 }
 
@@ -160,27 +148,66 @@ static void EvaluateScanlineSprites() {
     }
 }
 
+static void ResolvePaletteColors(const u8* pSamples, u32* pOutColors, u32 count) {
+    for (u32 i = 0; i < count; i++) {
+        const u8& sample = pSamples[i];
+        u8 colorIndex = ((u8*)g_Palettes)[sample];
+        u32 color = g_paletteColors[colorIndex];
+        pOutColors[i] = color;
+    }
+}
+
+static void ResolvePaletteColorsAVX(const u8* pSamples, u32* pOutColors, u32 count) {
+    for (u32 i = 0; i < count; i += 8) {
+        __m128i idx8 = _mm_loadl_epi64((const __m128i*)(pSamples + i));
+        __m256i idx32 = _mm256_cvtepu8_epi32(idx8);
+        __m256i intIndices = _mm256_srli_epi32(idx32, 2);
+        __m256i paletteWords = _mm256_i32gather_epi32((const int*)g_Palettes, intIndices, 4);
+        __m256i byteOffsets = _mm256_and_si256(idx32, _mm256_set1_epi32(3));
+        __m256i shiftAmounts = _mm256_slli_epi32(byteOffsets, 3);
+        __m256i shifted = _mm256_srlv_epi32(paletteWords, shiftAmounts);
+        __m256i colorIndices = _mm256_and_si256(shifted, _mm256_set1_epi32(0xFF));
+        __m256i finalColors = _mm256_i32gather_epi32((const int*)g_paletteColors, colorIndices, 4);
+        _mm256_storeu_si256((__m256i*)(pOutColors + i), finalColors);
+    }
+}
+
 static void DrawScanlines(u32 count, u32 offset) {
-    u32* pPixels = g_Framebuffer->pixels;
-    for (u32 y = offset; y < offset + count; y++) {
-        Scanline& scanline = g_Scanlines[y];
+    const u32 framebufferOffset = offset * FRAMEBUFFER_WIDTH;
+    const Scanline* pScanlines = g_Scanlines + offset;
+    u8* pSamples = g_SampledPixels + framebufferOffset;
+
+    // Step 1: Sample background
+    for (u32 i = 0; i < count; i++) {
+        const Scanline& scanline = pScanlines[i];
+        const u32 y = i + offset;
+        glm::uvec2 scrolledPos = glm::uvec2(0, y + scanline.scrollY);
+        glm::uvec2 nametablePos = glm::uvec2(0, scrolledPos.y / NAMETABLE_DIM_PIXELS);
+        scrolledPos.y %= NAMETABLE_DIM_PIXELS;
+
         for (u32 x = 0; x < FRAMEBUFFER_WIDTH; x++) {
-            // Apply scroll
-            u32 nametableIndex;
-            glm::uvec2 pixelPos = glm::uvec2(x, y);
-            glm::uvec2 scrolledPos = ScrollScreen(scanline, pixelPos, nametableIndex);
+            scrolledPos.x = x + scanline.scrollX;
+            nametablePos.x = scrolledPos.x / NAMETABLE_DIM_PIXELS;
+            const u32 nametableIndex = (nametablePos.x + nametablePos.y) % 2;
+            scrolledPos.x %= NAMETABLE_DIM_PIXELS;
 
-            ColorSample colorSample = SampleBackground(scrolledPos, nametableIndex);
-            SampleSprites(pixelPos, colorSample);
-
-            // Fetch color from palette
-            u8 colorIndex = g_Palettes[colorSample.paletteIndex].colors[colorSample.colorIndex];
-            u32 color = g_paletteColors[colorIndex];
-
-            // Set pixel in framebuffer
-            pPixels[y * FRAMEBUFFER_WIDTH + x] = color;
+            u8& sample = pSamples[i * FRAMEBUFFER_WIDTH + x];
+            sample = SampleBackground(scrolledPos, nametableIndex);
         }
     }
+
+    // Step 2: Sample sprites
+    for (u32 i = 0; i < count; i++) {
+        const u32 y = i + offset;
+        for (u32 x = 0; x < FRAMEBUFFER_WIDTH; x++) {
+            u8& sample = pSamples[i * FRAMEBUFFER_WIDTH + x];
+            SampleSprites(glm::uvec2(x, y), sample);
+        }
+    }
+
+    // Step 3: Write to framebuffer
+    u32* pPixels = g_Framebuffer->pixels + framebufferOffset;
+    ResolvePaletteColorsAVX(pSamples, pPixels, FRAMEBUFFER_WIDTH * count);
 }
 
 static void Draw() {
@@ -259,6 +286,7 @@ void Rendering::Init(SDL_Window* sdlWindow) {
     Rendering::Util::GeneratePaletteColors(g_paletteColors);
 
     g_EvaluatedScanlines = ArenaAllocator::PushArray<ScanlineSpriteInfo>(ARENA_PERMANENT, SCANLINE_COUNT);
+    g_SampledPixels = ArenaAllocator::PushArray<u8>(ARENA_PERMANENT, FRAMEBUFFER_SIZE_PIXELS);
 
     g_WorkerCount = 4; // TODO: Determine optimal worker count based on hardware capabilities
     void* workerMemory = ArenaAllocator::Push(ARENA_PERMANENT, sizeof(std::thread) * g_WorkerCount, alignof(std::thread));
