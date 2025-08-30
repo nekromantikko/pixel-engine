@@ -9,10 +9,14 @@ set(CMAKE_CXX_EXTENSIONS ON)
 option(ENABLE_EDITOR "Enable editor functionality" ON)
 option(BUILD_ASSETS "Build asset archive" ON)
 
+# Rendering backend
+set(RENDERING_BACKEND "VULKAN" CACHE STRING "Rendering backend to use")
+set_property(CACHE RENDERING_BACKEND PROPERTY STRINGS "VULKAN" "SOFTWARE")
+
 set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set(ASSETS_NPAK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
 
-find_package(Vulkan REQUIRED)
+find_package(Vulkan QUIET)
 find_package(SDL2 REQUIRED)
 find_package(slang QUIET)
 
@@ -41,6 +45,15 @@ if(ENABLE_EDITOR OR BUILD_ASSETS)
 	FetchContent_MakeAvailable(nlohmann_json)
 endif()
 
+if(RENDERING_BACKEND STREQUAL "VULKAN")
+    if(NOT Vulkan_FOUND)
+        message(FATAL_ERROR "Vulkan rendering backend selected, but Vulkan SDK not found!")
+    endif()
+    set(RENDERER_SRC src/rendering_vulkan.cpp)
+elseif(RENDERING_BACKEND STREQUAL "SOFTWARE")
+    set(RENDERER_SRC src/rendering_software.cpp)
+endif()
+
 set(SOURCES 
 		src/main.cpp
 		src/memory_arena.cpp
@@ -48,7 +61,7 @@ set(SOURCES
 		src/game.cpp
 		src/input.cpp
 		src/rendering_util.cpp
-		src/rendering_vulkan.cpp
+		${RENDERER_SRC}
 		src/game_rendering.cpp
 		src/tilemap.cpp
 		src/actors.cpp
@@ -71,8 +84,17 @@ set(SOURCES
 		src/asset_manager.cpp)
 
 add_executable(${PROJECT_NAME} WIN32 ${SHARED_SOURCES} ${SOURCES})
-target_include_directories(${PROJECT_NAME} PRIVATE ${SHARED_INCLUDE_DIR} ${Vulkan_INCLUDE_DIRS} ${glm_SOURCE_DIR})
-target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY} SDL2::SDL2 SDL2::SDL2main)
+target_include_directories(${PROJECT_NAME} PRIVATE ${SHARED_INCLUDE_DIR} ${glm_SOURCE_DIR})
+target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2 SDL2::SDL2main)
+
+if(RENDERING_BACKEND STREQUAL "VULKAN")
+	target_compile_definitions(${PROJECT_NAME} PRIVATE RENDERING_BACKEND_VULKAN)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${Vulkan_INCLUDE_DIRS})
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY})
+elseif(RENDERING_BACKEND STREQUAL "SOFTWARE")
+	target_compile_definitions(${PROJECT_NAME} PRIVATE RENDERING_BACKEND_SOFTWARE)
+endif()
+
 target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_NPAK_OUTPUT="${ASSETS_NPAK_OUTPUT}" ASSET_ARCHIVE_USE_ARENA)
 
 if(MSVC)
@@ -141,9 +163,13 @@ if(ENABLE_EDITOR)
 		${imgui_SOURCE_DIR}/imstb_truetype.h
 		${imgui_SOURCE_DIR}/imgui_tables.cpp
 		${imgui_SOURCE_DIR}/imgui_widgets.cpp
-		${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
-		${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp)
-		
+		${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp)
+
+    # Vulkan backend
+    if (RENDERING_BACKEND STREQUAL "VULKAN")
+        list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp)
+    endif()
+
 	# Add platform-specific backends
 	if(WIN32)
 		list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp)
