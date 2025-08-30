@@ -1,8 +1,17 @@
+#ifdef PLATFORM_WINDOWS
+    #include <windows.h>
+#elif PLATFORM_LINUX
+    #include <pthread.h>
+#endif
+
 #include "rendering.h"
 #include "rendering_util.h"
 #include "core_types.h"
 #include "debug.h"
 #include "memory_arena.h"
+#include <chrono>
+#include <thread>
+#include <condition_variable>
 
 static constexpr u32 FRAMEBUFFER_WIDTH = VIEWPORT_WIDTH_PIXELS;
 static constexpr u32 FRAMEBUFFER_HEIGHT = VIEWPORT_HEIGHT_PIXELS;
@@ -26,8 +35,8 @@ struct ScanlineSpriteInfo {
 SDL_Window* g_SDLWindow = nullptr;
 SDL_Surface* g_WindowSurface = nullptr;
 
-Framebuffer* g_Framebuffers = nullptr;
-SDL_Surface* g_FramebufferSurfaces[FRAMEBUFFER_COUNT];
+Framebuffer* g_Framebuffer = nullptr;
+SDL_Surface* g_FramebufferSurface = nullptr;
 
 Palette* g_Palettes;
 Sprite* g_Sprites;
@@ -40,9 +49,25 @@ u32* g_paletteColors;
 // Temporary storage
 ScanlineSpriteInfo* g_EvaluatedScanlines = nullptr;
 
-static void ClearFramebuffer(Framebuffer& framebuffer) {
-    memset(framebuffer.pixels, 0, sizeof(framebuffer.pixels));
-}
+// Threading
+constexpr u32 MAX_WORKER_TASK_COUNT = 64;
+
+struct RenderWorkerTask {
+    u32 scanlineCount;
+    u32 scanlineOffset;
+};
+
+RenderWorkerTask g_WorkerTasks[MAX_WORKER_TASK_COUNT];
+u32 g_ActiveTaskCount = 0;
+
+u32 g_WorkerCount = 0;
+u32 g_ActiveWorkers = 0;
+std::thread* g_WorkerThreads = nullptr;
+
+std::condition_variable g_WorkerCondition;
+std::condition_variable g_AllWorkDoneCondition;
+std::mutex g_WorkerMutex;
+bool g_StopWorkers = false;
 
 static glm::uvec2 ScrollScreen(const Scanline& scanline, const glm::uvec2& pixelPos, u32& outNametableIndex) {
     const glm::uvec2 scanlineScroll = glm::uvec2(scanline.scrollX, scanline.scrollY);
@@ -135,9 +160,9 @@ static void EvaluateScanlineSprites() {
     }
 }
 
-static void Draw(Framebuffer& framebuffer) {
-    u32* pPixels = framebuffer.pixels;
-    for (u32 y = 0; y < FRAMEBUFFER_HEIGHT; y++) {
+static void DrawScanlines(u32 count, u32 offset) {
+    u32* pPixels = g_Framebuffer->pixels;
+    for (u32 y = offset; y < offset + count; y++) {
         Scanline& scanline = g_Scanlines[y];
         for (u32 x = 0; x < FRAMEBUFFER_WIDTH; x++) {
             // Apply scroll
@@ -158,6 +183,61 @@ static void Draw(Framebuffer& framebuffer) {
     }
 }
 
+static void Draw() {
+    const u32 scanlinesPerThread = SCANLINE_COUNT / g_WorkerCount;
+
+    {
+        std::unique_lock<std::mutex> lock(g_WorkerMutex);
+        for (u32 i = 0; i < g_WorkerCount; i++) {
+            g_WorkerTasks[g_ActiveTaskCount++] = { scanlinesPerThread, i * scanlinesPerThread };
+        }
+        g_WorkerCondition.notify_all();
+    }
+
+    {
+        std::unique_lock<std::mutex> lock(g_WorkerMutex);
+        while (g_ActiveWorkers > 0 || g_ActiveTaskCount > 0) {
+            g_AllWorkDoneCondition.wait(lock);
+        }
+    }
+
+}
+
+static void WorkerLoop() {
+#ifdef PLATFORM_WINDOWS
+    SetThreadDescription(GetCurrentThread(), L"RenderWorker");
+#elif PLATFORM_LINUX
+    pthread_setname_np(pthread_self(), "RenderWorker");
+#endif
+
+    while (true) {
+        RenderWorkerTask task;
+        {
+            std::unique_lock<std::mutex> lock(g_WorkerMutex);
+            while (g_ActiveTaskCount == 0 && !g_StopWorkers) {
+                g_WorkerCondition.wait(lock);
+            }
+
+            if (g_StopWorkers) {
+                return;
+            }
+
+            task = g_WorkerTasks[--g_ActiveTaskCount];
+            g_ActiveWorkers++;
+        } // Lock goes out of scope here
+
+        DrawScanlines(task.scanlineCount, task.scanlineOffset);
+
+        {
+            std::unique_lock<std::mutex> lock(g_WorkerMutex);
+            g_ActiveWorkers--;
+            if (g_ActiveWorkers == 0 && g_ActiveTaskCount == 0) {
+                g_AllWorkDoneCondition.notify_all();
+            }
+        }
+    }
+}
+
 void Rendering::Init(SDL_Window* sdlWindow) {
     g_SDLWindow = sdlWindow;
     g_WindowSurface = SDL_GetWindowSurface(sdlWindow);
@@ -165,12 +245,9 @@ void Rendering::Init(SDL_Window* sdlWindow) {
         DEBUG_FATAL("Failed to get window surface\n");
     }
 
-    g_Framebuffers = ArenaAllocator::PushArray<Framebuffer>(ARENA_PERMANENT, FRAMEBUFFER_COUNT);
-
-    for (u32 i = 0; i < FRAMEBUFFER_COUNT; i++) {
-        g_FramebufferSurfaces[i] = SDL_CreateRGBSurfaceFrom(g_Framebuffers[i].pixels, FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, 32, FRAMEBUFFER_WIDTH * sizeof(u32),
-            0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
-    }
+    g_Framebuffer = ArenaAllocator::Push<Framebuffer>(ARENA_PERMANENT);
+    g_FramebufferSurface = SDL_CreateRGBSurfaceFrom(g_Framebuffer->pixels, FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, 32, FRAMEBUFFER_WIDTH * sizeof(u32),
+        0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
 
     g_Palettes = ArenaAllocator::PushArray<Palette>(ARENA_PERMANENT, PALETTE_COUNT);
     g_Sprites = ArenaAllocator::PushArray<Sprite>(ARENA_PERMANENT, MAX_SPRITE_COUNT);
@@ -182,12 +259,29 @@ void Rendering::Init(SDL_Window* sdlWindow) {
     Rendering::Util::GeneratePaletteColors(g_paletteColors);
 
     g_EvaluatedScanlines = ArenaAllocator::PushArray<ScanlineSpriteInfo>(ARENA_PERMANENT, SCANLINE_COUNT);
+
+    g_WorkerCount = 4; // TODO: Determine optimal worker count based on hardware capabilities
+    void* workerMemory = ArenaAllocator::Push(ARENA_PERMANENT, sizeof(std::thread) * g_WorkerCount, alignof(std::thread));
+    g_WorkerThreads = (std::thread*)workerMemory;
+    for (u32 i = 0; i < g_WorkerCount; i++) {
+        new (&g_WorkerThreads[i]) std::thread(WorkerLoop);
+    }
 }
 
 void Rendering::Free() {
-    for (u32 i = 0; i < FRAMEBUFFER_COUNT; i++) {
-        SDL_FreeSurface(g_FramebufferSurfaces[i]);
+    {
+        std::unique_lock<std::mutex> lock(g_WorkerMutex);
+        g_StopWorkers = true;
     }
+    g_WorkerCondition.notify_all();
+
+    for (u32 i = 0; i < g_WorkerCount; i++) {
+        if (g_WorkerThreads[i].joinable()) {
+            g_WorkerThreads[i].join();
+        }
+    }
+
+    SDL_FreeSurface(g_FramebufferSurface);
 }
 
 void Rendering::BeginFrame() {
@@ -199,11 +293,19 @@ void Rendering::BeginRenderPass() {
 }
 
 void Rendering::EndFrame() {
-    ClearFramebuffer(g_Framebuffers[0]);
+    auto t1 = std::chrono::high_resolution_clock::now();
     EvaluateScanlineSprites();
-    Draw(g_Framebuffers[0]);
-    SDL_BlitScaled(g_FramebufferSurfaces[0], nullptr, g_WindowSurface, nullptr);
+    auto t2 = std::chrono::high_resolution_clock::now();
+    Draw();
+    auto t3 = std::chrono::high_resolution_clock::now();
+    SDL_BlitScaled(g_FramebufferSurface, nullptr, g_WindowSurface, nullptr);
+    auto t4 = std::chrono::high_resolution_clock::now();
     SDL_UpdateWindowSurface(g_SDLWindow);
+
+    DEBUG_LOG("Evaluate time: %lldus\n", std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count());
+    DEBUG_LOG("Draw time: %lldus\n", std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count());
+    DEBUG_LOG("Blit time: %lldus\n", std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count());
+    DEBUG_LOG("FRAME END\n");
 }
 
 void Rendering::WaitForAllCommands() {
