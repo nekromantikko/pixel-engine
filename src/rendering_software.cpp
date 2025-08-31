@@ -66,72 +66,51 @@ std::condition_variable g_AllWorkDoneCondition;
 std::mutex g_WorkerMutex;
 bool g_StopWorkers = false;
 
-static u8 SampleChrTile(u8 chrPage, u8 chrTileIndex, u32 pixelOffset, bool flipX, bool flipY) {
+// Modulo function that handles negative values
+template<typename T>
+inline static T Mod(T a, T b) {
+    return (a % b + b) % b;
+}
+
+inline u8 Reverse8(u8 value) {
+    return (value * 0x0202020202ULL & 0x010884422010ULL) % 1023;
+}
+
+static inline void SampleChrTileRow(u16 tileId, u8 y, u8 palette, bool flipX, bool flipY, u8 start, u8 end, u8* outRow) {
+    const ChrTile* pFlatChrTiles = (ChrTile*)g_ChrSheets;
+    const ChrTile& tile = pFlatChrTiles[tileId];
+
+    const u8 row = flipY ? y ^ 7 : y;
+    u8 p0 = (tile.p0 >> (row * 8)) & 0xFF;
+    u8 p1 = (tile.p1 >> (row * 8)) & 0xFF;
+    u8 p2 = (tile.p2 >> (row * 8)) & 0xFF;
+
+    if (flipX) {
+        p0 = Reverse8(p0);
+        p1 = Reverse8(p1);
+        p2 = Reverse8(p2);
+    }
+
+    for (u32 i = start; i < end; i++) {
+        u8 ci = ((p0 >> i) & 1) | (((p1 >> i) & 1) << 1) | (((p2 >> i) & 1) << 2);
+        outRow[i] = (ci == 0) ? 0 : (PALETTE_COLOR_COUNT * palette + ci);
+    }
+}
+
+static inline u8 SampleChrTile(u16 tileId, u8 pixelOffset, u8 palette, bool flipX, bool flipY) {
+    const ChrTile* pFlatChrTiles = (ChrTile*)g_ChrSheets;
+    const ChrTile& chrTile = pFlatChrTiles[tileId];
+    
     if (flipX) pixelOffset ^= 7;
     if (flipY) pixelOffset ^= 56;
-
-    const ChrTile& chrTile = g_ChrSheets[chrPage].tiles[chrTileIndex];
 
     u8 colorIndex = ((chrTile.p0 >> pixelOffset) & 1);
     colorIndex |= ((chrTile.p1 >> pixelOffset) & 1) << 1;
     colorIndex |= ((chrTile.p2 >> pixelOffset) & 1) << 2;
-    return colorIndex;
+    return colorIndex == 0 ? 0 : PALETTE_COLOR_COUNT * palette + colorIndex;
 }
 
-static u8 SampleBackground(const glm::uvec2& scrolledPos, u32 nametableIndex) {
-    glm::uvec2 tilePos = scrolledPos / TILE_DIM_PIXELS;
-    u32 tileIndex = tilePos.x + tilePos.y * NAMETABLE_DIM_TILES;
-    glm::uvec2 pixelPos = scrolledPos % TILE_DIM_PIXELS;
-    u32 pixelIndex = pixelPos.x + pixelPos.y * TILE_DIM_PIXELS;
-    
-    const BgTile& bgTile = g_Nametables[nametableIndex].tiles[tileIndex];
-    const u8 chrPage = (bgTile.tileId >> 8) & 3;
-    const u8 chrTileIndex = bgTile.tileId & 0xFF;
-    u8 colorIndex = SampleChrTile(chrPage, chrTileIndex, pixelIndex, bgTile.flipHorizontal, bgTile.flipVertical);
-
-    if (colorIndex == 0) {
-        return 0; // Transparent
-    }
-
-    return PALETTE_COLOR_COUNT * bgTile.palette + colorIndex;
-}
-
-static void ProcessSprite(const Sprite& sprite, const glm::uvec2& pixelPos, u8& outColorIndex) {
-    if (pixelPos.x < sprite.x || pixelPos.x >= sprite.x + TILE_DIM_PIXELS) {
-        return;
-    }
-
-    const glm::uvec2 spritePixelPos = pixelPos - glm::uvec2(sprite.x, sprite.y);
-    const u32 spritePixelIndex = spritePixelPos.x + spritePixelPos.y * TILE_DIM_PIXELS;
-    
-    const u8 chrPage = (sprite.tileId >> 8) & 3;
-    const u8 chrTileIndex = sprite.tileId & 0xFF;
-    u8 colorIndex = SampleChrTile(chrPage + 4, chrTileIndex, spritePixelIndex, sprite.flipHorizontal, sprite.flipVertical);
-
-    if (colorIndex == 0) {
-        return; // Transparent
-    }
-
-    if (sprite.priority == 0 || outColorIndex == 0) {
-        outColorIndex = PALETTE_COLOR_COUNT * (sprite.palette + FG_PALETTE_COUNT) + colorIndex;
-    }
-}
-
-static void SampleSprites(const glm::uvec2& pixelPos, u8& outColorIndex) {
-    const ScanlineSpriteInfo& scanlineInfo = g_EvaluatedScanlines[pixelPos.y];
-
-    if (scanlineInfo.spriteCount == 0) {
-        return;
-    }
-
-    // Iterate backwards so that lower index sprites have priority
-    for (s32 i = scanlineInfo.spriteCount - 1; i >= 0; i--) {
-        const Sprite& sprite = g_Sprites[scanlineInfo.spriteIndices[i]];
-        ProcessSprite(sprite, pixelPos, outColorIndex);
-    }
-}
-
-static void EvaluateScanlineSprites() {
+static inline void EvaluateScanlineSprites() {
     memset(g_EvaluatedScanlines, 0, sizeof(ScanlineSpriteInfo) * SCANLINE_COUNT);
     for (u32 i = 0; i < MAX_SPRITE_COUNT; i++) {
         const Sprite& sprite = g_Sprites[i];
@@ -148,7 +127,7 @@ static void EvaluateScanlineSprites() {
     }
 }
 
-static void ResolvePaletteColors(const u8* pSamples, u32* pOutColors, u32 count) {
+static inline void ResolvePaletteColors(const u8* pSamples, u32* pOutColors, u32 count) {
     for (u32 i = 0; i < count; i++) {
         const u8& sample = pSamples[i];
         u8 colorIndex = ((u8*)g_Palettes)[sample];
@@ -157,7 +136,7 @@ static void ResolvePaletteColors(const u8* pSamples, u32* pOutColors, u32 count)
     }
 }
 
-static void ResolvePaletteColorsAVX(const u8* pSamples, u32* pOutColors, u32 count) {
+static inline void ResolvePaletteColorsAVX(const u8* pSamples, u32* pOutColors, u32 count) {
     for (u32 i = 0; i < count; i += 8) {
         __m128i idx8 = _mm_loadl_epi64((const __m128i*)(pSamples + i));
         __m256i idx32 = _mm256_cvtepu8_epi32(idx8);
@@ -172,6 +151,17 @@ static void ResolvePaletteColorsAVX(const u8* pSamples, u32* pOutColors, u32 cou
     }
 }
 
+static inline const BgTile* GetNametableTile(s32 x, s32 y) {
+    const BgTile* pFlatBgTiles = (BgTile*)g_Nametables;
+
+    const s32 nametableIndex = ((y / NAMETABLE_DIM_PIXELS) + (x / NAMETABLE_DIM_PIXELS)) & 1;
+    const s32 offsetX = Mod(x, s32(NAMETABLE_DIM_PIXELS));
+    const s32 offsetY = Mod(y, s32(NAMETABLE_DIM_PIXELS));
+    const s32 tileIndex = (offsetY / TILE_DIM_PIXELS) * NAMETABLE_DIM_TILES + (offsetX / TILE_DIM_PIXELS);
+
+    return &pFlatBgTiles[nametableIndex * NAMETABLE_SIZE_TILES + tileIndex];
+}
+
 static void DrawScanlines(u32 count, u32 offset) {
     const u32 framebufferOffset = offset * FRAMEBUFFER_WIDTH;
     const Scanline* pScanlines = g_Scanlines + offset;
@@ -180,28 +170,71 @@ static void DrawScanlines(u32 count, u32 offset) {
     // Step 1: Sample background
     for (u32 i = 0; i < count; i++) {
         const Scanline& scanline = pScanlines[i];
-        const u32 y = i + offset;
-        glm::uvec2 scrolledPos = glm::uvec2(0, y + scanline.scrollY);
-        glm::uvec2 nametablePos = glm::uvec2(0, scrolledPos.y / NAMETABLE_DIM_PIXELS);
-        scrolledPos.y %= NAMETABLE_DIM_PIXELS;
+        u8* pScanlineSamples = pSamples + i * FRAMEBUFFER_WIDTH;
 
-        for (u32 x = 0; x < FRAMEBUFFER_WIDTH; x++) {
-            scrolledPos.x = x + scanline.scrollX;
-            nametablePos.x = scrolledPos.x / NAMETABLE_DIM_PIXELS;
-            const u32 nametableIndex = (nametablePos.x + nametablePos.y) % 2;
-            scrolledPos.x %= NAMETABLE_DIM_PIXELS;
+        const s32 pixelY = i + offset;
+        const s32 scrolledY = pixelY + scanline.scrollY;
+        const s32 tileOffsetY = Mod(scrolledY, s32(TILE_DIM_PIXELS));
 
-            u8& sample = pSamples[i * FRAMEBUFFER_WIDTH + x];
-            sample = SampleBackground(scrolledPos, nametableIndex);
+        // Handle partial left tile row
+        s32 scrolledX = scanline.scrollX;
+        s32 tileOffsetX = Mod(scrolledX, s32(TILE_DIM_PIXELS));
+        s32 x = 0;
+        if (tileOffsetX != 0) {
+            const BgTile* pTile = GetNametableTile(scrolledX, scrolledY);
+            SampleChrTileRow(pTile->tileId, tileOffsetY, pTile->palette, pTile->flipHorizontal, pTile->flipVertical, tileOffsetX, 8, &pScanlineSamples[x]);
+            x += 8 - tileOffsetX;
+        }
+
+        // Handle full tile rows
+        while (x + TILE_DIM_PIXELS <= FRAMEBUFFER_WIDTH) {
+            scrolledX = x + scanline.scrollX;
+            const BgTile* pTile = GetNametableTile(scrolledX, scrolledY);
+
+            SampleChrTileRow(pTile->tileId, tileOffsetY, pTile->palette, pTile->flipHorizontal, pTile->flipVertical, 0, 8, &pScanlineSamples[x]);
+            x += TILE_DIM_PIXELS;
+        }
+
+        // Handle partial right tile row
+        if (x < FRAMEBUFFER_WIDTH - 1) {
+            scrolledX = x + scanline.scrollX;
+            const BgTile* pTile = GetNametableTile(scrolledX, scrolledY);
+            SampleChrTileRow(pTile->tileId, tileOffsetY, pTile->palette, pTile->flipHorizontal, pTile->flipVertical, 0, FRAMEBUFFER_WIDTH - x, &pScanlineSamples[x]);
         }
     }
 
     // Step 2: Sample sprites
     for (u32 i = 0; i < count; i++) {
-        const u32 y = i + offset;
-        for (u32 x = 0; x < FRAMEBUFFER_WIDTH; x++) {
-            u8& sample = pSamples[i * FRAMEBUFFER_WIDTH + x];
-            SampleSprites(glm::uvec2(x, y), sample);
+        u8* pScanlineSamples = pSamples + i * FRAMEBUFFER_WIDTH;
+
+        const s32 pixelY = i + offset;
+        const ScanlineSpriteInfo& scanlineInfo = g_EvaluatedScanlines[pixelY];
+
+        if (scanlineInfo.spriteCount == 0) {
+            continue;
+        }
+
+        // Iterate backwards so that lower index sprites have priority
+        for (s32 j = scanlineInfo.spriteCount - 1; j >= 0; j--) {
+            const Sprite& sprite = g_Sprites[scanlineInfo.spriteIndices[j]];
+
+            if (sprite.x + TILE_DIM_PIXELS < 0 || sprite.x >= FRAMEBUFFER_WIDTH) {
+                continue;
+            }
+
+            s32 yOffset = pixelY - sprite.y;
+            u8 start = sprite.x < 0 ? -sprite.x : 0;
+            u8 end = sprite.x + TILE_DIM_PIXELS > FRAMEBUFFER_WIDTH ? FRAMEBUFFER_WIDTH - sprite.x : TILE_DIM_PIXELS;
+
+            u8 row[8];
+            memcpy(row, &pScanlineSamples[sprite.x], 8);
+            SampleChrTileRow(sprite.tileId + CHR_PAGE_COUNT * CHR_SIZE_TILES, yOffset, sprite.palette + BG_PALETTE_COUNT, sprite.flipHorizontal, sprite.flipVertical, start, end, row);
+
+            for (s32 k = 0; k < 8; k++) {
+                if (row[k] != 0 && (sprite.priority == 0 || pScanlineSamples[sprite.x + k] == 0)) {
+                    pScanlineSamples[sprite.x + k] = row[k];
+                }
+            }
         }
     }
 
