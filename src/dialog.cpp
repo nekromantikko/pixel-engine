@@ -5,7 +5,7 @@
 #include "game_rendering.h"
 #include "game_input.h"
 #include "asset_manager.h"
-#include "rendering.h"
+#include "software_renderer.h"
 
 enum DialogState {
     DIALOG_CLOSED = 0,
@@ -78,7 +78,7 @@ static void DrawBgText(const glm::ivec2& boxViewportOffset, const glm::ivec2& bo
     u32 xTile = xTileStart;
     u32 yTile = yTileStart;
 
-    Nametable* pNametables = Rendering::GetNametablePtr(0);
+    Nametable* pNametables = Rendering::Software::GetNametable(0);
 
     for (u32 i = 0; i < length; i++) {
         const char c = pText[i];
@@ -120,7 +120,7 @@ static void ClearBgText(const glm::ivec2& boxViewportOffset, const glm::ivec2& b
     const u32 xTileStart = worldTilePos.x + 1;
     const u32 yTileStart = worldTilePos.y + 1;
 
-    Nametable* pNametables = Rendering::GetNametablePtr(0);
+    Nametable* pNametables = Rendering::Software::GetNametable(0);
 
     for (u32 y = 0; y < innerSizeTiles.y; y++) {
         u32 yTile = yTileStart + y;

@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdarg>
+#include <cstdlib>
 
 #define DEBUG_LOG(fmt, ...) Debug::Log("%s: " fmt, \
     __func__ __VA_OPT__(,) __VA_ARGS__)
@@ -14,6 +15,8 @@
 	Debug::Log("[fatal] %s: " fmt, __func__ __VA_OPT__(,) __VA_ARGS__); \
 	std::abort(); \
 } while (0)
+
+#define DEBUG_LOG_RAW(fmt, ...) Debug::Log(fmt __VA_OPT__(,) __VA_ARGS__)
 
 namespace Debug {
 #ifdef EDITOR

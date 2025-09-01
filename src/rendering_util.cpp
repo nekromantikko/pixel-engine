@@ -73,87 +73,47 @@ namespace Rendering
 			pNametable->tiles[firstTileIndex + NAMETABLE_DIM_TILES + 1] = metatile.tiles[3];
 		}
 #pragma endregion
+		// void SavePaletteToFile(const char* fname) {
+		// 	u32 data[COLOR_COUNT];
+		// 	GeneratePaletteColors(data);
+		// 	const u32 dataSize = COLOR_COUNT * sizeof(u32);
 
-		void GeneratePaletteColors(u32* data) {
-			for (s32 i = 0; i < COLOR_COUNT; i++) {
-				s32 hue = i & 0b1111;
-				s32 brightness = (i & 0b1110000) >> 4;
+		// 	FILE* pFile;
+		// 	pFile = fopen(fname, "wb");
 
-				r32 y = (r32)brightness / 7;
-				r32 u = 0.0f; 
-				r32 v = 0.0f;
+		// 	if (pFile == NULL) {
+		// 		DEBUG_ERROR("Failed to write palette file\n");
+		// 	}
 
-				if (hue != 0) {
-					// No need to have multiple pure blacks and whites
-					y = (r32)(brightness + 1) / 9;
+		// 	RIFFHeader header{};
+		// 	header.signature[0] = 'R';
+		// 	header.signature[1] = 'I';
+		// 	header.signature[2] = 'F';
+		// 	header.signature[3] = 'F';
 
-					r32 angle = 2 * glm::pi<r32>() * (hue - 1) / 15;
-					r32 radius = 0.5f * (1.0f - glm::abs(y - 0.5f) * 2);
+		// 	header.type[0] = 'P';
+		// 	header.type[1] = 'A';
+		// 	header.type[2] = 'L';
+		// 	header.type[3] = ' ';
 
-					u = radius * glm::cos(angle);
-					v = radius * glm::sin(angle);
-				}
+		// 	header.size = dataSize + sizeof(PaletteChunkHeader);
 
-				// Convert YUV to RGB
-				float r = y + v * 1.139883;
-				float g = y - 0.394642 * u - 0.580622 * v;
-				float b = y + u * 2.032062;
+		// 	fwrite(&header, sizeof(RIFFHeader), 1, pFile);
 
-				r = glm::clamp(r, 0.0f, 1.0f);
-				g = glm::clamp(g, 0.0f, 1.0f);
-				b = glm::clamp(b, 0.0f, 1.0f);
-
-				u32* pixel = data + i;
-				u8* pixelBytes = (u8*)pixel;
-
-				pixelBytes[0] = (u8)(r * 255);
-				pixelBytes[1] = (u8)(g * 255);
-				pixelBytes[2] = (u8)(b * 255);
-				pixelBytes[3] = 255;
-			}
-		}
-
-		void SavePaletteToFile(const char* fname) {
-			u32 data[COLOR_COUNT];
-			GeneratePaletteColors(data);
-			const u32 dataSize = COLOR_COUNT * sizeof(u32);
-
-			FILE* pFile;
-			pFile = fopen(fname, "wb");
-
-			if (pFile == NULL) {
-				DEBUG_ERROR("Failed to write palette file\n");
-			}
-
-			RIFFHeader header{};
-			header.signature[0] = 'R';
-			header.signature[1] = 'I';
-			header.signature[2] = 'F';
-			header.signature[3] = 'F';
-
-			header.type[0] = 'P';
-			header.type[1] = 'A';
-			header.type[2] = 'L';
-			header.type[3] = ' ';
-
-			header.size = dataSize + sizeof(PaletteChunkHeader);
-
-			fwrite(&header, sizeof(RIFFHeader), 1, pFile);
-
-			PaletteChunkHeader chunk{};
-			chunk.signature[0] = 'd';
-			chunk.signature[1] = 'a';
-			chunk.signature[2] = 't';
-			chunk.signature[3] = 'a';
+		// 	PaletteChunkHeader chunk{};
+		// 	chunk.signature[0] = 'd';
+		// 	chunk.signature[1] = 'a';
+		// 	chunk.signature[2] = 't';
+		// 	chunk.signature[3] = 'a';
 			
-			chunk.size = dataSize;
-			chunk.version = 0x0300;
-			chunk.colorCount = COLOR_COUNT;
+		// 	chunk.size = dataSize;
+		// 	chunk.version = 0x0300;
+		// 	chunk.colorCount = COLOR_COUNT;
 
-			fwrite(&chunk, sizeof(PaletteChunkHeader), 1, pFile);
-			fwrite(data, dataSize, 1, pFile);
+		// 	fwrite(&chunk, sizeof(PaletteChunkHeader), 1, pFile);
+		// 	fwrite(data, dataSize, 1, pFile);
 
-			fclose(pFile);
-		}
+		// 	fclose(pFile);
+		// }
 	}
 }

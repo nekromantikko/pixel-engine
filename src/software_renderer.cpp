@@ -4,47 +4,32 @@
     #include <pthread.h>
 #endif
 
-#include "rendering.h"
-#include "rendering_util.h"
-#include "core_types.h"
+#include "software_renderer.h"
 #include "debug.h"
 #include "memory_arena.h"
-#include <chrono>
 #include <thread>
 #include <condition_variable>
 #include <immintrin.h>
-
-static constexpr u32 FRAMEBUFFER_WIDTH = VIEWPORT_WIDTH_PIXELS;
-static constexpr u32 FRAMEBUFFER_HEIGHT = VIEWPORT_HEIGHT_PIXELS;
-static constexpr u32 FRAMEBUFFER_SIZE_PIXELS = FRAMEBUFFER_WIDTH * FRAMEBUFFER_HEIGHT;
-static constexpr u32 FRAMEBUFFER_COUNT = 2;
-
-struct Framebuffer {
-    u32 pixels[FRAMEBUFFER_SIZE_PIXELS];
-};
+#include <gtc/constants.hpp>
 
 struct ScanlineSpriteInfo {
     u16 spriteCount;
     u16 spriteIndices[MAX_SPRITES_PER_SCANLINE];
 };
 
-SDL_Window* g_SDLWindow = nullptr;
-SDL_Surface* g_WindowSurface = nullptr;
+static u32* g_Framebuffer = nullptr;
 
-Framebuffer* g_Framebuffer = nullptr;
-SDL_Surface* g_FramebufferSurface = nullptr;
-
-Palette* g_Palettes;
-Sprite* g_Sprites;
-ChrSheet* g_ChrSheets;
-Nametable* g_Nametables;
-Scanline* g_Scanlines;
+static Palette* g_Palettes;
+static Sprite* g_Sprites;
+static ChrSheet* g_ChrSheets;
+static Nametable* g_Nametables;
+static Scanline* g_Scanlines;
 
 u32* g_paletteColors;
 
 // Temporary storage
-ScanlineSpriteInfo* g_EvaluatedScanlines = nullptr;
-u8* g_SampledPixels = nullptr;
+static ScanlineSpriteInfo* g_EvaluatedScanlines = nullptr;
+static u8* g_SampledPixels = nullptr;
 
 // Threading
 constexpr u32 MAX_WORKER_TASK_COUNT = 64;
@@ -54,17 +39,17 @@ struct RenderWorkerTask {
     u32 scanlineOffset;
 };
 
-RenderWorkerTask g_WorkerTasks[MAX_WORKER_TASK_COUNT];
-u32 g_ActiveTaskCount = 0;
+static RenderWorkerTask g_WorkerTasks[MAX_WORKER_TASK_COUNT];
+static u32 g_ActiveTaskCount = 0;
 
-u32 g_WorkerCount = 0;
-u32 g_ActiveWorkers = 0;
-std::thread* g_WorkerThreads = nullptr;
+static u32 g_WorkerCount = 0;
+static u32 g_ActiveWorkers = 0;
+static std::thread* g_WorkerThreads = nullptr;
 
-std::condition_variable g_WorkerCondition;
-std::condition_variable g_AllWorkDoneCondition;
-std::mutex g_WorkerMutex;
-bool g_StopWorkers = false;
+static std::condition_variable g_WorkerCondition;
+static std::condition_variable g_AllWorkDoneCondition;
+static std::mutex g_WorkerMutex;
+static bool g_StopWorkers = false;
 
 // Modulo function that handles negative values
 template<typename T>
@@ -163,14 +148,14 @@ static inline const BgTile* GetNametableTile(s32 x, s32 y) {
 }
 
 static void DrawScanlines(u32 count, u32 offset) {
-    const u32 framebufferOffset = offset * FRAMEBUFFER_WIDTH;
+    const u32 framebufferOffset = offset * SOFTWARE_FRAMEBUFFER_WIDTH;
     const Scanline* pScanlines = g_Scanlines + offset;
     u8* pSamples = g_SampledPixels + framebufferOffset;
 
     // Step 1: Sample background
     for (u32 i = 0; i < count; i++) {
         const Scanline& scanline = pScanlines[i];
-        u8* pScanlineSamples = pSamples + i * FRAMEBUFFER_WIDTH;
+        u8* pScanlineSamples = pSamples + i * SOFTWARE_FRAMEBUFFER_WIDTH;
 
         const s32 pixelY = i + offset;
         const s32 scrolledY = pixelY + scanline.scrollY;
@@ -187,7 +172,7 @@ static void DrawScanlines(u32 count, u32 offset) {
         }
 
         // Handle full tile rows
-        while (x + TILE_DIM_PIXELS <= FRAMEBUFFER_WIDTH) {
+        while (x + TILE_DIM_PIXELS <= SOFTWARE_FRAMEBUFFER_WIDTH) {
             scrolledX = x + scanline.scrollX;
             const BgTile* pTile = GetNametableTile(scrolledX, scrolledY);
 
@@ -196,16 +181,16 @@ static void DrawScanlines(u32 count, u32 offset) {
         }
 
         // Handle partial right tile row
-        if (x < FRAMEBUFFER_WIDTH - 1) {
+        if (x < SOFTWARE_FRAMEBUFFER_WIDTH - 1) {
             scrolledX = x + scanline.scrollX;
             const BgTile* pTile = GetNametableTile(scrolledX, scrolledY);
-            SampleChrTileRow(pTile->tileId, tileOffsetY, pTile->palette, pTile->flipHorizontal, pTile->flipVertical, 0, FRAMEBUFFER_WIDTH - x, &pScanlineSamples[x]);
+            SampleChrTileRow(pTile->tileId, tileOffsetY, pTile->palette, pTile->flipHorizontal, pTile->flipVertical, 0, SOFTWARE_FRAMEBUFFER_WIDTH - x, &pScanlineSamples[x]);
         }
     }
 
     // Step 2: Sample sprites
     for (u32 i = 0; i < count; i++) {
-        u8* pScanlineSamples = pSamples + i * FRAMEBUFFER_WIDTH;
+        u8* pScanlineSamples = pSamples + i * SOFTWARE_FRAMEBUFFER_WIDTH;
 
         const s32 pixelY = i + offset;
         const ScanlineSpriteInfo& scanlineInfo = g_EvaluatedScanlines[pixelY];
@@ -218,13 +203,13 @@ static void DrawScanlines(u32 count, u32 offset) {
         for (s32 j = scanlineInfo.spriteCount - 1; j >= 0; j--) {
             const Sprite& sprite = g_Sprites[scanlineInfo.spriteIndices[j]];
 
-            if (sprite.x + TILE_DIM_PIXELS < 0 || sprite.x >= FRAMEBUFFER_WIDTH) {
+            if (sprite.x + TILE_DIM_PIXELS < 0 || sprite.x >= SOFTWARE_FRAMEBUFFER_WIDTH) {
                 continue;
             }
 
             s32 yOffset = pixelY - sprite.y;
             u8 start = sprite.x < 0 ? -sprite.x : 0;
-            u8 end = sprite.x + TILE_DIM_PIXELS > FRAMEBUFFER_WIDTH ? FRAMEBUFFER_WIDTH - sprite.x : TILE_DIM_PIXELS;
+            u8 end = sprite.x + TILE_DIM_PIXELS > SOFTWARE_FRAMEBUFFER_WIDTH ? SOFTWARE_FRAMEBUFFER_WIDTH - sprite.x : TILE_DIM_PIXELS;
 
             u8 row[8];
             memcpy(row, &pScanlineSamples[sprite.x], 8);
@@ -239,8 +224,8 @@ static void DrawScanlines(u32 count, u32 offset) {
     }
 
     // Step 3: Write to framebuffer
-    u32* pPixels = g_Framebuffer->pixels + framebufferOffset;
-    ResolvePaletteColorsAVX(pSamples, pPixels, FRAMEBUFFER_WIDTH * count);
+    u32* pPixels = g_Framebuffer + framebufferOffset;
+    ResolvePaletteColorsAVX(pSamples, pPixels, SOFTWARE_FRAMEBUFFER_WIDTH * count);
 }
 
 static void Draw() {
@@ -298,16 +283,9 @@ static void WorkerLoop() {
     }
 }
 
-void Rendering::Init(SDL_Window* sdlWindow) {
-    g_SDLWindow = sdlWindow;
-    g_WindowSurface = SDL_GetWindowSurface(sdlWindow);
-    if (!g_WindowSurface) {
-        DEBUG_FATAL("Failed to get window surface\n");
-    }
-
-    g_Framebuffer = ArenaAllocator::Push<Framebuffer>(ARENA_PERMANENT);
-    g_FramebufferSurface = SDL_CreateRGBSurfaceFrom(g_Framebuffer->pixels, FRAMEBUFFER_WIDTH, FRAMEBUFFER_HEIGHT, 32, FRAMEBUFFER_WIDTH * sizeof(u32),
-        0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
+void Rendering::Software::Init(u32* framebuffer) {
+    g_Framebuffer = framebuffer;
+    memset(framebuffer, 0, sizeof(u32) * SOFTWARE_FRAMEBUFFER_SIZE_PIXELS);
 
     g_Palettes = ArenaAllocator::PushArray<Palette>(ARENA_PERMANENT, PALETTE_COUNT);
     g_Sprites = ArenaAllocator::PushArray<Sprite>(ARENA_PERMANENT, MAX_SPRITE_COUNT);
@@ -316,10 +294,10 @@ void Rendering::Init(SDL_Window* sdlWindow) {
     g_Scanlines = ArenaAllocator::PushArray<Scanline>(ARENA_PERMANENT, SCANLINE_COUNT);
 
     g_paletteColors = ArenaAllocator::PushArray<u32>(ARENA_PERMANENT, COLOR_COUNT);
-    Rendering::Util::GeneratePaletteColors(g_paletteColors);
+    GeneratePaletteColors(g_paletteColors);
 
     g_EvaluatedScanlines = ArenaAllocator::PushArray<ScanlineSpriteInfo>(ARENA_PERMANENT, SCANLINE_COUNT);
-    g_SampledPixels = ArenaAllocator::PushArray<u8>(ARENA_PERMANENT, FRAMEBUFFER_SIZE_PIXELS);
+    g_SampledPixels = ArenaAllocator::PushArray<u8>(ARENA_PERMANENT, SOFTWARE_FRAMEBUFFER_SIZE_PIXELS);
 
     g_WorkerCount = 4; // TODO: Determine optimal worker count based on hardware capabilities
     void* workerMemory = ArenaAllocator::Push(ARENA_PERMANENT, sizeof(std::thread) * g_WorkerCount, alignof(std::thread));
@@ -329,7 +307,7 @@ void Rendering::Init(SDL_Window* sdlWindow) {
     }
 }
 
-void Rendering::Free() {
+void Rendering::Software::Free() {
     {
         std::unique_lock<std::mutex> lock(g_WorkerMutex);
         g_StopWorkers = true;
@@ -341,136 +319,83 @@ void Rendering::Free() {
             g_WorkerThreads[i].join();
         }
     }
-
-    SDL_FreeSurface(g_FramebufferSurface);
 }
 
-void Rendering::BeginFrame() {
-    // This is just a stub to allow compilation when using the software renderer.
-}
-
-void Rendering::BeginRenderPass() {
-    // This is just a stub to allow compilation when using the software renderer.
-}
-
-void Rendering::EndFrame() {
-    auto t1 = std::chrono::high_resolution_clock::now();
+void Rendering::Software::DrawFrame() {
     EvaluateScanlineSprites();
-    auto t2 = std::chrono::high_resolution_clock::now();
     Draw();
-    auto t3 = std::chrono::high_resolution_clock::now();
-    SDL_BlitScaled(g_FramebufferSurface, nullptr, g_WindowSurface, nullptr);
-    auto t4 = std::chrono::high_resolution_clock::now();
-    SDL_UpdateWindowSurface(g_SDLWindow);
-
-    DEBUG_LOG("Evaluate time: %lldus\n", std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count());
-    DEBUG_LOG("Draw time: %lldus\n", std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count());
-    DEBUG_LOG("Blit time: %lldus\n", std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count());
-    DEBUG_LOG("FRAME END\n");
 }
 
-void Rendering::WaitForAllCommands() {
-    // This is just a stub to allow compilation when using the software renderer.
-}
-
-void Rendering::ResizeSurface(u32 width, u32 height) {
-    g_WindowSurface = SDL_GetWindowSurface(g_SDLWindow);
-}
-
-RenderSettings* Rendering::GetSettingsPtr() {
-    // This is just a stub to allow compilation when using the software renderer.
-    return nullptr;
-}
-
-Palette* Rendering::GetPalettePtr(u32 paletteIndex) {
+Palette* Rendering::Software::GetPalette(u32 paletteIndex) {
     if (paletteIndex >= PALETTE_COUNT) {
         return nullptr;
     }
     return &g_Palettes[paletteIndex];
 }
 
-Sprite* Rendering::GetSpritesPtr(u32 offset) {
+Sprite* Rendering::Software::GetSprites(u32 offset) {
     if (offset >= MAX_SPRITE_COUNT) {
         return nullptr;
     }
     return &g_Sprites[offset];
 }
 
-ChrSheet* Rendering::GetChrPtr(u32 sheetIndex) {
+ChrSheet* Rendering::Software::GetChrSheet(u32 sheetIndex) {
     if (sheetIndex >= CHR_COUNT) {
         return nullptr;
     }
     return &g_ChrSheets[sheetIndex];
 }
 
-Nametable* Rendering::GetNametablePtr(u32 index) {
+Nametable* Rendering::Software::GetNametable(u32 index) {
     if (index >= NAMETABLE_COUNT) {
         return nullptr;
     }
     return &g_Nametables[index];
 }
 
-Scanline* Rendering::GetScanlinePtr(u32 offset) {
+Scanline* Rendering::Software::GetScanline(u32 offset) {
     if (offset >= SCANLINE_COUNT) {
         return nullptr;
     }
     return &g_Scanlines[offset];
 }
 
-#pragma region Editor
-#ifdef EDITOR
-void Rendering::InitEditor(SDL_Window* sdlWindow) {
-    // This is just a stub to allow compilation when using the software renderer.
-    (void)sdlWindow;
-}
+void Rendering::Software::GeneratePaletteColors(u32* data) {
+    for (s32 i = 0; i < COLOR_COUNT; i++) {
+        s32 hue = i & 0b1111;
+        s32 brightness = (i & 0b1110000) >> 4;
 
-void Rendering::BeginEditorFrame() {
-    // This is just a stub to allow compilation when using the software renderer.
-}
+        r32 y = (r32)brightness / 7;
+        r32 u = 0.0f; 
+        r32 v = 0.0f;
 
-void Rendering::ShutdownEditor() {
-    // This is just a stub to allow compilation when using the software renderer.
-}
+        if (hue != 0) {
+            // No need to have multiple pure blacks and whites
+            y = (r32)(brightness + 1) / 9;
 
-size_t Rendering::GetEditorBufferSize() {
-    // This is just a stub to allow compilation when using the software renderer.
-    return 0;
-}
+            r32 angle = 2 * glm::pi<r32>() * (hue - 1) / 15;
+            r32 radius = 0.5f * (1.0f - glm::abs(y - 0.5f) * 2);
 
-bool Rendering::InitEditorBuffer(EditorRenderBuffer* pBuffer, size_t size, const void* data) {
-    return false;
-}
-bool Rendering::UpdateEditorBuffer(const EditorRenderBuffer* pBuffer, const void* data) {
-    return false;
-}
-void Rendering::FreeEditorBuffer(EditorRenderBuffer* pBuffer) {
-    // This is just a stub to allow compilation when using the software renderer.
-}
+            u = radius * glm::cos(angle);
+            v = radius * glm::sin(angle);
+        }
 
-size_t Rendering::GetEditorTextureSize() {
-    return 0;
-}
-bool Rendering::InitEditorTexture(EditorRenderTexture* pTexture, u32 width, u32 height, u32 usage, u32 chrSheetOffset, u32 chrPaletteOffset, const EditorRenderBuffer* pChrBuffer, const EditorRenderBuffer* pPaletteBuffer) {
-    return false;
-}
-bool Rendering::UpdateEditorTexture(const EditorRenderTexture* pTexture, const EditorRenderBuffer* pChrBuffer, const EditorRenderBuffer* pPaletteBuffer) {
-    return false;
-}
-void* Rendering::GetEditorTextureData(const EditorRenderTexture* pTexture) {
-    return nullptr;
-}
-void Rendering::FreeEditorTexture(EditorRenderTexture* pTexture) {
-    // This is just a stub to allow compilation when using the software renderer.
-}
+        // Convert YUV to RGB
+        r32 r = y + v * 1.139883;
+        r32 g = y - 0.394642 * u - 0.580622 * v;
+        r32 b = y + u * 2.032062;
 
-// Software
-void Rendering::RenderEditorTexture(const EditorRenderTexture* pTexture) {
-    // This is just a stub to allow compilation when using the software renderer.
-}
+        r = glm::clamp(r, 0.0f, 1.0f);
+        g = glm::clamp(g, 0.0f, 1.0f);
+        b = glm::clamp(b, 0.0f, 1.0f);
 
-// Render pass
-void Rendering::RenderEditor() {
-    // This is just a stub to allow compilation when using the software renderer.
+        u32* pixel = data + i;
+        u8* pixelBytes = (u8*)pixel;
+
+        pixelBytes[0] = (u8)(r * 255);
+        pixelBytes[1] = (u8)(g * 255);
+        pixelBytes[2] = (u8)(b * 255);
+        pixelBytes[3] = 255;
+    }
 }
-#endif
-#pragma endregion

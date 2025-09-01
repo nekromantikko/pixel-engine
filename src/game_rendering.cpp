@@ -3,6 +3,7 @@
 #include "game_state.h"
 #include "tilemap.h"
 #include "rendering_util.h"
+#include "software_renderer.h"
 #include "game.h"
 #include "asset_manager.h"
 #include "memory_arena.h"
@@ -74,7 +75,7 @@ static void CopyBankTiles(ChrBankHandle bankHandle, u32 bankOffset, u32 sheetInd
     }
 
     const ChrTile* pBankTiles = pBank->tiles + bankOffset;
-    ChrTile* pSheetTiles = ::Rendering::GetChrPtr(sheetIndex)->tiles + sheetOffset;
+    ChrTile* pSheetTiles = ::Rendering::Software::GetChrSheet(sheetIndex)->tiles + sheetOffset;
 
     memcpy(pSheetTiles, pBankTiles, sizeof(ChrTile) * count);
 }
@@ -199,7 +200,7 @@ static glm::vec2 viewportPos;
 static SpriteLayer spriteLayers[SPRITE_LAYER_COUNT];
 
 static void UpdateScreenScroll() {
-    Scanline* pScanlines = Rendering::GetScanlinePtr(0);
+    Scanline* pScanlines = Rendering::Software::GetScanline(0);
 
     // Drugs mode
     /*for (int i = 0; i < 288; i++) {
@@ -221,7 +222,7 @@ static void UpdateScreenScroll() {
 }
 
 static void MoveViewport(const glm::vec2& delta, bool loadTiles) {
-    Nametable* pNametables = Rendering::GetNametablePtr(0);
+    Nametable* pNametables = Rendering::Software::GetNametable(0);
 
 	const glm::vec2 prevPos = viewportPos;
 	viewportPos += delta;
@@ -361,7 +362,7 @@ glm::vec2 Game::Rendering::SetViewportPos(const glm::vec2& pos, bool loadTiles) 
 }
 
 void Game::Rendering::RefreshViewport() {
-    Nametable* pNametables = ::Rendering::GetNametablePtr(0);
+    Nametable* pNametables = ::Rendering::Software::GetNametable(0);
 
     const s32 xStart = viewportPos.x - BUFFER_DIM_METATILES;
     const s32 xEnd = VIEWPORT_WIDTH_METATILES + viewportPos.x + BUFFER_DIM_METATILES;
@@ -409,13 +410,13 @@ glm::i16vec2 Game::Rendering::WorldPosToScreenPixels(const glm::vec2& pos) {
 }
 
 void Game::Rendering::ClearSpriteLayers(bool fullClear) {
-    const Sprite* pSprites = ::Rendering::GetSpritesPtr(0);
+    const Sprite* pSprites = ::Rendering::Software::GetSprites(0);
 
     for (u32 i = 0; i < SPRITE_LAYER_COUNT; i++) {
         SpriteLayer& layer = spriteLayers[i];
 
         u32 beginIndex = i << 10;
-        Sprite* pBeginSprite = ::Rendering::GetSpritesPtr(beginIndex);
+        Sprite* pBeginSprite = ::Rendering::Software::GetSprites(beginIndex);
 
         const u32 spritesToClear = fullClear ? LAYER_SPRITE_COUNT : layer.spriteCount;
         ClearSprites(pBeginSprite, spritesToClear);
@@ -507,7 +508,7 @@ void Game::Rendering::DrawBackgroundTile(ChrBankHandle bankHandle, const BgTile&
     physicalTile.tileId = physicalTileIndex;
 
     const u32 nametableIndex = ::Rendering::Util::GetNametableIndexFromTilePos(pos);
-	Nametable* pNametable = ::Rendering::GetNametablePtr(nametableIndex);
+	Nametable* pNametable = ::Rendering::Software::GetNametable(nametableIndex);
     const glm::ivec2 nametableOffset = ::Rendering::Util::GetNametableOffsetFromTilePos(pos);
 	::Rendering::Util::SetNametableTile(pNametable, nametableOffset, physicalTile);
 }
@@ -524,7 +525,7 @@ void Game::Rendering::DrawBackgroundMetatile(ChrBankHandle bankHandle, const Met
 	}
 
 	const u32 nametableIndex = ::Rendering::Util::GetNametableIndexFromMetatilePos(pos);
-	Nametable* pNametable = ::Rendering::GetNametablePtr(nametableIndex);
+	Nametable* pNametable = ::Rendering::Software::GetNametable(nametableIndex);
 	const glm::ivec2 nametableOffset = ::Rendering::Util::GetNametableOffsetFromMetatilePos(pos);
 
 	::Rendering::Util::SetNametableMetatile(pNametable, nametableOffset, physicalMetatile);
@@ -533,13 +534,13 @@ void Game::Rendering::DrawBackgroundMetatile(ChrBankHandle bankHandle, const Met
 void Game::Rendering::ClearBackgroundTile(const glm::ivec2& pos) {
 	static constexpr BgTile emptyTile = {};
     const u32 nametableIndex = ::Rendering::Util::GetNametableIndexFromTilePos(pos);
-    Nametable* pNametable = ::Rendering::GetNametablePtr(nametableIndex);
+    Nametable* pNametable = ::Rendering::Software::GetNametable(nametableIndex);
     const glm::ivec2 nametableOffset = ::Rendering::Util::GetNametableOffsetFromTilePos(pos);
     ::Rendering::Util::SetNametableTile(pNametable, nametableOffset, emptyTile);
 }
 
 void Game::Rendering::ClearBackgroundMetatile(const glm::ivec2& pos) {
-	Nametable* pNametables = ::Rendering::GetNametablePtr(0);
+	Nametable* pNametables = ::Rendering::Software::GetNametable(0);
 	const u32 nametableIndex = ::Rendering::Util::GetNametableIndexFromMetatilePos(pos);
 	const glm::ivec2 nametableOffset = ::Rendering::Util::GetNametableOffsetFromMetatilePos(pos);
 	const u32 firstTileIndex = ::Rendering::Util::GetNametableTileIndexFromMetatileOffset(nametableOffset);
@@ -563,7 +564,7 @@ void Game::Rendering::CopyLevelTileToNametable(const Tilemap* pTilemap, const gl
 
 void Game::Rendering::FlushBackgroundTiles() {
     // Clear nametables
-	Nametable* pNametables = ::Rendering::GetNametablePtr(0);
+	Nametable* pNametables = ::Rendering::Software::GetNametable(0);
 	memset(pNametables, 0, sizeof(Nametable) * NAMETABLE_COUNT);
 	// Clear physical tile usage flags
 	ClearPhysicalTileUsageFlags(TILE_DRAW_TYPE_BG);
@@ -581,7 +582,7 @@ bool Game::Rendering::GetPalettePresetColors(PaletteHandle paletteHandle, u8* pO
 }
 
 void Game::Rendering::WritePaletteColors(u8 paletteIndex, u8* pColors) {
-	memcpy(::Rendering::GetPalettePtr(paletteIndex)->colors, pColors, PALETTE_COLOR_COUNT);
+	memcpy(::Rendering::Software::GetPalette(paletteIndex)->colors, pColors, PALETTE_COLOR_COUNT);
 }
 
 void Game::Rendering::CopyPaletteColors(PaletteHandle paletteHandle, u8 paletteIndex) {
@@ -591,6 +592,6 @@ void Game::Rendering::CopyPaletteColors(PaletteHandle paletteHandle, u8 paletteI
 		return;
 	}
 
-	memcpy(::Rendering::GetPalettePtr(paletteIndex)->colors, pPalette->colors, PALETTE_COLOR_COUNT);
+	memcpy(::Rendering::Software::GetPalette(paletteIndex)->colors, pPalette->colors, PALETTE_COLOR_COUNT);
 }
 #pragma endregion
