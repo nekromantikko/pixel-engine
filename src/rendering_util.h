@@ -15,7 +15,6 @@ namespace Rendering
 		Metatile GetNametableMetatile(const Nametable* pNametable, u32 metatileIndex);
 		void SetNametableMetatile(Nametable* pNametable, const glm::ivec2& metatileOffset, const Metatile& metatile);
 
-		void GeneratePaletteColors(u32* data);
 		void SavePaletteToFile(const char* fname);
 	}
 }

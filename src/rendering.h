@@ -9,12 +9,6 @@ static constexpr RenderSettings DEFAULT_RENDER_SETTINGS = {
 	true
 };
 
-struct Palette;
-struct Sprite;
-struct ChrSheet;
-struct Nametable;
-struct Scanline;
-
 #ifdef EDITOR
 enum EditorTextureUsage {
 	EDITOR_TEXTURE_USAGE_CHR,
@@ -39,12 +33,7 @@ namespace Rendering
 	void ResizeSurface(u32 width, u32 height);
 
 	// Data access
-	RenderSettings* GetSettingsPtr();
-	Palette* GetPalettePtr(u32 paletteIndex);
-	Sprite* GetSpritesPtr(u32 offset);
-	ChrSheet* GetChrPtr(u32 sheetIndex);
-	Nametable* GetNametablePtr(u32 index);
-	Scanline* GetScanlinePtr(u32 offset);
+	RenderSettings* GetSettings();
 
 	// Editor stuff
 #ifdef EDITOR

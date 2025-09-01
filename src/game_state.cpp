@@ -9,7 +9,7 @@
 #include "asset_manager.h"
 #include "debug.h"
 #include "actors.h"
-#include "rendering.h"
+#include "software_renderer.h"
 
 // TODO: Use g_ prefix for globals or combine into larger state struct
 
@@ -1165,7 +1165,7 @@ void Game::TriggerScreenShake(s16 magnitude, u16 duration, bool freeze) {
 void Game::TriggerLevelTransition(DungeonHandle targetDungeon, glm::i8vec2 targetGridCell, u8 enterDirection, void(*callback)()) {
 	// This is a bit silly, but can't think of a better way to do this right now
     static u8 cachedPaletteColors[PALETTE_MEMORY_SIZE];
-	memcpy(cachedPaletteColors, ::Rendering::GetPalettePtr(0), PALETTE_MEMORY_SIZE);
+	memcpy(cachedPaletteColors, ::Rendering::Software::GetPalette(0), PALETTE_MEMORY_SIZE);
     
     LevelTransitionState state = {
             .nextDungeon = targetDungeon,

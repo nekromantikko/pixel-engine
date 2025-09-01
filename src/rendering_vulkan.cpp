@@ -3,10 +3,11 @@
 #endif
 
 #include <vulkan/vulkan.h>
+#include <vulkan/vk_enum_string_helper.h>
 #include <stdlib.h>
 #include <cstring>
 #include "rendering.h"
-#include "rendering_util.h"
+#include "software_renderer.h"
 #include "debug.h"
 #include <SDL_vulkan.h>
 #include <cassert>
@@ -51,7 +52,6 @@ struct PhysicalDeviceFeatures {
 
 struct RenderContext {
 	ShaderHandle blitShaderHandle;
-	ShaderHandle softwareShaderHandle;
 
 	VkInstance instance;
 	VkPhysicalDevice physicalDevice;
@@ -91,38 +91,8 @@ struct RenderContext {
 	VkPipeline blitRawPipeline;
 	VkPipeline blitCRTPipeline;
 
-	// Compute stuff
-	Image paletteImage;
-	VkSampler paletteSampler;
-
-	u32 paletteTableOffset;
-	u32 paletteTableSize;
-	u32 chrOffset;
-	u32 chrSize;
-	u32 nametableOffset;
-	u32 nametableSize;
-	u32 oamOffset;
-	u32 oamSize;
-	u32 renderStateOffset;
-	u32 renderStateSize;
-	u32 computeBufferSize;
-
-	void* renderData;
-	Buffer computeBufferDevice[COMMAND_BUFFER_COUNT];
-	Buffer computeStagingBuffers[COMMAND_BUFFER_COUNT];
-	VkFence renderDataCopyFence;
-
-	Buffer scanlineBuffers[COMMAND_BUFFER_COUNT];
-
+    Buffer framebufferBuffer;
 	Image colorImages[COMMAND_BUFFER_COUNT];
-
-	VkDescriptorSetLayout computeDescriptorSetLayout;
-	VkDescriptorSet computeDescriptorSets[COMMAND_BUFFER_COUNT];
-	VkPipelineLayout softwarePipelineLayout;
-	VkPipeline softwarePipeline;
-	VkShaderModule softwareShaderModule;
-	VkPipelineLayout evaluatePipelineLayout;
-	VkPipeline evaluatePipeline;
 
 	// Settings
 	RenderSettings settings;
@@ -143,6 +113,23 @@ struct RenderContext {
 
 static RenderContext g_context;
 
+static void SetObjectName(VkObjectType objectType, uint64_t objectHandle, const char* name) {
+#ifndef NDEBUG
+	VkDebugUtilsObjectNameInfoEXT nameInfo{};
+	nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+	nameInfo.pNext = nullptr;
+	nameInfo.objectType = objectType;
+	nameInfo.objectHandle = objectHandle;
+	nameInfo.pObjectName = name;
+
+    PFN_vkSetDebugUtilsObjectNameEXT vkSetDebugUtilsObjectNameEXT = (PFN_vkSetDebugUtilsObjectNameEXT)vkGetInstanceProcAddr(g_context.instance, "vkSetDebugUtilsObjectNameEXT");
+	VkResult err = vkSetDebugUtilsObjectNameEXT(g_context.device, &nameInfo);
+	if (err != VK_SUCCESS) {
+		DEBUG_WARN("Failed to set object name: %s\n", string_VkResult(err));
+	}
+#endif
+}
+
 static void CreateVulkanInstance() {
 	VkApplicationInfo appInfo{};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -155,11 +142,14 @@ static void CreateVulkanInstance() {
 
 	const char* debugLayerName = "VK_LAYER_KHRONOS_validation";
 
-	const char* extensionNames[2]{};
+	const char* extensionNames[3]{};
 	u32 extensionCount = 0;
 	extensionNames[extensionCount++] = "VK_KHR_surface";
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 	extensionNames[extensionCount++] = "VK_KHR_win32_surface";
+#endif
+#ifndef NDEBUG
+	extensionNames[extensionCount++] = "VK_EXT_debug_utils";
 #endif
 
 	VkInstanceCreateInfo createInfo{};
@@ -167,14 +157,18 @@ static void CreateVulkanInstance() {
 	createInfo.pNext = nullptr;
 	createInfo.flags = 0;
 	createInfo.pApplicationInfo = &appInfo;
+#ifndef NDEBUG
 	createInfo.enabledLayerCount = 1;
 	createInfo.ppEnabledLayerNames = &debugLayerName;
+#else
+    createInfo.enabledLayerCount = 0;
+#endif
 	createInfo.enabledExtensionCount = extensionCount;
 	createInfo.ppEnabledExtensionNames = extensionNames;
 
 	VkResult err = vkCreateInstance(&createInfo, nullptr, &g_context.instance);
 	if (err != VK_SUCCESS) {
-		DEBUG_ERROR("Failed to create instance!\n");
+		DEBUG_FATAL("Failed to create instance: %s\n", string_VkResult(err));
 	}
 }
 
@@ -657,7 +651,7 @@ static u32 GetDeviceMemoryTypeIndex(u32 typeFilter, VkMemoryPropertyFlags proper
 	return UINT32_MAX;
 }
 
-static void AllocateMemory(VkMemoryRequirements requirements, VkMemoryPropertyFlags properties, VkDeviceMemory& outMemory) {
+static bool AllocateMemory(VkMemoryRequirements requirements, VkMemoryPropertyFlags properties, VkDeviceMemory& outMemory) {
 	VkMemoryAllocateInfo memAllocInfo{};
 	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	memAllocInfo.allocationSize = requirements.size;
@@ -665,11 +659,14 @@ static void AllocateMemory(VkMemoryRequirements requirements, VkMemoryPropertyFl
 
 	VkResult err = vkAllocateMemory(g_context.device, &memAllocInfo, nullptr, &outMemory);
 	if (err != VK_SUCCESS) {
-		DEBUG_ERROR("Failed to allocate memory!\n");
+		DEBUG_ERROR("Failed to allocate memory: %s\n", string_VkResult(err));
+		return false;
 	}
+
+    return true;
 }
 
-static void AllocateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memProps, Buffer& outBuffer) {
+static bool AllocateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memProps, Buffer& outBuffer) {
 	VkBufferCreateInfo bufferInfo{};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferInfo.pNext = nullptr;
@@ -680,18 +677,27 @@ static void AllocateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemory
 
 	VkResult err = vkCreateBuffer(g_context.device, &bufferInfo, nullptr, &outBuffer.buffer);
 	if (err != VK_SUCCESS) {
-		DEBUG_ERROR("Failed to create buffer!\n");
+		DEBUG_ERROR("Failed to create buffer: %s\n", string_VkResult(err));
+		return false;
 	}
 
 	VkMemoryRequirements memRequirements;
 	vkGetBufferMemoryRequirements(g_context.device, outBuffer.buffer, &memRequirements);
 	DEBUG_LOG("Buffer memory required: %d\n", memRequirements.size);
 
-	AllocateMemory(memRequirements, memProps, outBuffer.memory);
+	if (!AllocateMemory(memRequirements, memProps, outBuffer.memory)) {
+        DEBUG_ERROR("Failed to allocate buffer memory!\n");
+		return false;
+	}
 
-	vkBindBufferMemory(g_context.device, outBuffer.buffer, outBuffer.memory, 0);
+	err = vkBindBufferMemory(g_context.device, outBuffer.buffer, outBuffer.memory, 0);
+	if (err != VK_SUCCESS) {
+		DEBUG_ERROR("Failed to bind buffer memory: %s\n", string_VkResult(err));
+		return false;
+	}
 
 	outBuffer.size = size;
+	return true;
 }
 
 static VkCommandBuffer GetTemporaryCommandBuffer() {
@@ -702,7 +708,11 @@ static VkCommandBuffer GetTemporaryCommandBuffer() {
 	allocInfo.commandBufferCount = 1;
 
 	VkCommandBuffer commandBuffer;
-	vkAllocateCommandBuffers(g_context.device, &allocInfo, &commandBuffer);
+	VkResult err = vkAllocateCommandBuffers(g_context.device, &allocInfo, &commandBuffer);
+	if (err != VK_SUCCESS) {
+		DEBUG_ERROR("Failed to allocate command buffer: %s\n", string_VkResult(err));
+		return VK_NULL_HANDLE;
+	}
 
 	return commandBuffer;
 }
@@ -742,7 +752,7 @@ static void FreeBuffer(Buffer buffer) {
 	}
 }
 
-static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFlags usage, Image& outImage, bool srgb = false) {
+static bool CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFlags usage, Image& outImage, bool srgb = false) {
 	const VkFormat format = srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
 
 	VkImageCreateInfo imageInfo{};
@@ -760,13 +770,25 @@ static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFla
 	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 
-	vkCreateImage(g_context.device, &imageInfo, nullptr, &outImage.image);
+	VkResult result = vkCreateImage(g_context.device, &imageInfo, nullptr, &outImage.image);
+    if (result != VK_SUCCESS) {
+        DEBUG_ERROR("Failed to create image: %s\n", string_VkResult(result));
+        return false;
+    }
 
 	VkMemoryRequirements memRequirements;
 	vkGetImageMemoryRequirements(g_context.device, outImage.image, &memRequirements);
 
-	AllocateMemory(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, outImage.memory);
-	vkBindImageMemory(g_context.device, outImage.image, outImage.memory, 0);
+	if (!AllocateMemory(memRequirements, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, outImage.memory)) {
+		DEBUG_ERROR("Failed to allocate image memory!\n");
+		return false;
+	}
+
+	result = vkBindImageMemory(g_context.device, outImage.image, outImage.memory, 0);
+	if (result != VK_SUCCESS) {
+		DEBUG_ERROR("Failed to bind image memory: %s\n", string_VkResult(result));
+		return false;
+	}
 
 	VkImageViewCreateInfo viewInfo{};
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -779,10 +801,16 @@ static void CreateImage(u32 width, u32 height, VkImageType type, VkImageUsageFla
 	viewInfo.subresourceRange.baseArrayLayer = 0;
 	viewInfo.subresourceRange.layerCount = 1;
 
-	vkCreateImageView(g_context.device, &viewInfo, nullptr, &outImage.view);
+	result = vkCreateImageView(g_context.device, &viewInfo, nullptr, &outImage.view);
+	if (result != VK_SUCCESS) {
+		DEBUG_ERROR("Failed to create image view: %s\n", string_VkResult(result));
+		return false;
+	}
 
 	outImage.width = width;
 	outImage.height = height;
+
+    return true;
 }
 
 static void FreeImage(Image image) {
@@ -810,158 +838,6 @@ static VkImageMemoryBarrier GetImageBarrier(const Image* pImage, VkImageLayout o
 	return barrier;
 }
 
-static void CreatePalette() {
-	u32 paletteData[COLOR_COUNT];
-	const VkDeviceSize paletteSize = sizeof(u32) * COLOR_COUNT;
-
-	// TODO: Rethink about this being an util...
-	Rendering::Util::GeneratePaletteColors(paletteData);
-
-	Buffer stagingBuffer{};
-	AllocateBuffer(paletteSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer);
-
-	void* data;
-	vkMapMemory(g_context.device, stagingBuffer.memory, 0, paletteSize, 0, &data);
-	memcpy(data, paletteData, paletteSize);
-	vkUnmapMemory(g_context.device, stagingBuffer.memory);
-
-	CreateImage(COLOR_COUNT, 1, VK_IMAGE_TYPE_1D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, g_context.paletteImage, true);
-
-	// Copy buffer to image
-	VkCommandBuffer temp = GetTemporaryCommandBuffer();
-
-	VkCommandBufferBeginInfo beginInfo{};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-	vkBeginCommandBuffer(temp, &beginInfo);
-
-	VkImageMemoryBarrier barrier = GetImageBarrier(&g_context.paletteImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-	vkCmdPipelineBarrier(
-		temp,
-		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-		VK_PIPELINE_STAGE_TRANSFER_BIT,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
-
-	VkBufferImageCopy region{};
-	region.bufferOffset = 0;
-	region.bufferRowLength = 0;
-	region.bufferImageHeight = 0;
-
-	region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	region.imageSubresource.mipLevel = 0;
-	region.imageSubresource.baseArrayLayer = 0;
-	region.imageSubresource.layerCount = 1;
-
-	region.imageOffset = { 0, 0, 0 };
-	region.imageExtent = {
-		COLOR_COUNT,
-		1,
-		1
-	};
-
-	vkCmdCopyBufferToImage(
-		temp,
-		stagingBuffer.buffer,
-		g_context.paletteImage.image,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		1,
-		&region
-	);
-
-	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-	barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-	vkCmdPipelineBarrier(
-		temp,
-		VK_PIPELINE_STAGE_TRANSFER_BIT,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
-
-	vkEndCommandBuffer(temp);
-
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &temp;
-
-	vkQueueSubmit(g_context.primaryQueue, 1, &submitInfo, VK_NULL_HANDLE);
-	vkQueueWaitIdle(g_context.primaryQueue);
-
-	vkFreeCommandBuffers(g_context.device, g_context.primaryCommandPool, 1, &temp);
-
-	FreeBuffer(stagingBuffer);
-
-	// Create special sampler for the palette
-	VkSamplerCreateInfo samplerInfo{};
-	samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-	samplerInfo.magFilter = VK_FILTER_NEAREST;
-	samplerInfo.minFilter = VK_FILTER_NEAREST;
-	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-	samplerInfo.anisotropyEnable = VK_FALSE;
-	samplerInfo.maxAnisotropy = 1.0f;
-	samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-	samplerInfo.unnormalizedCoordinates = VK_TRUE;
-	samplerInfo.compareEnable = VK_FALSE;
-	samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-	samplerInfo.mipLodBias = 0.0f;
-	samplerInfo.minLod = 0.0f;
-	samplerInfo.maxLod = 0.0f;
-
-	vkCreateSampler(g_context.device, &samplerInfo, nullptr, &g_context.paletteSampler);
-}
-
-static constexpr VkDeviceSize PadBufferSize(VkDeviceSize originalSize, const VkDeviceSize minAlignment) {
-	VkDeviceSize result = originalSize;
-	if (minAlignment > 0) {
-		result = (originalSize + minAlignment - 1) & ~(minAlignment - 1);
-	}
-	return result;
-}
-
-static void CreateComputeBuffers() {
-	VkPhysicalDeviceProperties properties{};
-	vkGetPhysicalDeviceProperties(g_context.physicalDevice, &properties);
-
-	const VkDeviceSize minOffsetAlignment = properties.limits.minStorageBufferOffsetAlignment;
-
-	g_context.paletteTableOffset = 0;
-	g_context.paletteTableSize = PadBufferSize(PALETTE_COUNT * sizeof(Palette), minOffsetAlignment);
-	g_context.chrOffset = g_context.paletteTableOffset + g_context.paletteTableSize;
-	g_context.chrSize = PadBufferSize(CHR_MEMORY_SIZE, minOffsetAlignment);
-	g_context.nametableOffset = g_context.chrOffset + g_context.chrSize;
-	g_context.nametableSize = PadBufferSize(sizeof(Nametable) * NAMETABLE_COUNT, minOffsetAlignment);
-	g_context.oamOffset = g_context.nametableOffset + g_context.nametableSize;
-	g_context.oamSize = PadBufferSize(MAX_SPRITE_COUNT * sizeof(Sprite), minOffsetAlignment);
-	g_context.renderStateOffset = g_context.oamOffset + g_context.oamSize;
-	g_context.renderStateSize = PadBufferSize(sizeof(Scanline) * SCANLINE_COUNT, minOffsetAlignment);
-	g_context.computeBufferSize = g_context.paletteTableSize + g_context.chrSize + g_context.nametableSize + g_context.oamSize + g_context.renderStateSize;
-
-	g_context.renderData = ArenaAllocator::Push(ARENA_PERMANENT, g_context.computeBufferSize);
-
-	for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
-		AllocateBuffer(g_context.computeBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, g_context.computeBufferDevice[i]);
-		AllocateBuffer(g_context.computeBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, g_context.computeStagingBuffers[i]);
-	}
-}
-
-static void CopyRenderData() {
-	void* temp;
-	vkMapMemory(g_context.device, g_context.computeStagingBuffers[g_context.currentCbIndex].memory, 0, g_context.computeBufferSize, 0, &temp);
-	memcpy(temp, g_context.renderData, g_context.computeBufferSize);
-	vkUnmapMemory(g_context.device, g_context.computeStagingBuffers[g_context.currentCbIndex].memory);
-}
-
 static void BeginDraw() {
 	// Wait for drawing to finish if it hasn't
 	vkWaitForFences(g_context.device, 1, &g_context.commandBufferFences[g_context.currentCbIndex], VK_TRUE, UINT64_MAX);
@@ -986,97 +862,27 @@ static void BeginDraw() {
 	// Should be ready to draw now!
 }
 
-static void TransferComputeBufferData() {
-	VkCommandBuffer commandBuffer = g_context.primaryCommandBuffers[g_context.currentCbIndex];
+static void CopySoftwareFramebuffer() {
+    VkCommandBuffer cmd = g_context.primaryCommandBuffers[g_context.currentCbIndex];
+    auto barrier = GetImageBarrier(&g_context.colorImages[g_context.currentCbIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-	VkMemoryBarrier barrier{};
-	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-	barrier.pNext = nullptr;
-	barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
-	vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = { 0, 0, 0 };
+    region.imageExtent = { SOFTWARE_FRAMEBUFFER_WIDTH, SOFTWARE_FRAMEBUFFER_HEIGHT, 1 };
 
-	VkBufferCopy copyRegion{};
-	copyRegion.srcOffset = 0;
-	copyRegion.dstOffset = 0;
-	copyRegion.size = g_context.computeBufferSize;
+    vkCmdCopyBufferToImage(cmd, g_context.framebufferBuffer.buffer, g_context.colorImages[g_context.currentCbIndex].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
-	vkCmdCopyBuffer(commandBuffer, g_context.computeStagingBuffers[g_context.currentCbIndex].buffer, g_context.computeBufferDevice[g_context.currentCbIndex].buffer, 1, &copyRegion);
-
-	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-	vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
-}
-
-static void RunSoftwareRenderer() {
-	VkCommandBuffer commandBuffer = g_context.primaryCommandBuffers[g_context.currentCbIndex];
-
-	// Transfer images to compute writeable layout
-	// Compute won't happen before this is all done
-
-	VkImageMemoryBarrier barrier = GetImageBarrier(&g_context.colorImages[g_context.currentCbIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-	vkCmdPipelineBarrier(
-		commandBuffer,
-		VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
-
-	// Clear old scanline data
-	vkCmdFillBuffer(
-		commandBuffer,
-		g_context.scanlineBuffers[g_context.currentCbIndex].buffer,
-		0,
-		EVALUATED_SPRITE_INDEX_BUFFER_SIZE,
-		0
-	);
-
-	// Do all the asynchronous compute stuff
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, g_context.evaluatePipelineLayout, 0, 1, &g_context.computeDescriptorSets[g_context.currentCbIndex], 0, nullptr);
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, g_context.evaluatePipeline);
-	vkCmdDispatch(commandBuffer, MAX_SPRITE_COUNT / MAX_SPRITES_PER_SCANLINE, SCANLINE_COUNT, 1);
-
-	// Wait for scanline buffer to be written before running software renderer for the final image
-	VkBufferMemoryBarrier scanlineBarrier{};
-	scanlineBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-	scanlineBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-	scanlineBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	scanlineBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	scanlineBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	scanlineBarrier.buffer = g_context.scanlineBuffers[g_context.currentCbIndex].buffer;
-	scanlineBarrier.offset = 0;
-	scanlineBarrier.size = EVALUATED_SPRITE_INDEX_BUFFER_SIZE;
-
-	vkCmdPipelineBarrier(
-		commandBuffer,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		0,
-		0, nullptr,
-		0, &scanlineBarrier,
-		0, nullptr
-	);
-
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, g_context.softwarePipelineLayout, 0, 1, &g_context.computeDescriptorSets[g_context.currentCbIndex], 0, nullptr);
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, g_context.softwarePipeline);
-	vkCmdDispatch(commandBuffer, VIEWPORT_WIDTH_TILES * TILE_DIM_PIXELS / 32, VIEWPORT_HEIGHT_TILES * TILE_DIM_PIXELS / 32, 1);
-
-	// Transfer images to shader readable layout
-	barrier = GetImageBarrier(&g_context.colorImages[g_context.currentCbIndex], VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	vkCmdPipelineBarrier(
-		commandBuffer,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
+    barrier = GetImageBarrier(&g_context.colorImages[g_context.currentCbIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 }
 
 static void BeginRenderPass() {
@@ -1180,7 +986,6 @@ void Rendering::Init(SDL_Window* sdlWindow) {
 	SDL_Vulkan_CreateSurface(sdlWindow, g_context.instance, &g_context.surface);
 
 	g_context.blitShaderHandle = AssetManager::GetAssetHandleFromPath<ShaderHandle>("shaders/blit.slang");
-	g_context.softwareShaderHandle = AssetManager::GetAssetHandleFromPath<ShaderHandle>("shaders/software.slang");
 
 	PhysicalDeviceFeatures deviceFeatures = PhysicalDeviceFeatures();
 	GetSuitablePhysicalDevice(deviceFeatures);
@@ -1260,7 +1065,11 @@ void Rendering::Init(SDL_Window* sdlWindow) {
 
 	for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
 		vkCreateSemaphore(g_context.device, &semaphoreInfo, nullptr, &g_context.imageAcquiredSemaphores[i]);
+		SetObjectName(VK_OBJECT_TYPE_SEMAPHORE, (uint64_t)g_context.imageAcquiredSemaphores[i], "Image Acquired Semaphore");
+
 		vkCreateSemaphore(g_context.device, &semaphoreInfo, nullptr, &g_context.drawCompleteSemaphores[i]);
+		SetObjectName(VK_OBJECT_TYPE_SEMAPHORE, (uint64_t)g_context.drawCompleteSemaphores[i], "Draw Complete Semaphore");
+        
 		vkCreateFence(g_context.device, &fenceInfo, nullptr, &g_context.commandBufferFences[i]);
 	}
 
@@ -1286,13 +1095,10 @@ void Rendering::Init(SDL_Window* sdlWindow) {
 
 	vkCreateSampler(g_context.device, &samplerInfo, nullptr, &g_context.defaultSampler);
 
-	// Compute resources
-	CreatePalette();
-	CreateComputeBuffers();
-
 	for (int i = 0; i < COMMAND_BUFFER_COUNT; i++) {
-		AllocateBuffer(EVALUATED_SPRITE_INDEX_BUFFER_SIZE, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, g_context.scanlineBuffers[i]);
-		CreateImage(VIEWPORT_WIDTH_TILES * TILE_DIM_PIXELS, VIEWPORT_HEIGHT_TILES * TILE_DIM_PIXELS, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, g_context.colorImages[i]);
+		if (!CreateImage(SOFTWARE_FRAMEBUFFER_WIDTH, SOFTWARE_FRAMEBUFFER_HEIGHT, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, g_context.colorImages[i], true)) {
+			DEBUG_FATAL("Failed to create color image!\n");
+		}
 
 		VkDescriptorImageInfo imageInfo{};
 		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -1311,255 +1117,30 @@ void Rendering::Init(SDL_Window* sdlWindow) {
 		vkUpdateDescriptorSets(g_context.device, 1, &descriptorWrite, 0, nullptr);
 	}
 
-	// COMPUTE
-
-	// Descriptors
-	VkDescriptorSetLayoutBinding storageLayoutBinding{};
-	storageLayoutBinding.binding = 0;
-	storageLayoutBinding.descriptorCount = 1;
-	storageLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-	storageLayoutBinding.pImmutableSamplers = nullptr;
-	storageLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-	VkDescriptorSetLayoutBinding paletteLayoutBinding{};
-	paletteLayoutBinding.binding = 1;
-	paletteLayoutBinding.descriptorCount = 1;
-	paletteLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	paletteLayoutBinding.pImmutableSamplers = nullptr;
-	paletteLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-	VkDescriptorSetLayoutBinding chrLayoutBinding{};
-	chrLayoutBinding.binding = 2;
-	chrLayoutBinding.descriptorCount = 1;
-	chrLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	chrLayoutBinding.pImmutableSamplers = nullptr;
-	chrLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-	VkDescriptorSetLayoutBinding palTableBinding{};
-	palTableBinding.binding = 3;
-	palTableBinding.descriptorCount = 1;
-	palTableBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	palTableBinding.pImmutableSamplers = nullptr;
-	palTableBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-	VkDescriptorSetLayoutBinding nametableBinding{};
-	nametableBinding.binding = 4;
-	nametableBinding.descriptorCount = 1;
-	nametableBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	nametableBinding.pImmutableSamplers = nullptr;
-	nametableBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-	VkDescriptorSetLayoutBinding oamBinding{};
-	oamBinding.binding = 5;
-	oamBinding.descriptorCount = 1;
-	oamBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	oamBinding.pImmutableSamplers = nullptr;
-	oamBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-	VkDescriptorSetLayoutBinding scanlineBinding{};
-	scanlineBinding.binding = 6;
-	scanlineBinding.descriptorCount = 1;
-	scanlineBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	scanlineBinding.pImmutableSamplers = nullptr;
-	scanlineBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-	VkDescriptorSetLayoutBinding renderStateBinding{};
-	renderStateBinding.binding = 7;
-	renderStateBinding.descriptorCount = 1;
-	renderStateBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	renderStateBinding.pImmutableSamplers = nullptr;
-	renderStateBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-	VkDescriptorSetLayoutBinding bindings[] = { storageLayoutBinding, paletteLayoutBinding, chrLayoutBinding, palTableBinding, nametableBinding, oamBinding, scanlineBinding, renderStateBinding };
-	VkDescriptorSetLayoutCreateInfo computeLayoutInfo{};
-	computeLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	computeLayoutInfo.bindingCount = 8;
-	computeLayoutInfo.pBindings = bindings;
-
-	vkCreateDescriptorSetLayout(g_context.device, &computeLayoutInfo, nullptr, &g_context.computeDescriptorSetLayout);
-
-	for (int i = 0; i < COMMAND_BUFFER_COUNT; i++) {
-		VkDescriptorSetAllocateInfo computeDescriptorSetAllocInfo{};
-		computeDescriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		computeDescriptorSetAllocInfo.descriptorPool = g_context.descriptorPool;
-		computeDescriptorSetAllocInfo.descriptorSetCount = 1;
-		computeDescriptorSetAllocInfo.pSetLayouts = &g_context.computeDescriptorSetLayout;
-
-		vkAllocateDescriptorSets(g_context.device, &computeDescriptorSetAllocInfo, &g_context.computeDescriptorSets[i]);
-	}
-
-	// Compute evaluate
-	VkPipelineLayoutCreateInfo evaluatePipelineLayoutInfo{};
-	evaluatePipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	evaluatePipelineLayoutInfo.setLayoutCount = 1;
-	evaluatePipelineLayoutInfo.pSetLayouts = &g_context.computeDescriptorSetLayout;
-
-	vkCreatePipelineLayout(g_context.device, &evaluatePipelineLayoutInfo, nullptr, &g_context.evaluatePipelineLayout);
-
-	g_context.softwareShaderModule = CreateShaderModule(g_context.softwareShaderHandle);
-
-	VkPipelineShaderStageCreateInfo evaluateShaderStageInfo{};
-	evaluateShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	evaluateShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	evaluateShaderStageInfo.module = g_context.softwareShaderModule;
-	evaluateShaderStageInfo.pName = "ScanlineEvaluate";
-
-	VkComputePipelineCreateInfo evaluateCreateInfo{};
-	evaluateCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-	evaluateCreateInfo.flags = 0;
-	evaluateCreateInfo.stage = evaluateShaderStageInfo;
-	evaluateCreateInfo.layout = g_context.evaluatePipelineLayout;
-
-	vkCreateComputePipelines(g_context.device, VK_NULL_HANDLE, 1, &evaluateCreateInfo, nullptr, &g_context.evaluatePipeline);
-
-	// Compute rendering
-	VkPipelineLayoutCreateInfo softwarePipelineLayoutInfo{};
-	softwarePipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	softwarePipelineLayoutInfo.setLayoutCount = 1;
-	softwarePipelineLayoutInfo.pSetLayouts = &g_context.computeDescriptorSetLayout;
-	softwarePipelineLayoutInfo.pPushConstantRanges = nullptr;
-	softwarePipelineLayoutInfo.pushConstantRangeCount = 0;
-
-	vkCreatePipelineLayout(g_context.device, &softwarePipelineLayoutInfo, nullptr, &g_context.softwarePipelineLayout);
-
-	VkPipelineShaderStageCreateInfo compShaderStageInfo{};
-	compShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	compShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	compShaderStageInfo.module = g_context.softwareShaderModule;
-	compShaderStageInfo.pName = "SoftwareRenderMain";
-
-	VkComputePipelineCreateInfo computeCreateInfo{};
-	computeCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-	computeCreateInfo.flags = 0;
-	computeCreateInfo.stage = compShaderStageInfo;
-	computeCreateInfo.layout = g_context.softwarePipelineLayout;
-
-	vkCreateComputePipelines(g_context.device, VK_NULL_HANDLE, 1, &computeCreateInfo, nullptr, &g_context.softwarePipeline);
-
-	for (int i = 0; i < COMMAND_BUFFER_COUNT; i++) {
-		VkDescriptorImageInfo outBufferInfo{};
-		outBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		outBufferInfo.imageView = g_context.colorImages[i].view;
-		outBufferInfo.sampler = g_context.defaultSampler;
-
-		VkDescriptorImageInfo paletteBufferInfo{};
-		paletteBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		paletteBufferInfo.imageView = g_context.paletteImage.view;
-		paletteBufferInfo.sampler = g_context.paletteSampler;
-
-		VkDescriptorBufferInfo chrBufferInfo{};
-		chrBufferInfo.buffer = g_context.computeBufferDevice[i].buffer;
-		chrBufferInfo.offset = g_context.chrOffset;
-		chrBufferInfo.range = g_context.chrSize;
-
-		VkDescriptorBufferInfo palTableInfo{};
-		palTableInfo.buffer = g_context.computeBufferDevice[i].buffer;
-		palTableInfo.offset = g_context.paletteTableOffset;
-		palTableInfo.range = g_context.paletteTableSize;
-
-		VkDescriptorBufferInfo nametableInfo{};
-		nametableInfo.buffer = g_context.computeBufferDevice[i].buffer;
-		nametableInfo.offset = g_context.nametableOffset;
-		nametableInfo.range = g_context.nametableSize;
-
-		VkDescriptorBufferInfo oamInfo{};
-		oamInfo.buffer = g_context.computeBufferDevice[i].buffer;
-		oamInfo.offset = g_context.oamOffset;
-		oamInfo.range = g_context.oamSize;
-
-		VkDescriptorBufferInfo renderStateInfo{};
-		renderStateInfo.buffer = g_context.computeBufferDevice[i].buffer;
-		renderStateInfo.offset = g_context.renderStateOffset;
-		renderStateInfo.range = g_context.renderStateSize;
-
-		VkDescriptorBufferInfo scanlineInfo{};
-		scanlineInfo.buffer = g_context.scanlineBuffers[i].buffer;
-		scanlineInfo.offset = 0;
-		scanlineInfo.range = VK_WHOLE_SIZE;
-
-		VkWriteDescriptorSet descriptorWrite[8]{};
-		descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[0].dstSet = g_context.computeDescriptorSets[i];
-		descriptorWrite[0].dstBinding = 0;
-		descriptorWrite[0].dstArrayElement = 0;
-		descriptorWrite[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		descriptorWrite[0].descriptorCount = 1;
-		descriptorWrite[0].pImageInfo = &outBufferInfo;
-
-		descriptorWrite[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[1].dstSet = g_context.computeDescriptorSets[i];
-		descriptorWrite[1].dstBinding = 1;
-		descriptorWrite[1].dstArrayElement = 0;
-		descriptorWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		descriptorWrite[1].descriptorCount = 1;
-		descriptorWrite[1].pImageInfo = &paletteBufferInfo;
-
-		descriptorWrite[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[2].dstSet = g_context.computeDescriptorSets[i];
-		descriptorWrite[2].dstBinding = 2;
-		descriptorWrite[2].dstArrayElement = 0;
-		descriptorWrite[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		descriptorWrite[2].descriptorCount = 1;
-		descriptorWrite[2].pBufferInfo = &chrBufferInfo;
-
-		descriptorWrite[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[3].dstSet = g_context.computeDescriptorSets[i];
-		descriptorWrite[3].dstBinding = 3;
-		descriptorWrite[3].dstArrayElement = 0;
-		descriptorWrite[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		descriptorWrite[3].descriptorCount = 1;
-		descriptorWrite[3].pBufferInfo = &palTableInfo;
-
-		descriptorWrite[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[4].dstSet = g_context.computeDescriptorSets[i];
-		descriptorWrite[4].dstBinding = 4;
-		descriptorWrite[4].dstArrayElement = 0;
-		descriptorWrite[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		descriptorWrite[4].descriptorCount = 1;
-		descriptorWrite[4].pBufferInfo = &nametableInfo;
-
-		descriptorWrite[5].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[5].dstSet = g_context.computeDescriptorSets[i];
-		descriptorWrite[5].dstBinding = 5;
-		descriptorWrite[5].dstArrayElement = 0;
-		descriptorWrite[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		descriptorWrite[5].descriptorCount = 1;
-		descriptorWrite[5].pBufferInfo = &oamInfo;
-
-		descriptorWrite[6].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[6].dstSet = g_context.computeDescriptorSets[i];
-		descriptorWrite[6].dstBinding = 6;
-		descriptorWrite[6].dstArrayElement = 0;
-		descriptorWrite[6].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		descriptorWrite[6].descriptorCount = 1;
-		descriptorWrite[6].pBufferInfo = &renderStateInfo;
-
-		descriptorWrite[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite[7].dstSet = g_context.computeDescriptorSets[i];
-		descriptorWrite[7].dstBinding = 7;
-		descriptorWrite[7].dstArrayElement = 0;
-		descriptorWrite[7].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		descriptorWrite[7].descriptorCount = 1;
-		descriptorWrite[7].pBufferInfo = &scanlineInfo;
-
-		vkUpdateDescriptorSets(g_context.device, 8, descriptorWrite, 0, nullptr);
-	}
+    AllocateBuffer(SOFTWARE_FRAMEBUFFER_SIZE_PIXELS * sizeof(u32), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, g_context.framebufferBuffer);
+    u32* framebufferData = nullptr;
+    vkMapMemory(g_context.device, g_context.framebufferBuffer.memory, 0, SOFTWARE_FRAMEBUFFER_SIZE_PIXELS * sizeof(u32), 0, (void**)&framebufferData);
+    Software::Init(framebufferData);
 
 	g_context.settings = DEFAULT_RENDER_SETTINGS;
 }
 
 void Rendering::Free() {
-	// Wait for all commands to execute first
-	WaitForAllCommands();
+	vkDeviceWaitIdle(g_context.device);
+
+    Software::Free();
+
+    FreeBuffer(g_context.framebufferBuffer);
 
 	// Free imgui stuff
+#ifdef EDITOR
 	vkDestroyDescriptorPool(g_context.device, g_context.imGuiDescriptorPool, nullptr);
+#endif
 
-	// vkFreeDescriptorSets(g_context.device, g_context.descriptorPool, COMMAND_BUFFER_COUNT, g_context.graphicsDescriptorSets);
-	// vkFreeDescriptorSets(g_context.device, g_context.descriptorPool, 1, &g_context.computeDescriptorSet);
 	vkDestroyDescriptorPool(g_context.device, g_context.descriptorPool, nullptr);
 
 	for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
+        FreeImage(g_context.colorImages[i]);
 		vkDestroySemaphore(g_context.device, g_context.imageAcquiredSemaphores[i], nullptr);
 		vkDestroySemaphore(g_context.device, g_context.drawCompleteSemaphores[i], nullptr);
 		vkDestroyFence(g_context.device, g_context.commandBufferFences[i], nullptr);
@@ -1570,40 +1151,19 @@ void Rendering::Free() {
 	FreeSwapchain();
 
 	FreeGraphicsPipeline();
-
-	vkDestroySampler(g_context.device, g_context.defaultSampler, nullptr);
-	vkDestroyDescriptorSetLayout(g_context.device, g_context.computeDescriptorSetLayout, nullptr);
-
-	vkDestroyPipeline(g_context.device, g_context.softwarePipeline, nullptr);
-	vkDestroyPipelineLayout(g_context.device, g_context.softwarePipelineLayout, nullptr);
-	vkDestroyPipeline(g_context.device, g_context.evaluatePipeline, nullptr);
-	vkDestroyPipelineLayout(g_context.device, g_context.evaluatePipelineLayout, nullptr);
-	vkDestroyShaderModule(g_context.device, g_context.softwareShaderModule, nullptr);
-
-	FreeImage(g_context.paletteImage);
-	vkDestroySampler(g_context.device, g_context.paletteSampler, nullptr);
-
-	for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
-		FreeImage(g_context.colorImages[i]);
-		FreeBuffer(g_context.computeBufferDevice[i]);
-		FreeBuffer(g_context.computeStagingBuffers[i]);
-		FreeBuffer(g_context.scanlineBuffers[i]);
-	}
+    vkDestroySampler(g_context.device, g_context.defaultSampler, nullptr);
 
 	vkDestroyDevice(g_context.device, nullptr);
 	vkDestroySurfaceKHR(g_context.instance, g_context.surface, nullptr);
 	vkDestroyInstance(g_context.instance, nullptr);
-
-	// NOTE: Render data is freed by the arena allocator
 }
 
 //////////////////////////////////////////////////////
 
 void Rendering::BeginFrame() {
+    Software::DrawFrame();
 	BeginDraw();
-	CopyRenderData();
-	TransferComputeBufferData();
-	RunSoftwareRenderer();
+    CopySoftwareFramebuffer();
 }
 
 void Rendering::BeginRenderPass() {
@@ -1631,48 +1191,8 @@ void Rendering::ResizeSurface(u32 width, u32 height) {
 
 //////////////////////////////////////////////////////
 
-RenderSettings* Rendering::GetSettingsPtr() {
+RenderSettings* Rendering::GetSettings() {
 	return &g_context.settings;
-}
-Palette* Rendering::GetPalettePtr(u32 paletteIndex) {
-	if (paletteIndex >= PALETTE_COUNT) {
-		return nullptr;
-	}
-
-	Palette* pal = (Palette*)((u8*)g_context.renderData + g_context.paletteTableOffset);
-	return pal + paletteIndex;
-}
-Sprite* Rendering::GetSpritesPtr(u32 offset) {
-	if (offset >= MAX_SPRITE_COUNT) {
-		return nullptr;
-	}
-
-	Sprite* spr = (Sprite*)((u8*)g_context.renderData + g_context.oamOffset);
-	return spr + offset;
-}
-ChrSheet* Rendering::GetChrPtr(u32 sheetIndex) {
-	if (sheetIndex >= CHR_COUNT) {
-		return nullptr;
-	}
-
-	ChrSheet* sheet = (ChrSheet*)((u8*)g_context.renderData + g_context.chrOffset);
-	return sheet + sheetIndex;
-}
-Nametable* Rendering::GetNametablePtr(u32 index) {
-	if (index >= NAMETABLE_COUNT) {
-		return nullptr;
-	}
-
-	Nametable* tbl = (Nametable*)((u8*)g_context.renderData + g_context.nametableOffset);
-	return tbl + index;
-}
-Scanline* Rendering::GetScanlinePtr(u32 offset) {
-	if (offset >= SCANLINE_COUNT) {
-		return nullptr;
-	}
-
-	Scanline* scanlines = (Scanline*)((u8*)g_context.renderData + g_context.renderStateOffset);
-	return scanlines + offset;
 }
 
 //////////////////////////////////////////////////////

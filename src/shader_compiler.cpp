@@ -21,10 +21,14 @@ static bool InitSession() {
 
 	slang::SessionDesc sessionDesc{};
 
-	// TODO: Set codegen target settings from build configuration
 	slang::TargetDesc targetDesc{};
+#ifdef RENDERING_BACKEND_VK
 	targetDesc.format = SLANG_SPIRV;
 	targetDesc.profile = g_slangGlobalSession->findProfile("spirv_1_5");
+#else
+    targetDesc.format = SLANG_TARGET_UNKNOWN;
+    targetDesc.profile = SLANG_PROFILE_UNKNOWN;
+#endif
 
 	sessionDesc.targets = &targetDesc;
 	sessionDesc.targetCount = 1;

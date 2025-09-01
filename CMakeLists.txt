@@ -11,12 +11,11 @@ option(BUILD_ASSETS "Build asset archive" ON)
 
 # Rendering backend
 set(RENDERING_BACKEND "VULKAN" CACHE STRING "Rendering backend to use")
-set_property(CACHE RENDERING_BACKEND PROPERTY STRINGS "VULKAN" "SOFTWARE")
+set_property(CACHE RENDERING_BACKEND PROPERTY STRINGS "VULKAN")
 
 set(ASSETS_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 set(ASSETS_NPAK_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/assets.npak")
 
-find_package(Vulkan QUIET)
 find_package(SDL2 REQUIRED)
 find_package(slang QUIET)
 
@@ -46,12 +45,11 @@ if(ENABLE_EDITOR OR BUILD_ASSETS)
 endif()
 
 if(RENDERING_BACKEND STREQUAL "VULKAN")
-    if(NOT Vulkan_FOUND)
-        message(FATAL_ERROR "Vulkan rendering backend selected, but Vulkan SDK not found!")
-    endif()
+    find_package(Vulkan REQUIRED)
+    message(STATUS "Using Vulkan rendering backend")
     set(RENDERER_SRC src/rendering_vulkan.cpp)
-elseif(RENDERING_BACKEND STREQUAL "SOFTWARE")
-    set(RENDERER_SRC src/rendering_software.cpp)
+else()
+    message(FATAL_ERROR "Unknown rendering backend: ${RENDERING_BACKEND}")
 endif()
 
 set(SOURCES 
@@ -61,6 +59,7 @@ set(SOURCES
 		src/game.cpp
 		src/input.cpp
 		src/rendering_util.cpp
+        src/software_renderer.cpp
 		${RENDERER_SRC}
 		src/game_rendering.cpp
 		src/tilemap.cpp
@@ -88,11 +87,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${SHARED_INCLUDE_DIR} ${glm_S
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2 SDL2::SDL2main)
 
 if(RENDERING_BACKEND STREQUAL "VULKAN")
-	target_compile_definitions(${PROJECT_NAME} PRIVATE RENDERING_BACKEND_VULKAN)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE RENDERING_BACKEND_VK)
     target_include_directories(${PROJECT_NAME} PRIVATE ${Vulkan_INCLUDE_DIRS})
     target_link_libraries(${PROJECT_NAME} PRIVATE ${Vulkan_LIBRARY})
-elseif(RENDERING_BACKEND STREQUAL "SOFTWARE")
-	target_compile_definitions(${PROJECT_NAME} PRIVATE RENDERING_BACKEND_SOFTWARE)
 endif()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE ASSETS_NPAK_OUTPUT="${ASSETS_NPAK_OUTPUT}" ASSET_ARCHIVE_USE_ARENA)
@@ -203,6 +200,11 @@ if(BUILD_ASSETS)
 	if(MSVC)
 		target_compile_definitions(asset_packer PRIVATE _CRT_SECURE_NO_WARNINGS)
 	endif()
+
+    # Define rendering backend for shader compilation
+    if(RENDERING_BACKEND STREQUAL "VULKAN")
+        target_compile_definitions(asset_packer PRIVATE RENDERING_BACKEND_VK)
+    endif()
 
 	# Generate assets.npak from source assets
 	add_custom_target(generate_assets ALL
