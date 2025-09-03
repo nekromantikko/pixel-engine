@@ -2,6 +2,7 @@
 #include "typedef.h"
 #include <cassert>
 #include <type_traits>
+#include <cstring>
 
 class Arena;
 
