@@ -232,7 +232,7 @@ static void Draw() {
             g_AllWorkDoneCondition.wait(lock);
         }
     }
-
+    g_Framebuffer = nullptr;
 }
 
 static void WorkerLoop() {
@@ -270,10 +270,7 @@ static void WorkerLoop() {
     }
 }
 
-void Rendering::Software::Init(u32* framebuffer) {
-    g_Framebuffer = framebuffer;
-    memset(framebuffer, 0, sizeof(u32) * SOFTWARE_FRAMEBUFFER_SIZE_PIXELS);
-
+void Rendering::Software::Init() {
     g_Palettes = ArenaAllocator::PushArray<Palette>(ARENA_PERMANENT, PALETTE_COUNT);
     g_Sprites = ArenaAllocator::PushArray<Sprite>(ARENA_PERMANENT, MAX_SPRITE_COUNT);
     g_ChrSheets = ArenaAllocator::PushArray<ChrSheet>(ARENA_PERMANENT, CHR_COUNT);
@@ -308,7 +305,8 @@ void Rendering::Software::Free() {
     }
 }
 
-void Rendering::Software::DrawFrame() {
+void Rendering::Software::DrawFrame(u32* framebuffer) {
+    g_Framebuffer = framebuffer;
     EvaluateScanlineSprites();
     Draw();
 }

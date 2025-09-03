@@ -91,7 +91,8 @@ struct RenderContext {
 	VkPipeline blitRawPipeline;
 	VkPipeline blitCRTPipeline;
 
-    Buffer framebufferBuffer;
+    Buffer framebufferBuffers[COMMAND_BUFFER_COUNT];
+	u32* framebufferData[COMMAND_BUFFER_COUNT];
 	Image colorImages[COMMAND_BUFFER_COUNT];
 
 	// Settings
@@ -890,7 +891,7 @@ static void CopyBufferToImage(const Buffer& buffer, const Image& image, VkComman
 
 static void CopySoftwareFramebuffer() {
     VkCommandBuffer cmd = g_context.primaryCommandBuffers[g_context.currentCbIndex];
-    CopyBufferToImage(g_context.framebufferBuffer, g_context.colorImages[g_context.currentCbIndex], cmd);
+    CopyBufferToImage(g_context.framebufferBuffers[g_context.currentCbIndex], g_context.colorImages[g_context.currentCbIndex], cmd);
 }
 
 static void BeginRenderPass() {
@@ -1123,12 +1124,12 @@ void Rendering::Init(SDL_Window* sdlWindow) {
 		descriptorWrite.pImageInfo = &imageInfo;
 
 		vkUpdateDescriptorSets(g_context.device, 1, &descriptorWrite, 0, nullptr);
+
+		AllocateBuffer(SOFTWARE_FRAMEBUFFER_SIZE_PIXELS * sizeof(u32), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, g_context.framebufferBuffers[i]);
+    	vkMapMemory(g_context.device, g_context.framebufferBuffers[i].memory, 0, SOFTWARE_FRAMEBUFFER_SIZE_PIXELS * sizeof(u32), 0, (void**)&g_context.framebufferData[i]);
 	}
 
-    AllocateBuffer(SOFTWARE_FRAMEBUFFER_SIZE_PIXELS * sizeof(u32), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, g_context.framebufferBuffer);
-    u32* framebufferData = nullptr;
-    vkMapMemory(g_context.device, g_context.framebufferBuffer.memory, 0, SOFTWARE_FRAMEBUFFER_SIZE_PIXELS * sizeof(u32), 0, (void**)&framebufferData);
-    Software::Init(framebufferData);
+    Software::Init();
 
 	g_context.settings = DEFAULT_RENDER_SETTINGS;
 }
@@ -1138,8 +1139,6 @@ void Rendering::Free() {
 
     Software::Free();
 
-    FreeBuffer(g_context.framebufferBuffer);
-
 	// Free imgui stuff
 #ifdef EDITOR
 	vkDestroyDescriptorPool(g_context.device, g_context.imGuiDescriptorPool, nullptr);
@@ -1148,6 +1147,7 @@ void Rendering::Free() {
 	vkDestroyDescriptorPool(g_context.device, g_context.descriptorPool, nullptr);
 
 	for (u32 i = 0; i < COMMAND_BUFFER_COUNT; i++) {
+		FreeBuffer(g_context.framebufferBuffers[i]);
         FreeImage(g_context.colorImages[i]);
 		vkDestroySemaphore(g_context.device, g_context.imageAcquiredSemaphores[i], nullptr);
 		vkDestroySemaphore(g_context.device, g_context.drawCompleteSemaphores[i], nullptr);
@@ -1169,8 +1169,8 @@ void Rendering::Free() {
 //////////////////////////////////////////////////////
 
 void Rendering::BeginFrame() {
-    Software::DrawFrame();
 	BeginDraw();
+    Software::DrawFrame(g_context.framebufferData[g_context.currentCbIndex]);
     CopySoftwareFramebuffer();
 }
 
