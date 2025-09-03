@@ -7,10 +7,10 @@ constexpr u32 SOFTWARE_FRAMEBUFFER_SIZE_PIXELS = SOFTWARE_FRAMEBUFFER_WIDTH * SO
 
 namespace Rendering {
     namespace Software {
-        void Init(u32* framebuffer);
+        void Init();
         void Free();
 
-        void DrawFrame();
+        void DrawFrame(u32* framebuffer);
 
         // Data access
         Palette* GetPalette(u32 paletteIndex);
