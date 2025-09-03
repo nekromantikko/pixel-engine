@@ -169,7 +169,7 @@ static void DrawScanlines(u32 count, u32 offset) {
         }
 
         // Handle partial right tile row
-        if (x < SOFTWARE_FRAMEBUFFER_WIDTH - 1) {
+        if (x < SOFTWARE_FRAMEBUFFER_WIDTH) {
             scrolledX = x + scanline.scrollX;
             const BgTile* pTile = GetNametableTile(scrolledX, scrolledY);
             SampleChrTileRow(pTile->tileId, tileOffsetY, pTile->palette, pTile->flipHorizontal, pTile->flipVertical, 0, SOFTWARE_FRAMEBUFFER_WIDTH - x, &pScanlineSamples[x]);
@@ -199,11 +199,11 @@ static void DrawScanlines(u32 count, u32 offset) {
             u8 start = sprite.x < 0 ? -sprite.x : 0;
             u8 end = sprite.x + TILE_DIM_PIXELS > SOFTWARE_FRAMEBUFFER_WIDTH ? SOFTWARE_FRAMEBUFFER_WIDTH - sprite.x : TILE_DIM_PIXELS;
 
-            u8 row[8];
-            memcpy(row, &pScanlineSamples[sprite.x], 8);
+            u8 rowWidth = end - start;
+            u8 row[TILE_DIM_PIXELS] = {0};
             SampleChrTileRow(sprite.tileId + CHR_PAGE_COUNT * CHR_SIZE_TILES, yOffset, sprite.palette + BG_PALETTE_COUNT, sprite.flipHorizontal, sprite.flipVertical, start, end, row);
 
-            for (s32 k = 0; k < 8; k++) {
+            for (s32 k = 0; k < rowWidth; k++) {
                 if (row[k] != 0 && (sprite.priority == 0 || pScanlineSamples[sprite.x + k] == 0)) {
                     pScanlineSamples[sprite.x + k] = row[k];
                 }
@@ -213,7 +213,11 @@ static void DrawScanlines(u32 count, u32 offset) {
 
     // Step 3: Write to framebuffer
     u32* pPixels = g_Framebuffer + framebufferOffset;
-    ResolvePaletteColorsAVX(pSamples, pPixels, SOFTWARE_FRAMEBUFFER_WIDTH * count);
+    const u32 pixelCount = SOFTWARE_FRAMEBUFFER_WIDTH * count;
+    const u32 simdCount = pixelCount & ~7;
+    const u32 remainder = pixelCount & 7;
+    ResolvePaletteColorsAVX(pSamples, pPixels, simdCount);
+    ResolvePaletteColors(pSamples + simdCount, pPixels + simdCount, remainder);
 }
 
 static void Draw() {
