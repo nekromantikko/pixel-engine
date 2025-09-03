@@ -76,9 +76,10 @@ static inline void SampleChrTileRow(u16 tileId, u8 y, u8 palette, bool flipX, bo
         p2 = Reverse8(p2);
     }
 
-    for (u32 i = start; i < end; i++) {
-        u8 ci = ((p0 >> i) & 1) | (((p1 >> i) & 1) << 1) | (((p2 >> i) & 1) << 2);
-        outRow[i] = (ci == 0) ? 0 : (PALETTE_COLOR_COUNT * palette + ci);
+    u32 x = 0;
+    for (u32 offset = start; offset < end; offset++) {
+        u8 ci = ((p0 >> offset) & 1) | (((p1 >> offset) & 1) << 1) | (((p2 >> offset) & 1) << 2);
+        outRow[x++] = (ci == 0) ? 0 : (PALETTE_COLOR_COUNT * palette + ci);
     }
 }
 
@@ -307,6 +308,7 @@ void Rendering::Software::Free() {
 
 void Rendering::Software::DrawFrame(u32* framebuffer) {
     g_Framebuffer = framebuffer;
+    memset(g_SampledPixels, 0, SOFTWARE_FRAMEBUFFER_SIZE_PIXELS);
     EvaluateScanlineSprites();
     Draw();
 }
