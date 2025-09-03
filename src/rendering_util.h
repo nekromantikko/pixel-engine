@@ -14,7 +14,5 @@ namespace Rendering
 		void SetNametableTile(Nametable* pNametable, const glm::ivec2& nametableOffset, BgTile tileIndex);
 		Metatile GetNametableMetatile(const Nametable* pNametable, u32 metatileIndex);
 		void SetNametableMetatile(Nametable* pNametable, const glm::ivec2& metatileOffset, const Metatile& metatile);
-
-		void SavePaletteToFile(const char* fname);
 	}
 }

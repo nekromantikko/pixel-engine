@@ -1,6 +1,7 @@
 #include "editor.h"
 #include "editor_assets.h"
 #include "rendering.h"
+#include "software_renderer.h"
 #include "debug.h"
 #include <cassert>
 #include <limits>
@@ -33,7 +34,22 @@
 #include <stack>
 #include <utility>
 
-constexpr u32 CLIPBOARD_DIM_TILES = (VIEWPORT_WIDTH_TILES / 2) + 1;
+static constexpr u32 CLIPBOARD_DIM_TILES = (VIEWPORT_WIDTH_TILES / 2) + 1;
+static constexpr Palette NO_PALETTE = { .colors = {
+	0, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70
+}};
+
+// I intentionally obfuscated this just for fun
+static constexpr ChrSheet GetDefaultChrSheet() {
+    ChrSheet s = {};
+    for(u32 y=0;y<CHR_DIM_TILES;y++)
+    for(u32 x=0;x<CHR_DIM_TILES;x++) {
+        u64 b=(x&1)?0xEE2222220000ULL:0xCAAAAAA60000ULL,m=(~((x>>1)%7))&7,v=(y&1)?b:~b;
+        s.tiles[x+y*CHR_DIM_TILES]={v^(0-(m&1)),v^(0-((m>>1)&1)),v^(0-((m>>2)&1))};
+    }
+    return s;
+}
+static constexpr ChrSheet NO_CHR = GetDefaultChrSheet();
 
 struct TilemapClipboard {
 	u8 clipboard[CLIPBOARD_DIM_TILES * CLIPBOARD_DIM_TILES];
@@ -64,12 +80,9 @@ struct EditorContext {
 	EditorRenderTexture* pPaletteTexture;
 	EditorRenderTexture* pColorTexture;
 
-	std::unordered_map<u64, EditorRenderBuffer*> assetRenderBuffers;
 	std::unordered_map<u64, EditorRenderTexture*> assetRenderTextures;
 	std::vector<u64> assetEraseList;
 
-	std::unordered_set<EditorRenderBuffer*> tempRenderBuffers;
-	std::vector<EditorRenderBuffer*> tempBufferEraseList;
 	std::unordered_set<EditorRenderTexture*> tempRenderTextures;
 	std::vector<EditorRenderTexture*> tempTextureEraseList;
 
@@ -104,56 +117,25 @@ struct EditorContext {
 static EditorContext* pContext;
 
 #pragma region Rendering resources
-static EditorRenderBuffer* CreateRenderBuffer(u64 id, size_t size, const void* data) {
-	EditorRenderBuffer* pBuffer = (EditorRenderBuffer*)calloc(1, Rendering::GetEditorBufferSize());
-	Rendering::InitEditorBuffer(pBuffer, size, data);
-	pContext->assetRenderBuffers.emplace(id, pBuffer);
-	return pBuffer;
-}
-
-static EditorRenderBuffer* GetRenderBuffer(u64 id, AssetType type, size_t dataSize) {
-	if (id == UUID_NULL) {
-		return nullptr;
-	}
-
-	EditorRenderBuffer* pBuffer = nullptr;
-	if (pContext->assetRenderBuffers.contains(id)) {
-		pBuffer = pContext->assetRenderBuffers.at(id);
-	}
-	else {
-		const void* pData = AssetManager::GetAsset(id, type);
-		if (!pData) {
-			return nullptr;
-		}
-		pBuffer = CreateRenderBuffer(id, CHR_SIZE_BYTES, pData);
-	}
-	return pBuffer;
-}
-
-static EditorRenderBuffer* GetChrRenderBuffer(u64 id) {
-	return GetRenderBuffer(id, ASSET_TYPE_CHR_BANK, CHR_SIZE_BYTES);
-}
-
-static EditorRenderBuffer* GetPaletteRenderBuffer(u64 id) {
-	return GetRenderBuffer(id, ASSET_TYPE_PALETTE, PALETTE_COLOR_COUNT);
-}
-
-static void UpdateRenderBuffer(u64 id, AssetType type, size_t dataSize, const void* data) {
-	if (type != ASSET_TYPE_CHR_BANK && type != ASSET_TYPE_PALETTE) {
-		return;
-	}
-
-	EditorRenderBuffer* pBuffer = GetRenderBuffer(id, type, dataSize);
-	Rendering::UpdateEditorBuffer(pBuffer, data);
-}
-
 // CHR sheet drawn with all the current palettes
 static EditorRenderTexture* CreateChrSheetTexture(ChrBankHandle handle) {
-	const EditorRenderBuffer* pChrBuffer = GetChrRenderBuffer(handle.id);
 	EditorRenderTexture* pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
-	Rendering::InitEditorTexture(pTexture, CHR_DIM_PIXELS * PALETTE_COUNT, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, pChrBuffer);
+	Rendering::InitEditorTexture(pTexture, CHR_DIM_PIXELS * PALETTE_COUNT, CHR_DIM_PIXELS, "CHR Sheet Asset");
 	pContext->assetRenderTextures.emplace(handle.id, pTexture);
 	return pTexture;
+}
+
+static void UpdateChrSheetTexture(EditorRenderTexture* pTexture, const ChrSheet* pSheet) {
+	if (!pTexture || pSheet == nullptr) return;
+
+	// Update the texture with the current CHR sheet data
+	u32* pixels = Rendering::GetEditorTexturePixels(pTexture);
+	for (u32 i = 0; i < PALETTE_COUNT; i++) {
+		u32 offset = i * CHR_DIM_PIXELS;
+		const Palette* pPalette = Rendering::Software::GetPalette(i);
+		Rendering::Software::DrawChrSheet(pSheet, pPalette, CHR_DIM_PIXELS * PALETTE_COUNT, pixels + offset);
+	}
+	Rendering::UpdateEditorTexture(pTexture);
 }
 
 static EditorRenderTexture* GetChrSheetTexture(ChrBankHandle handle) {
@@ -167,6 +149,14 @@ static EditorRenderTexture* GetChrSheetTexture(ChrBankHandle handle) {
 	}
 	else {
 		pTexture = CreateChrSheetTexture(handle);
+
+		const ChrSheet* pSheet = AssetManager::GetAsset(handle);
+		if (pSheet == nullptr) {
+			DEBUG_WARN("Failed to get CHR sheet asset for handle %llu\n", handle.id);
+		} else {
+			UpdateChrSheetTexture(pTexture, pSheet);
+		}
+		
 	}
 	return pTexture;
 }
@@ -174,7 +164,7 @@ static EditorRenderTexture* GetChrSheetTexture(ChrBankHandle handle) {
 
 #pragma region Utils
 static ImTextureID GetTextureID(const EditorRenderTexture* pTexture) {
-	return (ImTextureID)Rendering::GetEditorTextureData(pTexture);
+	return (ImTextureID)Rendering::GetEditorTextureTexture(pTexture);
 }
 
 static glm::vec4 GetNormalizedChrCoords(u8 tileIndex) {
@@ -1140,8 +1130,6 @@ static bool SaveEditedAsset(EditedAsset& asset, ApplyAssetEditorDataFn applyFn) 
 	void* data = AssetManager::GetAsset(asset.id, pAssetInfo->flags.type);
 	memcpy(data, asset.data, asset.size);
 
-	UpdateRenderBuffer(pAssetInfo->id, pAssetInfo->flags.type, pAssetInfo->size, data);
-
 	asset.dirty = false;
 	return true;
 }
@@ -1157,8 +1145,6 @@ static bool RevertEditedAsset(EditedAsset& asset, PopulateAssetEditorDataFn popu
 	const void* data = AssetManager::GetAsset(asset.id, pAssetInfo->flags.type);
 	memcpy(asset.data, data, asset.size);
 	asset.dirty = false;
-
-	UpdateRenderBuffer(pAssetInfo->id, pAssetInfo->flags.type, pAssetInfo->size, data);
 
 	if (populateFn) {
 		populateFn(asset);
@@ -1646,7 +1632,7 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 						DEBUG_LOG("Deleting asset: %s\n", pAssetInfo->relativePath);
 						DeleteAssetSourceFiles(pAssetInfo);
 						AssetManager::RemoveAsset(pAssetInfo->id);
-						if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
+						if (pContext->assetRenderTextures.contains(pAssetInfo->id)) {
 							pContext->assetEraseList.push_back(pAssetInfo->id);
 						}
 					}
@@ -1663,7 +1649,7 @@ static u64 DrawAssetHierarchy(AssetType type, AssetListActionState* pActionState
 					DEBUG_LOG("Deleting asset: %s\n", pActionState->targetPath.string().c_str());
 					DeleteAssetSourceFiles(pAssetInfo);
 					AssetManager::RemoveAsset(pAssetInfo->id);
-					if (pContext->assetRenderBuffers.contains(pAssetInfo->id) || pContext->assetRenderTextures.contains(pAssetInfo->id)) {
+					if (pContext->assetRenderTextures.contains(pAssetInfo->id)) {
 						pContext->assetEraseList.push_back(pAssetInfo->id);
 					}
 				}
@@ -2278,6 +2264,61 @@ static void DrawDebugConsole() {
 	ImGui::EndChild();
 }
 
+struct RIFFHeader {
+    char signature[4]; // Should be 'RIFF'
+    u32 size;
+    char type[4];
+};
+struct PaletteChunkHeader {
+    char signature[4];
+    u32 size;
+    u16 version;
+    u16 colorCount;
+};
+
+static void SavePaletteToFile(const char* fname) {
+    u32 data[COLOR_COUNT];
+    Rendering::Software::GeneratePaletteColors(data);
+    const u32 dataSize = COLOR_COUNT * sizeof(u32);
+
+    FILE* pFile;
+    pFile = fopen(fname, "wb");
+
+    if (pFile == NULL) {
+        DEBUG_ERROR("Failed to write palette file\n");
+    }
+
+    RIFFHeader header{};
+    header.signature[0] = 'R';
+    header.signature[1] = 'I';
+    header.signature[2] = 'F';
+    header.signature[3] = 'F';
+
+    header.type[0] = 'P';
+    header.type[1] = 'A';
+    header.type[2] = 'L';
+    header.type[3] = ' ';
+
+    header.size = dataSize + sizeof(PaletteChunkHeader);
+
+    fwrite(&header, sizeof(RIFFHeader), 1, pFile);
+
+    PaletteChunkHeader chunk{};
+    chunk.signature[0] = 'd';
+    chunk.signature[1] = 'a';
+    chunk.signature[2] = 't';
+    chunk.signature[3] = 'a';
+    
+    chunk.size = dataSize;
+    chunk.version = 0x0300;
+    chunk.colorCount = COLOR_COUNT;
+
+    fwrite(&chunk, sizeof(PaletteChunkHeader), 1, pFile);
+    fwrite(data, dataSize, 1, pFile);
+
+    fclose(pFile);
+}
+
 static void DrawDebugWindow() {
 	ImGui::Begin("Debug", &pContext->debugWindowOpen);
 
@@ -2302,7 +2343,7 @@ static void DrawDebugWindow() {
 				ImGui::TableSetupScrollFreeze(0, 1); // Make row always visible
 				ImGui::TableHeadersRow();
 
-				Sprite* sprites = Rendering::GetSpritesPtr(0);
+				Sprite* sprites = Rendering::Software::GetSprites(0);
 				for (u32 i = 0; i < MAX_SPRITE_COUNT; i++) {
 					const Sprite& sprite = sprites[i];
 					ImGui::PushID(i);
@@ -2333,7 +2374,7 @@ static void DrawDebugWindow() {
 
 			for (u32 i = 0; i < NAMETABLE_COUNT; i++) {
 				ImGui::PushID(i);
-				Nametable* const nametables = Rendering::GetNametablePtr(0);
+				Nametable* const nametables = Rendering::Software::GetNametable(0);
 				DrawNametable(nametableSizePx, nametables[i]);
 				ImGui::PopID();
 				ImGui::SameLine();
@@ -2379,7 +2420,7 @@ static void DrawDebugWindow() {
 			DrawColorGrid(size);
 
 			if (ImGui::Button("Save palette to file")) {
-				Rendering::Util::SavePaletteToFile("generated.pal");
+				SavePaletteToFile("generated.pal");
 			}
 			ImGui::EndTabItem();
 		}
@@ -2557,7 +2598,7 @@ static void DrawSpriteEditor(MetaspriteEditorData* pEditorData, bool& dirty) {
 
 		ImGuiStyle& style = ImGui::GetStyle();
 		ImGui::BeginChild("Tile selector", ImVec2(chrSheetSize, chrSheetSize + ImGui::GetItemRectSize().y + style.ItemSpacing.y));
-		Palette* pPalette = Rendering::GetPalettePtr(sprite.palette + 8);
+		Palette* pPalette = Rendering::Software::GetPalette(sprite.palette + 8);
 		const s8 bgColorIndex = pPalette ? pPalette->colors[0] : -1;
 		glm::vec4 uvMinMax = NormalizedToChrTexCoord({ 0,0,1,1 }, 0, sprite.palette + 8, 1, PALETTE_COUNT);
 		DrawCustomChrSheet(chrSheetSize, GetTextureID(pEditorData->pTexture), bgColorIndex, uvMinMax, &newId);
@@ -2722,7 +2763,7 @@ static void DrawTilesetEditor(EditedAsset& asset) {
 
 		s32 palette = metatile.tiles[selectedTileIndex].palette;
 		r32 chrSheetSize = 256;
-		Palette* pPalette = Rendering::GetPalettePtr(palette);
+		Palette* pPalette = Rendering::Software::GetPalette(palette);
 		const s8 bgColorIndex = pPalette ? pPalette->colors[0] : -1;
 		glm::vec4 uvMinMax = NormalizedToChrTexCoord({ 0,0,1,1 }, 0, palette, 1, PALETTE_COUNT);
 		DrawCustomChrSheet(chrSheetSize, GetTextureID(pTexture), bgColorIndex, uvMinMax, &tileId);
@@ -4749,9 +4790,14 @@ static void PopulateChrEditorData(EditedAsset& editedAsset) {
 		pEditorData = new ChrEditorData();
 
 		pEditorData->pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
-		Rendering::InitEditorTexture(pEditorData->pTexture, CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, GetChrRenderBuffer(editedAsset.id));
+		Rendering::InitEditorTexture(pEditorData->pTexture, CHR_DIM_PIXELS, CHR_DIM_PIXELS, "CHR Sheet Edited Asset");
 		pContext->tempRenderTextures.insert(pEditorData->pTexture);
 	}
+}
+
+static void ApplyChrEditorData(EditedAsset& editedAsset) {
+	EditorRenderTexture* pTexture = GetChrSheetTexture(ChrBankHandle(editedAsset.id));
+	UpdateChrSheetTexture(pTexture, (ChrSheet*)editedAsset.data);
 }
 
 static void DeleteChrEditorData(EditedAsset& editedAsset) {
@@ -4768,17 +4814,21 @@ static void DrawChrEditor(EditedAsset& asset) {
 	ImGui::BeginChild("Chr editor");
 
 	ChrEditorData* pEditorData = (ChrEditorData*)asset.userData;
+    ChrSheet* pChrSheet = (ChrSheet*)asset.data;
+    const Palette* pPalette = &NO_PALETTE;
+	if (pEditorData->selectedPalette.id != UUID_NULL) {
+		pPalette = AssetManager::GetAsset(PaletteHandle(pEditorData->selectedPalette.id));
+	}
 
-	EditorRenderBuffer* pChrBuffer = GetChrRenderBuffer(asset.id);
-	EditorRenderBuffer* pPaletteBuffer = GetPaletteRenderBuffer(pEditorData->selectedPalette.id);
-	Rendering::UpdateEditorTexture(pEditorData->pTexture, pChrBuffer, pPaletteBuffer);
+	u32* pixels = Rendering::GetEditorTexturePixels(pEditorData->pTexture);
+    Rendering::Software::DrawChrSheet(pChrSheet, pPalette, CHR_DIM_PIXELS, pixels);
+	Rendering::UpdateEditorTexture(pEditorData->pTexture);
 
 	ImGui::SeparatorText("Properties");
 
 	ImGui::SeparatorText("Preview");
 
 	constexpr r32 gridSizePixels = 512.0f;
-	const Palette* pPalette = AssetManager::GetAsset(PaletteHandle(pEditorData->selectedPalette.id));
 	const s8 bgColorIndex = pPalette ? pPalette->colors[0] : -1;
 	DrawCustomChrSheet(gridSizePixels, GetTextureID(pEditorData->pTexture), bgColorIndex);
 	DrawAssetField("Palette", ASSET_TYPE_PALETTE, pEditorData->selectedPalette.id);
@@ -4794,7 +4844,6 @@ static void DrawChrWindow() {
 
 #pragma region Palette editor
 struct PaletteEditorData {
-	EditorRenderBuffer* pBuffer = nullptr;
 	EditorRenderTexture* pTexture = nullptr;
 	s32 selectedColor = -1;
 	ChrBankHandle selectedChrBank = ChrBankHandle::Null();
@@ -4806,22 +4855,16 @@ static void PopulatePaletteEditorData(EditedAsset& editedAsset) {
 	if (!pEditorData) {
 		pEditorData = new PaletteEditorData();
 
-		pEditorData->pBuffer = (EditorRenderBuffer*)calloc(1, Rendering::GetEditorBufferSize());
-		Rendering::InitEditorBuffer(pEditorData->pBuffer, PALETTE_COLOR_COUNT, editedAsset.data);
-		pContext->tempRenderBuffers.insert(pEditorData->pBuffer);
 		pEditorData->pTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
-		Rendering::InitEditorTexture(pEditorData->pTexture, CHR_DIM_PIXELS, CHR_DIM_PIXELS, EDITOR_TEXTURE_USAGE_CHR, 0, 0, nullptr, pEditorData->pBuffer);
+		Rendering::InitEditorTexture(pEditorData->pTexture, CHR_DIM_PIXELS, CHR_DIM_PIXELS, "Palette Edited Asset CHR");
 		pContext->tempRenderTextures.insert(pEditorData->pTexture);
 	}
-
-	Rendering::UpdateEditorBuffer(pEditorData->pBuffer, editedAsset.data);
 }
 
 static void DeletePaletteEditorData(EditedAsset& editedAsset) {
 	PaletteEditorData* pEditorData = (PaletteEditorData*)editedAsset.userData;
 
 	pContext->tempTextureEraseList.push_back(pEditorData->pTexture);
-	pContext->tempBufferEraseList.push_back(pEditorData->pBuffer);
 
 	// NOTE: This does not free the render data, so it's potentially leaky
 	// Render data should be freed later when iterating the erase list
@@ -4833,9 +4876,13 @@ static void DrawPaletteEditor(EditedAsset& asset) {
 
 	Palette* pPalette = (Palette*)asset.data;
 	PaletteEditorData* pEditorData = (PaletteEditorData*)asset.userData;
+    const ChrSheet* pChrSheet = &NO_CHR;
+	if (pEditorData->selectedChrBank.id != UUID_NULL)
+		pChrSheet = AssetManager::GetAsset(ChrBankHandle(pEditorData->selectedChrBank.id));
 
-	EditorRenderBuffer* pChrBuffer = GetChrRenderBuffer(pEditorData->selectedChrBank.id);
-	Rendering::UpdateEditorTexture(pEditorData->pTexture, pChrBuffer, pEditorData->pBuffer);
+	u32* pixels = Rendering::GetEditorTexturePixels(pEditorData->pTexture);
+    Rendering::Software::DrawChrSheet(pChrSheet, pPalette, CHR_DIM_PIXELS, pixels);
+	Rendering::UpdateEditorTexture(pEditorData->pTexture);
 
 	ImGui::SeparatorText("Properties");
 
@@ -4852,7 +4899,6 @@ static void DrawPaletteEditor(EditedAsset& asset) {
 
 		if (newIndex != selectedColorIndex && newIndex >= 0) {
 			pPalette->colors[pEditorData->selectedColor] = newIndex;
-			Rendering::UpdateEditorBuffer(pEditorData->pBuffer, pPalette);
 			asset.dirty = true;
 		}
 		ImGui::PopID();
@@ -4971,11 +5017,14 @@ void Editor::Init(SDL_Window *pWindow) {
 
 	constexpr u32 sheetPaletteCount = PALETTE_COUNT / 2;
 	pContext->pChrTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
-	Rendering::InitEditorTexture(pContext->pChrTexture, CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, EDITOR_TEXTURE_USAGE_CHR);
+	Rendering::InitEditorTexture(pContext->pChrTexture, CHR_DIM_PIXELS * sheetPaletteCount, CHR_DIM_PIXELS * CHR_COUNT, "CHR Texture");
 	pContext->pPaletteTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
-	Rendering::InitEditorTexture(pContext->pPaletteTexture, PALETTE_MEMORY_SIZE, 1, EDITOR_TEXTURE_USAGE_PALETTE);
+	Rendering::InitEditorTexture(pContext->pPaletteTexture, PALETTE_MEMORY_SIZE, 1, "Palette Texture");
 	pContext->pColorTexture = (EditorRenderTexture*)calloc(1, Rendering::GetEditorTextureSize());
-	Rendering::InitEditorTexture(pContext->pColorTexture, 16, 8, EDITOR_TEXTURE_USAGE_COLOR);
+	Rendering::InitEditorTexture(pContext->pColorTexture, 16, 8, "Color Texture");
+	u32* colorPixels = Rendering::GetEditorTexturePixels(pContext->pColorTexture);
+	memcpy(colorPixels, Rendering::Software::GetPaletteColors(), COLOR_COUNT * sizeof(u32));
+	Rendering::UpdateEditorTexture(pContext->pColorTexture);
 }
 
 void Editor::Free() {
@@ -5031,21 +5080,7 @@ void Editor::Update(r64 dt) {
 	}
 	pContext->tempTextureEraseList.clear();
 
-	// Clean up deleted buffers
-	for (auto pTempBuffer : pContext->tempBufferEraseList) {
-		pContext->tempRenderBuffers.erase(pTempBuffer);
-		Rendering::FreeEditorBuffer(pTempBuffer);
-		free(pTempBuffer);
-	}
-	pContext->tempBufferEraseList.clear();
-
 	for (auto id : pContext->assetEraseList) {
-		if (auto it = pContext->assetRenderBuffers.find(id); it != pContext->assetRenderBuffers.end()) {
-			EditorRenderBuffer* pBuffer = it->second;
-			Rendering::FreeEditorBuffer(pBuffer);
-			free(pBuffer);
-			pContext->assetRenderBuffers.erase(it);
-		}
 		if (auto it = pContext->assetRenderTextures.find(id); it != pContext->assetRenderTextures.end()) {
 			EditorRenderTexture* pTexture = it->second;
 			Rendering::FreeEditorTexture(pTexture);
@@ -5122,16 +5157,30 @@ void Editor::Update(r64 dt) {
 }
 
 void Editor::SetupFrame() {
-	Rendering::RenderEditorTexture(pContext->pChrTexture);
-	Rendering::RenderEditorTexture(pContext->pPaletteTexture);
-
-	for (auto& kvp : pContext->assetRenderTextures) {
-		Rendering::RenderEditorTexture(kvp.second);
+	// Update chr texture
+	constexpr u32 sheetPaletteCount = PALETTE_COUNT / 2;
+	constexpr u32 chrStride = CHR_DIM_PIXELS * sheetPaletteCount;
+	u32* chrPixels = Rendering::GetEditorTexturePixels(pContext->pChrTexture);
+	for (u32 i = 0; i < CHR_COUNT; i++) {
+		u32 rowOffset = i * CHR_DIM_PIXELS * chrStride;
+		const ChrSheet* pSheet = Rendering::Software::GetChrSheet(i);
+		for (u32 j = 0; j < sheetPaletteCount; j++) {
+			u32 paletteIndex = j + (i >= CHR_PAGE_COUNT ? BG_PALETTE_COUNT : 0);
+			const Palette* pPalette = Rendering::Software::GetPalette(paletteIndex);
+			u32 colOffset = j * CHR_DIM_PIXELS;
+			Rendering::Software::DrawChrSheet(pSheet, pPalette, chrStride, chrPixels + rowOffset + colOffset);
+		}
 	}
+	Rendering::UpdateEditorTexture(pContext->pChrTexture);
 
-	for (auto pTempTexture : pContext->tempRenderTextures) {
-		Rendering::RenderEditorTexture(pTempTexture);
+	// Update palette texture
+	u32* palettePixels = Rendering::GetEditorTexturePixels(pContext->pPaletteTexture);
+	for (u32 i = 0; i < PALETTE_COUNT; i++) {
+		u32 offset = i * PALETTE_COLOR_COUNT;
+		const Palette* pPalette = Rendering::Software::GetPalette(i);
+		Rendering::Software::DrawPalette(pPalette, palettePixels + offset);
 	}
+	Rendering::UpdateEditorTexture(pContext->pPaletteTexture);
 }
 
 void Editor::Render() {

@@ -8,18 +8,6 @@ namespace Rendering
 {
 	namespace Util
 	{
-		struct RIFFHeader {
-			char signature[4]; // Should be 'RIFF'
-			u32 size;
-			char type[4];
-		};
-		struct PaletteChunkHeader {
-			char signature[4];
-			u32 size;
-			u16 version;
-			u16 colorCount;
-		};
-
 #pragma region Nametable
 		s32 GetNametableTileIndexFromTileOffset(const glm::ivec2& tileOffset) {
 			return tileOffset.x + tileOffset.y * NAMETABLE_DIM_TILES;
@@ -73,47 +61,5 @@ namespace Rendering
 			pNametable->tiles[firstTileIndex + NAMETABLE_DIM_TILES + 1] = metatile.tiles[3];
 		}
 #pragma endregion
-		// void SavePaletteToFile(const char* fname) {
-		// 	u32 data[COLOR_COUNT];
-		// 	GeneratePaletteColors(data);
-		// 	const u32 dataSize = COLOR_COUNT * sizeof(u32);
-
-		// 	FILE* pFile;
-		// 	pFile = fopen(fname, "wb");
-
-		// 	if (pFile == NULL) {
-		// 		DEBUG_ERROR("Failed to write palette file\n");
-		// 	}
-
-		// 	RIFFHeader header{};
-		// 	header.signature[0] = 'R';
-		// 	header.signature[1] = 'I';
-		// 	header.signature[2] = 'F';
-		// 	header.signature[3] = 'F';
-
-		// 	header.type[0] = 'P';
-		// 	header.type[1] = 'A';
-		// 	header.type[2] = 'L';
-		// 	header.type[3] = ' ';
-
-		// 	header.size = dataSize + sizeof(PaletteChunkHeader);
-
-		// 	fwrite(&header, sizeof(RIFFHeader), 1, pFile);
-
-		// 	PaletteChunkHeader chunk{};
-		// 	chunk.signature[0] = 'd';
-		// 	chunk.signature[1] = 'a';
-		// 	chunk.signature[2] = 't';
-		// 	chunk.signature[3] = 'a';
-			
-		// 	chunk.size = dataSize;
-		// 	chunk.version = 0x0300;
-		// 	chunk.colorCount = COLOR_COUNT;
-
-		// 	fwrite(&chunk, sizeof(PaletteChunkHeader), 1, pFile);
-		// 	fwrite(data, dataSize, 1, pFile);
-
-		// 	fclose(pFile);
-		// }
 	}
 }
