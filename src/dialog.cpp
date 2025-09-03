@@ -6,6 +6,7 @@
 #include "game_input.h"
 #include "asset_manager.h"
 #include "software_renderer.h"
+#include <cstring>
 
 enum DialogState {
     DIALOG_CLOSED = 0,
