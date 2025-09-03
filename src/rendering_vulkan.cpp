@@ -714,6 +714,10 @@ static VkCommandBuffer GetTemporaryCommandBuffer() {
 		return VK_NULL_HANDLE;
 	}
 
+#ifndef NDEBUG
+	SetObjectName(VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)commandBuffer, "Temporary Command Buffer");
+#endif
+
 	return commandBuffer;
 }
 
@@ -862,9 +866,8 @@ static void BeginDraw() {
 	// Should be ready to draw now!
 }
 
-static void CopySoftwareFramebuffer() {
-    VkCommandBuffer cmd = g_context.primaryCommandBuffers[g_context.currentCbIndex];
-    auto barrier = GetImageBarrier(&g_context.colorImages[g_context.currentCbIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+static void CopyBufferToImage(const Buffer& buffer, const Image& image, VkCommandBuffer cmd) {
+    auto barrier = GetImageBarrier(&image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
@@ -877,12 +880,17 @@ static void CopySoftwareFramebuffer() {
     region.imageSubresource.baseArrayLayer = 0;
     region.imageSubresource.layerCount = 1;
     region.imageOffset = { 0, 0, 0 };
-    region.imageExtent = { SOFTWARE_FRAMEBUFFER_WIDTH, SOFTWARE_FRAMEBUFFER_HEIGHT, 1 };
+    region.imageExtent = { image.width, image.height, 1 };
 
-    vkCmdCopyBufferToImage(cmd, g_context.framebufferBuffer.buffer, g_context.colorImages[g_context.currentCbIndex].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    vkCmdCopyBufferToImage(cmd, buffer.buffer, image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
-    barrier = GetImageBarrier(&g_context.colorImages[g_context.currentCbIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    barrier = GetImageBarrier(&image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+}
+
+static void CopySoftwareFramebuffer() {
+    VkCommandBuffer cmd = g_context.primaryCommandBuffers[g_context.currentCbIndex];
+    CopyBufferToImage(g_context.framebufferBuffer, g_context.colorImages[g_context.currentCbIndex], cmd);
 }
 
 static void BeginRenderPass() {
@@ -1201,114 +1209,6 @@ RenderSettings* Rendering::GetSettings() {
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_vulkan.h>
 
-static void CreateChrPipeline() {
-	VkPushConstantRange pushConstantRange{};
-	pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-	pushConstantRange.offset = 0;
-	pushConstantRange.size = sizeof(u32) * 2;
-
-	VkPipelineLayoutCreateInfo chrPipelineLayoutInfo{};
-	chrPipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	chrPipelineLayoutInfo.setLayoutCount = 1;
-	chrPipelineLayoutInfo.pSetLayouts = &g_context.debugDescriptorSetLayout;
-	chrPipelineLayoutInfo.pushConstantRangeCount = 1;
-	chrPipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
-
-	vkCreatePipelineLayout(g_context.device, &chrPipelineLayoutInfo, nullptr, &g_context.chrPipelineLayout);
-
-	VkPipelineShaderStageCreateInfo chrShaderStageInfo{};
-	chrShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	chrShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	chrShaderStageInfo.module = g_context.softwareShaderModule;
-	chrShaderStageInfo.pName = "EditorBlitChr";
-
-	VkComputePipelineCreateInfo chrCreateInfo{};
-	chrCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-	chrCreateInfo.flags = 0;
-	chrCreateInfo.stage = chrShaderStageInfo;
-	chrCreateInfo.layout = g_context.chrPipelineLayout;
-
-	vkCreateComputePipelines(g_context.device, VK_NULL_HANDLE, 1, &chrCreateInfo, nullptr, &g_context.chrPipeline);
-}
-
-static void CreatePalettePipeline() {
-	VkPipelineLayoutCreateInfo chrPipelineLayoutInfo{};
-	chrPipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	chrPipelineLayoutInfo.setLayoutCount = 1;
-	chrPipelineLayoutInfo.pSetLayouts = &g_context.debugDescriptorSetLayout;
-
-	VkResult err = vkCreatePipelineLayout(g_context.device, &chrPipelineLayoutInfo, nullptr, &g_context.palettePipelineLayout);
-
-	VkPipelineShaderStageCreateInfo chrShaderStageInfo{};
-	chrShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	chrShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-	chrShaderStageInfo.module = g_context.softwareShaderModule;
-	chrShaderStageInfo.pName = "EditorBlitPalette";
-
-	VkComputePipelineCreateInfo chrCreateInfo{};
-	chrCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-	chrCreateInfo.flags = 0;
-	chrCreateInfo.stage = chrShaderStageInfo;
-	chrCreateInfo.layout = g_context.palettePipelineLayout;
-
-	err = vkCreateComputePipelines(g_context.device, VK_NULL_HANDLE, 1, &chrCreateInfo, nullptr, &g_context.palettePipeline);
-}
-
-static void InitGlobalEditorData() {
-	// Create descriptor set layout
-	VkDescriptorSetLayoutBinding storageLayoutBinding{};
-	storageLayoutBinding.binding = 0;
-	storageLayoutBinding.descriptorCount = 1;
-	storageLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-	storageLayoutBinding.pImmutableSamplers = nullptr;
-	storageLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-	VkDescriptorSetLayoutBinding paletteLayoutBinding{};
-	paletteLayoutBinding.binding = 1;
-	paletteLayoutBinding.descriptorCount = 1;
-	paletteLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	paletteLayoutBinding.pImmutableSamplers = nullptr;
-	paletteLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-	VkDescriptorSetLayoutBinding chrLayoutBinding{};
-	chrLayoutBinding.binding = 2;
-	chrLayoutBinding.descriptorCount = 1;
-	chrLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	chrLayoutBinding.pImmutableSamplers = nullptr;
-	chrLayoutBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-	VkDescriptorSetLayoutBinding palTableBinding{};
-	palTableBinding.binding = 3;
-	palTableBinding.descriptorCount = 1;
-	palTableBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	palTableBinding.pImmutableSamplers = nullptr;
-	palTableBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-	VkDescriptorSetLayoutBinding bindings[] = { storageLayoutBinding, paletteLayoutBinding, chrLayoutBinding, palTableBinding };
-	VkDescriptorSetLayoutCreateInfo computeLayoutInfo{};
-	computeLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	computeLayoutInfo.bindingCount = 4;
-	computeLayoutInfo.pBindings = bindings;
-
-	vkCreateDescriptorSetLayout(g_context.device, &computeLayoutInfo, nullptr, &g_context.debugDescriptorSetLayout);
-
-	// TODO: Should these be destroyed?
-	CreateChrPipeline();
-	CreatePalettePipeline();
-}
-
-static void FreeGlobalEditorData() {
-	vkDestroyPipeline(g_context.device, g_context.chrPipeline, nullptr);
-	vkDestroyPipelineLayout(g_context.device, g_context.chrPipelineLayout, nullptr);
-	vkDestroyShaderModule(g_context.device, g_context.chrShaderModule, nullptr);
-
-	vkDestroyPipeline(g_context.device, g_context.palettePipeline, nullptr);
-	vkDestroyPipelineLayout(g_context.device, g_context.palettePipelineLayout, nullptr);
-	vkDestroyShaderModule(g_context.device, g_context.paletteShaderModule, nullptr);
-
-	vkDestroyDescriptorSetLayout(g_context.device, g_context.debugDescriptorSetLayout, nullptr);
-}
-
 void Rendering::InitEditor(SDL_Window* pWindow) {
 	// Likely overkill pool sizes
 	VkDescriptorPoolSize poolSizes[] = {
@@ -1349,8 +1249,6 @@ void Rendering::InitEditor(SDL_Window* pWindow) {
 	ImGui_ImplSDL2_InitForVulkan(pWindow);
 	ImGui_ImplVulkan_Init(&vulkanInitInfo);
 	ImGui_ImplVulkan_CreateFontsTexture();
-
-	InitGlobalEditorData();
 }
 void Rendering::BeginEditorFrame() {
 	ImGui_ImplVulkan_NewFrame();
@@ -1359,321 +1257,105 @@ void Rendering::BeginEditorFrame() {
 void Rendering::ShutdownEditor() {
 	ImGui_ImplVulkan_Shutdown();
 	ImGui_ImplSDL2_Shutdown();
-
-	FreeGlobalEditorData();
 }
-
-struct EditorRenderBuffer {
-	Buffer buffer;
-};
 
 struct EditorRenderTexture {
-	u32 usage;
+    Buffer buffer;
+    u32* mappedPixels;
 	Image image;
-	VkDescriptorSet srcSet;
-	VkDescriptorSet dstSet;
-
-	u32 chrSheetOffset;
-	u32 chrPaletteOffset;
+	VkDescriptorSet texture;
 };
-
-size_t Rendering::GetEditorBufferSize() {
-	return sizeof(EditorRenderBuffer);
-}
-
-bool Rendering::InitEditorBuffer(EditorRenderBuffer* pBuffer, size_t size, const void* data) {
-	if (!pBuffer) {
-		DEBUG_ERROR("EditorRenderBuffer pointer is null!");
-		return false;
-	}
-
-	AllocateBuffer(size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pBuffer->buffer);
-	if (data) {
-		UpdateEditorBuffer(pBuffer, data);
-	}
-
-	return true;
-}
-bool Rendering::UpdateEditorBuffer(const EditorRenderBuffer* pBuffer, const void* data) {
-	if (!pBuffer || !data) {
-		return false;
-	}
-
-	vkWaitForFences(g_context.device, COMMAND_BUFFER_COUNT, g_context.commandBufferFences, VK_TRUE, UINT64_MAX);
-	// TODO: Error check
-	void* mappedData;
-	vkMapMemory(g_context.device, pBuffer->buffer.memory, 0, pBuffer->buffer.size, 0, &mappedData);
-	memcpy(mappedData, data, pBuffer->buffer.size);
-	vkUnmapMemory(g_context.device, pBuffer->buffer.memory);
-
-	return true;
-}
-void Rendering::FreeEditorBuffer(EditorRenderBuffer* pBuffer) {
-	if (!pBuffer) {
-		return;
-	}
-
-	vkWaitForFences(g_context.device, COMMAND_BUFFER_COUNT, g_context.commandBufferFences, VK_TRUE, UINT64_MAX);
-	FreeBuffer(pBuffer->buffer);
-}
-
-static void UpdateEditorSrcDescriptorSet(const EditorRenderTexture* pTexture, const EditorRenderBuffer* pChrBuffer = nullptr, const EditorRenderBuffer* pPaletteBuffer = nullptr) {
-	VkDescriptorImageInfo outBufferInfo{};
-	outBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-	outBufferInfo.imageView = pTexture->image.view;
-	outBufferInfo.sampler = g_context.defaultSampler;
-
-	VkDescriptorImageInfo paletteBufferInfo{};
-	paletteBufferInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-	paletteBufferInfo.imageView = g_context.paletteImage.view;
-	paletteBufferInfo.sampler = g_context.paletteSampler;
-
-	VkDescriptorBufferInfo chrBufferInfo{};
-	chrBufferInfo.buffer = g_context.computeBufferDevice[g_context.currentCbIndex].buffer;
-	chrBufferInfo.offset = g_context.chrOffset;
-	chrBufferInfo.range = g_context.chrSize;
-
-	VkDescriptorBufferInfo palTableInfo{};
-	palTableInfo.buffer = g_context.computeBufferDevice[g_context.currentCbIndex].buffer;
-	palTableInfo.offset = g_context.paletteTableOffset;
-	palTableInfo.range = g_context.paletteTableSize;
-
-	if (pChrBuffer) {
-		chrBufferInfo.buffer = pChrBuffer->buffer.buffer;
-		chrBufferInfo.offset = 0;
-		chrBufferInfo.range = pChrBuffer->buffer.size;
-	}
-
-	if (pPaletteBuffer) {
-		palTableInfo.buffer = pPaletteBuffer->buffer.buffer;
-		palTableInfo.offset = 0;
-		palTableInfo.range = pPaletteBuffer->buffer.size;
-	}
-
-	VkWriteDescriptorSet descriptorWrite[4]{};
-	descriptorWrite[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	descriptorWrite[0].dstSet = pTexture->srcSet;
-	descriptorWrite[0].dstBinding = 0;
-	descriptorWrite[0].dstArrayElement = 0;
-	descriptorWrite[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-	descriptorWrite[0].descriptorCount = 1;
-	descriptorWrite[0].pImageInfo = &outBufferInfo;
-
-	descriptorWrite[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	descriptorWrite[1].dstSet = pTexture->srcSet;
-	descriptorWrite[1].dstBinding = 1;
-	descriptorWrite[1].dstArrayElement = 0;
-	descriptorWrite[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	descriptorWrite[1].descriptorCount = 1;
-	descriptorWrite[1].pImageInfo = &paletteBufferInfo;
-
-	descriptorWrite[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	descriptorWrite[2].dstSet = pTexture->srcSet;
-	descriptorWrite[2].dstBinding = 2;
-	descriptorWrite[2].dstArrayElement = 0;
-	descriptorWrite[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	descriptorWrite[2].descriptorCount = 1;
-	descriptorWrite[2].pBufferInfo = &chrBufferInfo;
-
-	descriptorWrite[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	descriptorWrite[3].dstSet = pTexture->srcSet;
-	descriptorWrite[3].dstBinding = 3;
-	descriptorWrite[3].dstArrayElement = 0;
-	descriptorWrite[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	descriptorWrite[3].descriptorCount = 1;
-	descriptorWrite[3].pBufferInfo = &palTableInfo;
-
-	vkUpdateDescriptorSets(g_context.device, 4, descriptorWrite, 0, nullptr);
-}
-
-static void BlitEditorColorsTexture(const EditorRenderTexture* pTexture) {
-	if (!pTexture) {
-		return;
-	}
-
-	VkCommandBuffer temp = GetTemporaryCommandBuffer();
-
-	VkCommandBufferBeginInfo beginInfo{};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-	vkBeginCommandBuffer(temp, &beginInfo);
-
-	VkImageMemoryBarrier barrier = GetImageBarrier(&pTexture->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-	vkCmdPipelineBarrier(
-		temp,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
-
-	const s32 rowSize = pTexture->image.width;
-	const s32 rowCount = COLOR_COUNT / rowSize;
-	const s32 texSize = pTexture->image.width * pTexture->image.height;
-	const s32 emptyCount = texSize > COLOR_COUNT ? texSize - COLOR_COUNT : 0;
-	VkImageBlit regions[COLOR_COUNT]{};
-	for (s32 i = 0; i < rowCount; i++) {
-		VkImageBlit& region = regions[i];
-		region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		region.srcSubresource.mipLevel = 0;
-		region.srcSubresource.baseArrayLayer = 0;
-		region.srcSubresource.layerCount = 1;
-		region.srcOffsets[0] = { i * rowSize, 0, 0 };
-		region.srcOffsets[1] = { i == rowCount - 1 ? s32(COLOR_COUNT) : (i + 1) * rowSize, 1, 1 };
-		region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		region.dstSubresource.mipLevel = 0;
-		region.dstSubresource.baseArrayLayer = 0;
-		region.dstSubresource.layerCount = 1;
-		region.dstOffsets[0] = { 0, i, 0 };
-		region.dstOffsets[1] = { rowSize, i + 1, 1 };
-	}
-
-	vkCmdBlitImage(temp, g_context.paletteImage.image, VK_IMAGE_LAYOUT_GENERAL, pTexture->image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, rowCount, regions, VK_FILTER_NEAREST);
-
-	barrier = GetImageBarrier(&pTexture->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	vkCmdPipelineBarrier(
-		temp,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
-
-	vkEndCommandBuffer(temp);
-
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &temp;
-
-	vkQueueSubmit(g_context.primaryQueue, 1, &submitInfo, VK_NULL_HANDLE);
-	vkQueueWaitIdle(g_context.primaryQueue);
-
-	vkFreeCommandBuffers(g_context.device, g_context.primaryCommandPool, 1, &temp);
-}
 
 size_t Rendering::GetEditorTextureSize() {
 	return sizeof(EditorRenderTexture);
 }
 
-bool Rendering::InitEditorTexture(EditorRenderTexture* pTexture, u32 width, u32 height, u32 usage, u32 chrSheetOffset, u32 chrPaletteOffset, const EditorRenderBuffer* pChrBuffer, const EditorRenderBuffer* pPaletteBuffer) {
+bool Rendering::InitEditorTexture(EditorRenderTexture* pTexture, u32 width, u32 height, const char* debugName) {
 	if (!pTexture) {
 		DEBUG_ERROR("EditorRenderTexture pointer is null!\n");
 		return false;
 	}
 
-	pTexture->usage = usage;
-	pTexture->chrSheetOffset = chrSheetOffset;
-	pTexture->chrPaletteOffset = chrPaletteOffset;
-
-	CreateImage(width, height, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, pTexture->image);
-	pTexture->dstSet = ImGui_ImplVulkan_AddTexture(g_context.defaultSampler, pTexture->image.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-	if (usage == EDITOR_TEXTURE_USAGE_COLOR) {
-		BlitEditorColorsTexture(pTexture);
+    if (!AllocateBuffer(width * height * sizeof(u32), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pTexture->buffer)) {
+        DEBUG_ERROR("Failed to allocate buffer for EditorRenderTexture!\n");
+        return false;
+    }
+    VkResult err = vkMapMemory(g_context.device, pTexture->buffer.memory, 0, width * height * sizeof(u32), 0, (void**)&pTexture->mappedPixels);
+	if (err != VK_SUCCESS) {
+		DEBUG_ERROR("Failed to map memory for EditorRenderTexture: %s\n", string_VkResult(err));
+		return false;
 	}
-	else {
-		VkDescriptorSetAllocateInfo chrDescriptorSetAllocInfo{};
-		chrDescriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		chrDescriptorSetAllocInfo.descriptorPool = g_context.descriptorPool;
-		chrDescriptorSetAllocInfo.descriptorSetCount = 1;
-		chrDescriptorSetAllocInfo.pSetLayouts = &g_context.debugDescriptorSetLayout;
+    if (!CreateImage(width, height, VK_IMAGE_TYPE_2D, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, pTexture->image, true)) {
+        DEBUG_ERROR("Failed to create image for EditorRenderTexture!\n");
+        return false;
+    }
+	UpdateEditorTexture(pTexture);
+	pTexture->texture = ImGui_ImplVulkan_AddTexture(g_context.defaultSampler, pTexture->image.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-		vkAllocateDescriptorSets(g_context.device, &chrDescriptorSetAllocInfo, &pTexture->srcSet);
-		UpdateEditorSrcDescriptorSet(pTexture, pChrBuffer, pPaletteBuffer);
-	}
+#ifndef NDEBUG
+	constexpr const char* defaultDebugName = "EditorRenderTexture";
+	const char* debugNameFinal = debugName ? debugName : defaultDebugName;
+
+	ArenaMarker marker = ArenaAllocator::GetMarker(ARENA_SCRATCH);
+	char* nameBuffer = ArenaAllocator::PushArray<char>(ARENA_SCRATCH, 1024);
+	snprintf(nameBuffer, 1024, "%s - Buffer", debugNameFinal);
+	SetObjectName(VK_OBJECT_TYPE_BUFFER, (uint64_t)pTexture->buffer.buffer, nameBuffer);
+	snprintf(nameBuffer, 1024, "%s - Image", debugNameFinal);
+	SetObjectName(VK_OBJECT_TYPE_IMAGE, (uint64_t)pTexture->image.image, nameBuffer);
+	snprintf(nameBuffer, 1024, "%s - Desc", debugNameFinal);
+	SetObjectName(VK_OBJECT_TYPE_DESCRIPTOR_SET, (uint64_t)pTexture->texture, nameBuffer);
+	ArenaAllocator::PopToMarker(ARENA_SCRATCH, marker);
+#endif
 
 	return true;
 }
-bool Rendering::UpdateEditorTexture(const EditorRenderTexture* pTexture, const EditorRenderBuffer* pChrBuffer, const EditorRenderBuffer* pPaletteBuffer) {
+bool Rendering::UpdateEditorTexture(const EditorRenderTexture* pTexture) {
 	if (!pTexture) {
 		return false;
 	}
 
-	if (pTexture->usage == EDITOR_TEXTURE_USAGE_COLOR) {
-		DEBUG_ERROR("Cannot update color texture!\n");
-		return false;
-	}
+    VkCommandBuffer temp = GetTemporaryCommandBuffer();
 
-	vkWaitForFences(g_context.device, COMMAND_BUFFER_COUNT, g_context.commandBufferFences, VK_TRUE, UINT64_MAX);
-	UpdateEditorSrcDescriptorSet(pTexture, pChrBuffer, pPaletteBuffer);
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkBeginCommandBuffer(temp, &beginInfo);
+    CopyBufferToImage(pTexture->buffer, pTexture->image, temp);
+    vkEndCommandBuffer(temp);
+
+	// Submit commands
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &temp;
+
+    vkQueueSubmit(g_context.primaryQueue, 1, &submitInfo, VK_NULL_HANDLE);
 
 	return true;
 }
-void* Rendering::GetEditorTextureData(const EditorRenderTexture* pTexture) {
+u32* Rendering::GetEditorTexturePixels(const EditorRenderTexture* pTexture) {
+    if (!pTexture) {
+        return nullptr;
+    }
+
+    return pTexture->mappedPixels;
+}
+void* Rendering::GetEditorTextureTexture(const EditorRenderTexture* pTexture) {
 	if (!pTexture) {
 		return nullptr;
 	}
 
-	return (void*)pTexture->dstSet;
+	return (void*)pTexture->texture;
 }
 void Rendering::FreeEditorTexture(EditorRenderTexture* pTexture) {
 	if (!pTexture) {
 		return;
 	}
 
-	vkWaitForFences(g_context.device, COMMAND_BUFFER_COUNT, g_context.commandBufferFences, VK_TRUE, UINT64_MAX);
-	ImGui_ImplVulkan_RemoveTexture(pTexture->dstSet);
+	ImGui_ImplVulkan_RemoveTexture(pTexture->texture);
 	FreeImage(pTexture->image);
-	// NOTE: Requires VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT to free individual descriptor sets
-	//vkFreeDescriptorSets(g_context.device, g_context.descriptorPool, 1, &pTexture->srcSet);
-	
-	// NOTE: Backing memory is from the permanent arena, so we don't free it here
-}
-
-void Rendering::RenderEditorTexture(const EditorRenderTexture* pTexture) {
-	if (!pTexture) {
-		return;
-	}
-
-	if (pTexture->usage == EDITOR_TEXTURE_USAGE_COLOR) {
-		DEBUG_ERROR("Cannot render color texture!\n");
-		return;
-	}
-
-	VkCommandBuffer cmd = g_context.primaryCommandBuffers[g_context.currentCbIndex];
-
-	VkImageMemoryBarrier barrier = GetImageBarrier(&pTexture->image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-	vkCmdPipelineBarrier(
-		cmd,
-		VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
-
-	if (pTexture->usage == EDITOR_TEXTURE_USAGE_CHR) {
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, g_context.chrPipelineLayout, 0, 1, &pTexture->srcSet, 0, nullptr);
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, g_context.chrPipeline);
-
-		vkCmdPushConstants(cmd, g_context.chrPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(u32), &pTexture->chrSheetOffset);
-		vkCmdPushConstants(cmd, g_context.chrPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, sizeof(u32), sizeof(u32), &pTexture->chrPaletteOffset);
-
-		vkCmdDispatch(cmd, pTexture->image.width / TILE_DIM_PIXELS, pTexture->image.height / TILE_DIM_PIXELS, 1);
-	}
-	else if (pTexture->usage == EDITOR_TEXTURE_USAGE_PALETTE) {
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, g_context.palettePipelineLayout, 0, 1, &pTexture->srcSet, 0, nullptr);
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, g_context.palettePipeline);
-		vkCmdDispatch(cmd, pTexture->image.width / 8, 1, 1);
-	}
-
-	barrier = GetImageBarrier(&pTexture->image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	vkCmdPipelineBarrier(
-		cmd,
-		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-		0,
-		0, nullptr,
-		0, nullptr,
-		1, &barrier
-	);
+    FreeBuffer(pTexture->buffer);
 }
 
 void Rendering::RenderEditor() {

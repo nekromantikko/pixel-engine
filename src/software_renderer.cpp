@@ -82,19 +82,6 @@ static inline void SampleChrTileRow(u16 tileId, u8 y, u8 palette, bool flipX, bo
     }
 }
 
-static inline u8 SampleChrTile(u16 tileId, u8 pixelOffset, u8 palette, bool flipX, bool flipY) {
-    const ChrTile* pFlatChrTiles = (ChrTile*)g_ChrSheets;
-    const ChrTile& chrTile = pFlatChrTiles[tileId];
-    
-    if (flipX) pixelOffset ^= 7;
-    if (flipY) pixelOffset ^= 56;
-
-    u8 colorIndex = ((chrTile.p0 >> pixelOffset) & 1);
-    colorIndex |= ((chrTile.p1 >> pixelOffset) & 1) << 1;
-    colorIndex |= ((chrTile.p2 >> pixelOffset) & 1) << 2;
-    return colorIndex == 0 ? 0 : PALETTE_COLOR_COUNT * palette + colorIndex;
-}
-
 static inline void EvaluateScanlineSprites() {
     memset(g_EvaluatedScanlines, 0, sizeof(ScanlineSpriteInfo) * SCANLINE_COUNT);
     for (u32 i = 0; i < MAX_SPRITE_COUNT; i++) {
@@ -361,6 +348,10 @@ Scanline* Rendering::Software::GetScanline(u32 offset) {
     return &g_Scanlines[offset];
 }
 
+const u32* Rendering::Software::GetPaletteColors() {
+    return g_paletteColors;
+}
+
 void Rendering::Software::GeneratePaletteColors(u32* data) {
     for (s32 i = 0; i < COLOR_COUNT; i++) {
         s32 hue = i & 0b1111;
@@ -397,5 +388,33 @@ void Rendering::Software::GeneratePaletteColors(u32* data) {
         pixelBytes[1] = (u8)(g * 255);
         pixelBytes[2] = (u8)(b * 255);
         pixelBytes[3] = 255;
+    }
+}
+
+void Rendering::Software::DrawPalette(const Palette* pPalette, u32* outPixels) {
+    for (u32 i = 0; i < PALETTE_COLOR_COUNT; i++) {
+        u8 colorIndex = pPalette->colors[i];
+        outPixels[i] = g_paletteColors[colorIndex];
+    }
+}
+
+void Rendering::Software::DrawChrSheet(const ChrSheet* pSheet, const Palette* pPalette, u32 stride, u32* outPixels) {
+    for (u32 y = 0; y < CHR_DIM_PIXELS; y++) {
+        for (u32 x = 0; x < CHR_DIM_PIXELS; x++) {
+            u32 coarseX = x / 8;
+            u32 coarseY = y / 8;
+            u32 fineX = x % 8;
+            u32 fineY = y % 8;
+            u32 tileIndex = coarseY * 16 + coarseX;
+            u32 outPixelIndex = y * stride + x;
+            u32 tilePixelIndex = fineY * 8 + fineX;
+
+            const ChrTile& tile = pSheet->tiles[tileIndex];
+            u8 bit0 = (tile.p0 >> tilePixelIndex) & 1;
+            u8 bit1 = (tile.p1 >> tilePixelIndex) & 1;
+            u8 bit2 = (tile.p2 >> tilePixelIndex) & 1;
+            u8 colorIndex = (bit0 << 0) | (bit1 << 1) | (bit2 << 2);
+            outPixels[outPixelIndex] = g_paletteColors[pPalette->colors[colorIndex]];
+        }
     }
 }

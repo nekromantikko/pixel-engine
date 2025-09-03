@@ -18,8 +18,11 @@ namespace Rendering {
         ChrSheet* GetChrSheet(u32 sheetIndex);
         Nametable* GetNametable(u32 index);
         Scanline* GetScanline(u32 offset);
+        const u32* GetPaletteColors();
 
         // Utils
         void GeneratePaletteColors(u32* data);
+        void DrawPalette(const Palette* pPalette, u32* outPixels);
+        void DrawChrSheet(const ChrSheet* pSheet, const Palette* pPalette, u32 stride, u32* outPixels);
     }
 }
