@@ -3301,7 +3301,7 @@ static DataType ImGuiToDataType(ImGuiDataType imguiType) {
 	}
 }
 
-static bool DrawActorPrototypeProperty(const ActorProperty& property, ActorPrototypeData& data) {
+static bool DrawActorPrototypeProperty(const ActorProperty& property, ActorData& data) {
 	void* propertyData = (u8*)&data + property.offset;
 	const ImGuiDataType imguiDataType = DataTypeToImGui(property.dataType);
 	bool result = false;

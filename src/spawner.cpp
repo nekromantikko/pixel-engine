@@ -7,14 +7,14 @@ static void InitSpawner(Actor* pActor, const ActorPrototype* pPrototype, const P
 }
 
 static void UpdateExpSpawner(Actor* pActor, const ActorPrototype* pPrototype) {
-    u16& remainingValue = pActor->state.expSpawner.remainingValue;
+    u16& remainingValue = pActor->data.expSpawner.remainingValue;
     if (remainingValue == 0) {
         pActor->flags.pendingRemoval = true;
         return;
     }
 
-    const u16 largeExpValue = (AssetManager::GetAsset(pPrototype->data.expSpawner.large))->data.pickupData.value;
-    const u16 smallExpValue = (AssetManager::GetAsset(pPrototype->data.expSpawner.small))->data.pickupData.value;
+    const u16 largeExpValue = (AssetManager::GetAsset(pPrototype->data.expSpawner.large))->data.pickup.value;
+    const u16 smallExpValue = (AssetManager::GetAsset(pPrototype->data.expSpawner.small))->data.pickup.value;
 
     u16 spawnedValue = remainingValue >= largeExpValue ? largeExpValue : smallExpValue;
     ActorPrototypeHandle prototypeHandle = spawnedValue >= largeExpValue ? pPrototype->data.expSpawner.large : pPrototype->data.expSpawner.small;
@@ -24,9 +24,9 @@ static void UpdateExpSpawner(Actor* pActor, const ActorPrototype* pPrototype) {
 
     Actor* pSpawned = Game::SpawnActor(prototypeHandle, pActor->position, velocity);
 
-    pSpawned->state.pickupState.lingerCounter = 30;
+    pSpawned->data.pickup.lingerCounter = 30;
     pSpawned->flags.facingDir = (s8)Random::GenerateInt(-1, 1);
-    pSpawned->state.pickupState.value = spawnedValue;
+    pSpawned->data.pickup.value = spawnedValue;
 
     if (remainingValue < spawnedValue) {
         remainingValue = 0;

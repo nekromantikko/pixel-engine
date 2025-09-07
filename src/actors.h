@@ -44,7 +44,7 @@ struct Actor {
 
 	ActorDrawState drawState;
 
-	ActorState state;
+	ActorData data;
 
 	ActorPrototypeHandle prototypeHandle;
 };

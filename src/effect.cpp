@@ -18,7 +18,7 @@ static size_t ItoaSigned(s16 value, char* str) {
 }
 
 static bool DrawDmgNumbers(const Actor* pActor, const ActorPrototype* pPrototype) {
-    const Damage& damage = pActor->state.dmgNumberState.damage;
+    const Damage& damage = pActor->data.dmgNumber.damage;
 
     static char numberStr[16]{};
 
@@ -65,7 +65,7 @@ static bool DrawDmgNumbers(const Actor* pActor, const ActorPrototype* pPrototype
 }
 
 static void UpdateExplosion(Actor* pActor, const ActorPrototype* pPrototype) {
-    if (!Game::UpdateCounter(pActor->state.effectState.lifetimeCounter)) {
+    if (!Game::UpdateCounter(pActor->data.effect.lifetime)) {
         pActor->flags.pendingRemoval = true;
     }
 
@@ -73,7 +73,7 @@ static void UpdateExplosion(Actor* pActor, const ActorPrototype* pPrototype) {
 }
 
 static void UpdateDmgNumbers(Actor* pActor, const ActorPrototype* pPrototype) {
-    if (!Game::UpdateCounter(pActor->state.dmgNumberState.base.lifetimeCounter)) {
+    if (!Game::UpdateCounter(pActor->data.effect.lifetime)) {
         pActor->flags.pendingRemoval = true;
     }
 
@@ -81,7 +81,7 @@ static void UpdateDmgNumbers(Actor* pActor, const ActorPrototype* pPrototype) {
 }
 
 static void UpdateFeather(Actor* pActor, const ActorPrototype* pPrototype) {
-    if (!Game::UpdateCounter(pActor->state.effectState.lifetimeCounter)) {
+    if (!Game::UpdateCounter(pActor->data.effect.lifetime)) {
         pActor->flags.pendingRemoval = true;
     }
 
@@ -93,28 +93,28 @@ static void UpdateFeather(Actor* pActor, const ActorPrototype* pPrototype) {
 
     constexpr r32 amplitude = 2.0f;
     constexpr r32 timeMultiplier = 1 / 30.f;
-    const u16 time = pActor->state.effectState.lifetimeCounter - pActor->state.effectState.initialLifetime;
+    const u16 time = pActor->data.effect.lifetime - pActor->data.effect.initialLifetime;
     const r32 sineTime = glm::sin(time * timeMultiplier);
     pActor->velocity.x = pActor->initialVelocity.x * sineTime;
 
     pActor->position += pActor->velocity;
 }
 
-static void InitEffectState(EffectState& state, const EffectData& data) {
-    state.initialLifetime = data.lifetime;
-    state.lifetimeCounter = data.lifetime;
-    if (data.sound != SoundHandle::Null()) {
-        Audio::PlaySFX(data.sound);
+static void InitEffectState(Actor* pActor) {
+    pActor->data.effect.initialLifetime = pActor->data.effect.lifetime;
+    if (pActor->data.effect.sound != SoundHandle::Null()) {
+        Audio::PlaySFX(pActor->data.effect.sound);
     }
+    pActor->drawState.layer = SPRITE_LAYER_FX;
 }
 
 static void InitDmgNumbers(Actor* pActor, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
-    return InitEffectState(pActor->state.dmgNumberState.base, pPrototype->data.effectData);
+    return InitEffectState(pActor);
 }
 
 static void InitBaseEffect(Actor* pActor, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
-	pActor->drawState.layer = SPRITE_LAYER_FX;
-    return InitEffectState(pActor->state.effectState, pPrototype->data.effectData);
+	
+    return InitEffectState(pActor);
 }
 
 constexpr ActorInitFn Game::effectInitTable[EFFECT_TYPE_COUNT] = {

@@ -115,11 +115,28 @@ enum PlayerType : TActorSubtype {
 	PLAYER_TYPE_COUNT
 };
 
+struct PlayerFlags {
+	u8 aimMode : 2;
+	bool slowFall : 1;
+	bool doubleJumped : 1;
+	bool airDodged : 1;
+	u8 mode : 4;
+};
+
 struct PlayerData {
+	// Serialized properties
 	AnimationHandle wingAnimation;
 	SoundHandle jumpSound;
 	SoundHandle damageSound;
 	SoundHandle gunSound; // TEMP!
+
+	// Non-serialized properties
+	PlayerFlags flags;
+	u16 wingCounter;
+	u16 wingFrame;
+	u16 shootCounter;
+	u16 modeTransitionCounter;
+	u16 staminaRecoveryCounter;
 };
 
 ACTOR_SUBTYPE_STRUCT_PROPERTIES(PlayerData,
@@ -132,35 +149,12 @@ ACTOR_SUBTYPE_REFLECTION_DATA(PLAYER_TYPE_SIDESCROLLER, PlayerData, "sidescrolle
 
 
 struct PlayerOverworldData {
-
+	glm::ivec2 facingDir;
+	u16 movementCounter;
 };
 
 ACTOR_SUBTYPE_STRUCT_PROPERTIES(PlayerOverworldData)
 ACTOR_SUBTYPE_REFLECTION_DATA(PLAYER_TYPE_OVERWORLD, PlayerOverworldData, "overworld")
-
-struct PlayerFlags {
-	u8 aimMode : 2;
-	bool slowFall : 1;
-	bool doubleJumped : 1;
-	bool airDodged : 1;
-	u8 mode : 4;
-};
-
-struct PlayerState {
-	PlayerFlags flags;
-
-	u16 wingCounter;
-	u16 wingFrame;
-	u16 shootCounter;
-
-	u16 modeTransitionCounter;
-	u16 staminaRecoveryCounter;
-};
-
-struct PlayerOverworldState {
-	glm::ivec2 facingDir;
-	u16 movementCounter;
-};
 
 ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_PLAYER, PLAYER_TYPE_SIDESCROLLER, PLAYER_TYPE_OVERWORLD)
 #pragma endregion
@@ -176,12 +170,13 @@ enum EnemyType : TActorSubtype {
 
 struct EnemyData {
 	u16 health;
-
 	u16 expValue;
 	ActorPrototypeHandle lootSpawner;
 	ActorPrototypeHandle deathEffect;
 	ActorPrototypeHandle projectile;
 	ActorPrototypeHandle expSpawner;
+
+	u16 damageCounter;
 };
 
 ACTOR_SUBTYPE_STRUCT_PROPERTIES(EnemyData,
@@ -198,6 +193,8 @@ ACTOR_SUBTYPE_REFLECTION_DATA(ENEMY_TYPE_SKULL, EnemyData, "skull")
 struct FireballData {
 	u16 lifetime;
 	ActorPrototypeHandle deathEffect;
+
+	u16 lifetimeCounter;
 };
 
 ACTOR_SUBTYPE_STRUCT_PROPERTIES(FireballData,
@@ -205,15 +202,6 @@ ACTOR_SUBTYPE_STRUCT_PROPERTIES(FireballData,
 	ACTOR_SUBTYPE_PROPERTY_ASSET(FireballData, deathEffect, ASSET_TYPE_ACTOR_PROTOTYPE, 1)
 )
 ACTOR_SUBTYPE_REFLECTION_DATA(ENEMY_TYPE_FIREBALL, FireballData, "fireball")
-
-struct EnemyState {
-	u16 health;
-	u16 damageCounter;
-};
-
-struct FireballState {
-	u16 lifetimeCounter;
-};
 
 ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_ENEMY, ENEMY_TYPE_SLIME, ENEMY_TYPE_SKULL, ENEMY_TYPE_FIREBALL)
 #pragma endregion
@@ -238,10 +226,6 @@ ACTOR_SUBTYPE_STRUCT_PROPERTIES(BulletData,
 ACTOR_SUBTYPE_REFLECTION_DATA(BULLET_TYPE_DEFAULT, BulletData, "default")
 ACTOR_SUBTYPE_REFLECTION_DATA(BULLET_TYPE_GRENADE, BulletData, "grenade")
 
-struct BulletState {
-	u16 lifetimeCounter;
-};
-
 ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_BULLET, BULLET_TYPE_DEFAULT, BULLET_TYPE_GRENADE)
 #pragma endregion
 
@@ -257,6 +241,8 @@ enum PickupType : TActorSubtype {
 struct PickupData {
 	s16 value;
 	SoundHandle pickupSound;
+
+	u16 lingerCounter;
 };
 
 ACTOR_SUBTYPE_STRUCT_PROPERTIES(PickupData,
@@ -266,11 +252,6 @@ ACTOR_SUBTYPE_STRUCT_PROPERTIES(PickupData,
 ACTOR_SUBTYPE_REFLECTION_DATA(PICKUP_TYPE_EXP, PickupData, "exp")
 ACTOR_SUBTYPE_REFLECTION_DATA(PICKUP_TYPE_EXP_REMNANT, PickupData, "exp_remnant")
 ACTOR_SUBTYPE_REFLECTION_DATA(PICKUP_TYPE_HEAL, PickupData, "healing")
-
-struct PickupState {
-	s16 value;
-	u16 lingerCounter;
-};
 
 ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_PICKUP, PICKUP_TYPE_EXP, PICKUP_TYPE_EXP_REMNANT, PICKUP_TYPE_HEAL)
 #pragma endregion
@@ -287,19 +268,8 @@ enum EffectType : TActorSubtype {
 struct EffectData {
 	u16 lifetime;
 	SoundHandle sound;
-};
 
-ACTOR_SUBTYPE_STRUCT_PROPERTIES(EffectData,
-	ACTOR_SUBTYPE_PROPERTY_SCALAR(EffectData, lifetime, U16, 1),
-	ACTOR_SUBTYPE_PROPERTY_ASSET(EffectData, sound, ASSET_TYPE_SOUND, 1)
-);
-ACTOR_SUBTYPE_REFLECTION_DATA(EFFECT_TYPE_NUMBERS, EffectData, "damage_numbers")
-ACTOR_SUBTYPE_REFLECTION_DATA(EFFECT_TYPE_EXPLOSION, EffectData, "explosion")
-ACTOR_SUBTYPE_REFLECTION_DATA(EFFECT_TYPE_FEATHER, EffectData, "feather")
-
-struct EffectState {
 	u16 initialLifetime;
-	u16 lifetimeCounter;
 };
 
 struct DamageFlags {
@@ -313,11 +283,19 @@ struct Damage {
 	DamageFlags flags;
 };
 
-// Can be treated as EffectState
-struct DamageNumberState {
-	EffectState base;
+// Can be treated as EffectData
+struct DamageNumberData {
+	EffectData base;
 	Damage damage;
 };
+
+ACTOR_SUBTYPE_STRUCT_PROPERTIES(EffectData,
+	ACTOR_SUBTYPE_PROPERTY_SCALAR(EffectData, lifetime, U16, 1),
+	ACTOR_SUBTYPE_PROPERTY_ASSET(EffectData, sound, ASSET_TYPE_SOUND, 1)
+);
+ACTOR_SUBTYPE_REFLECTION_DATA(EFFECT_TYPE_NUMBERS, EffectData, "damage_numbers")
+ACTOR_SUBTYPE_REFLECTION_DATA(EFFECT_TYPE_EXPLOSION, EffectData, "explosion")
+ACTOR_SUBTYPE_REFLECTION_DATA(EFFECT_TYPE_FEATHER, EffectData, "feather")
 
 ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_EFFECT, EFFECT_TYPE_NUMBERS, EFFECT_TYPE_EXPLOSION, EFFECT_TYPE_FEATHER)
 #pragma endregion
@@ -331,15 +309,11 @@ enum InteractableType : TActorSubtype {
 };
 
 struct CheckpointData {
-
+	bool activated;
 };
 
 ACTOR_SUBTYPE_STRUCT_PROPERTIES(CheckpointData)
 ACTOR_SUBTYPE_REFLECTION_DATA(INTERACTABLE_TYPE_CHECKPOINT, CheckpointData, "checkpoint")
-
-struct CheckpointState {
-	bool activated;
-};
 
 struct NPCData {
 
@@ -363,6 +337,8 @@ enum SpawnerType : TActorSubtype {
 struct ExpSpawnerData {
 	ActorPrototypeHandle large;
 	ActorPrototypeHandle small;
+
+	u16 remainingValue;
 };
 
 ACTOR_SUBTYPE_STRUCT_PROPERTIES(ExpSpawnerData,
@@ -370,10 +346,6 @@ ACTOR_SUBTYPE_STRUCT_PROPERTIES(ExpSpawnerData,
 	ACTOR_SUBTYPE_PROPERTY_ASSET(ExpSpawnerData, small, ASSET_TYPE_ACTOR_PROTOTYPE, 1)
 )
 ACTOR_SUBTYPE_REFLECTION_DATA(SPAWNER_TYPE_EXP, ExpSpawnerData, "exp_spawner")
-
-struct ExpSpawnerState {
-	u16 remainingValue;
-};
 
 struct EnemySpawnerData {
 };
@@ -397,29 +369,18 @@ ACTOR_SUBTYPE_REFLECTION_DATA(SPAWNER_TYPE_LOOT, LootSpawnerData, "loot_spawner"
 ACTOR_TYPE_REFLECTION_DATA(ACTOR_TYPE_SPAWNER, SPAWNER_TYPE_EXP, SPAWNER_TYPE_ENEMY, SPAWNER_TYPE_LOOT)
 #pragma endregion
 
-union ActorPrototypeData {
-	PlayerData playerData;
-	EnemyData enemyData;
-	FireballData fireballData;
-	BulletData bulletData;
-	PickupData pickupData;
-	EffectData effectData;
-	CheckpointData checkpointData;
+union ActorData {
+	PlayerData player;
+	PlayerOverworldData playerOw;
+	EnemyData enemy;
+	FireballData fireball;
+	BulletData bullet;
+	PickupData pickup;
+	EffectData effect;
+	DamageNumberData dmgNumber;
+	CheckpointData checkpoint;
 	ExpSpawnerData expSpawner;
 	LootSpawnerData lootSpawner;
-};
-
-union ActorState {
-	PlayerState playerState;
-	PlayerOverworldState playerOverworld;
-	EnemyState enemyState;
-	FireballState fireballState;
-	BulletState bulletState;
-	PickupState pickupState;
-	EffectState effectState;
-	DamageNumberState dmgNumberState;
-	CheckpointState checkpointState;
-	ExpSpawnerState expSpawner;
 };
 
 struct ActorPrototype {
@@ -427,8 +388,7 @@ struct ActorPrototype {
 	TActorSubtype subtype;
 
 	AABB hitbox;
-
-	ActorPrototypeData data;
+	ActorData data;
 
 	u32 animCount;
 	u32 animOffset;
