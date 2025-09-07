@@ -7,7 +7,7 @@
 constexpr u16 baseDamage = 10;
 
 static void UpdateSlimeEnemy(Actor* pActor, const ActorPrototype* pPrototype) {
-    Game::UpdateCounter(pActor->state.enemyState.damageCounter);
+    Game::UpdateCounter(pActor->data.enemy.damageCounter);
 
     if (!pActor->flags.inAir) {
         const bool shouldJump = Random::GenerateInt(0, 127) == 0;
@@ -47,11 +47,11 @@ static void UpdateSlimeEnemy(Actor* pActor, const ActorPrototype* pPrototype) {
     }
 
     pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
-    Game::SetDamagePaletteOverride(pActor, pActor->state.enemyState.damageCounter);
+    Game::SetDamagePaletteOverride(pActor, pActor->data.enemy.damageCounter);
 }
 
 static void UpdateSkullEnemy(Actor* pActor, const ActorPrototype* pPrototype) {
-    Game::UpdateCounter(pActor->state.enemyState.damageCounter);
+    Game::UpdateCounter(pActor->data.enemy.damageCounter);
 
     Game::ActorFacePlayer(pActor);
 
@@ -68,7 +68,7 @@ static void UpdateSkullEnemy(Actor* pActor, const ActorPrototype* pPrototype) {
             const glm::vec2 playerDir = glm::normalize(pPlayer->position - pActor->position);
             const glm::vec2 velocity = playerDir * 0.0625f;
 
-            Game::SpawnActor(pPrototype->data.enemyData.projectile, pActor->position, velocity);
+            Game::SpawnActor(pActor->data.enemy.projectile, pActor->position, velocity);
         }
     }
 
@@ -80,16 +80,16 @@ static void UpdateSkullEnemy(Actor* pActor, const ActorPrototype* pPrototype) {
     }
 
     pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
-    Game::SetDamagePaletteOverride(pActor, pActor->state.enemyState.damageCounter);
+    Game::SetDamagePaletteOverride(pActor, pActor->data.enemy.damageCounter);
 }
 
 static void FireballDie(Actor* pActor, const ActorPrototype* pPrototype, const glm::vec2& effectPos) {
     pActor->flags.pendingRemoval = true;
-    Game::SpawnActor(pPrototype->data.fireballData.deathEffect, effectPos);
+    Game::SpawnActor(pActor->data.fireball.deathEffect, effectPos);
 }
 
 static void UpdateFireball(Actor* pActor, const ActorPrototype* pPrototype) {
-    if (!Game::UpdateCounter(pActor->state.fireballState.lifetimeCounter)) {
+    if (!Game::UpdateCounter(pActor->data.fireball.lifetimeCounter)) {
         return FireballDie(pActor, pPrototype, pActor->position);
     }
 
@@ -114,8 +114,7 @@ static void UpdateFireball(Actor* pActor, const ActorPrototype* pPrototype) {
 }
 
 static void InitEnemy(Actor* pActor, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
-    pActor->state.enemyState.health = pPrototype->data.enemyData.health;
-    pActor->state.enemyState.damageCounter = 0;
+    pActor->data.enemy.damageCounter = 0;
     pActor->drawState.layer = SPRITE_LAYER_FG;
 }
 
@@ -129,15 +128,15 @@ void Game::EnemyDie(Actor* pActor, const ActorPrototype* pPrototype) {
     }
     else SetPersistedActorData(pActor->persistId, { .dead = true });
 
-    SpawnActor(pPrototype->data.enemyData.deathEffect, pActor->position);
+    SpawnActor(pActor->data.enemy.deathEffect, pActor->position);
 
     // Spawn exp halos
-    const u16 totalExpValue = pPrototype->data.enemyData.expValue;
-    Actor* pExpSpawner = SpawnActor(pPrototype->data.enemyData.expSpawner, pActor->position);
-    pExpSpawner->state.expSpawner.remainingValue = totalExpValue;
+    const u16 totalExpValue = pActor->data.enemy.expValue;
+    Actor* pExpSpawner = SpawnActor(pActor->data.enemy.expSpawner, pActor->position);
+    pExpSpawner->data.expSpawner.remainingValue = totalExpValue;
 
     // Spawn loot
-    SpawnActor(pPrototype->data.enemyData.lootSpawner, pActor->position);
+    SpawnActor(pActor->data.enemy.lootSpawner, pActor->position);
 }
 #pragma endregion
 

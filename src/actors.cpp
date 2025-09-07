@@ -25,6 +25,8 @@ static void InitializeActor(Actor* pActor, const ActorPrototype* pPrototype) {
 
 	pActor->drawState = ActorDrawState{};
 
+	pActor->data = pPrototype->data;
+
 	const PersistedActorData* pPersistData = Game::GetPersistedActorData(pActor->persistId);
 
 	Game::actorInitTable[pPrototype->type][pPrototype->subtype](pActor, pPrototype, pPersistData);
@@ -433,7 +435,7 @@ static void SpawnDamageNumber(Actor* pActor, const Damage& damage) {
 	constexpr glm::vec2 velocity = { 0, -0.03125f };
 	Actor* pDmg = Game::SpawnActor(dmgNumberPrototypeId, spawnPos, velocity);
 	if (pDmg != nullptr) {
-		pDmg->state.dmgNumberState.damage = damage;
+		pDmg->data.dmgNumber.damage = damage;
 	}
 }
 

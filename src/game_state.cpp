@@ -218,8 +218,8 @@ static bool SpawnPlayerAtEntrance(const glm::i8vec2 screenOffset, u8 direction) 
         break;
     }
 
-    pPlayer->state.playerState.flags.mode = PLAYER_MODE_ENTERING;
-    pPlayer->state.playerState.modeTransitionCounter = 15;
+    pPlayer->data.player.flags.mode = PLAYER_MODE_ENTERING;
+    pPlayer->data.player.modeTransitionCounter = 15;
 
     return true;
 }
@@ -958,7 +958,7 @@ bool Game::LoadOverworld(u8 keyAreaIndex, u8 direction) {
     if (!pPlayer) {
         return false;
     }
-    pPlayer->state.playerOverworld.facingDir = overworldDir;
+    pPlayer->data.playerOw.facingDir = overworldDir;
 
     gameplayFramesElapsed = 0;
     Rendering::RefreshViewport();
@@ -1029,7 +1029,7 @@ bool Game::ReloadRoom(const glm::i8vec2 screenOffset, u8 direction) {
         const RoomInstance* pRoom = GetDungeonRoom(currentDungeonId, g_gameData.expRemnant.gridOffset);
         if (pRoom->id == pCurrentRoom->id) {
             Actor* pRemnant = SpawnActor(Game::GetConfig().xpRemnantPrototypeHandle, g_gameData.expRemnant.position);
-            pRemnant->state.pickupState.value = g_gameData.expRemnant.value;
+            pRemnant->data.pickup.value = g_gameData.expRemnant.value;
         }
     }
 

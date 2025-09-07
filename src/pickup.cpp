@@ -3,10 +3,10 @@
 #include "game_state.h"
 #include "audio.h"
 
-static void OnPickup(Actor* pActor, const PickupData& data) {
+static void OnPickup(Actor* pActor) {
     pActor->flags.pendingRemoval = true;
-    if (data.pickupSound != SoundHandle::Null()) {
-        Audio::PlaySFX(data.pickupSound, 0);
+    if (pActor->data.pickup.pickupSound != SoundHandle::Null()) {
+        Audio::PlaySFX(pActor->data.pickup.pickupSound, 0);
     }
 }
 
@@ -18,7 +18,7 @@ static void UpdateExpHalo(Actor* pActor, const ActorPrototype* pPrototype) {
     const r32 playerDist = glm::length(playerVec);
 
     // Wait for a while before homing towards player
-    if (!Game::UpdateCounter(pActor->state.pickupState.lingerCounter)) {
+    if (!Game::UpdateCounter(pActor->data.pickup.lingerCounter)) {
         constexpr r32 trackingFactor = 0.1f; // Adjust to control homing strength
 
         glm::vec2 desiredVelocity = (playerVec * trackingFactor) + pPlayer->velocity;
@@ -40,9 +40,9 @@ static void UpdateExpHalo(Actor* pActor, const ActorPrototype* pPrototype) {
     pActor->position += pActor->velocity;
 
     if (pPlayer && Game::ActorsColliding(pActor, pPlayer)) {
-        OnPickup(pActor, pPrototype->data.pickupData);
+        OnPickup(pActor);
 
-        Game::AddPlayerExp(pActor->state.pickupState.value);
+        Game::AddPlayerExp(pActor->data.pickup.value);
 
         return;
     }
@@ -58,10 +58,10 @@ static void UpdateExpHalo(Actor* pActor, const ActorPrototype* pPrototype) {
 static void UpdateExpRemnant(Actor* pActor, const ActorPrototype* pPrototype) {
     Actor* pPlayer = Game::GetPlayer();
     if (pPlayer && Game::ActorsColliding(pActor, pPlayer)) {
-        OnPickup(pActor, pPrototype->data.pickupData);
+        OnPickup(pActor);
 
         Game::ClearExpRemnant();
-        Game::AddPlayerExp(pActor->state.pickupState.value);
+        Game::AddPlayerExp(pActor->data.pickup.value);
 
         return;
     }
@@ -94,9 +94,9 @@ static void UpdateHealing(Actor* pActor, const ActorPrototype* pPrototype) {
 
     Actor* pPlayer = Game::GetPlayer();
     if (pPlayer && Game::ActorsColliding(pActor, pPlayer)) {
-        OnPickup(pActor, pPrototype->data.pickupData);
+        OnPickup(pActor);
 
-        const u16 newHealth = Game::ActorHeal(pPlayer, pPrototype->data.pickupData.value, Game::GetPlayerHealth(), Game::GetPlayerMaxHealth());
+        const u16 newHealth = Game::ActorHeal(pPlayer, pActor->data.pickup.value, Game::GetPlayerHealth(), Game::GetPlayerMaxHealth());
         Game::SetPlayerHealth(newHealth);
 
         return;

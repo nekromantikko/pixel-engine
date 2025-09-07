@@ -3,7 +3,7 @@
 #include "game_rendering.h"
 
 static void UpdateCheckpoint(Actor* pActor, const ActorPrototype* pPrototype) {
-    if (pActor->state.checkpointState.activated) {
+    if (pActor->data.checkpoint.activated) {
         pActor->drawState.animIndex = 1;
     }
     else {
@@ -17,7 +17,7 @@ static void UpdateNPC(Actor* pActor, const ActorPrototype* pPrototype) {
 
 static void InitCheckpoint(Actor* pActor, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
 	if (pPersistData && pPersistData->activated) {
-		pActor->state.checkpointState.activated = true;
+		pActor->data.checkpoint.activated = true;
 	}
 	pActor->drawState.layer = SPRITE_LAYER_BG;
 }
