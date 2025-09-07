@@ -121,28 +121,18 @@ static const RoomTemplate* GetCurrentRoomTemplate() {
 static void CorrectPlayerSpawnY(const RoomTemplate* pTemplate, Actor* pPlayer) {
     HitResult hit{};
 
-    const ActorPrototype* pPrototype = AssetManager::GetAsset(pPlayer->prototypeHandle);
-    if (!pPrototype) {
-        return;
-    }
-
     const r32 dy = VIEWPORT_HEIGHT_METATILES / 2.0f;  // Sweep downwards to find a floor
 
-    Collision::SweepBoxVertical(&pTemplate->tilemap, pPrototype->hitbox, pPlayer->position, dy, hit);
+    Collision::SweepBoxVertical(&pTemplate->tilemap, pPlayer->hitbox, pPlayer->position, dy, hit);
     while (hit.startPenetrating) {
         pPlayer->position.y -= 1.0f;
-        Collision::SweepBoxVertical(&pTemplate->tilemap, pPrototype->hitbox, pPlayer->position, dy, hit);
+        Collision::SweepBoxVertical(&pTemplate->tilemap, pPlayer->hitbox, pPlayer->position, dy, hit);
     }
     pPlayer->position = hit.location;
 }
 
 static bool ActorIsCheckpoint(const Actor* pActor) {
-    const ActorPrototype* pPrototype = AssetManager::GetAsset(pActor->prototypeHandle);
-    if (!pPrototype) {
-        return false;
-    }
-
-    return pPrototype->type == ACTOR_TYPE_INTERACTABLE && pPrototype->subtype == INTERACTABLE_TYPE_CHECKPOINT;
+    return pActor->type == ACTOR_TYPE_INTERACTABLE && pActor->subtype == INTERACTABLE_TYPE_CHECKPOINT;
 }
 
 static bool SpawnPlayerAtCheckpoint() {

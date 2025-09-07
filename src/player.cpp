@@ -210,8 +210,7 @@ static void SpawnFeathers(Actor* pPlayer, u32 count) {
 
         const glm::vec2 velocity = Random::GenerateDirection() * 0.0625f;
         Actor* pSpawned = Game::SpawnActor(featherPrototypeId, pPlayer->position + spawnOffset, velocity);
-        const ActorPrototype* pSpawnedPrototype = Game::GetActorPrototype(pSpawned);
-        const Animation* pSpawnedCurrentAnim = Game::GetActorCurrentAnim(pSpawned, pSpawnedPrototype);
+        const Animation* pSpawnedCurrentAnim = Game::GetActorCurrentAnim(pSpawned);
         if (pSpawnedCurrentAnim) {
             pSpawned->drawState.frameIndex = Random::GenerateInt(0, pSpawnedCurrentAnim->frameCount - 1);
         }
@@ -249,8 +248,7 @@ static void TriggerInteraction(Actor* pPlayer, Actor* pInteractable) {
         return;
     }
 
-    const ActorPrototype* pInteractablePrototype = Game::GetActorPrototype(pInteractable);
-    if (pInteractablePrototype->subtype == INTERACTABLE_TYPE_CHECKPOINT) {
+    if (pInteractable->subtype == INTERACTABLE_TYPE_CHECKPOINT) {
         pInteractable->data.checkpoint.activated = true;
 
         Game::ActivateCheckpoint(pInteractable);
@@ -496,8 +494,7 @@ static void UpdateSidescrollerMode(Actor* pActor) {
     }
     case PLAYER_MODE_STAND_TO_SIT: {
         AnimateWingsToTargetPosition(pActor, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
-        ActorPrototype* pPrototype = AssetManager::GetAsset(pActor->prototypeHandle);
-        Game::AdvanceCurrentAnimation(pActor, pPrototype);
+        Game::AdvanceCurrentAnimation(pActor);
         break;
     }
     case PLAYER_MODE_SITTING: {
@@ -506,14 +503,12 @@ static void UpdateSidescrollerMode(Actor* pActor) {
         }
 
         AnimateWingsToTargetPosition(pActor, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
-        ActorPrototype* pPrototype = AssetManager::GetAsset(pActor->prototypeHandle);
-        Game::AdvanceCurrentAnimation(pActor, pPrototype);
+        Game::AdvanceCurrentAnimation(pActor);
         break;
     }
     case PLAYER_MODE_SIT_TO_STAND: {
         AnimateWingsToTargetPosition(pActor, PLAYER_WINGS_FLAP_END, wingFrameLengthFast);
-        ActorPrototype* pPrototype = AssetManager::GetAsset(pActor->prototypeHandle);
-        Game::AdvanceCurrentAnimation(pActor, pPrototype);
+        Game::AdvanceCurrentAnimation(pActor);
         break;
     }
     case PLAYER_MODE_DAMAGED: {
@@ -546,7 +541,7 @@ static void UpdateSidescrollerMode(Actor* pActor) {
     }
 }
 
-static void UpdatePlayerSidescroller(Actor* pActor, const ActorPrototype* pPrototype) {
+static void UpdatePlayerSidescroller(Actor* pActor) {
     // Reset slow fall
     pActor->data.player.flags.slowFall = false;
 
@@ -557,7 +552,7 @@ static void UpdatePlayerSidescroller(Actor* pActor, const ActorPrototype* pProto
     UpdateSidescrollerMode(pActor);
 
     HitResult hit{};
-    if (Game::ActorMoveHorizontal(pActor, pPrototype, hit)) {
+    if (Game::ActorMoveHorizontal(pActor, hit)) {
         pActor->velocity.x = 0.0f;
     }
 
@@ -572,7 +567,7 @@ static void UpdatePlayerSidescroller(Actor* pActor, const ActorPrototype* pProto
     // Reset in air flag
     pActor->flags.inAir = true;
 
-    if (Game::ActorMoveVertical(pActor, pPrototype, hit)) {
+    if (Game::ActorMoveVertical(pActor, hit)) {
         pActor->velocity.y = 0.0f;
 
         if (hit.impactNormal.y < 0.0f) {
@@ -611,7 +606,7 @@ static glm::ivec2 GetOverworldInputDir() {
     return result;
 }
 
-static void UpdatePlayerOverworld(Actor* pPlayer, const ActorPrototype* pPrototype) {
+static void UpdatePlayerOverworld(Actor* pPlayer) {
     static constexpr u16 movementRate = 1;
     static constexpr u16 movementSteps = METATILE_DIM_PIXELS * movementRate;
     static constexpr r32 movementStepLength = 1.0f / movementSteps;
@@ -699,11 +694,17 @@ static bool DrawPlayerGun(const Actor* pPlayer) {
     return Game::Rendering::DrawMetasprite(SPRITE_LAYER_FG, weaponMetaspriteId, drawPos, drawState.hFlip, drawState.vFlip, -1);
 }
 
-static s16 GetWingsVerticalOffset(const Actor* pPlayer, const ActorPrototype* pPrototype) {
+static s16 GetWingsVerticalOffset(const Actor* pPlayer) {
     s16 vOffset = 0;
     if (pPlayer->data.player.flags.mode == PLAYER_MODE_SITTING ||
         pPlayer->data.player.flags.mode == PLAYER_MODE_STAND_TO_SIT ||
         pPlayer->data.player.flags.mode == PLAYER_MODE_SIT_TO_STAND) {
+
+        const ActorPrototype* pPrototype = AssetManager::GetAsset(pPlayer->__temp_actorPrototypeHandle);
+        if (!pPrototype) {
+            return vOffset;
+        }
+
 		AnimationHandle animHandle = pPrototype->GetAnimations()[pPlayer->drawState.animIndex];
         const Animation* pAnim = AssetManager::GetAsset(animHandle);
         if (pAnim) {
@@ -717,26 +718,26 @@ static s16 GetWingsVerticalOffset(const Actor* pPlayer, const ActorPrototype* pP
     return vOffset;
 }
 
-static bool DrawPlayerSidescroller(const Actor* pPlayer, const ActorPrototype* pPrototype) {
+static bool DrawPlayerSidescroller(const Actor* pPlayer) {
     bool result = true;
     if (pPlayer->data.player.flags.mode == PLAYER_MODE_NORMAL || 
         pPlayer->data.player.flags.mode == PLAYER_MODE_DAMAGED ||
         pPlayer->data.player.flags.mode == PLAYER_MODE_ENTERING) {
         result &= DrawPlayerGun(pPlayer);
     }
-    result &= Game::DrawActorDefault(pPlayer, pPrototype);
+    result &= Game::DrawActorDefault(pPlayer);
     if (pPlayer->data.player.flags.mode != PLAYER_MODE_DYING) {
-        s16 vOffset = GetWingsVerticalOffset(pPlayer, pPrototype);
+        s16 vOffset = GetWingsVerticalOffset(pPlayer);
         result &= DrawWings(pPlayer, vOffset);
     }
     return result;
 }
 
-static bool DrawPlayerOverworld(const Actor* pPlayer, const ActorPrototype* pPrototype) {
-    return Game::DrawActorDefault(pPlayer, pPrototype);
+static bool DrawPlayerOverworld(const Actor* pPlayer) {
+    return Game::DrawActorDefault(pPlayer);
 }
 
-static void InitPlayerSidescroller(Actor* pPlayer, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
+static void InitPlayerSidescroller(Actor* pPlayer, const PersistedActorData* pPersistData) {
     pPlayer->data.player.modeTransitionCounter = 0;
     pPlayer->data.player.staminaRecoveryCounter = 0;
 
@@ -748,7 +749,7 @@ static void InitPlayerSidescroller(Actor* pPlayer, const ActorPrototype* pProtot
     pPlayer->drawState.layer = SPRITE_LAYER_FG;
 }
 
-static void InitPlayerOverworld(Actor* pPlayer, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
+static void InitPlayerOverworld(Actor* pPlayer, const PersistedActorData* pPersistData) {
     pPlayer->data.playerOw.movementCounter = 0;
     pPlayer->data.playerOw.facingDir = { 0, 1 };
     pPlayer->position = glm::roundEven(pPlayer->position);

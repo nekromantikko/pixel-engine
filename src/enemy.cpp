@@ -6,7 +6,7 @@
 // TODO: Should be determined by enemy stats
 constexpr u16 baseDamage = 10;
 
-static void UpdateSlimeEnemy(Actor* pActor, const ActorPrototype* pPrototype) {
+static void UpdateSlimeEnemy(Actor* pActor) {
     Game::UpdateCounter(pActor->data.enemy.damageCounter);
 
     if (!pActor->flags.inAir) {
@@ -22,7 +22,7 @@ static void UpdateSlimeEnemy(Actor* pActor, const ActorPrototype* pPrototype) {
     }
 
     HitResult hit{};
-    if (Game::ActorMoveHorizontal(pActor, pPrototype, hit)) {
+    if (Game::ActorMoveHorizontal(pActor, hit)) {
         pActor->velocity.x = 0.0f;
         pActor->flags.facingDir = (s8)hit.impactNormal.x;
     }
@@ -32,7 +32,7 @@ static void UpdateSlimeEnemy(Actor* pActor, const ActorPrototype* pPrototype) {
     // Reset in air flag
     pActor->flags.inAir = true;
 
-    if (Game::ActorMoveVertical(pActor, pPrototype, hit)) {
+    if (Game::ActorMoveVertical(pActor, hit)) {
         pActor->velocity.y = 0.0f;
 
         if (hit.impactNormal.y < 0.0f) {
@@ -50,7 +50,7 @@ static void UpdateSlimeEnemy(Actor* pActor, const ActorPrototype* pPrototype) {
     Game::SetDamagePaletteOverride(pActor, pActor->data.enemy.damageCounter);
 }
 
-static void UpdateSkullEnemy(Actor* pActor, const ActorPrototype* pPrototype) {
+static void UpdateSkullEnemy(Actor* pActor) {
     Game::UpdateCounter(pActor->data.enemy.damageCounter);
 
     Game::ActorFacePlayer(pActor);
@@ -83,43 +83,43 @@ static void UpdateSkullEnemy(Actor* pActor, const ActorPrototype* pPrototype) {
     Game::SetDamagePaletteOverride(pActor, pActor->data.enemy.damageCounter);
 }
 
-static void FireballDie(Actor* pActor, const ActorPrototype* pPrototype, const glm::vec2& effectPos) {
+static void FireballDie(Actor* pActor, const glm::vec2& effectPos) {
     pActor->flags.pendingRemoval = true;
     Game::SpawnActor(pActor->data.fireball.deathEffect, effectPos);
 }
 
-static void UpdateFireball(Actor* pActor, const ActorPrototype* pPrototype) {
+static void UpdateFireball(Actor* pActor) {
     if (!Game::UpdateCounter(pActor->data.fireball.lifetimeCounter)) {
-        return FireballDie(pActor, pPrototype, pActor->position);
+        return FireballDie(pActor, pActor->position);
     }
 
     HitResult hit{};
-    if (Game::ActorMoveHorizontal(pActor, pPrototype, hit)) {
-        return FireballDie(pActor, pPrototype, hit.impactPoint);
+    if (Game::ActorMoveHorizontal(pActor, hit)) {
+        return FireballDie(pActor, hit.impactPoint);
 
     }
 
-    if (Game::ActorMoveVertical(pActor, pPrototype, hit)) {
-        return FireballDie(pActor, pPrototype, hit.impactPoint);
+    if (Game::ActorMoveVertical(pActor, hit)) {
+        return FireballDie(pActor, hit.impactPoint);
     }
 
     Actor* pPlayer = Game::GetPlayer();
     const Damage damage = Game::CalculateDamage(pPlayer, baseDamage);
     if (pPlayer && !Game::PlayerInvulnerable(pPlayer) && Game::ActorsColliding(pActor, pPlayer)) {
         Game::PlayerTakeDamage(pPlayer, damage, pActor->position);
-        return FireballDie(pActor, pPrototype, pActor->position);
+        return FireballDie(pActor, pActor->position);
     }
 
-    Game::AdvanceCurrentAnimation(pActor, pPrototype);
+    Game::AdvanceCurrentAnimation(pActor);
 }
 
-static void InitEnemy(Actor* pActor, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
+static void InitEnemy(Actor* pActor, const PersistedActorData* pPersistData) {
     pActor->data.enemy.damageCounter = 0;
     pActor->drawState.layer = SPRITE_LAYER_FG;
 }
 
 #pragma region Public API
-void Game::EnemyDie(Actor* pActor, const ActorPrototype* pPrototype) {
+void Game::EnemyDie(Actor* pActor) {
     pActor->flags.pendingRemoval = true;
 
     PersistedActorData* pPersistData = GetPersistedActorData(pActor->persistId);

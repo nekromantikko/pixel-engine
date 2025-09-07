@@ -14,7 +14,7 @@ static Pool<ActorHandle, MAX_DYNAMIC_ACTOR_COUNT> actorRemoveList;
 
 PoolHandle<Actor> playerHandle;
 
-static void InitializeActor(Actor* pActor, const ActorPrototype* pPrototype) {
+static void InitializeActor(Actor* pActor) {
 	pActor->flags.facingDir = ACTOR_FACING_RIGHT;
 	pActor->flags.inAir = true;
 	pActor->flags.active = true;
@@ -25,11 +25,9 @@ static void InitializeActor(Actor* pActor, const ActorPrototype* pPrototype) {
 
 	pActor->drawState = ActorDrawState{};
 
-	pActor->data = pPrototype->data;
-
 	const PersistedActorData* pPersistData = Game::GetPersistedActorData(pActor->persistId);
 
-	Game::actorInitTable[pPrototype->type][pPrototype->subtype](pActor, pPrototype, pPersistData);
+	Game::actorInitTable[pActor->type][pActor->subtype](pActor, pPersistData);
 }
 
 Actor* Game::SpawnActor(const RoomActor* pTemplate, u32 roomId) {
@@ -41,18 +39,22 @@ Actor* Game::SpawnActor(const RoomActor* pTemplate, u32 roomId) {
 		return nullptr;
 	}
 
-	Actor actor{
-		.persistId = pTemplate->id | u64(roomId) << 32,
-		.position = pTemplate->position,
-		.prototypeHandle = pTemplate->prototypeHandle,
-	};
-
-	const ActorPrototype* pPrototype = AssetManager::GetAsset(actor.prototypeHandle);
+	const ActorPrototype* pPrototype = AssetManager::GetAsset(pTemplate->prototypeHandle);
 	if (!pPrototype) {
 		return nullptr;
 	}
 
-	InitializeActor(&actor, pPrototype);
+	Actor actor{
+		.type = pPrototype->type,
+		.subtype = pPrototype->subtype,
+		.persistId = pTemplate->id | u64(roomId) << 32,
+		.position = pTemplate->position,
+		.data = pPrototype->data,
+		.hitbox = pPrototype->hitbox,
+		.__temp_actorPrototypeHandle = pTemplate->prototypeHandle,
+	};
+
+	InitializeActor(&actor);
 	const ActorHandle handle = actors.Add(actor);
 
 	if (pPrototype->type == ACTOR_TYPE_PLAYER) {
@@ -66,19 +68,23 @@ Actor* Game::SpawnActor(const ActorPrototypeHandle& prototypeHandle, const glm::
 		return nullptr;
 	}
 
-	Actor actor {
-		.persistId = UUID_NULL,
-		.position = position,
-		.velocity = velocity,
-		.prototypeHandle = prototypeHandle,
-	};
-
-	const ActorPrototype* pPrototype = AssetManager::GetAsset(actor.prototypeHandle);
+	const ActorPrototype* pPrototype = AssetManager::GetAsset(prototypeHandle);
 	if (!pPrototype) {
 		return nullptr;
 	}
 
-	InitializeActor(&actor, pPrototype);
+	Actor actor {
+		.type = pPrototype->type,
+		.subtype = pPrototype->subtype,
+		.persistId = UUID_NULL,
+		.position = position,
+		.velocity = velocity,
+		.data = pPrototype->data,
+		.hitbox = pPrototype->hitbox,
+		.__temp_actorPrototypeHandle = prototypeHandle,
+	};
+
+	InitializeActor(&actor);
 	const ActorHandle handle = actors.Add(actor);
 
 	if (pPrototype->type == ACTOR_TYPE_PLAYER) {
@@ -93,11 +99,12 @@ void Game::ClearActors() {
 	actorRemoveList.Clear();
 }
 
-const ActorPrototype* Game::GetActorPrototype(const Actor* pActor) {
-	return AssetManager::GetAsset(pActor->prototypeHandle);
-}
+const Animation* Game::GetActorCurrentAnim(const Actor* pActor) {
+	const ActorPrototype* pPrototype = AssetManager::GetAsset(pActor->__temp_actorPrototypeHandle);
+	if (!pPrototype) {
+		return nullptr;
+	}
 
-const Animation* Game::GetActorCurrentAnim(const Actor* pActor, const ActorPrototype* pPrototype) {
 	const AnimationHandle& currentAnimId = pPrototype->GetAnimations()[pActor->drawState.animIndex];
 	return AssetManager::GetAsset(currentAnimId);
 }
@@ -107,17 +114,7 @@ bool Game::ActorValid(const Actor* pActor) {
 }
 
 bool Game::ActorsColliding(const Actor* pActor, const Actor* pOther) {
-	const ActorPrototype* pPrototype = GetActorPrototype(pActor);
-	const ActorPrototype* pPrototypeOther = GetActorPrototype(pOther);
-
-	if (!pPrototype || !pPrototypeOther) {
-		return false;
-	}
-
-	const AABB& hitbox = pPrototype->hitbox;
-	const AABB& hitboxOther = pPrototypeOther->hitbox;
-
-	return Collision::BoxesOverlap(hitbox, pActor->position, hitboxOther, pOther->position);
+	return Collision::BoxesOverlap(pActor->hitbox, pActor->position, pOther->hitbox, pOther->position);
 }
 
 void Game::ForEachActorCollision(Actor* pActor, TActorType type, ActorCollisionCallbackFn callback) {
@@ -134,8 +131,7 @@ void Game::ForEachActorCollision(Actor* pActor, TActorType type, ActorCollisionC
 			continue;
 		}
 
-		const ActorPrototype* pPrototype = GetActorPrototype(pOther);
-		if (!pPrototype || pPrototype->type != type) {
+		if (pOther->type != type) {
 			continue;
 		}
 
@@ -181,8 +177,7 @@ Actor* Game::GetFirstActorCollision(const Actor* pActor, TActorType type) {
 			continue;
 		}
 
-		const ActorPrototype* pPrototype = GetActorPrototype(pOther);
-		if (!pPrototype || pPrototype->type != type) {
+		if (pOther->type != type) {
 			continue;
 		}
 
@@ -228,8 +223,7 @@ void Game::ForEachActor(TActorType type, ActorCallbackFn callback) {
 			continue;
 		}
 
-		const ActorPrototype* pPrototype = GetActorPrototype(pActor);
-		if (!pPrototype || pPrototype->type != type) {
+		if (pActor->type != type) {
 			continue;
 		}
 
@@ -263,8 +257,7 @@ Actor* Game::GetFirstActor(TActorType type) {
 			continue;
 		}
 
-		const ActorPrototype* pPrototype = GetActorPrototype(pActor);
-		if (!pPrototype || pPrototype->type != type) {
+		if (pActor->type != type) {
 			continue;
 		}
 
@@ -321,11 +314,11 @@ void Game::SetDamagePaletteOverride(Actor* pActor, u16 damageCounter) {
 	}
 }
 
-void Game::GetAnimFrameFromDirection(Actor* pActor, const ActorPrototype* pPrototype) {
+void Game::GetAnimFrameFromDirection(Actor* pActor) {
 	const glm::vec2 dir = glm::normalize(pActor->velocity);
 	const r32 angle = glm::atan(dir.y, dir.x);
 
-	const Animation* pCurrentAnim = GetActorCurrentAnim(pActor, pPrototype);
+	const Animation* pCurrentAnim = GetActorCurrentAnim(pActor);
 	if (!pCurrentAnim) {
 		return;
 	}
@@ -351,8 +344,8 @@ void Game::AdvanceAnimation(u16& animCounter, u16& frameIndex, u16 frameCount, u
 	animCounter--;
 }
 
-void Game::AdvanceCurrentAnimation(Actor* pActor, const ActorPrototype* pPrototype) {
-	const Animation* pCurrentAnim = GetActorCurrentAnim(pActor, pPrototype);
+void Game::AdvanceCurrentAnimation(Actor* pActor) {
+	const Animation* pCurrentAnim = GetActorCurrentAnim(pActor);
 	if (!pCurrentAnim) {
 		return;
 	}
@@ -375,8 +368,8 @@ void Game::ActorFacePlayer(Actor* pActor) {
 	}
 }
 
-bool Game::ActorMoveHorizontal(Actor* pActor, const ActorPrototype* pPrototype, HitResult& outHit) {
-	const AABB& hitbox = pPrototype->hitbox;
+bool Game::ActorMoveHorizontal(Actor* pActor, HitResult& outHit) {
+	const AABB& hitbox = pActor->hitbox;
 
 	const r32 dx = pActor->velocity.x;
 
@@ -385,8 +378,8 @@ bool Game::ActorMoveHorizontal(Actor* pActor, const ActorPrototype* pPrototype, 
 	return outHit.blockingHit;
 }
 
-bool Game::ActorMoveVertical(Actor* pActor, const ActorPrototype* pPrototype, HitResult& outHit) {
-	const AABB& hitbox = pPrototype->hitbox;
+bool Game::ActorMoveVertical(Actor* pActor, HitResult& outHit) {
+	const AABB& hitbox = pActor->hitbox;
 
 	const r32 dy = pActor->velocity.y;
 
@@ -422,15 +415,11 @@ Damage Game::CalculateDamage(Actor* pActor, u16 baseDamage) {
 static void SpawnDamageNumber(Actor* pActor, const Damage& damage) {
 	glm::vec2 spawnPos = pActor->position;
 
-	const ActorPrototype* pPrototype = Game::GetActorPrototype(pActor);
-	if (pPrototype) {
-		const AABB& hitbox = pPrototype->hitbox;
-		const glm::vec2 randomPointInsideHitbox = {
-			Random::GenerateReal(hitbox.x1, hitbox.x2),
-			Random::GenerateReal(hitbox.y1, hitbox.y2)
-		};
-		spawnPos += randomPointInsideHitbox;
-	}
+	const glm::vec2 randomPointInsideHitbox = {
+		Random::GenerateReal(pActor->hitbox.x1, pActor->hitbox.x2),
+		Random::GenerateReal(pActor->hitbox.y1, pActor->hitbox.y2)
+	};
+	spawnPos += randomPointInsideHitbox;
 
 	constexpr glm::vec2 velocity = { 0, -0.03125f };
 	Actor* pDmg = Game::SpawnActor(dmgNumberPrototypeId, spawnPos, velocity);
@@ -496,12 +485,7 @@ void Game::UpdateActors() {
 			continue;
 		}
 
-		const ActorPrototype* pPrototype = Game::GetActorPrototype(pActor);
-		if (!pPrototype) {
-			continue;
-		}
-
-		actorUpdateTable[pPrototype->type][pPrototype->subtype](pActor, pPrototype);
+		actorUpdateTable[pActor->type][pActor->subtype](pActor);
 	}
 
 	for (u32 i = 0; i < actorRemoveList.Count(); i++) {
@@ -512,7 +496,7 @@ void Game::UpdateActors() {
 	actorRemoveList.Clear();
 }
 
-bool Game::DrawActorDefault(const Actor* pActor, const ActorPrototype* pPrototype) {
+bool Game::DrawActorDefault(const Actor* pActor) {
 	const ActorDrawState& drawState = pActor->drawState;
 
 	// Culling
@@ -520,9 +504,14 @@ bool Game::DrawActorDefault(const Actor* pActor, const ActorPrototype* pPrototyp
 		return false;
 	}
 
+	const ActorPrototype* pPrototype = AssetManager::GetAsset(pActor->__temp_actorPrototypeHandle);
+	if (!pPrototype) {	
+		return false;
+	}
+
 	const u16 animIndex = drawState.animIndex % pPrototype->animCount;
 
-	const Animation* pCurrentAnim = GetActorCurrentAnim(pActor, pPrototype);
+	const Animation* pCurrentAnim = GetActorCurrentAnim(pActor);
 	if (!pCurrentAnim) {
 		return false;
 	}
@@ -543,12 +532,7 @@ void Game::DrawActors() {
 			continue;
 		}
 
-		const ActorPrototype* pPrototype = Game::GetActorPrototype(pActor);
-		if (!pPrototype) {
-			continue;
-		}
-
-		actorDrawTable[pPrototype->type][pPrototype->subtype](pActor, pPrototype);
+		actorDrawTable[pActor->type][pActor->subtype](pActor);
 	}
 }
 
