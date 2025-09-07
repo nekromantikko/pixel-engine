@@ -17,7 +17,7 @@ static size_t ItoaSigned(s16 value, char* str) {
     return strlen(str);
 }
 
-static bool DrawDmgNumbers(const Actor* pActor, const ActorPrototype* pPrototype) {
+static bool DrawDmgNumbers(const Actor* pActor) {
     const Damage& damage = pActor->data.dmgNumber.damage;
 
     static char numberStr[16]{};
@@ -64,15 +64,15 @@ static bool DrawDmgNumbers(const Actor* pActor, const ActorPrototype* pPrototype
     return result;
 }
 
-static void UpdateExplosion(Actor* pActor, const ActorPrototype* pPrototype) {
+static void UpdateExplosion(Actor* pActor) {
     if (!Game::UpdateCounter(pActor->data.effect.lifetime)) {
         pActor->flags.pendingRemoval = true;
     }
 
-    Game::AdvanceCurrentAnimation(pActor, pPrototype);
+    Game::AdvanceCurrentAnimation(pActor);
 }
 
-static void UpdateDmgNumbers(Actor* pActor, const ActorPrototype* pPrototype) {
+static void UpdateDmgNumbers(Actor* pActor) {
     if (!Game::UpdateCounter(pActor->data.effect.lifetime)) {
         pActor->flags.pendingRemoval = true;
     }
@@ -80,7 +80,7 @@ static void UpdateDmgNumbers(Actor* pActor, const ActorPrototype* pPrototype) {
     pActor->position.y += pActor->velocity.y;
 }
 
-static void UpdateFeather(Actor* pActor, const ActorPrototype* pPrototype) {
+static void UpdateFeather(Actor* pActor) {
     if (!Game::UpdateCounter(pActor->data.effect.lifetime)) {
         pActor->flags.pendingRemoval = true;
     }
@@ -108,12 +108,11 @@ static void InitEffectState(Actor* pActor) {
     pActor->drawState.layer = SPRITE_LAYER_FX;
 }
 
-static void InitDmgNumbers(Actor* pActor, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
+static void InitDmgNumbers(Actor* pActor, const PersistedActorData* pPersistData) {
     return InitEffectState(pActor);
 }
 
-static void InitBaseEffect(Actor* pActor, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
-	
+static void InitBaseEffect(Actor* pActor, const PersistedActorData* pPersistData) {
     return InitEffectState(pActor);
 }
 

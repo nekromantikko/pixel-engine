@@ -2,22 +2,22 @@
 #include "random.h"
 #include "asset_manager.h"
 
-static void InitSpawner(Actor* pActor, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
+static void InitSpawner(Actor* pActor, const PersistedActorData* pPersistData) {
     
 }
 
-static void UpdateExpSpawner(Actor* pActor, const ActorPrototype* pPrototype) {
+static void UpdateExpSpawner(Actor* pActor) {
     u16& remainingValue = pActor->data.expSpawner.remainingValue;
     if (remainingValue == 0) {
         pActor->flags.pendingRemoval = true;
         return;
     }
 
-    const u16 largeExpValue = (AssetManager::GetAsset(pPrototype->data.expSpawner.large))->data.pickup.value;
-    const u16 smallExpValue = (AssetManager::GetAsset(pPrototype->data.expSpawner.small))->data.pickup.value;
+    const u16 largeExpValue = (AssetManager::GetAsset(pActor->data.expSpawner.large))->data.pickup.value;
+    const u16 smallExpValue = (AssetManager::GetAsset(pActor->data.expSpawner.small))->data.pickup.value;
 
     u16 spawnedValue = remainingValue >= largeExpValue ? largeExpValue : smallExpValue;
-    ActorPrototypeHandle prototypeHandle = spawnedValue >= largeExpValue ? pPrototype->data.expSpawner.large : pPrototype->data.expSpawner.small;
+    ActorPrototypeHandle prototypeHandle = spawnedValue >= largeExpValue ? pActor->data.expSpawner.large : pActor->data.expSpawner.small;
 
     const r32 speed = Random::GenerateReal(0.1f, 0.3f);
     const glm::vec2 velocity = Random::GenerateDirection() * speed;
@@ -34,13 +34,13 @@ static void UpdateExpSpawner(Actor* pActor, const ActorPrototype* pPrototype) {
     else remainingValue -= spawnedValue;
 }
 
-static void UpdateEnemySpawner(Actor* pActor, const ActorPrototype* pPrototype) {
+static void UpdateEnemySpawner(Actor* pActor) {
 
 }
 
 // Drops loot and deletes itself
-static void UpdateLootSpawner(Actor* pActor, const ActorPrototype* pPrototype) {
-    const LootSpawnerData& data = pPrototype->data.lootSpawner;
+static void UpdateLootSpawner(Actor* pActor) {
+    const LootSpawnerData& data = pActor->data.lootSpawner;
 
     for (u32 i = 0; i < data.typeCount; i++) {
         ActorPrototypeHandle lootType = data.types[i];
@@ -57,7 +57,7 @@ static void UpdateLootSpawner(Actor* pActor, const ActorPrototype* pPrototype) {
     pActor->flags.pendingRemoval = true;
 }
 
-static bool DrawNoOp(const Actor* pActor, const ActorPrototype* pPrototype) {
+static bool DrawNoOp(const Actor* pActor) {
     return false;
 }
 

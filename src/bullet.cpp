@@ -9,9 +9,7 @@ static void BulletDie(Actor* pBullet, const glm::vec2& effectPos) {
 }
 
 static void HandleBulletEnemyCollision(Actor* pBullet, Actor* pEnemy) {
-    const ActorPrototype* pEnemyPrototype = Game::GetActorPrototype(pEnemy);
-
-    if (pEnemy == nullptr || pEnemyPrototype->subtype == ENEMY_TYPE_FIREBALL) {
+    if (pEnemy == nullptr || pEnemy->subtype == ENEMY_TYPE_FIREBALL) {
         return;
     }
 
@@ -23,24 +21,24 @@ static void HandleBulletEnemyCollision(Actor* pBullet, Actor* pEnemy) {
 
     const u16 newHealth = Game::ActorTakeDamage(pEnemy, damage, pEnemy->data.enemy.health, pEnemy->data.enemy.damageCounter);
     if (newHealth == 0) {
-        Game::EnemyDie(pEnemy, pEnemyPrototype);
+        Game::EnemyDie(pEnemy);
     }
     pEnemy->data.enemy.health = newHealth;
 }
 
-static void UpdateDefaultBullet(Actor* pActor, const ActorPrototype* pPrototype) {
+static void UpdateDefaultBullet(Actor* pActor) {
     if (!Game::UpdateCounter(pActor->data.bullet.lifetime)) {
         BulletDie(pActor, pActor->position);
         return;
     }
 
     HitResult hit{};
-    if (Game::ActorMoveHorizontal(pActor, pPrototype, hit)) {
+    if (Game::ActorMoveHorizontal(pActor, hit)) {
         BulletDie(pActor, hit.impactPoint);
         return;
     }
 
-    if (Game::ActorMoveVertical(pActor, pPrototype, hit)) {
+    if (Game::ActorMoveVertical(pActor, hit)) {
         BulletDie(pActor, hit.impactPoint);
         return;
     }
@@ -50,14 +48,14 @@ static void UpdateDefaultBullet(Actor* pActor, const ActorPrototype* pPrototype)
         HandleBulletEnemyCollision(pActor, pEnemy);
     }
 
-    Game::GetAnimFrameFromDirection(pActor, pPrototype);
+    Game::GetAnimFrameFromDirection(pActor);
 }
 
 static void BulletRicochet(glm::vec2& velocity, const glm::vec2& normal) {
     velocity = glm::reflect(velocity, normal);
 }
 
-static void UpdateGrenade(Actor* pActor, const ActorPrototype* pPrototype) {
+static void UpdateGrenade(Actor* pActor) {
     if (!Game::UpdateCounter(pActor->data.bullet.lifetime)) {
         BulletDie(pActor, pActor->position);
         return;
@@ -67,11 +65,11 @@ static void UpdateGrenade(Actor* pActor, const ActorPrototype* pPrototype) {
     Game::ApplyGravity(pActor, grenadeGravity);
 
     HitResult hit{};
-    if (Game::ActorMoveHorizontal(pActor, pPrototype, hit)) {
+    if (Game::ActorMoveHorizontal(pActor, hit)) {
         BulletRicochet(pActor->velocity, hit.impactNormal);
     }
 
-    if (Game::ActorMoveVertical(pActor, pPrototype, hit)) {
+    if (Game::ActorMoveVertical(pActor, hit)) {
         BulletRicochet(pActor->velocity, hit.impactNormal);
     }
 
@@ -80,10 +78,10 @@ static void UpdateGrenade(Actor* pActor, const ActorPrototype* pPrototype) {
         HandleBulletEnemyCollision(pActor, pEnemy);
     }
 
-    Game::GetAnimFrameFromDirection(pActor, pPrototype);
+    Game::GetAnimFrameFromDirection(pActor);
 }
 
-static void InitializeBullet(Actor* pActor, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
+static void InitializeBullet(Actor* pActor, const PersistedActorData* pPersistData) {
     pActor->drawState.layer = SPRITE_LAYER_FG;
 }
 

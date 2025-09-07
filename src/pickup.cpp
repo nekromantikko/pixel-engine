@@ -10,7 +10,7 @@ static void OnPickup(Actor* pActor) {
     }
 }
 
-static void UpdateExpHalo(Actor* pActor, const ActorPrototype* pPrototype) {
+static void UpdateExpHalo(Actor* pActor) {
     Actor* pPlayer = Game::GetPlayer();
 
     const glm::vec2 playerVec = pPlayer->position - pActor->position;
@@ -48,14 +48,14 @@ static void UpdateExpHalo(Actor* pActor, const ActorPrototype* pPrototype) {
     }
 
     // Smoothstep animation when inside specified radius from player
-    const Animation* pCurrentAnim = Game::GetActorCurrentAnim(pActor, pPrototype);
+    const Animation* pCurrentAnim = Game::GetActorCurrentAnim(pActor);
     constexpr r32 animRadius = 4.0f;
 
     pActor->drawState.frameIndex = glm::floor((1.0f - glm::smoothstep(0.0f, animRadius, playerDist)) * pCurrentAnim->frameCount);
     pActor->drawState.hFlip = pActor->flags.facingDir == ACTOR_FACING_LEFT;
 }
 
-static void UpdateExpRemnant(Actor* pActor, const ActorPrototype* pPrototype) {
+static void UpdateExpRemnant(Actor* pActor) {
     Actor* pPlayer = Game::GetPlayer();
     if (pPlayer && Game::ActorsColliding(pActor, pPlayer)) {
         OnPickup(pActor);
@@ -67,10 +67,10 @@ static void UpdateExpRemnant(Actor* pActor, const ActorPrototype* pPrototype) {
     }
 }
 
-static void UpdateHealing(Actor* pActor, const ActorPrototype* pPrototype) {
+static void UpdateHealing(Actor* pActor) {
     Game::ApplyGravity(pActor);
     HitResult hit{};
-    if (Game::ActorMoveHorizontal(pActor, pPrototype, hit)) {
+    if (Game::ActorMoveHorizontal(pActor, hit)) {
         pActor->velocity = glm::reflect(pActor->velocity, hit.impactNormal);
         pActor->velocity *= 0.5f; // Apply damping
     }
@@ -78,7 +78,7 @@ static void UpdateHealing(Actor* pActor, const ActorPrototype* pPrototype) {
     // Reset in air flag
     pActor->flags.inAir = true;
 
-    if (Game::ActorMoveVertical(pActor, pPrototype, hit)) {
+    if (Game::ActorMoveVertical(pActor, hit)) {
         pActor->velocity = glm::reflect(pActor->velocity, hit.impactNormal);
         pActor->velocity *= 0.5f; // Apply damping
 
@@ -103,7 +103,7 @@ static void UpdateHealing(Actor* pActor, const ActorPrototype* pPrototype) {
     }
 }
 
-static void InitializePickup(Actor* pActor, const ActorPrototype* pPrototype, const PersistedActorData* pPersistData) {
+static void InitializePickup(Actor* pActor, const PersistedActorData* pPersistData) {
     pActor->drawState.layer = SPRITE_LAYER_FG;
 }
 

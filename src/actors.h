@@ -33,6 +33,8 @@ struct ActorDrawState {
 };
 
 struct Actor {
+	TActorType type;
+	TActorSubtype subtype;
 	u64 persistId;
 
 	ActorFlags flags;
@@ -45,8 +47,10 @@ struct Actor {
 	ActorDrawState drawState;
 
 	ActorData data;
+	AABB hitbox;
 
-	ActorPrototypeHandle prototypeHandle;
+	// Temporary until animation system refactor
+	ActorPrototypeHandle __temp_actorPrototypeHandle;
 };
 
 struct PersistedActorData;
@@ -61,9 +65,9 @@ typedef void (*ActorCallbackFn)(Actor*);
 typedef void (*ActorCollisionCallbackFn)(Actor*, Actor*);
 typedef bool (*ActorFilterFn)(const Actor*);
 
-typedef void (*ActorInitFn)(Actor*, const ActorPrototype*, const PersistedActorData*);
-typedef void (*ActorUpdateFn)(Actor*, const ActorPrototype*);
-typedef bool (*ActorDrawFn)(const Actor*, const ActorPrototype*);
+typedef void (*ActorInitFn)(Actor*, const PersistedActorData*);
+typedef void (*ActorUpdateFn)(Actor*);
+typedef bool (*ActorDrawFn)(const Actor*);
 
 enum PlayerWeaponType : u8 {
 	PLAYER_WEAPON_BOW,
@@ -86,8 +90,7 @@ namespace Game {
 	Actor* SpawnActor(const ActorPrototypeHandle& prototypeHandle, const glm::vec2& position, const glm::vec2& velocity = {0.0f, 0.0f});
 	void ClearActors();
 
-	const ActorPrototype* GetActorPrototype(const Actor* pActor);
-	const Animation* GetActorCurrentAnim(const Actor* pActor, const ActorPrototype* pPrototype);
+	const Animation* GetActorCurrentAnim(const Actor* pActor);
 	bool ActorValid(const Actor* pActor);
 	bool ActorsColliding(const Actor* pActor, const Actor* pOther);
 	void ForEachActorCollision(Actor* pActor, TActorType type, ActorCollisionCallbackFn callback);
@@ -104,17 +107,17 @@ namespace Game {
 	void PlayerTakeDamage(Actor* pPlayer, const Damage& damage, const glm::vec2& enemyPos);
 	void PlayerRespawnAtCheckpoint(Actor* pPlayer);
 
-	void EnemyDie(Actor* pActor, const ActorPrototype* pPrototype);
+	void EnemyDie(Actor* pActor);
 
 	bool UpdateCounter(u16& counter);
 	void SetDamagePaletteOverride(Actor* pActor, u16 damageCounter);
-	void GetAnimFrameFromDirection(Actor* pActor, const ActorPrototype* pPrototype);
+	void GetAnimFrameFromDirection(Actor* pActor);
 	void AdvanceAnimation(u16& animCounter, u16& frameIndex, u16 frameCount, u8 frameLength, s16 loopPoint);
-	void AdvanceCurrentAnimation(Actor* pActor, const ActorPrototype* pPrototype);
+	void AdvanceCurrentAnimation(Actor* pActor);
 
 	void ActorFacePlayer(Actor* pActor);
-	bool ActorMoveHorizontal(Actor* pActor, const ActorPrototype* pPrototype, HitResult& outHit);
-	bool ActorMoveVertical(Actor* pActor, const ActorPrototype* pPrototype, HitResult& outHit);
+	bool ActorMoveHorizontal(Actor* pActor, HitResult& outHit);
+	bool ActorMoveVertical(Actor* pActor, HitResult& outHit);
 	void ApplyGravity(Actor* pActor, r32 gravity = 0.01f);
 
 	Damage CalculateDamage(Actor* pActor, u16 baseDamage);
@@ -123,7 +126,7 @@ namespace Game {
 
 	DynamicActorPool* GetActors(); // TEMP
 	void UpdateActors();
-	bool DrawActorDefault(const Actor* pActor, const ActorPrototype* pPrototype);
+	bool DrawActorDefault(const Actor* pActor);
 	void DrawActors();
 
 	extern const ActorInitFn playerInitTable[PLAYER_TYPE_COUNT];

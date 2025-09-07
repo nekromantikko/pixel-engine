@@ -2198,10 +2198,7 @@ static void DrawActorDebugInfo(const ImVec2& pos, const ImVec2& size) {
 		const ImVec2 drawPos = ImVec2(pos.x + pixelOffset.x * renderScale, pos.y + pixelOffset.y * renderScale);
 
 		if (pContext->drawActorHitboxes) {
-			const ActorPrototype* pPrototype = Game::GetActorPrototype(pActor);
-			if (pPrototype) {
-				DrawHitbox(&pPrototype->hitbox, drawPos, renderScale);
-			}
+			DrawHitbox(&pActor->hitbox, drawPos, renderScale);
 		}
 		if (pContext->drawActorPositions) {
 			char positionText[64];
